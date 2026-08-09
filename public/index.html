@@ -1798,6 +1798,208 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 1000);
 });
 </script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // FEATURE 1: Upcoming Events Filter (Hides Past Events in Dropdown)
+    setInterval(() => {
+        const eventDropdown = document.querySelector('select[name="event_id"]') || document.querySelector('#eventSelect') || document.querySelector('#checkinEventSelect');
+        if (eventDropdown && !eventDropdown.dataset.dateFiltered) {
+            const todayStr = new Date().toISOString().split('T')[0]; // Gets YYYY-MM-DD
+            let hasDates = false;
+            
+            Array.from(eventDropdown.options).forEach(opt => {
+                const dateMatch = opt.innerText.match(/\d{4}-\d{2}-\d{2}/);
+                if (dateMatch) {
+                    hasDates = true;
+                    if (dateMatch[0] < todayStr) {
+                        opt.style.display = 'none'; 
+                        opt.disabled = true; // Hides and disables past events
+                    }
+                }
+            });
+            
+            if (hasDates) eventDropdown.dataset.dateFiltered = "true";
+        }
+    }, 1000);
+
+    // FEATURE 2: Community Directory Pagination
+    setInterval(() => {
+        const csvBtn = document.getElementById('csvBtn');
+        const dirTab = document.querySelector('#directory') || document.querySelector('#directoryTab') || (csvBtn ? csvBtn.closest('section, div') : null);
+        const tbody = dirTab ? (dirTab.querySelector('table tbody') || dirTab.querySelector('.list')) : null;
+        
+        if (tbody && tbody.children.length > 0 && !document.getElementById('dirPagerControls')) {
+            const pager = document.createElement('div');
+            pager.id = 'dirPagerControls';
+            pager.style.cssText = 'display: flex; gap: 15px; align-items: center; margin: 15px 0; background: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;';
+            pager.innerHTML = `
+                <label>Entries per page:</label>
+                <select id="dirPerPage" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer;">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="999999">All</option>
+                </select>
+                <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
+                    <button id="dirPrev" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">◀ Prev</button>
+                    <span id="dirPageInd" style="color: #2c3e50;">Page 1</span>
+                    <button id="dirNext" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">Next ▶</button>
+                </div>
+            `;
+            
+            // Insert the pager safely above the table
+            tbody.parentNode.parentNode.insertBefore(pager, tbody.parentNode);
+
+            let currentPage = 1;
+            let perPage = 10;
+
+            const updateTable = () => {
+                const rows = Array.from(tbody.children);
+                const totalPages = Math.ceil(rows.length / perPage) || 1;
+                
+                if (currentPage > totalPages) currentPage = totalPages;
+                if (currentPage < 1) currentPage = 1;
+
+                document.getElementById('dirPageInd').innerText = 'Page ' + currentPage + ' of ' + totalPages;
+                document.getElementById('dirPrev').disabled = (currentPage === 1);
+                document.getElementById('dirNext').disabled = (currentPage === totalPages);
+
+                rows.forEach((row, index) => {
+                    if (perPage >= 999999) {
+                        row.style.display = '';
+                    } else {
+                        const start = (currentPage - 1) * perPage;
+                        const end = start + perPage;
+                        row.style.display = (index >= start && index < end) ? '' : 'none';
+                    }
+                });
+            };
+
+            document.getElementById('dirPerPage').onchange = (e) => {
+                perPage = parseInt(e.target.value);
+                currentPage = 1;
+                updateTable();
+            };
+
+            document.getElementById('dirPrev').onclick = () => {
+                if (currentPage > 1) { currentPage--; updateTable(); }
+            };
+
+            document.getElementById('dirNext').onclick = () => {
+                const rows = Array.from(tbody.children);
+                if (currentPage < Math.ceil(rows.length / perPage)) { currentPage++; updateTable(); }
+            };
+
+            // Run it immediately and re-run if data changes
+            updateTable();
+            new MutationObserver(() => updateTable()).observe(tbody, { childList: true });
+        }
+    }, 1000);
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Fetch exact dates from database to guarantee accuracy
+    fetch('/api/events').then(r => r.json()).then(events => {
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        
+        // Find IDs of events that are strictly in the past
+        const pastEventIds = events.filter(e => {
+            if(!e.event_date) return false;
+            return new Date(e.event_date) < today;
+        }).map(e => String(e.id));
+
+        setInterval(() => {
+            const dropdowns = document.querySelectorAll('select[name="event_id"], #eventSelect, #checkinEventSelect');
+            dropdowns.forEach(dropdown => {
+                Array.from(dropdown.options).forEach(opt => {
+                    // Completely remove the option so mobile browsers can't show it
+                    if (pastEventIds.includes(String(opt.value))) {
+                        opt.remove(); 
+                    }
+                });
+            });
+        }, 1000);
+    }).catch(e => console.log('Filter error:', e));
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Aggressively remove past events from the check-in dropdown (Zero Network Delay)
+    setInterval(() => {
+        const dropdown = document.querySelector('select[name="event_id"]') || document.querySelector('#checkinEventSelect');
+        if (dropdown) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            Array.from(dropdown.options).forEach(opt => {
+                const match = opt.innerText.match(/(\d{4}-\d{2}-\d{2})/);
+                if (match && match[1] < todayStr) {
+                    opt.remove(); // Instantly destroy past date options
+                }
+            });
+        }
+    }, 800);
+
+    // 2 & 3. Rename Analytics to Event Details & Inject 4-Card Grid
+    setInterval(() => {
+        document.querySelectorAll('button').forEach(btn => {
+            if (btn.innerText.includes('Analytics')) btn.innerHTML = '📊 Event Details';
+        });
+
+        const modal = document.getElementById('analyticsModal') || document.querySelector('.modal');
+        if (modal && (modal.style.display === 'block' || modal.classList.contains('active'))) {
+            const h2 = modal.querySelector('h2');
+            if (h2 && h2.innerText.includes('Analytics')) h2.innerText = '📊 Event Details';
+
+            const content = modal.querySelector('#analyticsContent') || modal.querySelector('.content');
+            if (content && !document.getElementById('gridInjected')) {
+                // Read the old text values
+                const txt = content.innerText;
+                const totM = txt.match(/Total.*?(\d+)/i) || txt.match(/(\d+).*Total/i) || [0,0];
+                const preM = txt.match(/Pre-Reg.*?(\d+)/i) || txt.match(/(\d+).*Pre-Reg/i) || [0,0];
+                const walkM = txt.match(/Walk-in.*?(\d+)/i) || txt.match(/(\d+).*Walk-in/i) || [0,0];
+                
+                const total = parseInt(totM[1]) || 0;
+                const pre = parseInt(preM[1]) || 0;
+                const walk = parseInt(walkM[1]) || 0;
+                const rate = pre > 0 ? Math.round((total / pre) * 100) + '%' : 'N/A';
+
+                const listObj = content.querySelector('ul, table');
+                
+                // Inject the new Grid UI
+                content.innerHTML = `
+                    <div id="gridInjected" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+                        <div style="background: linear-gradient(135deg, #3498db, #2980b9); color: white; padding: 15px 10px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0; font-size: 24px;">${total}</h3>
+                            <p style="margin: 5px 0 0; font-size: 12px; font-weight: bold;">Total Check-ins</p>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #2ecc71, #27ae60); color: white; padding: 15px 10px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0; font-size: 24px;">${pre}</h3>
+                            <p style="margin: 5px 0 0; font-size: 12px; font-weight: bold;">Pre-Reg</p>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #f1c40f, #f39c12); color: white; padding: 15px 10px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0; font-size: 24px;">${walk}</h3>
+                            <p style="margin: 5px 0 0; font-size: 12px; font-weight: bold;">Walk-ins</p>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white; padding: 15px 10px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0; font-size: 24px;">${rate}</h3>
+                            <p style="margin: 5px 0 0; font-size: 12px; font-weight: bold;">Turnout Rate</p>
+                        </div>
+                    </div>
+                `;
+                if (listObj) content.appendChild(listObj);
+            }
+        }
+    }, 500);
+});
+</script>
 </body>
+
+
+
 
 </html>
