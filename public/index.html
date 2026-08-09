@@ -62,14 +62,16 @@
 
         .events-grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; margin-top: 15px; }
         .events-list-view { display: block; margin-top: 15px; }
-        .event-card { border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: #FFF; display: flex; flex-direction: column; }
+        .event-card { border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: #FFF; display: flex; flex-direction: column; transition: transform 0.2s; }
+        .event-card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.08); }
         .event-card-img { width: 100%; height: 220px; object-fit: cover; background: var(--bg-light); }
 
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 15px; text-align: center; }
         .calendar-day-header { font-weight: 700; font-size: 0.8rem; padding: 8px 0; background: var(--bg-light); color: var(--text-muted); border-radius: 4px; }
         .calendar-day-cell { min-height: 95px; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px; background: #FFF; font-size: 0.85rem; text-align: left; position: relative; }
         .calendar-day-cell.other-month { background: #F1F5F9; opacity: 0.5; }
-        .calendar-event-tag { background: rgba(255,107,0,0.15); color: var(--primary); font-size: 0.72rem; padding: 3px 6px; border-radius: 3px; margin-top: 4px; font-weight: 600; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+        .calendar-event-tag { background: rgba(255,107,0,0.15); color: var(--primary); font-size: 0.72rem; padding: 3px 6px; border-radius: 3px; margin-top: 4px; font-weight: 600; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; transition: background 0.2s; }
+        .calendar-event-tag:hover { background: var(--primary); color: #FFF; }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
         .modal.active { display: flex; }
@@ -78,7 +80,7 @@
 
         .banner-active-event { background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px 18px; border-radius: 8px; font-weight: 700; color: var(--primary); margin-bottom: 15px; text-align: center; }
         .search-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color); }
-        .search-item:hover { background: var(--bg-light); }
+        .search-item:hover { background: var(--bg-light); cursor: pointer; }
 
         .analytics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px 0; }
         .stat-card { background: var(--bg-light); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; text-align: center; }
@@ -262,7 +264,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
                 <h2>Community Directory</h2>
                 <div>
-                    <select id="sortDirectorySelect" class="form-control" onchange="loadDirectory()">
+                    <select id="sortDirectorySelect" class="form-control" onchange="filterDirectory()">
                         <option value="name_asc">Name (A-Z)</option>
                         <option value="name_desc">Name (Z-A)</option>
                         <option value="age_asc">Age (Youngest)</option>
@@ -270,6 +272,11 @@
                     </select>
                 </div>
             </div>
+            
+            <div class="form-group">
+                <input type="text" id="directorySearchInput" class="form-control" placeholder="Search directory by name or ID..." oninput="filterDirectory()">
+            </div>
+            
             <div id="directoryTableContainer"></div>
         </div>
     </div>
@@ -435,8 +442,13 @@
 
 <div id="eventAnalyticsModal" class="modal">
     <div class="modal-content">
-        <h2 id="analyticsEventTitle">Event Analytics</h2>
-        <p id="analyticsEventMeta" style="color: var(--text-muted); font-size: 0.85rem; margin-top: -10px; margin-bottom: 15px;"></p>
+        <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 20px;">
+            <div id="analyticsModalPoster" style="width: 80px; height: 80px; background: #FFF; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); flex-shrink: 0; display:flex; align-items:center; justify-content:center;"></div>
+            <div>
+                <h2 id="analyticsEventTitle" style="margin-bottom: 5px;">Event Analytics</h2>
+                <p id="analyticsEventMeta" style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0;"></p>
+            </div>
+        </div>
         
         <div class="analytics-grid">
             <div class="stat-card">
@@ -461,7 +473,8 @@
         <h3 style="font-size: 1rem; margin-top: 20px; margin-bottom: 8px; color: var(--text-main);">Checked-In Roster</h3>
         <div id="analyticsRosterContainer" style="max-height: 220px; overflow-y: auto;"></div>
 
-        <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px;">
+            <button class="btn btn-outline" onclick="exportAnalyticsCSV()">📥 Export List (CSV)</button>
             <button class="btn btn-secondary" onclick="closeAnalyticsModal()">Close</button>
         </div>
     </div>
@@ -531,6 +544,7 @@
     let eventViewMode = 'list';
     let calCurrentDate = new Date();
     let qrScanner = null;
+    let currentAnalyticsData = null; // Store for CSV Export
 
     function switchTab(tabId) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -579,7 +593,6 @@
                 switchTab('profileTab');
             } else {
                 populateAdminProfile(currentUser);
-                // If admin is registrationteam (only checkin access), go directly to checkin
                 if (userPermissions.length === 1 && userPermissions.includes('access_checkin')) {
                     switchTab('checkinTab');
                 } else {
@@ -838,17 +851,29 @@
     }
 
     async function loadDirectory() {
-        const res = await fetch('/api/youth');
-        youthData = await res.json();
+        if (youthData.length === 0) {
+            const res = await fetch('/api/youth');
+            youthData = await res.json();
+        }
+        filterDirectory();
+    }
 
+    function filterDirectory() {
+        const q = document.getElementById('directorySearchInput').value.toLowerCase().trim();
         const sort = document.getElementById('sortDirectorySelect').value;
-        if (sort === 'name_asc') youthData.sort((a,b) => a.name.localeCompare(b.name));
-        if (sort === 'name_desc') youthData.sort((a,b) => b.name.localeCompare(a.name));
-        if (sort === 'age_asc') youthData.sort((a,b) => (a.age || 0) - (b.age || 0));
-        if (sort === 'age_desc') youthData.sort((a,b) => (b.age || 0) - (a.age || 0));
+
+        let matches = youthData;
+        if (q) {
+            matches = youthData.filter(y => y.name.toLowerCase().includes(q) || (y.qr_code && y.qr_code.toLowerCase().includes(q)));
+        }
+
+        if (sort === 'name_asc') matches.sort((a,b) => a.name.localeCompare(b.name));
+        if (sort === 'name_desc') matches.sort((a,b) => b.name.localeCompare(a.name));
+        if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
+        if (sort === 'age_desc') matches.sort((a,b) => (b.age || 0) - (a.age || 0));
 
         let html = `<table><thead><tr><th>Name</th><th>Age</th><th>Birthday</th><th>Actions</th></tr></thead><tbody>`;
-        html += youthData.map(y => `
+        html += matches.map(y => `
             <tr>
                 <td><strong>${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code}</small></td>
                 <td>${y.age || 'N/A'}</td>
@@ -856,7 +881,7 @@
                 <td>
                     <button class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">Profile</button>
                     <button class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>
-                    <button class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${y.name}')">Delete</button>
+                    <button class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Delete</button>
                 </td>
             </tr>
         `).join('');
@@ -904,6 +929,7 @@
                 body: JSON.stringify(payload)
             });
             closeEditMemberModal();
+            youthData = []; // clear cache
             loadDirectory();
         });
     }
@@ -950,11 +976,21 @@
         document.getElementById('viewProfileModal').classList.remove('active');
     }
 
-    // EVENT ANALYTICS MODAL
+    // EVENT ANALYTICS MODAL WITH CSV EXPORT
     async function openAnalyticsModal(eventId) {
         const res = await fetch(`/api/events/${eventId}/analytics`);
         const data = await res.json();
         if (!data || data.error) return alert('Failed to load event analytics');
+
+        currentAnalyticsData = data; // Store data globally for CSV Export
+
+        // Handle Event Poster Thumbnail inside Modal
+        const posterContainer = document.getElementById('analyticsModalPoster');
+        if (data.event.poster) {
+            posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover;">`;
+        } else {
+            posterContainer.innerHTML = `<span style="font-size: 0.7rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
+        }
 
         document.getElementById('analyticsEventTitle').innerText = data.event.name;
         document.getElementById('analyticsEventMeta').innerText = `📅 Date: ${data.event.event_date} | 📍 Venue: ${data.event.venue || 'N/A'}`;
@@ -985,6 +1021,36 @@
 
     function closeAnalyticsModal() {
         document.getElementById('eventAnalyticsModal').classList.remove('active');
+        currentAnalyticsData = null;
+    }
+
+    function exportAnalyticsCSV() {
+        if (!currentAnalyticsData || !currentAnalyticsData.roster) return alert('No data available to export.');
+        
+        // Define CSV Headers
+        const rows = [['Member Name', 'Unique Pass ID / Email', 'Checked In At', 'Status']];
+        
+        // Loop through roster and push rows
+        currentAnalyticsData.roster.forEach(r => {
+            const status = r.is_walkin ? 'Walk-in' : 'Pre-Reg';
+            const identifier = r.email ? r.email : r.qr_code;
+            // Wrap in quotes to prevent CSV breaking on commas inside names
+            rows.push([`"${r.name}"`, `"${identifier}"`, `"${r.checked_in_at}"`, `"${status}"`]);
+        });
+
+        // Generate CSV string
+        const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+        
+        // Create invisible download link
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `Roster_${currentAnalyticsData.event.name.replace(/\s+/g, '_')}.csv`);
+        document.body.appendChild(link);
+        
+        // Trigger download and cleanup
+        link.click();
+        document.body.removeChild(link);
     }
 
     // USER DIRECTORY & ADD PERMISSIONS POP-UP SYSTEM
@@ -1105,12 +1171,12 @@
             container.innerHTML = eventsData.map(e => `
                 <div style="border-bottom: 1px solid var(--border-color); padding: 12px 0; display: flex; justify-content: space-between; align-items: center;">
                     <div>
-                        <strong>${e.name}</strong><br>
+                        <strong style="cursor: pointer; color: var(--primary);" onclick="openAnalyticsModal(${e.id})">${e.name}</strong><br>
                         <small style="color: var(--text-muted);">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
                     </div>
                     <div style="display: flex; gap: 6px;">
                         <button class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Analytics</button>
-                        <button class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name}')">Delete</button>
+                        <button class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                     </div>
                 </div>
             `).join('');
@@ -1118,10 +1184,13 @@
             container.className = 'events-grid-view';
             container.innerHTML = eventsData.map(e => `
                 <div class="event-card">
-                    ${e.poster ? `<img src="${e.poster}" class="event-card-img" alt="Poster">` : `<div class="event-card-img" style="display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;">No Poster Uploaded</div>`}
+                    ${e.poster 
+                        ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` 
+                        : `<div class="event-card-img" style="background: #FFFFFF; border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`
+                    }
                     <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
-                            <h3 style="font-size: 1.05rem; margin-bottom: 6px; color: var(--text-main);">${e.name}</h3>
+                            <h3 style="font-size: 1.05rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${e.name}</h3>
                             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
                                 📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>
                                 📍 ${e.venue || 'No Location'}
@@ -1129,7 +1198,7 @@
                         </div>
                         <div style="display: flex; gap: 6px; margin-top: 8px;">
                             <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Analytics</button>
-                            <button class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name}')">Delete</button>
+                            <button class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                         </div>
                     </div>
                 </div>
@@ -1163,7 +1232,7 @@
             html += `<div class="calendar-day-cell">
                 <strong>${day}</strong>`;
             dayEvents.forEach(e => {
-                html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${e.name}">${e.name}</div>`;
+                html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${e.name.replace(/"/g, '&quot;')}">${e.name}</div>`;
             });
             html += `</div>`;
         }
@@ -1197,7 +1266,7 @@
                 <td><span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
                 <td>
                     ${userPermissions.includes('edit_attendance') ? `<button class="btn btn-primary btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
-                    <button class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${l.member_name}')">Delete</button>
+                    <button class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${l.member_name.replace(/'/g, "\\'")}')">Delete</button>
                 </td>
             </tr>
         `).join('');
@@ -1312,6 +1381,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ actor: currentUser })
             });
+            youthData = []; // clear cache to refetch
             loadDirectory();
         });
     }
