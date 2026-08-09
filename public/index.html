@@ -112,8 +112,8 @@
                 </div>
                 <div style="display: flex; gap: 15px;">
                     <div class="form-group" style="flex: 1;">
-                        <label>Age</label>
-                        <input type="number" id="regAge" class="form-control">
+                        <label>Age *</label>
+                        <input type="number" id="regAge" class="form-control" required>
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label>Birthday *</label>
@@ -227,7 +227,33 @@
         <div class="card">
             <h2>Manual Fast Check-In</h2>
             <input type="text" id="manualSearchInput" class="form-control" placeholder="Search member by name or unique ID..." oninput="filterManualCheckin()">
-            <div id="manualCheckinResults" style="max-height: 350px; overflow-y: auto; margin-top: 15px;"></div>
+            <div id="manualCheckinResults" style="max-height: 250px; overflow-y: auto; margin-top: 15px;"></div>
+        </div>
+
+        <div class="card">
+            <h2>Quick Walk-In Registration</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Instantly creates a directory profile and logs their attendance.</p>
+            <form onsubmit="handleWalkin(event)">
+                <div class="form-group">
+                    <label>Full Name *</label>
+                    <input type="text" id="walkinName" class="form-control" required>
+                </div>
+                <div style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Age *</label>
+                        <input type="number" id="walkinAge" class="form-control" required>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Birthday (Optional)</label>
+                        <input type="date" id="walkinBirthday" class="form-control">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Email Address (Optional)</label>
+                    <input type="email" id="walkinEmail" class="form-control" placeholder="e.g. walkin@gmail.com">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Register & Check-In Walk-In</button>
+            </form>
         </div>
     </div>
 
@@ -550,10 +576,16 @@
 
             if (currentMember) {
                 populateProfileTab(currentMember);
+                switchTab('profileTab');
             } else {
                 populateAdminProfile(currentUser);
+                // If admin is registrationteam (only checkin access), go directly to checkin
+                if (userPermissions.length === 1 && userPermissions.includes('access_checkin')) {
+                    switchTab('checkinTab');
+                } else {
+                    switchTab('profileTab');
+                }
             }
-            switchTab('profileTab');
 
             loadEvents();
             loadDirectory();
@@ -629,10 +661,10 @@
 
     function populateAdminProfile(username) {
         document.getElementById('myProfileName').innerText = username + " (Administrator)";
-        document.getElementById('myProfileCode').innerText = "SUPERADMIN PASS";
+        document.getElementById('myProfileCode').innerText = "LEADER ACCOUNT";
         document.getElementById('myEditName').value = username;
         document.getElementById('myEditEmail').value = username;
-        document.getElementById('myQrContainer').innerHTML = `<span class="badge badge-orange" style="font-size: 1.1rem; padding: 12px 20px;">FULL ADMIN ACCESS</span>`;
+        document.getElementById('myQrContainer').innerHTML = `<span class="badge badge-orange" style="font-size: 1.1rem; padding: 12px 20px;">AUTHORIZED LEADER</span>`;
     }
 
     async function handleSelfProfileUpdate(e) {
@@ -761,6 +793,48 @@
 
         if (data.success) alert(`Successfully checked in ${memberName || 'member'}!`);
         else alert(data.error || 'Check-in failed');
+    }
+
+    async function handleWalkin(e) {
+        e.preventDefault();
+        const eventId = document.getElementById('activeEventDropdown').value;
+        if (!eventId) return alert('Please select an active event first!');
+
+        const payload = {
+            name: document.getElementById('walkinName').value,
+            age: document.getElementById('walkinAge').value,
+            birthday: document.getElementById('walkinBirthday').value,
+            email: document.getElementById('walkinEmail').value,
+            actor: currentUser || 'Walk-in Registration'
+        };
+
+        const regRes = await fetch('/api/youth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const regData = await regRes.json();
+
+        if (regData.id) {
+            const checkinRes = await fetch('/api/checkin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ youth_id: regData.id, event_id: eventId, is_walkin: 1, actor: currentUser })
+            });
+            const checkinData = await checkinRes.json();
+
+            if (checkinData.success) {
+                alert(`Successfully registered and checked in walk-in: ${payload.name}`);
+                e.target.reset();
+                youthData = []; // clear cache to force refetch
+                filterManualCheckin(); 
+                loadDirectory();
+            } else {
+                alert(checkinData.error || 'Registration succeeded, but check-in failed.');
+            }
+        } else {
+            alert(regData.error || 'Failed to register walk-in.');
+        }
     }
 
     async function loadDirectory() {
