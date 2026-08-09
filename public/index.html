@@ -43,7 +43,7 @@
         .form-control { width: 100%; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.95rem; background: #FFF; color: var(--text-main); }
         .form-control:focus { outline: none; border-color: var(--primary); }
 
-        .btn { padding: 10px 20px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
         .btn-primary { background: var(--primary); color: #FFF; }
         .btn-primary:hover { background: var(--primary-hover); }
         .btn-danger { background: var(--danger); color: #FFF; }
@@ -51,6 +51,7 @@
         .btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
         .btn-outline.active { background: rgba(255,107,0,0.1); border-color: var(--primary); color: var(--primary); }
         .btn-sm { padding: 6px 12px; font-size: 0.85rem; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; vertical-align: middle; }
@@ -78,6 +79,7 @@
         .modal-content { background: #FFF; border-radius: 12px; width: 90%; max-width: 550px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); max-height: 90vh; overflow-y: auto; }
         .modal-summary { background: var(--bg-light); border-left: 4px solid var(--primary); padding: 12px; margin: 15px 0; font-size: 0.9rem; border-radius: 4px; }
 
+        .banner-active-event { background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px 18px; border-radius: 8px; font-weight: 700; color: var(--primary); margin-bottom: 15px; text-align: center; }
         .search-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 10px; }
         .search-item:hover { background: var(--bg-light); }
 
@@ -388,7 +390,7 @@
 <div id="fastEditProfileModal" class="modal">
     <div class="modal-content">
         <h2>Edit Profile</h2>
-        <form id="fastEditProfileForm" onsubmit="event.preventDefault(); submitFastEditProfile(false)">
+        <form id="fastEditProfileForm" onsubmit="event.preventDefault();">
             <input type="hidden" id="fastEditMemberId">
             <div class="form-group">
                 <label>Update Profile Picture (Leave blank to keep current)</label>
@@ -432,7 +434,7 @@
 <div id="editEventModal" class="modal">
     <div class="modal-content">
         <h2>Edit Gathering / Event</h2>
-        <form id="editEventForm" onsubmit="event.preventDefault(); submitEditEvent()">
+        <form id="editEventForm" onsubmit="event.preventDefault();">
             <input type="hidden" id="editEvtId">
             <div class="form-group">
                 <label>Event Name *</label>
@@ -469,7 +471,7 @@
         <h2>Assign User Permissions</h2>
         <div id="permModalUserBanner" style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px 16px; border-radius: 8px; font-weight: 700; color: var(--primary); margin-bottom: 15px;"></div>
         
-        <form onsubmit="handleSavePermissionsFromModal(event)">
+        <form onsubmit="event.preventDefault(); handleSavePermissionsFromModal();">
             <input type="hidden" id="modalPermUserId">
             <div class="form-group">
                 <label style="font-size: 0.95rem; color: var(--primary); margin-bottom: 10px;">Select Permissions to Assign:</label>
@@ -485,7 +487,7 @@
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
                 <button type="button" class="btn btn-secondary" onclick="closeAssignPermissionModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Permissions</button>
+                <button type="button" class="btn btn-primary" onclick="handleSavePermissionsFromModal()">Save Permissions</button>
             </div>
         </form>
     </div>
@@ -494,7 +496,7 @@
 <div id="editMemberModal" class="modal">
     <div class="modal-content">
         <h2>Edit Member Profile</h2>
-        <form onsubmit="saveMemberEditWithConfirm(event)">
+        <form onsubmit="event.preventDefault();">
             <input type="hidden" id="editMemberId">
             <div class="form-group">
                 <label>Update Profile Picture (Leave blank to keep current)</label>
@@ -528,7 +530,7 @@
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
                 <button type="button" class="btn btn-secondary" onclick="closeEditMemberModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Profile Changes</button>
+                <button type="button" class="btn btn-primary" onclick="saveMemberEditWithConfirm()">Save Profile Changes</button>
             </div>
         </form>
     </div>
@@ -568,10 +570,10 @@
         <div id="analyticsRosterContainer" style="max-height: 220px; overflow-y: auto;"></div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px; flex-wrap: wrap; gap: 10px;">
-            <button class="btn btn-outline" onclick="exportAnalyticsCSV()">📥 Export List (CSV)</button>
+            <button type="button" class="btn btn-outline" onclick="exportAnalyticsCSV()">📥 Export List (CSV)</button>
             <div style="display: flex; gap: 10px;">
-                <button class="btn btn-outline" id="analyticsEditEventBtn">Edit Event</button>
-                <button class="btn btn-secondary" onclick="closeAnalyticsModal()">Close</button>
+                <button type="button" class="btn btn-outline" id="analyticsEditEventBtn">Edit Event</button>
+                <button type="button" class="btn btn-secondary" onclick="closeAnalyticsModal()">Close</button>
             </div>
         </div>
     </div>
@@ -593,7 +595,7 @@
         <h3 style="font-size: 1rem; margin-bottom: 8px; color: var(--text-main);">Attendance History</h3>
         <div id="modalAttendanceHistory" style="max-height: 150px; overflow-y: auto; font-size: 0.85rem;"></div>
         <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
-            <button class="btn btn-secondary" onclick="closeViewProfileModal()">Close</button>
+            <button type="button" class="btn btn-secondary" onclick="closeViewProfileModal()">Close</button>
         </div>
     </div>
 </div>
@@ -603,8 +605,8 @@
         <h2>Confirm Action</h2>
         <div id="confirmSummary" class="modal-summary">Summary of action...</div>
         <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-            <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
-            <button id="executeConfirmBtn" class="btn btn-danger">Execute Action</button>
+            <button type="button" class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+            <button type="button" id="executeConfirmBtn" class="btn btn-danger">Execute Action</button>
         </div>
     </div>
 </div>
@@ -612,7 +614,7 @@
 <div id="editAttendanceModal" class="modal">
     <div class="modal-content">
         <h2>Edit Attendance Record</h2>
-        <form onsubmit="saveAttendanceEditWithConfirm(event)">
+        <form onsubmit="event.preventDefault();">
             <input type="hidden" id="editAttId">
             <div class="form-group">
                 <label>Check-in Timestamp</label>
@@ -627,7 +629,7 @@
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
                 <button type="button" class="btn btn-secondary" onclick="closeEditAttendanceModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn btn-primary" onclick="saveAttendanceEditWithConfirm()">Save Changes</button>
             </div>
         </form>
     </div>
@@ -647,14 +649,55 @@
     let currentAnalyticsData = null; 
     let checkedInYouthIds = new Set();
 
-    async function getBase64(file) {
+    // Compression/Resize Function to prevent massive payload crashes
+    async function getBase64(file, maxWidth = 600) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
-            reader.onload = () => resolve(reader.result);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                };
+            };
             reader.onerror = error => reject(error);
         });
     }
+
+    // Auto-login from memory on page load
+    window.onload = () => {
+        const savedSession = localStorage.getItem('fog_user');
+        if (savedSession) {
+            const s = JSON.parse(savedSession);
+            currentUser = s.username;
+            userPermissions = s.permissions;
+            currentMember = s.member;
+            buildNav();
+            if (currentMember) populateProfileTab(currentMember);
+            else populateAdminProfile(currentUser);
+            
+            if (currentMember) switchTab('profileTab');
+            else if (userPermissions.length === 1 && userPermissions.includes('access_checkin')) switchTab('checkinTab');
+            else switchTab('profileTab');
+            
+            loadEvents();
+            loadDirectory();
+        } else {
+            switchTab('publicReg');
+        }
+    };
 
     function switchTab(tabId) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -670,7 +713,7 @@
 
         if (tabId === 'checkinTab') {
             initScanner();
-            filterManualCheckin();
+            updateActiveEventBanner(); 
         }
         if (tabId === 'directoryTab') loadDirectory();
         if (tabId === 'eventsTab') loadEvents();
@@ -685,9 +728,7 @@
         const password = document.getElementById('loginPass').value;
 
         const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password })
         });
         const data = await res.json();
 
@@ -696,49 +737,29 @@
             userPermissions = data.permissions || [];
             currentMember = data.member;
             
+            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+
             buildNav();
-
-            if (currentMember) {
-                populateProfileTab(currentMember);
-                switchTab('profileTab');
-            } else {
+            if (currentMember) { populateProfileTab(currentMember); switchTab('profileTab'); }
+            else {
                 populateAdminProfile(currentUser);
-                if (userPermissions.length === 1 && userPermissions.includes('access_checkin')) {
-                    switchTab('checkinTab');
-                } else {
-                    switchTab('profileTab');
-                }
+                if (userPermissions.length === 1 && userPermissions.includes('access_checkin')) switchTab('checkinTab');
+                else switchTab('profileTab');
             }
-
-            loadEvents();
-            loadDirectory();
-        } else {
-            alert('Invalid credentials!');
-        }
+            loadEvents(); loadDirectory();
+        } else alert('Invalid credentials!');
     }
 
     function buildNav() {
         const nav = document.getElementById('mainNav');
         let html = `<button class="nav-btn active" onclick="switchTab('profileTab')">My Profile</button>`;
 
-        if (userPermissions.includes('access_checkin')) {
-            html += `<button class="nav-btn" onclick="switchTab('checkinTab')">Check-In</button>`;
-        }
-        if (userPermissions.includes('access_directory')) {
-            html += `<button class="nav-btn" onclick="switchTab('directoryTab')">Directory</button>`;
-        }
-        if (userPermissions.includes('access_events')) {
-            html += `<button class="nav-btn" onclick="switchTab('eventsTab')">Events & Analytics</button>`;
-        }
-        if (userPermissions.includes('access_attendance')) {
-            html += `<button class="nav-btn" onclick="switchTab('attendanceTab')">Attendance Logs</button>`;
-        }
-        if (userPermissions.includes('access_activity')) {
-            html += `<button class="nav-btn" onclick="switchTab('activityLogsTab')">Activity Logs</button>`;
-        }
-        if (userPermissions.includes('access_permissions')) {
-            html += `<button class="nav-btn" onclick="switchTab('permissionsTab')">Add Permissions</button>`;
-        }
+        if (userPermissions.includes('access_checkin')) html += `<button class="nav-btn" onclick="switchTab('checkinTab')">Check-In</button>`;
+        if (userPermissions.includes('access_directory')) html += `<button class="nav-btn" onclick="switchTab('directoryTab')">Directory</button>`;
+        if (userPermissions.includes('access_events')) html += `<button class="nav-btn" onclick="switchTab('eventsTab')">Events & Analytics</button>`;
+        if (userPermissions.includes('access_attendance')) html += `<button class="nav-btn" onclick="switchTab('attendanceTab')">Attendance Logs</button>`;
+        if (userPermissions.includes('access_activity')) html += `<button class="nav-btn" onclick="switchTab('activityLogsTab')">Activity Logs</button>`;
+        if (userPermissions.includes('access_permissions')) html += `<button class="nav-btn" onclick="switchTab('permissionsTab')">Add Permissions</button>`;
 
         html += `<button class="nav-btn" onclick="handleLogout()">Logout (${currentUser})</button>`;
         nav.innerHTML = html;
@@ -747,14 +768,11 @@
     async function handleLogout() {
         if (currentUser) {
             await fetch('/api/logout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: currentUser })
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser })
             });
         }
-        currentUser = null;
-        currentMember = null;
-        userPermissions = [];
+        localStorage.removeItem('fog_user');
+        currentUser = null; currentMember = null; userPermissions = [];
         document.getElementById('mainNav').innerHTML = `
             <button class="nav-btn active" onclick="switchTab('publicReg')">Registration</button>
             <button class="nav-btn" onclick="switchTab('loginTab')">Login</button>
@@ -774,16 +792,12 @@
         document.getElementById('myEditParents').value = member.parents_name || '';
 
         const avatar = document.getElementById('myProfileAvatar');
-        if (member.profile_picture) {
-            avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
-        } else {
-            avatar.innerHTML = member.name.charAt(0).toUpperCase();
-        }
+        if (member.profile_picture) avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        else avatar.innerHTML = member.name.charAt(0).toUpperCase();
 
         document.getElementById('myQrContainer').innerHTML = '';
         QRCode.toDataURL(member.qr_code, { width: 220 }, function (err, url) {
-            const img = document.createElement('img');
-            img.src = url;
+            const img = document.createElement('img'); img.src = url;
             document.getElementById('myQrContainer').appendChild(img);
             document.getElementById('myDownloadQrBtn').href = url;
         });
@@ -805,7 +819,7 @@
 
         const fileInput = document.getElementById('myEditProfilePic');
         let picBase64 = undefined;
-        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0]);
+        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0], 400);
 
         const payload = {
             name: document.getElementById('myEditName').value,
@@ -827,6 +841,7 @@
             if (data.success) {
                 alert('Profile updated successfully!');
                 currentMember = data.member;
+                localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
                 populateProfileTab(data.member);
             }
         });
@@ -834,10 +849,9 @@
 
     async function handlePublicRegistration(e) {
         e.preventDefault();
-        
         const fileInput = document.getElementById('regProfilePic');
         let picBase64 = null;
-        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0]);
+        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0], 400);
 
         const payload = {
             name: document.getElementById('regName').value,
@@ -850,22 +864,18 @@
             actor: currentUser || 'Public Registration'
         };
 
-        const res = await fetch('/api/youth', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-        });
+        const res = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await res.json();
 
         if (data.qr_code) {
             document.getElementById('passMemberName').innerText = payload.name;
             document.getElementById('passMemberCode').innerText = `Pass ID & Login: ${data.qr_code}`;
             document.getElementById('qrCanvasContainer').innerHTML = '';
-            
             QRCode.toDataURL(data.qr_code, { width: 220 }, function (err, url) {
                 const img = document.createElement('img'); img.src = url;
                 document.getElementById('qrCanvasContainer').appendChild(img);
                 document.getElementById('downloadQrBtn').href = url;
             });
-
             document.getElementById('qrPassCard').style.display = 'block';
             document.getElementById('regForm').reset();
             youthData = []; // clear cache
@@ -878,7 +888,6 @@
         qrScanner.render((decodedText) => {
             const eventId = document.getElementById('activeEventDropdown').value;
             if (!eventId) return alert('Please select an active event first!');
-            
             fetch('/api/checkin', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ qr_code: decodedText, event_id: eventId, is_walkin: 0, actor: currentUser })
@@ -894,17 +903,16 @@
 
     async function updateActiveEventBanner() {
         const dropdown = document.getElementById('activeEventDropdown');
+        if(!dropdown) return;
         const selectedText = dropdown.options[dropdown.selectedIndex]?.text || 'No Event Selected';
         document.getElementById('activeEventBanner').innerText = `Selected Event: ${selectedText}`;
 
         const eventId = dropdown.value;
+        checkedInYouthIds.clear();
         if(eventId) {
             const res = await fetch(`/api/events/${eventId}/analytics`);
             const data = await res.json();
-            checkedInYouthIds.clear();
-            if(data.roster) {
-                data.roster.forEach(r => checkedInYouthIds.add(r.youth_id));
-            }
+            if(data.roster) data.roster.forEach(r => checkedInYouthIds.add(r.youth_id));
         }
         filterManualCheckin();
     }
@@ -919,11 +927,8 @@
         }
 
         let matches = youthData;
-        if (query) {
-            matches = youthData.filter(y => y.name.toLowerCase().includes(query) || (y.qr_code && y.qr_code.toLowerCase().includes(query)));
-        } else {
-            matches = youthData.slice(0, 20);
-        }
+        if (query) matches = youthData.filter(y => y.name.toLowerCase().includes(query) || (y.qr_code && y.qr_code.toLowerCase().includes(query)));
+        else matches = youthData.slice(0, 20);
 
         container.innerHTML = matches.map(y => {
             const avatarHtml = y.profile_picture 
@@ -932,29 +937,25 @@
             
             const isCheckedIn = checkedInYouthIds.has(y.id);
             const btnHtml = isCheckedIn
-                ? `<button class="btn btn-secondary btn-sm" disabled style="background: #94A3B8; color: #FFF; cursor: not-allowed;">Done</button>`
-                : `<button class="btn btn-primary btn-sm" onclick="quickCheckin(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Check In</button>`;
+                ? `<button type="button" class="btn btn-secondary btn-sm" disabled style="background: #94A3B8; color: #FFF; cursor: not-allowed;">Done</button>`
+                : `<button type="button" class="btn btn-primary btn-sm" onclick="quickCheckin(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Check In</button>`;
 
             return `
             <div class="search-item">
                 <div style="display: flex; gap: 10px; align-items: center;">
                     ${avatarHtml}
-                    <div>
-                        <strong>${y.name}</strong><br>
-                        <small style="color: var(--text-muted);">${y.qr_code} | Age: ${y.age || 'N/A'}</small>
-                    </div>
+                    <div><strong>${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code} | Age: ${y.age || 'N/A'}</small></div>
                 </div>
                 <div style="display: flex; gap: 6px;">
-                    <button class="btn btn-outline btn-sm" onclick="openFastEditProfileModal(${y.id})">Edit Profile</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="openFastEditProfileModal(${y.id})">Edit Profile</button>
                     ${btnHtml}
                 </div>
-            </div>
-            `;
+            </div>`;
         }).join('');
     }
 
     function openFastEditProfileModal(id) {
-        const m = youthData.find(y => y.id === id);
+        const m = youthData.find(y => y.id == id);
         if (!m) return;
         document.getElementById('fastEditMemberId').value = m.id;
         document.getElementById('fastEditName').value = m.name || '';
@@ -985,7 +986,7 @@
 
         const fileInput = document.getElementById('fastEditProfilePic');
         let picBase64 = undefined;
-        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0]);
+        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0], 400);
 
         const payload = { 
             name, email, age, birthday, social_media, parents_name, profile_picture: picBase64,
@@ -999,10 +1000,9 @@
             const data = await res.json();
             if(data.success) {
                 closeFastEditProfileModal();
-                youthData = []; // clear cache
+                youthData = []; 
                 await loadDirectory(); 
                 filterManualCheckin(); 
-                
                 if(doCheckIn) quickCheckin(id, name);
                 else alert("Profile updated successfully!");
             }
@@ -1032,16 +1032,12 @@
         if (!eventId) return alert('Please select an active event first!');
 
         const payload = {
-            name: document.getElementById('walkinName').value,
-            age: document.getElementById('walkinAge').value,
-            birthday: document.getElementById('walkinBirthday').value,
-            email: document.getElementById('walkinEmail').value,
+            name: document.getElementById('walkinName').value, age: document.getElementById('walkinAge').value,
+            birthday: document.getElementById('walkinBirthday').value, email: document.getElementById('walkinEmail').value,
             actor: currentUser || 'Walk-in Registration'
         };
 
-        const regRes = await fetch('/api/youth', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-        });
+        const regRes = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const regData = await regRes.json();
 
         if (regData.id) {
@@ -1050,14 +1046,9 @@
                 body: JSON.stringify({ youth_id: regData.id, event_id: eventId, is_walkin: 1, actor: currentUser })
             });
             const checkinData = await checkinRes.json();
-
             if (checkinData.success) {
                 alert(`Successfully registered and checked in walk-in: ${payload.name}`);
-                e.target.reset();
-                youthData = []; 
-                checkedInYouthIds.add(regData.id);
-                filterManualCheckin(); 
-                loadDirectory();
+                e.target.reset(); youthData = []; updateActiveEventBanner(); 
             } else alert(checkinData.error || 'Registration succeeded, but check-in failed.');
         } else alert(regData.error || 'Failed to register walk-in.');
     }
@@ -1075,9 +1066,7 @@
         const sort = document.getElementById('sortDirectorySelect').value;
 
         let matches = youthData;
-        if (q) {
-            matches = youthData.filter(y => y.name.toLowerCase().includes(q) || (y.qr_code && y.qr_code.toLowerCase().includes(q)));
-        }
+        if (q) matches = youthData.filter(y => y.name.toLowerCase().includes(q) || (y.qr_code && y.qr_code.toLowerCase().includes(q)));
 
         if (sort === 'name_asc') matches.sort((a,b) => a.name.localeCompare(b.name));
         if (sort === 'name_desc') matches.sort((a,b) => b.name.localeCompare(a.name));
@@ -1100,20 +1089,18 @@
                 <td>${y.age || 'N/A'}</td>
                 <td>${y.birthday || 'N/A'}</td>
                 <td>
-                    <button class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">Profile</button>
-                    <button class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>
-                    <button class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Delete</button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">Profile</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Delete</button>
                 </td>
-            </tr>
-        `}).join('');
+            </tr>`}).join('');
         html += `</tbody></table>`;
         document.getElementById('directoryTableContainer').innerHTML = html;
     }
 
     function openEditMemberModal(youthId) {
-        const m = youthData.find(y => y.id === youthId);
+        const m = youthData.find(y => y.id == youthId);
         if (!m) return;
-
         document.getElementById('editMemberId').value = m.id;
         document.getElementById('editMemberName').value = m.name || '';
         document.getElementById('editMemberEmail').value = m.email || '';
@@ -1122,7 +1109,6 @@
         document.getElementById('editMemberSocial').value = m.social_media || '';
         document.getElementById('editMemberParents').value = m.parents_name || '';
         document.getElementById('editMemberProfilePic').value = '';
-
         document.getElementById('editMemberModal').classList.add('active');
     }
 
@@ -1130,37 +1116,30 @@
         document.getElementById('editMemberModal').classList.remove('active');
     }
 
-    async function saveMemberEditWithConfirm(e) {
-        e.preventDefault();
+    async function saveMemberEditWithConfirm() {
+        const form = document.getElementById('editMemberModal').querySelector('form');
+        if(!form.checkValidity()) { form.reportValidity(); return; }
+
         const id = document.getElementById('editMemberId').value;
         const fileInput = document.getElementById('editMemberProfilePic');
         let picBase64 = undefined;
-        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0]);
+        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0], 400);
 
         const payload = {
-            name: document.getElementById('editMemberName').value,
-            email: document.getElementById('editMemberEmail').value,
-            age: document.getElementById('editMemberAge').value,
-            birthday: document.getElementById('editMemberBirthday').value,
-            social_media: document.getElementById('editMemberSocial').value,
-            parents_name: document.getElementById('editMemberParents').value,
-            password: `FOG-MEMBER-${String(id).padStart(3, '0')}`,
-            profile_picture: picBase64,
-            actor: currentUser
+            name: document.getElementById('editMemberName').value, email: document.getElementById('editMemberEmail').value,
+            age: document.getElementById('editMemberAge').value, birthday: document.getElementById('editMemberBirthday').value,
+            social_media: document.getElementById('editMemberSocial').value, parents_name: document.getElementById('editMemberParents').value,
+            password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, profile_picture: picBase64, actor: currentUser
         };
 
-        triggerActionConfirmation(`Confirm updating member profile for '${payload.name}' (ID #${id})?`, async () => {
-            await fetch(`/api/youth/profile/${id}`, {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-            });
-            closeEditMemberModal();
-            youthData = []; 
-            loadDirectory();
+        triggerActionConfirmation(`Confirm updating member profile for '${payload.name}'?`, async () => {
+            await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            closeEditMemberModal(); youthData = []; loadDirectory();
         });
     }
 
     async function openViewProfileModal(youthId) {
-        const member = youthData.find(y => y.id === youthId);
+        const member = youthData.find(y => y.id == youthId);
         if (!member) return;
 
         document.getElementById('modalProfileName').innerText = member.name;
@@ -1174,11 +1153,8 @@
         `;
 
         const avatar = document.getElementById('viewModalProfileAvatar');
-        if (member.profile_picture) {
-            avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
-        } else {
-            avatar.innerHTML = member.name.charAt(0).toUpperCase();
-        }
+        if (member.profile_picture) avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        else avatar.innerHTML = member.name.charAt(0).toUpperCase();
 
         document.getElementById('modalQrContainer').innerHTML = '';
         QRCode.toDataURL(member.qr_code, { width: 180 }, function (err, url) {
@@ -1190,24 +1166,16 @@
         const res = await fetch(`/api/youth/${youthId}/history`);
         const history = await res.json();
         const historyContainer = document.getElementById('modalAttendanceHistory');
-        if (history.length === 0) {
-            historyContainer.innerHTML = `<p style="color: var(--text-muted);">No attendance history recorded yet.</p>`;
-        } else {
-            historyContainer.innerHTML = history.map(h => `
-                <div style="border-bottom: 1px solid var(--border-color); padding: 6px 0;">
-                    <strong>${h.event_name}</strong> (${h.event_date}) - <small>${h.checked_in_at}</small>
-                </div>
-            `).join('');
-        }
+        if (history.length === 0) historyContainer.innerHTML = `<p style="color: var(--text-muted);">No attendance history recorded yet.</p>`;
+        else historyContainer.innerHTML = history.map(h => `<div style="border-bottom: 1px solid var(--border-color); padding: 6px 0;"><strong>${h.event_name}</strong> (${h.event_date}) - <small>${h.checked_in_at}</small></div>`).join('');
+
         document.getElementById('viewProfileModal').classList.add('active');
     }
 
-    function closeViewProfileModal() {
-        document.getElementById('viewProfileModal').classList.remove('active');
-    }
+    function closeViewProfileModal() { document.getElementById('viewProfileModal').classList.remove('active'); }
 
     function openEditEventModal(eventId) {
-        const e = eventsData.find(ev => ev.id === eventId);
+        const e = eventsData.find(ev => ev.id == eventId);
         if (!e) return;
         
         document.getElementById('editEvtId').value = e.id;
@@ -1221,9 +1189,7 @@
         document.getElementById('editEventModal').classList.add('active');
     }
 
-    function closeEditEventModal() {
-        document.getElementById('editEventModal').classList.remove('active');
-    }
+    function closeEditEventModal() { document.getElementById('editEventModal').classList.remove('active'); }
 
     async function submitEditEvent() {
         const form = document.getElementById('editEventForm');
@@ -1238,18 +1204,14 @@
 
         triggerActionConfirmation(`Confirm saving changes to event '${name}'?`, async () => {
             let posterBase64 = null;
-            if (fileInput.files.length > 0) {
-                posterBase64 = await getBase64(fileInput.files[0]);
-            }
+            if (fileInput.files.length > 0) posterBase64 = await getBase64(fileInput.files[0], 1200);
 
             const payload = { name, event_date, time_start, venue, poster: posterBase64, actor: currentUser };
             const res = await fetch(`/api/events/${id}`, {
                 method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
             });
             if(res.ok) {
-                closeEditEventModal();
-                alert("Event updated successfully!");
-                loadEvents();
+                closeEditEventModal(); alert("Event updated successfully!"); loadEvents();
             }
         });
     }
@@ -1260,13 +1222,9 @@
         if (!data || data.error) return alert('Failed to load event analytics');
 
         currentAnalyticsData = data;
-
         const posterContainer = document.getElementById('analyticsModalPoster');
-        if (data.event.poster) {
-            posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover;">`;
-        } else {
-            posterContainer.innerHTML = `<span style="font-size: 0.7rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
-        }
+        if (data.event.poster) posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover;">`;
+        else posterContainer.innerHTML = `<span style="font-size: 0.7rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
 
         document.getElementById('analyticsEventTitle').innerText = data.event.name;
         document.getElementById('analyticsEventMeta').innerText = `📅 Date: ${data.event.event_date} | 📍 Venue: ${data.event.venue || 'N/A'}`;
@@ -1278,9 +1236,8 @@
         document.getElementById('progressBarFill').style.width = `${preRegPct}%`;
 
         const rosterContainer = document.getElementById('analyticsRosterContainer');
-        if (data.roster.length === 0) {
-            rosterContainer.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem;">No members checked in yet for this gathering.</p>`;
-        } else {
+        if (data.roster.length === 0) rosterContainer.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem;">No members checked in yet for this gathering.</p>`;
+        else {
             rosterContainer.innerHTML = `<table><thead><tr><th>Member</th><th>Timestamp</th><th>Type</th></tr></thead><tbody>` +
                 data.roster.map(r => {
                     const avatarHtml = r.profile_picture 
@@ -1304,21 +1261,16 @@
         document.getElementById('eventAnalyticsModal').classList.add('active');
     }
 
-    function closeAnalyticsModal() {
-        document.getElementById('eventAnalyticsModal').classList.remove('active');
-        currentAnalyticsData = null;
-    }
+    function closeAnalyticsModal() { document.getElementById('eventAnalyticsModal').classList.remove('active'); currentAnalyticsData = null; }
 
     function exportAnalyticsCSV() {
         if (!currentAnalyticsData || !currentAnalyticsData.roster) return alert('No data available to export.');
-        
         const rows = [['Member Name', 'Unique Pass ID / Email', 'Checked In At', 'Status']];
         currentAnalyticsData.roster.forEach(r => {
             const status = r.is_walkin ? 'Walk-in' : 'Pre-Reg';
             const identifier = r.email ? r.email : r.qr_code;
             rows.push([`"${r.name}"`, `"${identifier}"`, `"${r.checked_in_at}"`, `"${status}"`]);
         });
-
         const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
@@ -1329,7 +1281,6 @@
         document.body.removeChild(link);
     }
 
-    // USER DIRECTORY & PERMISSIONS
     async function loadUserPermissionsList() {
         const res = await fetch('/api/users/list');
         allUsersList = await res.json();
@@ -1342,15 +1293,12 @@
         let matches = allUsersList;
         if (q) matches = allUsersList.filter(u => u.display_name.toLowerCase().includes(q));
 
-        if (matches.length === 0) {
-            container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No accounts found matching '${q}'</div>`;
-            return;
-        }
+        if (matches.length === 0) { container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No accounts found matching '${q}'</div>`; return; }
 
         container.innerHTML = matches.map(u => `
             <div class="search-item">
                 <div><strong>${u.display_name}</strong></div>
-                <button class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${u.display_name.replace(/'/g, "\\'")}', '${JSON.stringify(u.permissions).replace(/'/g, "\\'")}')">Add Permission</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${u.display_name.replace(/'/g, "\\'")}', '${JSON.stringify(u.permissions).replace(/'/g, "\\'")}')">Add Permission</button>
             </div>
         `).join('');
     }
@@ -1359,36 +1307,27 @@
         const perms = JSON.parse(permsJson || '[]');
         document.getElementById('modalPermUserId').value = id;
         document.getElementById('permModalUserBanner').innerText = `Assign Permissions for: ${displayName}`;
-
         document.querySelectorAll('.permCheckModal').forEach(chk => { chk.checked = perms.includes(chk.value); });
         document.getElementById('assignPermissionModal').classList.add('active');
     }
 
-    function closeAssignPermissionModal() {
-        document.getElementById('assignPermissionModal').classList.remove('active');
-    }
+    function closeAssignPermissionModal() { document.getElementById('assignPermissionModal').classList.remove('active'); }
 
-    function handleSavePermissionsFromModal(e) {
-        e.preventDefault();
+    function handleSavePermissionsFromModal() {
         const userId = document.getElementById('modalPermUserId').value;
         const selectedPerms = [];
         document.querySelectorAll('.permCheckModal:checked').forEach(chk => { selectedPerms.push(chk.value); });
 
         triggerActionConfirmation(`Confirm updating permission set for User ID #${userId}?`, async () => {
             const res = await fetch(`/api/users/${userId}/permissions`, {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ permissions: selectedPerms, actor: currentUser })
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permissions: selectedPerms, actor: currentUser })
             });
             const data = await res.json();
-            if (data.success) {
-                alert('Permissions updated successfully!');
-                closeAssignPermissionModal();
-                loadUserPermissionsList();
-            }
+            if (data.success) { alert('Permissions updated successfully!'); closeAssignPermissionModal(); loadUserPermissionsList(); }
         });
     }
 
-    async function handleCreateUserAccount(e) {
+    function handleCreateUserAccount(e) {
         e.preventDefault();
         const username = document.getElementById('newUsername').value;
         const password = document.getElementById('newPassword').value;
@@ -1401,7 +1340,7 @@
             const data = await res.json();
             if (data.success) {
                 alert(`User account '${username}' created! Click 'Add Permission' in the list above to customize access.`);
-                e.target.reset();
+                document.getElementById('newUsername').value = ''; document.getElementById('newPassword').value = '';
                 loadUserPermissionsList();
             } else alert(data.error || 'Failed to create user');
         });
@@ -1437,9 +1376,9 @@
                         <small style="color: var(--text-muted);">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
                     </div>
                     <div style="display: flex; gap: 6px;">
-                        <button class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Analytics</button>
-                        <button class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
-                        <button class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                     </div>
                 </div>
             `).join('');
@@ -1460,9 +1399,9 @@
                             </p>
                         </div>
                         <div style="display: flex; gap: 6px; margin-top: 8px;">
-                            <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Analytics</button>
-                            <button class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
-                            <button class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
+                            <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                         </div>
                     </div>
                 </div>
@@ -1484,37 +1423,26 @@
         let html = `<div class="calendar-grid">`;
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         days.forEach(d => html += `<div class="calendar-day-header">${d}</div>`);
-
-        for (let i = 0; i < firstDay; i++) {
-            html += `<div class="calendar-day-cell other-month"></div>`;
-        }
+        for (let i = 0; i < firstDay; i++) html += `<div class="calendar-day-cell other-month"></div>`;
 
         for (let day = 1; day <= daysInMonth; day++) {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const dayEvents = eventsData.filter(e => e.event_date === dateStr);
-
-            html += `<div class="calendar-day-cell">
-                <strong>${day}</strong>`;
+            html += `<div class="calendar-day-cell"><strong>${day}</strong>`;
             dayEvents.forEach(e => {
                 html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${e.name.replace(/"/g, '&quot;')}">${e.name}</div>`;
             });
             html += `</div>`;
         }
-
         html += `</div>`;
-        container.className = '';
-        container.innerHTML = html;
+        container.className = ''; container.innerHTML = html;
     }
 
-    function changeCalendarMonth(delta) {
-        calCurrentDate.setMonth(calCurrentDate.getMonth() + delta);
-        loadEvents();
-    }
+    function changeCalendarMonth(delta) { calCurrentDate.setMonth(calCurrentDate.getMonth() + delta); loadEvents(); }
 
     async function loadAttendanceLogs() {
         const res = await fetch('/api/attendance/logs');
         const logs = await res.json();
-
         let html = `<table><thead><tr><th>Member</th><th>Event</th><th>Checked In At</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
         html += logs.map(l => `
             <tr>
@@ -1523,8 +1451,8 @@
                 <td>${l.checked_in_at}</td>
                 <td><span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
                 <td>
-                    ${userPermissions.includes('edit_attendance') ? `<button class="btn btn-primary btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
-                    <button class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${l.member_name.replace(/'/g, "\\'")}')">Delete</button>
+                    ${userPermissions.includes('edit_attendance') ? `<button type="button" class="btn btn-primary btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
+                    <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${l.member_name.replace(/'/g, "\\'")}')">Delete</button>
                 </td>
             </tr>
         `).join('');
@@ -1535,7 +1463,6 @@
     async function loadActivityLogs() {
         const res = await fetch('/api/activity-logs');
         const logs = await res.json();
-
         let html = `<table><thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Details</th></tr></thead><tbody>`;
         html += logs.map(l => `
             <tr>
@@ -1549,26 +1476,22 @@
         document.getElementById('activityLogsContainer').innerHTML = html;
     }
 
-    async function handleCreateEvent(e) {
+    function handleCreateEvent(e) {
         e.preventDefault();
         const fileInput = document.getElementById('evtPoster');
-        let posterBase64 = null;
-        if (fileInput.files.length > 0) posterBase64 = await getBase64(fileInput.files[0]);
+        
+        triggerActionConfirmation(`Publish new gathering?`, async () => {
+            let posterBase64 = null;
+            if (fileInput.files.length > 0) posterBase64 = await getBase64(fileInput.files[0], 1200);
 
-        const payload = {
-            name: document.getElementById('evtName').value,
-            event_date: document.getElementById('evtDate').value,
-            time_start: document.getElementById('evtTime').value,
-            venue: document.getElementById('evtVenue').value,
-            poster: posterBase64,
-            actor: currentUser
-        };
+            const payload = {
+                name: document.getElementById('evtName').value, event_date: document.getElementById('evtDate').value,
+                time_start: document.getElementById('evtTime').value, venue: document.getElementById('evtVenue').value,
+                poster: posterBase64, actor: currentUser
+            };
 
-        triggerActionConfirmation(`Publish new gathering '${payload.name}' on ${payload.event_date}?`, async () => {
-            const res = await fetch('/api/events', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-            });
-            if (res.ok) { e.target.reset(); loadEvents(); }
+            const res = await fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (res.ok) { document.getElementById('evtName').value = ''; loadEvents(); }
         });
     }
 
@@ -1578,70 +1501,45 @@
         document.getElementById('confirmModal').classList.add('active');
     }
 
-    function closeConfirmModal() {
-        document.getElementById('confirmModal').classList.remove('active');
-        pendingAction = null;
-    }
+    function closeConfirmModal() { document.getElementById('confirmModal').classList.remove('active'); pendingAction = null; }
 
-    document.getElementById('executeConfirmBtn').onclick = async () => {
-        if (pendingAction) await pendingAction();
-        closeConfirmModal();
-    };
+    document.getElementById('executeConfirmBtn').onclick = async () => { if (pendingAction) await pendingAction(); closeConfirmModal(); };
 
     function openEditAttendanceModal(id, time, isWalkin) {
-        document.getElementById('editAttId').value = id;
-        document.getElementById('editAttTime').value = time;
-        document.getElementById('editAttWalkin').value = isWalkin ? "1" : "0";
-        document.getElementById('editAttendanceModal').classList.add('active');
+        document.getElementById('editAttId').value = id; document.getElementById('editAttTime').value = time;
+        document.getElementById('editAttWalkin').value = isWalkin ? "1" : "0"; document.getElementById('editAttendanceModal').classList.add('active');
     }
 
-    function closeEditAttendanceModal() {
-        document.getElementById('editAttendanceModal').classList.remove('active');
-    }
+    function closeEditAttendanceModal() { document.getElementById('editAttendanceModal').classList.remove('active'); }
 
-    function saveAttendanceEditWithConfirm(e) {
-        e.preventDefault();
+    function saveAttendanceEditWithConfirm() {
         const id = document.getElementById('editAttId').value;
         const checked_in_at = document.getElementById('editAttTime').value;
         const is_walkin = parseInt(document.getElementById('editAttWalkin').value);
 
-        triggerActionConfirmation(
-            `Update Attendance Log ID #${id} to Timestamp: ${checked_in_at}?`,
-            async () => {
-                await fetch(`/api/attendance/${id}`, {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ checked_in_at, is_walkin, actor: currentUser })
-                });
-                closeEditAttendanceModal();
-                loadAttendanceLogs();
-            }
-        );
+        triggerActionConfirmation(`Update Attendance Log ID #${id}?`, async () => {
+            await fetch(`/api/attendance/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checked_in_at, is_walkin, actor: currentUser }) });
+            closeEditAttendanceModal(); loadAttendanceLogs();
+        });
     }
 
     function triggerDeleteMember(id, name) {
-        triggerActionConfirmation(`Permanently DELETE member profile for '${name}'?`, async () => {
-            await fetch(`/api/youth/${id}`, {
-                method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser })
-            });
-            youthData = [];
-            loadDirectory();
+        triggerActionConfirmation(`Permanently DELETE member profile for '${name}' (ID #${id})?`, async () => {
+            await fetch(`/api/youth/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
+            youthData = []; loadDirectory();
         });
     }
 
     function triggerDeleteEvent(id, name) {
-        triggerActionConfirmation(`Permanently DELETE event '${name}' and associated logs?`, async () => {
-            await fetch(`/api/events/${id}`, {
-                method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser })
-            });
+        triggerActionConfirmation(`Permanently DELETE event '${name}' (ID #${id}) and associated logs?`, async () => {
+            await fetch(`/api/events/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
             loadEvents();
         });
     }
 
     function triggerDeleteAttendance(id, memberName) {
         triggerActionConfirmation(`DELETE attendance record for '${memberName}'?`, async () => {
-            await fetch(`/api/attendance/${id}`, {
-                method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser })
-            });
+            await fetch(`/api/attendance/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
             loadAttendanceLogs();
         });
     }

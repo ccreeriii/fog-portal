@@ -7,8 +7,8 @@ const PORT = process.env.PORT || 3000;
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection:', reason));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const db = new sqlite3.Database('./fog_community.db', (err) => {
@@ -50,7 +50,6 @@ db.serialize(() => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
-    // Safely migrate existing databases to include the profile_picture column
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
 
     const superadminPermissions = JSON.stringify([
@@ -77,7 +76,6 @@ function logActivity(username, action, details) {
 // AUTH & LOGIN
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-    
     db.get(`SELECT * FROM users WHERE (username = ? OR username = (SELECT email FROM youth WHERE qr_code = ?)) AND password = ?`, [username, username, password], (err, user) => {
         if (user) {
             const permissions = JSON.parse(user.permissions || '[]');
@@ -86,9 +84,7 @@ app.post('/api/login', (req, res) => {
                 db.get(`SELECT * FROM youth WHERE id = ?`, [user.youth_id], (e, member) => {
                     return res.json({ success: true, username: user.username, permissions, member, is_admin: true });
                 });
-            } else {
-                return res.json({ success: true, username: user.username, permissions, member: null, is_admin: true });
-            }
+            } else return res.json({ success: true, username: user.username, permissions, member: null, is_admin: true });
             return;
         }
 
@@ -110,10 +106,9 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// PROFILE EDIT API (Now handles profile_picture updates dynamically)
+// PROFILE EDIT API
 app.put('/api/youth/profile/:id', (req, res) => {
     const { name, age, birthday, social_media, parents_name, password, email, profile_picture, actor } = req.body;
-    
     let sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, password=?, email=? WHERE id=?`;
     let params = [name, age, birthday, social_media, parents_name, password, email, req.params.id];
 
@@ -133,11 +128,7 @@ app.put('/api/youth/profile/:id', (req, res) => {
 });
 
 app.get('/api/users/list', (req, res) => {
-    const sql = `
-        SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code 
-        FROM users u 
-        LEFT JOIN youth y ON u.youth_id = y.id 
-        ORDER BY u.id DESC`;
+    const sql = `SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`;
     db.all(sql, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows.map(r => ({
@@ -185,9 +176,7 @@ app.get('/api/youth', (req, res) => {
 });
 
 app.get('/api/youth/:id/history', (req, res) => {
-    const sql = `SELECT a.checked_in_at, a.is_walkin, e.name as event_name, e.event_date 
-                 FROM attendance a JOIN events e ON a.event_id = e.id 
-                 WHERE a.youth_id = ? ORDER BY a.checked_in_at DESC`;
+    const sql = `SELECT a.checked_in_at, a.is_walkin, e.name as event_name, e.event_date FROM attendance a JOIN events e ON a.event_id = e.id WHERE a.youth_id = ? ORDER BY a.checked_in_at DESC`;
     db.all(sql, [req.params.id], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
@@ -199,18 +188,12 @@ app.post('/api/youth', (req, res) => {
     db.get(`SELECT MAX(id) as maxId FROM youth`, [], (err, row) => {
         const nextId = (row && row.maxId ? row.maxId : 0) + 1;
         const qrCode = `FOG-MEMBER-${String(nextId).padStart(3, '0')}`;
-        const defaultUsername = qrCode;
-        const defaultPassword = qrCode;
-
-        db.run(`INSERT INTO youth (name, age, email, mobile, social_media, birthday, parents_name, qr_code, password, profile_picture)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [name, age, email || null, mobile, social_media, birthday, parents_name, qrCode, defaultPassword, profile_picture || null],
+        db.run(`INSERT INTO youth (name, age, email, mobile, social_media, birthday, parents_name, qr_code, password, profile_picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [name, age, email || null, mobile, social_media, birthday, parents_name, qrCode, qrCode, profile_picture || null],
             function (err) {
                 if (err) return res.status(500).json({ error: err.message });
                 const youthId = this.lastID;
-                db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id) VALUES (?, ?, '[]', ?)`,
-                    [defaultUsername, defaultPassword, youthId]
-                );
+                db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id) VALUES (?, ?, '[]', ?)`, [qrCode, qrCode, youthId]);
                 logActivity(actor, 'CREATE_MEMBER', `Registered member '${name}' (${qrCode})`);
                 res.json({ id: youthId, qr_code: qrCode, email });
             }
@@ -240,11 +223,9 @@ app.get('/api/events/:id/analytics', (req, res) => {
     const eventId = req.params.id;
     db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
         if (err || !event) return res.status(404).json({ error: 'Event not found' });
-
         db.get(`SELECT COUNT(*) as total_youth FROM youth`, [], (err2, totalYouthRow) => {
             const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
             const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
-
             db.all(sqlRoster, [eventId], (err3, roster) => {
                 if (err3) return res.status(500).json({ error: err3.message });
                 const totalTurnout = roster.length;
@@ -263,7 +244,7 @@ app.post('/api/events', (req, res) => {
         [name, event_date, time_start, venue, poster],
         function (err) {
             if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'CREATE_EVENT', `Published gathering '${name}' on ${event_date}`);
+            logActivity(actor, 'CREATE_EVENT', `Published gathering '${name}'`);
             res.json({ id: this.lastID });
         }
     );
@@ -327,9 +308,7 @@ app.post('/api/checkin', (req, res) => {
         });
     } else if (youth_id) {
         processCheckin(youth_id);
-    } else {
-        res.status(400).json({ error: 'Missing youth identifier for check-in.' });
-    }
+    } else res.status(400).json({ error: 'Missing youth identifier for check-in.' });
 });
 
 app.get('/api/attendance/logs', (req, res) => {
