@@ -82,11 +82,6 @@
 
         .search-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 10px; }
         .search-item:hover { background: var(--bg-light); }
-
-        .analytics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px 0; }
-        .stat-card { background: var(--bg-light); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; text-align: center; }
-        .stat-card .val { font-size: 1.4rem; font-weight: 800; color: var(--primary); }
-        .stat-card .lbl { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
         
         .avatar-circle { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; background: var(--bg-light); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--text-muted); flex-shrink: 0; cursor: pointer; }
         
@@ -187,6 +182,12 @@
             <a id="myDownloadQrBtn" class="btn btn-primary" download="My-FOG-Pass.png" style="margin-bottom: 20px;">Download QR Pass</a>
         </div>
 
+        <div id="adminBackupCard" class="card" style="display: none; border-color: var(--danger);">
+            <h2 style="color: var(--danger);">System Backups & Restore</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Latest 10 daily/hourly database backups. Restoring will auto-backup your current live state first.</p>
+            <div id="backupListContainer" style="overflow-x: auto;"></div>
+        </div>
+
         <div class="card">
             <h2>Edit Personal Profile Details</h2>
             <form onsubmit="handleSelfProfileUpdate(event)">
@@ -209,7 +210,7 @@
                         <input type="number" id="myEditAge" class="form-control">
                     </div>
                     <div class="form-group" style="flex: 1;">
-                        <label>Birthday (Optional)</label>
+                        <label>Birthday</label>
                         <input type="date" id="myEditBirthday" class="form-control">
                     </div>
                 </div>
@@ -233,23 +234,23 @@
     <div id="checkinTab" class="tab-content">
         <div class="card">
             <h2>Event Check-In Station</h2>
-            <div class="form-group">
+            <div class="form-group" style="margin-bottom: 10px;">
                 <label>Select Active Event to Check-In</label>
                 <select id="activeEventDropdown" class="form-control" onchange="updateActiveEventBanner()"></select>
             </div>
             
-            <div id="checkinCounters" class="analytics-grid" style="display: none; margin-bottom: 20px;">
-                <div class="stat-card" style="background: rgba(255,107,0,0.05); border-color: var(--primary);">
-                    <div id="liveTotal" class="val" style="color: var(--primary);">0</div>
-                    <div class="lbl">Total Checked-In</div>
+            <div id="checkinCounters" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+                <div style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 10px; border-radius: 8px; text-align: center;">
+                    <div id="liveTotal" style="font-size: 1.25rem; font-weight: 800; color: var(--primary);">0</div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Check-Ins</div>
                 </div>
-                <div class="stat-card">
-                    <div id="livePreReg" class="val" style="color: var(--text-main);">0</div>
-                    <div class="lbl">Pre-Reg</div>
+                <div style="background: var(--bg-light); border: 1px solid var(--border-color); padding: 10px; border-radius: 8px; text-align: center;">
+                    <div id="livePreReg" style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">0</div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Pre-Reg</div>
                 </div>
-                <div class="stat-card">
-                    <div id="liveWalkin" class="val" style="color: var(--text-main);">0</div>
-                    <div class="lbl">Walk-Ins</div>
+                <div style="background: var(--bg-light); border: 1px solid var(--border-color); padding: 10px; border-radius: 8px; text-align: center;">
+                    <div id="liveWalkin" style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">0</div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Walk-Ins</div>
                 </div>
             </div>
 
@@ -299,7 +300,7 @@
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
                 <h2 style="margin: 0; border: none; padding: 0;">Community Directory</h2>
-                <div id="directoryTotalCount" class="badge badge-blue" style="font-size: 0.85rem; padding: 6px 12px;">Total Registered: 0</div>
+                <div id="directoryTotalCount" class="badge badge-blue" style="font-size: 0.85rem; padding: 6px 12px;">Total Registered All Ages: 0</div>
             </div>
             
             <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -574,7 +575,7 @@
                     <input type="number" id="editMemberAge" class="form-control">
                 </div>
                 <div class="form-group" style="flex: 1;">
-                    <label>Birthday (Optional)</label>
+                    <label>Birthday</label>
                     <input type="date" id="editMemberBirthday" class="form-control">
                 </div>
             </div>
@@ -710,7 +711,6 @@
     let currentAnalyticsData = null; 
     let checkedInYouthIds = new Set();
 
-    // Image Compression & Viewer Tools
     async function getBase64(file, maxWidth = 600) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -775,10 +775,53 @@
         if (tabId !== 'checkinTab' && qrScanner) { qrScanner.clear().catch(e => console.log(e)); qrScanner = null; }
         if (tabId === 'checkinTab') { switchCheckinMode('scanner'); updateActiveEventBanner(); }
         if (tabId === 'directoryTab') loadDirectory();
-        if (tabId === 'eventsTab') loadEvents();
+        if (tabId === 'eventsTab') { loadEvents(); }
         if (tabId === 'attendanceTab') loadAttendanceLogs();
         if (tabId === 'activityLogsTab') loadActivityLogs();
         if (tabId === 'permissionsTab') loadUserPermissionsList();
+        
+        // Superadmin Backups UI visibility
+        if (tabId === 'profileTab' && currentUser === 'celsocreeriii@gmail.com') {
+            document.getElementById('adminBackupCard').style.display = 'block';
+            loadBackups();
+        } else {
+            document.getElementById('adminBackupCard').style.display = 'none';
+        }
+    }
+
+    async function loadBackups() {
+        const res = await fetch('/api/backups');
+        const backups = await res.json();
+        const container = document.getElementById('backupListContainer');
+        if(backups.length === 0) {
+            container.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem;">No automated backups found yet.</p>`;
+            return;
+        }
+        let html = `<table><thead><tr><th>Backup Date / File</th><th>Size</th><th>Action</th></tr></thead><tbody>`;
+        backups.forEach(b => {
+            html += `<tr>
+                <td><strong>${b.name}</strong><br><small style="color: var(--text-muted);">${b.time}</small></td>
+                <td>${b.size}</td>
+                <td><button type="button" class="btn btn-danger btn-sm" onclick="triggerRestore('${b.name}')">Restore</button></td>
+            </tr>`;
+        });
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+    }
+
+    function triggerRestore(filename) {
+        triggerActionConfirmation(`Are you sure you want to revert the system to '${filename}'? The CURRENT state will be auto-backed up first so you don't lose anything.`, async () => {
+            const res = await fetch('/api/backups/restore', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename, actor: currentUser })
+            });
+            if(res.ok) {
+                alert('System restored successfully! The portal will now safely restart to apply changes.');
+                window.location.reload();
+            } else {
+                alert('Restore failed. Check server logs.');
+            }
+        });
     }
 
     function switchCheckinMode(mode) {
@@ -853,11 +896,9 @@
 
         const avatar = document.getElementById('myProfileAvatar');
         if (member.profile_picture) {
-            avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onclick="openImageViewer(this.src)">`;
-            avatar.style.cursor = 'pointer';
+            avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
         } else {
             avatar.innerHTML = member.name.charAt(0).toUpperCase();
-            avatar.style.cursor = 'default';
         }
 
         document.getElementById('myQrContainer').innerHTML = '';
@@ -963,19 +1004,19 @@
         const eventId = dropdown.value;
         checkedInYouthIds.clear();
         if(eventId) {
+            document.getElementById('checkinCounters').style.display = 'grid';
             const res = await fetch(`/api/events/${eventId}/analytics`);
             const data = await res.json();
-            if(data.roster) {
+            if(data && data.roster && data.roster.length > 0) {
                 data.roster.forEach(r => checkedInYouthIds.add(r.youth_id));
                 document.getElementById('liveTotal').innerText = data.totalTurnout || 0;
                 document.getElementById('livePreReg').innerText = data.preReg || 0;
                 document.getElementById('liveWalkin').innerText = data.walkins || 0;
             } else {
-                document.getElementById('liveTotal').innerText = 0;
-                document.getElementById('livePreReg').innerText = 0;
-                document.getElementById('liveWalkin').innerText = 0;
+                document.getElementById('liveTotal').innerText = '0';
+                document.getElementById('livePreReg').innerText = '0';
+                document.getElementById('liveWalkin').innerText = '0';
             }
-            document.getElementById('checkinCounters').style.display = 'grid';
         } else {
             document.getElementById('checkinCounters').style.display = 'none';
         }
@@ -998,7 +1039,7 @@
 
         container.innerHTML = matches.map(y => {
             const avatarHtml = y.profile_picture 
-                ? `<img src="${y.profile_picture}" class="avatar-circle" onclick="openImageViewer(this.src)">`
+                ? `<img src="${y.profile_picture}" class="avatar-circle" style="cursor:pointer;" onclick="openImageViewer(this.src)">`
                 : `<div class="avatar-circle">${y.name.charAt(0).toUpperCase()}</div>`;
             
             const isCheckedIn = checkedInYouthIds.has(y.id);
@@ -1070,7 +1111,7 @@
                 if(doCheckIn) quickCheckin(id, name);
                 else {
                     alert("Profile updated successfully!");
-                    filterManualCheckin(); 
+                    updateActiveEventBanner(); 
                 }
             }
         });
@@ -1132,18 +1173,18 @@
         const sort = document.getElementById('sortDirectorySelect').value;
         const ageCat = document.getElementById('filterAgeCategory').value;
 
-        // ONLY count members that actually have an age defined (excludes raw admin accounts with no bio)
+        // Clean logic: valid profiles are those with proper age data
         let validProfiles = youthData.filter(y => y.age !== null && y.age !== '' && !isNaN(y.age));
 
         let matches = validProfiles;
         if (q) matches = matches.filter(y => y.name.toLowerCase().includes(q) || (y.qr_code && y.qr_code.toLowerCase().includes(q)));
 
-        if (ageCat === 'minis') matches = matches.filter(y => y.age <= 12);
-        if (ageCat === 'youth') matches = matches.filter(y => y.age >= 13 && y.age <= 21);
-        if (ageCat === 'adult') matches = matches.filter(y => y.age >= 22);
+        let labelText = "Total Registered All Ages";
+        if (ageCat === 'minis') { matches = matches.filter(y => y.age <= 12); labelText = "Total Registered Minis"; }
+        if (ageCat === 'youth') { matches = matches.filter(y => y.age >= 13 && y.age <= 21); labelText = "Total Registered Youth"; }
+        if (ageCat === 'adult') { matches = matches.filter(y => y.age >= 22); labelText = "Total Registered Adults"; }
 
-        // Explicitly update total based on real directory profiles, not raw DB count
-        document.getElementById('directoryTotalCount').innerText = `Total Registered: ${validProfiles.length}`;
+        document.getElementById('directoryTotalCount').innerText = `${labelText}: ${matches.length}`;
 
         if (sort === 'name_asc') matches.sort((a,b) => a.name.localeCompare(b.name));
         if (sort === 'name_desc') matches.sort((a,b) => b.name.localeCompare(a.name));
@@ -1431,7 +1472,61 @@
         document.getElementById('calendarControls').style.display = mode === 'calendar' ? 'flex' : 'none';
         
         if(eventsData.length === 0) loadEvents();
-        else updateActiveEventBanner(); 
+        else {
+            const container = document.getElementById('eventsListContainer');
+            if (eventViewMode === 'list') {
+                container.className = 'events-list-view';
+                container.innerHTML = eventsData.map(e => {
+                    let linkBadges = '';
+                    if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
+                    if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
+                    return `
+                    <div style="border-bottom: 1px solid var(--border-color); padding: 12px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <strong style="cursor: pointer; color: var(--primary);" onclick="openAnalyticsModal(${e.id})">${e.name}</strong><br>
+                            <small style="color: var(--text-muted);">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
+                            ${linkBadges ? `<div style="margin-top: 6px;">${linkBadges}</div>` : ''}
+                        </div>
+                        <div style="display: flex; gap: 6px;">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
+                        </div>
+                    </div>
+                `}).join('');
+            } else if (eventViewMode === 'grid') {
+                container.className = 'events-grid-view';
+                container.innerHTML = eventsData.map(e => {
+                    let linkBadges = '';
+                    if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
+                    if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
+                    return `
+                    <div class="event-card">
+                        ${e.poster 
+                            ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` 
+                            : `<div class="event-card-img" style="background: #FFFFFF; border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`
+                        }
+                        <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <h3 style="font-size: 1.05rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${e.name}</h3>
+                                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+                                    📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>
+                                    📍 ${e.venue || 'No Location'}
+                                </p>
+                                ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
+                            </div>
+                            <div style="display: flex; gap: 6px; margin-top: 8px;">
+                                <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                                <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                `}).join('');
+            } else if (eventViewMode === 'calendar') {
+                renderCalendarView(container);
+            }
+        }
     }
 
     async function loadEvents() {

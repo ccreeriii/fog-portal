@@ -39,10 +39,8 @@ function runDatabaseBackup() {
         }
     }
 }
-// Run backup immediately on startup (catches missed 2AM backups if server was off)
 runDatabaseBackup();
-// Check every 1 hour to trigger daily backup silently in the background
-setInterval(runDatabaseBackup, 1000 * 60 * 60);
+setInterval(runDatabaseBackup, 1000 * 60 * 60); // Check every 1 hour
 
 const db = new sqlite3.Database('./fog_community.db', (err) => {
     if (err) console.error('Database connection error:', err.message);
@@ -107,6 +105,54 @@ function logActivity(username, action, details) {
         [username || 'System', action, details, getManilaTime()]
     );
 }
+
+// BACKUP & RESTORE API
+app.get('/api/backups', (req, res) => {
+    if (!fs.existsSync(backupDir)) return res.json([]);
+    const files = fs.readdirSync(backupDir)
+        .filter(f => f.endsWith('.db'))
+        .map(f => {
+            const stats = fs.statSync(path.join(backupDir, f));
+            return {
+                name: f,
+                time: stats.mtime,
+                size: (stats.size / 1024 / 1024).toFixed(2) + ' MB'
+            };
+        })
+        .sort((a, b) => b.time - a.time)
+        .slice(0, 10);
+    
+    files.forEach(f => {
+        f.time = new Date(f.time).toLocaleString('en-US', { timeZone: 'Asia/Manila' });
+    });
+    res.json(files);
+});
+
+app.post('/api/backups/restore', (req, res) => {
+    const { filename, actor } = req.body;
+    const targetFile = path.join(backupDir, filename);
+    const currentDb = './fog_community.db';
+
+    if (!fs.existsSync(targetFile)) return res.status(404).json({ error: 'File not found' });
+
+    try {
+        const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        const pad = (n) => String(n).padStart(2, '0');
+        const timeStr = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+        const autoBackup = path.join(backupDir, `fog_community_pre_restore_${timeStr}.db`);
+        
+        fs.copyFileSync(currentDb, autoBackup);
+        logActivity(actor, 'RESTORE_DB', `Restored from ${filename}. Pre-restore saved to ${path.basename(autoBackup)}`);
+
+        db.close((err) => {
+            fs.copyFileSync(targetFile, currentDb);
+            res.json({ success: true });
+            setTimeout(() => { process.exit(0); }, 1000); // Forces PM2 to restart the app safely
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // AUTH & LOGIN
 app.post('/api/login', (req, res) => {
