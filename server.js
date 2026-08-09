@@ -1,6 +1,7 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -19,6 +20,30 @@ const getManilaTime = () => {
     return `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
 };
 
+// Automated Daily Database Backup Engine
+const backupDir = path.join(__dirname, 'backups');
+if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir);
+
+function runDatabaseBackup() {
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    const backupFile = path.join(backupDir, `fog_community_${dateStr}.db`);
+
+    if (!fs.existsSync(backupFile) && fs.existsSync('./fog_community.db')) {
+        try {
+            fs.copyFileSync('./fog_community.db', backupFile);
+            console.log(`[BACKUP] Auto-backup completed: ${backupFile}`);
+        } catch (e) {
+            console.error('[BACKUP ERROR]', e);
+        }
+    }
+}
+// Run backup immediately on startup (catches missed 2AM backups if server was off)
+runDatabaseBackup();
+// Check every 1 hour to trigger daily backup silently in the background
+setInterval(runDatabaseBackup, 1000 * 60 * 60);
+
 const db = new sqlite3.Database('./fog_community.db', (err) => {
     if (err) console.error('Database connection error:', err.message);
     else console.log('Connected to local SQLite database: fog_community.db');
@@ -36,7 +61,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT, event_date TEXT, time_start TEXT, venue TEXT,
-        poster TEXT, created_at DATETIME
+        poster TEXT, photos_url TEXT, materials_url TEXT, created_at DATETIME
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS attendance (
@@ -59,6 +84,8 @@ db.serialize(() => {
     )`);
 
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
+    db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
+    db.run(`ALTER TABLE events ADD COLUMN materials_url TEXT`, () => {});
 
     const superadminPermissions = JSON.stringify([
         'access_checkin', 'access_directory', 'access_events',
@@ -169,7 +196,7 @@ app.post('/api/users', (req, res) => {
 });
 
 app.get('/api/activity-logs', (req, res) => {
-    db.all(`SELECT * FROM activity_logs ORDER BY id DESC LIMIT 200`, [], (err, rows) => {
+    db.all(`SELECT * FROM activity_logs ORDER BY id DESC`, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
@@ -200,11 +227,11 @@ app.post('/api/youth', (req, res) => {
         const defaultPassword = qrCode;
 
         db.run(`INSERT INTO youth (name, age, email, mobile, social_media, birthday, parents_name, qr_code, password, profile_picture, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [name, age, email || null, mobile, social_media, birthday, parents_name, qrCode, qrCode, profile_picture || null, getManilaTime()],
+            [name, age, email || null, mobile, social_media, birthday, parents_name, qrCode, defaultPassword, profile_picture || null, getManilaTime()],
             function (err) {
                 if (err) return res.status(500).json({ error: err.message });
                 const youthId = this.lastID;
-                db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`, [qrCode, qrCode, youthId, getManilaTime()]);
+                db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`, [defaultUsername, defaultPassword, youthId, getManilaTime()]);
                 logActivity(actor, 'CREATE_MEMBER', `Registered member '${name}' (${qrCode})`);
                 res.json({ id: youthId, qr_code: qrCode, email });
             }
@@ -234,7 +261,7 @@ app.get('/api/events/:id/analytics', (req, res) => {
     const eventId = req.params.id;
     db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
         if (err || !event) return res.status(404).json({ error: 'Event not found' });
-        db.get(`SELECT COUNT(*) as total_youth FROM youth`, [], (err2, totalYouthRow) => {
+        db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
             const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
             const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
             db.all(sqlRoster, [eventId], (err3, roster) => {
@@ -250,9 +277,9 @@ app.get('/api/events/:id/analytics', (req, res) => {
 });
 
 app.post('/api/events', (req, res) => {
-    const { name, event_date, time_start, venue, poster, actor } = req.body;
-    db.run(`INSERT INTO events (name, event_date, time_start, venue, poster, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-        [name, event_date, time_start, venue, poster, getManilaTime()],
+    const { name, event_date, time_start, venue, poster, photos_url, materials_url, actor } = req.body;
+    db.run(`INSERT INTO events (name, event_date, time_start, venue, poster, photos_url, materials_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [name, event_date, time_start, venue, poster, photos_url, materials_url, getManilaTime()],
         function (err) {
             if (err) return res.status(500).json({ error: err.message });
             logActivity(actor, 'CREATE_EVENT', `Published gathering '${name}'`);
@@ -262,10 +289,10 @@ app.post('/api/events', (req, res) => {
 });
 
 app.put('/api/events/:id', (req, res) => {
-    const { name, event_date, time_start, venue, poster, actor } = req.body;
-    if (poster) {
-        db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, poster=? WHERE id=?`,
-            [name, event_date, time_start, venue, poster, req.params.id],
+    const { name, event_date, time_start, venue, poster, photos_url, materials_url, actor } = req.body;
+    if (poster !== undefined && poster !== null) {
+        db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, poster=?, photos_url=?, materials_url=? WHERE id=?`,
+            [name, event_date, time_start, venue, poster, photos_url, materials_url, req.params.id],
             function (err) {
                 if (err) return res.status(500).json({ error: err.message });
                 logActivity(actor, 'EDIT_EVENT', `Updated event details and poster for '${name}'`);
@@ -273,8 +300,8 @@ app.put('/api/events/:id', (req, res) => {
             }
         );
     } else {
-        db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=? WHERE id=?`,
-            [name, event_date, time_start, venue, req.params.id],
+        db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, photos_url=?, materials_url=? WHERE id=?`,
+            [name, event_date, time_start, venue, photos_url, materials_url, req.params.id],
             function (err) {
                 if (err) return res.status(500).json({ error: err.message });
                 logActivity(actor, 'EDIT_EVENT', `Updated details for event '${name}'`);
