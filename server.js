@@ -11,6 +11,14 @@ app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Standardize GMT+8 Manila Time Engine
+const getManilaTime = () => {
+    const d = new Date();
+    const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
+};
+
 const db = new sqlite3.Database('./fog_community.db', (err) => {
     if (err) console.error('Database connection error:', err.message);
     else console.log('Connected to local SQLite database: fog_community.db');
@@ -22,32 +30,32 @@ db.serialize(() => {
         name TEXT, age INTEGER, email TEXT, mobile TEXT,
         social_media TEXT, birthday TEXT, parents_name TEXT,
         qr_code TEXT UNIQUE, password TEXT, profile_picture TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT, event_date TEXT, time_start TEXT, venue TEXT,
-        poster TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        poster TEXT, created_at DATETIME
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS attendance (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         youth_id INTEGER, event_id INTEGER, is_walkin INTEGER DEFAULT 0,
-        checked_in_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        checked_in_at DATETIME,
         UNIQUE(youth_id, event_id)
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE, password TEXT, permissions TEXT, youth_id INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS activity_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT, action TEXT, details TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME
     )`);
 
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
@@ -58,18 +66,18 @@ db.serialize(() => {
     ]);
     const regTeamPermissions = JSON.stringify(['access_checkin']);
 
-    db.run(`INSERT OR REPLACE INTO users (username, password, permissions) VALUES (?, ?, ?)`,
-        ['registrationteam', 'JesusisLord', regTeamPermissions]
+    db.run(`INSERT OR REPLACE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
+        ['registrationteam', 'JesusisLord', regTeamPermissions, getManilaTime()]
     );
 
-    db.run(`INSERT OR IGNORE INTO users (username, password, permissions) VALUES (?, ?, ?)`,
-        ['celsocreeriii@gmail.com', 'JesusisLord', superadminPermissions]
+    db.run(`INSERT OR IGNORE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
+        ['celsocreeriii@gmail.com', 'JesusisLord', superadminPermissions, getManilaTime()]
     );
 });
 
 function logActivity(username, action, details) {
-    db.run(`INSERT INTO activity_logs (username, action, details) VALUES (?, ?, ?)`,
-        [username || 'System', action, details]
+    db.run(`INSERT INTO activity_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)`,
+        [username || 'System', action, details, getManilaTime()]
     );
 }
 
@@ -150,8 +158,8 @@ app.put('/api/users/:id/permissions', (req, res) => {
 app.post('/api/users', (req, res) => {
     const { actor, username, password, permissions } = req.body;
     const permString = JSON.stringify(permissions || []);
-    db.run(`INSERT INTO users (username, password, permissions) VALUES (?, ?, ?)`,
-        [username, password, permString],
+    db.run(`INSERT INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
+        [username, password, permString, getManilaTime()],
         function (err) {
             if (err) return res.status(400).json({ error: 'Username already exists' });
             logActivity(actor, 'CREATE_USER', `Created account '${username}'`);
@@ -188,12 +196,15 @@ app.post('/api/youth', (req, res) => {
     db.get(`SELECT MAX(id) as maxId FROM youth`, [], (err, row) => {
         const nextId = (row && row.maxId ? row.maxId : 0) + 1;
         const qrCode = `FOG-MEMBER-${String(nextId).padStart(3, '0')}`;
-        db.run(`INSERT INTO youth (name, age, email, mobile, social_media, birthday, parents_name, qr_code, password, profile_picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [name, age, email || null, mobile, social_media, birthday, parents_name, qrCode, qrCode, profile_picture || null],
+        const defaultUsername = qrCode;
+        const defaultPassword = qrCode;
+
+        db.run(`INSERT INTO youth (name, age, email, mobile, social_media, birthday, parents_name, qr_code, password, profile_picture, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [name, age, email || null, mobile, social_media, birthday, parents_name, qrCode, qrCode, profile_picture || null, getManilaTime()],
             function (err) {
                 if (err) return res.status(500).json({ error: err.message });
                 const youthId = this.lastID;
-                db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id) VALUES (?, ?, '[]', ?)`, [qrCode, qrCode, youthId]);
+                db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`, [qrCode, qrCode, youthId, getManilaTime()]);
                 logActivity(actor, 'CREATE_MEMBER', `Registered member '${name}' (${qrCode})`);
                 res.json({ id: youthId, qr_code: qrCode, email });
             }
@@ -240,8 +251,8 @@ app.get('/api/events/:id/analytics', (req, res) => {
 
 app.post('/api/events', (req, res) => {
     const { name, event_date, time_start, venue, poster, actor } = req.body;
-    db.run(`INSERT INTO events (name, event_date, time_start, venue, poster) VALUES (?, ?, ?, ?, ?)`,
-        [name, event_date, time_start, venue, poster],
+    db.run(`INSERT INTO events (name, event_date, time_start, venue, poster, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+        [name, event_date, time_start, venue, poster, getManilaTime()],
         function (err) {
             if (err) return res.status(500).json({ error: err.message });
             logActivity(actor, 'CREATE_EVENT', `Published gathering '${name}'`);
@@ -288,8 +299,8 @@ app.post('/api/checkin', (req, res) => {
     const processCheckin = (targetYouthId) => {
         db.get(`SELECT id FROM attendance WHERE youth_id = ? AND event_id = ?`, [targetYouthId, event_id], (err, row) => {
             if (row) return res.status(400).json({ error: 'Member is ALREADY checked in for this event.' });
-            db.run(`INSERT INTO attendance (youth_id, event_id, is_walkin) VALUES (?, ?, ?)`,
-                [targetYouthId, event_id, is_walkin ? 1 : 0],
+            db.run(`INSERT INTO attendance (youth_id, event_id, is_walkin, checked_in_at) VALUES (?, ?, ?, ?)`,
+                [targetYouthId, event_id, is_walkin ? 1 : 0, getManilaTime()],
                 function (err) {
                     if (err) return res.status(500).json({ error: err.message });
                     logActivity(actor, 'CHECK_IN', `Checked in member ID ${targetYouthId}`);
