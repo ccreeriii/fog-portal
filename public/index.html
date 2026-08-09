@@ -53,7 +53,7 @@
         .btn-sm { padding: 6px 12px; font-size: 0.85rem; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; vertical-align: middle; }
         th { background: var(--bg-light); color: var(--text-main); font-weight: 700; }
 
         .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
@@ -78,9 +78,8 @@
         .modal-content { background: #FFF; border-radius: 12px; width: 90%; max-width: 550px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); max-height: 90vh; overflow-y: auto; }
         .modal-summary { background: var(--bg-light); border-left: 4px solid var(--primary); padding: 12px; margin: 15px 0; font-size: 0.9rem; border-radius: 4px; }
 
-        .banner-active-event { background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px 18px; border-radius: 8px; font-weight: 700; color: var(--primary); margin-bottom: 15px; text-align: center; }
-        .search-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color); }
-        .search-item:hover { background: var(--bg-light); cursor: pointer; }
+        .search-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 10px; }
+        .search-item:hover { background: var(--bg-light); }
 
         .analytics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px 0; }
         .stat-card { background: var(--bg-light); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; text-align: center; }
@@ -88,6 +87,8 @@
         .stat-card .lbl { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
         .progress-bar-bg { width: 100%; height: 12px; background: #E2E8F0; border-radius: 6px; overflow: hidden; display: flex; margin: 10px 0; }
         .progress-bar-fill { height: 100%; background: var(--primary); }
+        
+        .avatar-circle { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; background: var(--bg-light); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--text-muted); flex-shrink: 0; }
     </style>
 </head>
 <body>
@@ -107,7 +108,11 @@
     <div id="publicReg" class="tab-content active">
         <div class="card">
             <h2>Community Member Registration</h2>
-            <form id="regForm" onsubmit="handlePublicRegistration(event)">
+            <form onsubmit="handlePublicRegistration(event)" id="regForm">
+                <div class="form-group">
+                    <label>Profile Picture (Optional)</label>
+                    <input type="file" id="regProfilePic" class="form-control" accept="image/*">
+                </div>
                 <div class="form-group">
                     <label>Full Name *</label>
                     <input type="text" id="regName" class="form-control" required>
@@ -170,6 +175,9 @@
     <div id="profileTab" class="tab-content">
         <div class="card" style="text-align: center;">
             <h2>My Official Member Profile</h2>
+            <div style="display: flex; justify-content: center; margin-bottom: 10px;">
+                <div id="myProfileAvatar" class="avatar-circle" style="width: 80px; height: 80px; font-size: 2rem;"></div>
+            </div>
             <div id="myQrContainer" style="margin: 15px 0;"></div>
             <h3 id="myProfileName" style="color: var(--primary);"></h3>
             <p id="myProfileCode" style="color: var(--text-muted); font-weight: 700; font-size: 1rem; margin-bottom: 15px;"></p>
@@ -180,6 +188,10 @@
             <h2>Edit Personal Profile Details</h2>
             <form onsubmit="handleSelfProfileUpdate(event)">
                 <input type="hidden" id="myMemberId">
+                <div class="form-group">
+                    <label>Update Profile Picture (Leave blank to keep current)</label>
+                    <input type="file" id="myEditProfilePic" class="form-control" accept="image/*">
+                </div>
                 <div class="form-group">
                     <label>Full Name</label>
                     <input type="text" id="myEditName" class="form-control" required>
@@ -229,7 +241,7 @@
         <div class="card">
             <h2>Manual Fast Check-In</h2>
             <input type="text" id="manualSearchInput" class="form-control" placeholder="Search member by name or unique ID..." oninput="filterManualCheckin()">
-            <div id="manualCheckinResults" style="max-height: 250px; overflow-y: auto; margin-top: 15px;"></div>
+            <div id="manualCheckinResults" style="max-height: 350px; overflow-y: auto; margin-top: 15px;"></div>
         </div>
 
         <div class="card">
@@ -352,7 +364,6 @@
                 <label>Filter Registered Accounts</label>
                 <input type="text" id="permUserSearchInput" class="form-control" placeholder="Search name or unique pass ID..." oninput="filterPermUserList()">
             </div>
-
             <div id="permUserListContainer" style="max-height: 380px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; margin-top: 15px;"></div>
         </div>
 
@@ -372,6 +383,85 @@
         </div>
     </div>
 
+</div>
+
+<div id="fastEditProfileModal" class="modal">
+    <div class="modal-content">
+        <h2>Edit Profile</h2>
+        <form id="fastEditProfileForm" onsubmit="event.preventDefault(); submitFastEditProfile(false)">
+            <input type="hidden" id="fastEditMemberId">
+            <div class="form-group">
+                <label>Update Profile Picture (Leave blank to keep current)</label>
+                <input type="file" id="fastEditProfilePic" class="form-control" accept="image/*">
+            </div>
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="fastEditName" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" id="fastEditEmail" class="form-control">
+            </div>
+            <div style="display: flex; gap: 15px;">
+                <div class="form-group" style="flex: 1;">
+                    <label>Age</label>
+                    <input type="number" id="fastEditAge" class="form-control">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label>Birthday</label>
+                    <input type="date" id="fastEditBirthday" class="form-control">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Social Media Handle</label>
+                <input type="text" id="fastEditSocial" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>Parents / Guardian Name</label>
+                <input type="text" id="fastEditParents" class="form-control">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button type="button" class="btn btn-secondary" onclick="closeFastEditProfileModal()">Cancel</button>
+                <button type="button" class="btn btn-outline" onclick="submitFastEditProfile(false)">Save Only</button>
+                <button type="button" class="btn btn-primary" onclick="submitFastEditProfile(true)">Save & Check In</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="editEventModal" class="modal">
+    <div class="modal-content">
+        <h2>Edit Gathering / Event</h2>
+        <form id="editEventForm" onsubmit="event.preventDefault(); submitEditEvent()">
+            <input type="hidden" id="editEvtId">
+            <div class="form-group">
+                <label>Event Name *</label>
+                <input type="text" id="editEvtName" class="form-control" required>
+            </div>
+            <div style="display: flex; gap: 15px;">
+                <div class="form-group" style="flex: 1;">
+                    <label>Date *</label>
+                    <input type="date" id="editEvtDate" class="form-control" required>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label>Time Start</label>
+                    <input type="time" id="editEvtTime" class="form-control">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Venue / Location</label>
+                <input type="text" id="editEvtVenue" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>Update Poster Image (Leave blank to keep current)</label>
+                <input type="file" id="editEvtPoster" class="form-control" accept="image/*">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button type="button" class="btn btn-secondary" onclick="closeEditEventModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitEditEvent()">Save Event Changes</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <div id="assignPermissionModal" class="modal">
@@ -406,6 +496,10 @@
         <h2>Edit Member Profile</h2>
         <form onsubmit="saveMemberEditWithConfirm(event)">
             <input type="hidden" id="editMemberId">
+            <div class="form-group">
+                <label>Update Profile Picture (Leave blank to keep current)</label>
+                <input type="file" id="editMemberProfilePic" class="form-control" accept="image/*">
+            </div>
             <div class="form-group">
                 <label>Full Name</label>
                 <input type="text" id="editMemberName" class="form-control" required>
@@ -473,9 +567,12 @@
         <h3 style="font-size: 1rem; margin-top: 20px; margin-bottom: 8px; color: var(--text-main);">Checked-In Roster</h3>
         <div id="analyticsRosterContainer" style="max-height: 220px; overflow-y: auto;"></div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px; flex-wrap: wrap; gap: 10px;">
             <button class="btn btn-outline" onclick="exportAnalyticsCSV()">📥 Export List (CSV)</button>
-            <button class="btn btn-secondary" onclick="closeAnalyticsModal()">Close</button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-outline" id="analyticsEditEventBtn">Edit Event</button>
+                <button class="btn btn-secondary" onclick="closeAnalyticsModal()">Close</button>
+            </div>
         </div>
     </div>
 </div>
@@ -484,6 +581,9 @@
     <div class="modal-content">
         <h2>Member Profile</h2>
         <div style="text-align: center; margin-bottom: 15px;">
+            <div style="display: flex; justify-content: center; margin-bottom: 10px;">
+                <div id="viewModalProfileAvatar" class="avatar-circle" style="width: 80px; height: 80px; font-size: 2rem;"></div>
+            </div>
             <div id="modalQrContainer" style="margin: 10px 0;"></div>
             <h3 id="modalProfileName" style="color: var(--primary);"></h3>
             <p id="modalProfileCode" style="color: var(--text-muted); font-weight: 700; font-size: 0.95rem;"></p>
@@ -544,7 +644,17 @@
     let eventViewMode = 'list';
     let calCurrentDate = new Date();
     let qrScanner = null;
-    let currentAnalyticsData = null; // Store for CSV Export
+    let currentAnalyticsData = null; 
+    let checkedInYouthIds = new Set();
+
+    async function getBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
+    }
 
     function switchTab(tabId) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -663,6 +773,13 @@
         document.getElementById('myEditSocial').value = member.social_media || '';
         document.getElementById('myEditParents').value = member.parents_name || '';
 
+        const avatar = document.getElementById('myProfileAvatar');
+        if (member.profile_picture) {
+            avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        } else {
+            avatar.innerHTML = member.name.charAt(0).toUpperCase();
+        }
+
         document.getElementById('myQrContainer').innerHTML = '';
         QRCode.toDataURL(member.qr_code, { width: 220 }, function (err, url) {
             const img = document.createElement('img');
@@ -677,6 +794,7 @@
         document.getElementById('myProfileCode').innerText = "LEADER ACCOUNT";
         document.getElementById('myEditName').value = username;
         document.getElementById('myEditEmail').value = username;
+        document.getElementById('myProfileAvatar').innerHTML = "A";
         document.getElementById('myQrContainer').innerHTML = `<span class="badge badge-orange" style="font-size: 1.1rem; padding: 12px 20px;">AUTHORIZED LEADER</span>`;
     }
 
@@ -684,6 +802,10 @@
         e.preventDefault();
         const id = document.getElementById('myMemberId').value;
         if (!id) return alert('Admin accounts are updated directly in Add Permissions.');
+
+        const fileInput = document.getElementById('myEditProfilePic');
+        let picBase64 = undefined;
+        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0]);
 
         const payload = {
             name: document.getElementById('myEditName').value,
@@ -693,14 +815,13 @@
             social_media: document.getElementById('myEditSocial').value,
             parents_name: document.getElementById('myEditParents').value,
             password: document.getElementById('myEditPassword').value,
+            profile_picture: picBase64,
             actor: currentUser
         };
 
         triggerActionConfirmation(`Save changes to your personal profile?`, async () => {
             const res = await fetch(`/api/youth/profile/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
             });
             const data = await res.json();
             if (data.success) {
@@ -713,6 +834,11 @@
 
     async function handlePublicRegistration(e) {
         e.preventDefault();
+        
+        const fileInput = document.getElementById('regProfilePic');
+        let picBase64 = null;
+        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0]);
+
         const payload = {
             name: document.getElementById('regName').value,
             age: document.getElementById('regAge').value,
@@ -720,13 +846,12 @@
             email: document.getElementById('regEmail').value,
             social_media: document.getElementById('regSocial').value,
             parents_name: document.getElementById('regParents').value,
+            profile_picture: picBase64,
             actor: currentUser || 'Public Registration'
         };
 
         const res = await fetch('/api/youth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
         const data = await res.json();
 
@@ -736,15 +861,14 @@
             document.getElementById('qrCanvasContainer').innerHTML = '';
             
             QRCode.toDataURL(data.qr_code, { width: 220 }, function (err, url) {
-                const img = document.createElement('img');
-                img.src = url;
+                const img = document.createElement('img'); img.src = url;
                 document.getElementById('qrCanvasContainer').appendChild(img);
                 document.getElementById('downloadQrBtn').href = url;
             });
 
             document.getElementById('qrPassCard').style.display = 'block';
             document.getElementById('regForm').reset();
-            loadDirectory();
+            youthData = []; // clear cache
         }
     }
 
@@ -756,14 +880,33 @@
             if (!eventId) return alert('Please select an active event first!');
             
             fetch('/api/checkin', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ qr_code: decodedText, event_id: eventId, is_walkin: 0, actor: currentUser })
             }).then(r => r.json()).then(data => {
-                if (data.success) alert(`Success! Checked in ${data.member_name}`);
-                else alert(data.error || 'Check-in failed');
+                if (data.success) {
+                    alert(`Success! Checked in ${data.member_name}`);
+                    checkedInYouthIds.add(data.youth_id);
+                    filterManualCheckin();
+                } else alert(data.error || 'Check-in failed');
             });
         }, (err) => {});
+    }
+
+    async function updateActiveEventBanner() {
+        const dropdown = document.getElementById('activeEventDropdown');
+        const selectedText = dropdown.options[dropdown.selectedIndex]?.text || 'No Event Selected';
+        document.getElementById('activeEventBanner').innerText = `Selected Event: ${selectedText}`;
+
+        const eventId = dropdown.value;
+        if(eventId) {
+            const res = await fetch(`/api/events/${eventId}/analytics`);
+            const data = await res.json();
+            checkedInYouthIds.clear();
+            if(data.roster) {
+                data.roster.forEach(r => checkedInYouthIds.add(r.youth_id));
+            }
+        }
+        filterManualCheckin();
     }
 
     async function filterManualCheckin() {
@@ -782,15 +925,88 @@
             matches = youthData.slice(0, 20);
         }
 
-        container.innerHTML = matches.map(y => `
+        container.innerHTML = matches.map(y => {
+            const avatarHtml = y.profile_picture 
+                ? `<img src="${y.profile_picture}" class="avatar-circle">`
+                : `<div class="avatar-circle">${y.name.charAt(0).toUpperCase()}</div>`;
+            
+            const isCheckedIn = checkedInYouthIds.has(y.id);
+            const btnHtml = isCheckedIn
+                ? `<button class="btn btn-secondary btn-sm" disabled style="background: #94A3B8; color: #FFF; cursor: not-allowed;">Done</button>`
+                : `<button class="btn btn-primary btn-sm" onclick="quickCheckin(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Check In</button>`;
+
+            return `
             <div class="search-item">
-                <div>
-                    <strong>${y.name}</strong><br>
-                    <small style="color: var(--text-muted);">${y.qr_code} | Age: ${y.age || 'N/A'}</small>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    ${avatarHtml}
+                    <div>
+                        <strong>${y.name}</strong><br>
+                        <small style="color: var(--text-muted);">${y.qr_code} | Age: ${y.age || 'N/A'}</small>
+                    </div>
                 </div>
-                <button class="btn btn-primary btn-sm" onclick="quickCheckin(${y.id}, '${y.name}')">Check In</button>
+                <div style="display: flex; gap: 6px;">
+                    <button class="btn btn-outline btn-sm" onclick="openFastEditProfileModal(${y.id})">Edit Profile</button>
+                    ${btnHtml}
+                </div>
             </div>
-        `).join('');
+            `;
+        }).join('');
+    }
+
+    function openFastEditProfileModal(id) {
+        const m = youthData.find(y => y.id === id);
+        if (!m) return;
+        document.getElementById('fastEditMemberId').value = m.id;
+        document.getElementById('fastEditName').value = m.name || '';
+        document.getElementById('fastEditEmail').value = m.email || '';
+        document.getElementById('fastEditAge').value = m.age || '';
+        document.getElementById('fastEditBirthday').value = m.birthday || '';
+        document.getElementById('fastEditSocial').value = m.social_media || '';
+        document.getElementById('fastEditParents').value = m.parents_name || '';
+        document.getElementById('fastEditProfilePic').value = '';
+        document.getElementById('fastEditProfileModal').classList.add('active');
+    }
+
+    function closeFastEditProfileModal() {
+        document.getElementById('fastEditProfileModal').classList.remove('active');
+    }
+
+    async function submitFastEditProfile(doCheckIn) {
+        const form = document.getElementById('fastEditProfileForm');
+        if(!form.checkValidity()) { form.reportValidity(); return; }
+
+        const id = document.getElementById('fastEditMemberId').value;
+        const name = document.getElementById('fastEditName').value;
+        const email = document.getElementById('fastEditEmail').value;
+        const age = document.getElementById('fastEditAge').value;
+        const birthday = document.getElementById('fastEditBirthday').value;
+        const social_media = document.getElementById('fastEditSocial').value;
+        const parents_name = document.getElementById('fastEditParents').value;
+
+        const fileInput = document.getElementById('fastEditProfilePic');
+        let picBase64 = undefined;
+        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0]);
+
+        const payload = { 
+            name, email, age, birthday, social_media, parents_name, profile_picture: picBase64,
+            password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, actor: currentUser 
+        };
+
+        triggerActionConfirmation(`Confirm updating profile for ${name}?`, async () => {
+            const res = await fetch(`/api/youth/profile/${id}`, {
+                method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if(data.success) {
+                closeFastEditProfileModal();
+                youthData = []; // clear cache
+                await loadDirectory(); 
+                filterManualCheckin(); 
+                
+                if(doCheckIn) quickCheckin(id, name);
+                else alert("Profile updated successfully!");
+            }
+        });
     }
 
     async function quickCheckin(youthId, memberName) {
@@ -798,14 +1014,16 @@
         if (!eventId) return alert('Please select an active event first!');
 
         const res = await fetch('/api/checkin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ youth_id: youthId, event_id: eventId, is_walkin: 0, actor: currentUser })
         });
         const data = await res.json();
 
-        if (data.success) alert(`Successfully checked in ${memberName || 'member'}!`);
-        else alert(data.error || 'Check-in failed');
+        if (data.success) {
+            alert(`Successfully checked in ${memberName || 'member'}!`);
+            checkedInYouthIds.add(youthId);
+            filterManualCheckin();
+        } else alert(data.error || 'Check-in failed');
     }
 
     async function handleWalkin(e) {
@@ -822,16 +1040,13 @@
         };
 
         const regRes = await fetch('/api/youth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
         const regData = await regRes.json();
 
         if (regData.id) {
             const checkinRes = await fetch('/api/checkin', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ youth_id: regData.id, event_id: eventId, is_walkin: 1, actor: currentUser })
             });
             const checkinData = await checkinRes.json();
@@ -839,15 +1054,12 @@
             if (checkinData.success) {
                 alert(`Successfully registered and checked in walk-in: ${payload.name}`);
                 e.target.reset();
-                youthData = []; // clear cache to force refetch
+                youthData = []; 
+                checkedInYouthIds.add(regData.id);
                 filterManualCheckin(); 
                 loadDirectory();
-            } else {
-                alert(checkinData.error || 'Registration succeeded, but check-in failed.');
-            }
-        } else {
-            alert(regData.error || 'Failed to register walk-in.');
-        }
+            } else alert(checkinData.error || 'Registration succeeded, but check-in failed.');
+        } else alert(regData.error || 'Failed to register walk-in.');
     }
 
     async function loadDirectory() {
@@ -872,10 +1084,19 @@
         if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
         if (sort === 'age_desc') matches.sort((a,b) => (b.age || 0) - (a.age || 0));
 
-        let html = `<table><thead><tr><th>Name</th><th>Age</th><th>Birthday</th><th>Actions</th></tr></thead><tbody>`;
-        html += matches.map(y => `
+        let html = `<table><thead><tr><th>Member</th><th>Age</th><th>Birthday</th><th>Actions</th></tr></thead><tbody>`;
+        html += matches.map(y => {
+            const avatarHtml = y.profile_picture 
+                ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 35px; height: 35px; font-size: 1rem;">`
+                : `<div class="avatar-circle" style="width: 35px; height: 35px; font-size: 1rem;">${y.name.charAt(0).toUpperCase()}</div>`;
+            return `
             <tr>
-                <td><strong>${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code}</small></td>
+                <td>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        ${avatarHtml}
+                        <div><strong>${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code}</small></div>
+                    </div>
+                </td>
                 <td>${y.age || 'N/A'}</td>
                 <td>${y.birthday || 'N/A'}</td>
                 <td>
@@ -884,7 +1105,7 @@
                     <button class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Delete</button>
                 </td>
             </tr>
-        `).join('');
+        `}).join('');
         html += `</tbody></table>`;
         document.getElementById('directoryTableContainer').innerHTML = html;
     }
@@ -900,6 +1121,7 @@
         document.getElementById('editMemberBirthday').value = m.birthday || '';
         document.getElementById('editMemberSocial').value = m.social_media || '';
         document.getElementById('editMemberParents').value = m.parents_name || '';
+        document.getElementById('editMemberProfilePic').value = '';
 
         document.getElementById('editMemberModal').classList.add('active');
     }
@@ -908,9 +1130,13 @@
         document.getElementById('editMemberModal').classList.remove('active');
     }
 
-    function saveMemberEditWithConfirm(e) {
+    async function saveMemberEditWithConfirm(e) {
         e.preventDefault();
         const id = document.getElementById('editMemberId').value;
+        const fileInput = document.getElementById('editMemberProfilePic');
+        let picBase64 = undefined;
+        if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0]);
+
         const payload = {
             name: document.getElementById('editMemberName').value,
             email: document.getElementById('editMemberEmail').value,
@@ -919,17 +1145,16 @@
             social_media: document.getElementById('editMemberSocial').value,
             parents_name: document.getElementById('editMemberParents').value,
             password: `FOG-MEMBER-${String(id).padStart(3, '0')}`,
+            profile_picture: picBase64,
             actor: currentUser
         };
 
         triggerActionConfirmation(`Confirm updating member profile for '${payload.name}' (ID #${id})?`, async () => {
             await fetch(`/api/youth/profile/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
             });
             closeEditMemberModal();
-            youthData = []; // clear cache
+            youthData = []; 
             loadDirectory();
         });
     }
@@ -948,10 +1173,16 @@
             <strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}
         `;
 
+        const avatar = document.getElementById('viewModalProfileAvatar');
+        if (member.profile_picture) {
+            avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        } else {
+            avatar.innerHTML = member.name.charAt(0).toUpperCase();
+        }
+
         document.getElementById('modalQrContainer').innerHTML = '';
         QRCode.toDataURL(member.qr_code, { width: 180 }, function (err, url) {
-            const img = document.createElement('img');
-            img.src = url;
+            const img = document.createElement('img'); img.src = url;
             document.getElementById('modalQrContainer').appendChild(img);
             document.getElementById('modalDownloadQrBtn').href = url;
         });
@@ -968,7 +1199,6 @@
                 </div>
             `).join('');
         }
-
         document.getElementById('viewProfileModal').classList.add('active');
     }
 
@@ -976,15 +1206,61 @@
         document.getElementById('viewProfileModal').classList.remove('active');
     }
 
-    // EVENT ANALYTICS MODAL WITH CSV EXPORT
+    function openEditEventModal(eventId) {
+        const e = eventsData.find(ev => ev.id === eventId);
+        if (!e) return;
+        
+        document.getElementById('editEvtId').value = e.id;
+        document.getElementById('editEvtName').value = e.name || '';
+        document.getElementById('editEvtDate').value = e.event_date || '';
+        document.getElementById('editEvtTime').value = e.time_start || '';
+        document.getElementById('editEvtVenue').value = e.venue || '';
+        document.getElementById('editEvtPoster').value = ''; 
+
+        closeAnalyticsModal();
+        document.getElementById('editEventModal').classList.add('active');
+    }
+
+    function closeEditEventModal() {
+        document.getElementById('editEventModal').classList.remove('active');
+    }
+
+    async function submitEditEvent() {
+        const form = document.getElementById('editEventForm');
+        if(!form.checkValidity()) { form.reportValidity(); return; }
+
+        const id = document.getElementById('editEvtId').value;
+        const name = document.getElementById('editEvtName').value;
+        const event_date = document.getElementById('editEvtDate').value;
+        const time_start = document.getElementById('editEvtTime').value;
+        const venue = document.getElementById('editEvtVenue').value;
+        const fileInput = document.getElementById('editEvtPoster');
+
+        triggerActionConfirmation(`Confirm saving changes to event '${name}'?`, async () => {
+            let posterBase64 = null;
+            if (fileInput.files.length > 0) {
+                posterBase64 = await getBase64(fileInput.files[0]);
+            }
+
+            const payload = { name, event_date, time_start, venue, poster: posterBase64, actor: currentUser };
+            const res = await fetch(`/api/events/${id}`, {
+                method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+            });
+            if(res.ok) {
+                closeEditEventModal();
+                alert("Event updated successfully!");
+                loadEvents();
+            }
+        });
+    }
+
     async function openAnalyticsModal(eventId) {
         const res = await fetch(`/api/events/${eventId}/analytics`);
         const data = await res.json();
         if (!data || data.error) return alert('Failed to load event analytics');
 
-        currentAnalyticsData = data; // Store data globally for CSV Export
+        currentAnalyticsData = data;
 
-        // Handle Event Poster Thumbnail inside Modal
         const posterContainer = document.getElementById('analyticsModalPoster');
         if (data.event.poster) {
             posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover;">`;
@@ -994,7 +1270,6 @@
 
         document.getElementById('analyticsEventTitle').innerText = data.event.name;
         document.getElementById('analyticsEventMeta').innerText = `📅 Date: ${data.event.event_date} | 📍 Venue: ${data.event.venue || 'N/A'}`;
-
         document.getElementById('statTotalTurnout').innerText = data.totalTurnout;
         document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage}%`;
         document.getElementById('statBreakdown').innerText = `${data.preReg} / ${data.walkins}`;
@@ -1007,15 +1282,25 @@
             rosterContainer.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem;">No members checked in yet for this gathering.</p>`;
         } else {
             rosterContainer.innerHTML = `<table><thead><tr><th>Member</th><th>Timestamp</th><th>Type</th></tr></thead><tbody>` +
-                data.roster.map(r => `
+                data.roster.map(r => {
+                    const avatarHtml = r.profile_picture 
+                        ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem;">`
+                        : `<div class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem;">${r.name.charAt(0).toUpperCase()}</div>`;
+                    return `
                     <tr>
-                        <td><strong>${r.name}</strong><br><small style="color: var(--text-muted);">${r.qr_code}</small></td>
+                        <td>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                ${avatarHtml}
+                                <div><strong>${r.name}</strong><br><small style="color: var(--text-muted);">${r.qr_code}</small></div>
+                            </div>
+                        </td>
                         <td><small>${r.checked_in_at}</small></td>
                         <td><span class="badge ${r.is_walkin ? 'badge-orange' : 'badge-green'}">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
                     </tr>
-                `).join('') + `</tbody></table>`;
+                `}).join('') + `</tbody></table>`;
         }
 
+        document.getElementById('analyticsEditEventBtn').onclick = () => openEditEventModal(eventId);
         document.getElementById('eventAnalyticsModal').classList.add('active');
     }
 
@@ -1027,33 +1312,24 @@
     function exportAnalyticsCSV() {
         if (!currentAnalyticsData || !currentAnalyticsData.roster) return alert('No data available to export.');
         
-        // Define CSV Headers
         const rows = [['Member Name', 'Unique Pass ID / Email', 'Checked In At', 'Status']];
-        
-        // Loop through roster and push rows
         currentAnalyticsData.roster.forEach(r => {
             const status = r.is_walkin ? 'Walk-in' : 'Pre-Reg';
             const identifier = r.email ? r.email : r.qr_code;
-            // Wrap in quotes to prevent CSV breaking on commas inside names
             rows.push([`"${r.name}"`, `"${identifier}"`, `"${r.checked_in_at}"`, `"${status}"`]);
         });
 
-        // Generate CSV string
         const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-        
-        // Create invisible download link
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
         link.setAttribute("download", `Roster_${currentAnalyticsData.event.name.replace(/\s+/g, '_')}.csv`);
         document.body.appendChild(link);
-        
-        // Trigger download and cleanup
         link.click();
         document.body.removeChild(link);
     }
 
-    // USER DIRECTORY & ADD PERMISSIONS POP-UP SYSTEM
+    // USER DIRECTORY & PERMISSIONS
     async function loadUserPermissionsList() {
         const res = await fetch('/api/users/list');
         allUsersList = await res.json();
@@ -1063,11 +1339,8 @@
     function filterPermUserList() {
         const q = document.getElementById('permUserSearchInput').value.toLowerCase().trim();
         const container = document.getElementById('permUserListContainer');
-
         let matches = allUsersList;
-        if (q) {
-            matches = allUsersList.filter(u => u.display_name.toLowerCase().includes(q));
-        }
+        if (q) matches = allUsersList.filter(u => u.display_name.toLowerCase().includes(q));
 
         if (matches.length === 0) {
             container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No accounts found matching '${q}'</div>`;
@@ -1076,9 +1349,7 @@
 
         container.innerHTML = matches.map(u => `
             <div class="search-item">
-                <div>
-                    <strong>${u.display_name}</strong>
-                </div>
+                <div><strong>${u.display_name}</strong></div>
                 <button class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${u.display_name.replace(/'/g, "\\'")}', '${JSON.stringify(u.permissions).replace(/'/g, "\\'")}')">Add Permission</button>
             </div>
         `).join('');
@@ -1089,10 +1360,7 @@
         document.getElementById('modalPermUserId').value = id;
         document.getElementById('permModalUserBanner').innerText = `Assign Permissions for: ${displayName}`;
 
-        document.querySelectorAll('.permCheckModal').forEach(chk => {
-            chk.checked = perms.includes(chk.value);
-        });
-
+        document.querySelectorAll('.permCheckModal').forEach(chk => { chk.checked = perms.includes(chk.value); });
         document.getElementById('assignPermissionModal').classList.add('active');
     }
 
@@ -1104,14 +1372,11 @@
         e.preventDefault();
         const userId = document.getElementById('modalPermUserId').value;
         const selectedPerms = [];
-        document.querySelectorAll('.permCheckModal:checked').forEach(chk => {
-            selectedPerms.push(chk.value);
-        });
+        document.querySelectorAll('.permCheckModal:checked').forEach(chk => { selectedPerms.push(chk.value); });
 
         triggerActionConfirmation(`Confirm updating permission set for User ID #${userId}?`, async () => {
             const res = await fetch(`/api/users/${userId}/permissions`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ permissions: selectedPerms, actor: currentUser })
             });
             const data = await res.json();
@@ -1130,8 +1395,7 @@
 
         triggerActionConfirmation(`Create new leader account '${username}'?`, async () => {
             const res = await fetch('/api/users', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ actor: currentUser, username, password, permissions: ['access_checkin', 'access_directory'] })
             });
             const data = await res.json();
@@ -1139,9 +1403,7 @@
                 alert(`User account '${username}' created! Click 'Add Permission' in the list above to customize access.`);
                 e.target.reset();
                 loadUserPermissionsList();
-            } else {
-                alert(data.error || 'Failed to create user');
-            }
+            } else alert(data.error || 'Failed to create user');
         });
     }
 
@@ -1169,13 +1431,14 @@
         if (eventViewMode === 'list') {
             container.className = 'events-list-view';
             container.innerHTML = eventsData.map(e => `
-                <div style="border-bottom: 1px solid var(--border-color); padding: 12px 0; display: flex; justify-content: space-between; align-items: center;">
+                <div style="border-bottom: 1px solid var(--border-color); padding: 12px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div>
                         <strong style="cursor: pointer; color: var(--primary);" onclick="openAnalyticsModal(${e.id})">${e.name}</strong><br>
                         <small style="color: var(--text-muted);">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
                     </div>
                     <div style="display: flex; gap: 6px;">
                         <button class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                        <button class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                         <button class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                     </div>
                 </div>
@@ -1198,6 +1461,7 @@
                         </div>
                         <div style="display: flex; gap: 6px; margin-top: 8px;">
                             <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                            <button class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                             <button class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                         </div>
                     </div>
@@ -1247,12 +1511,6 @@
         loadEvents();
     }
 
-    function updateActiveEventBanner() {
-        const dropdown = document.getElementById('activeEventDropdown');
-        const selectedText = dropdown.options[dropdown.selectedIndex]?.text || 'No Event Selected';
-        document.getElementById('activeEventBanner').innerText = `Selected Event: ${selectedText}`;
-    }
-
     async function loadAttendanceLogs() {
         const res = await fetch('/api/attendance/logs');
         const logs = await res.json();
@@ -1295,14 +1553,7 @@
         e.preventDefault();
         const fileInput = document.getElementById('evtPoster');
         let posterBase64 = null;
-
-        if (fileInput.files.length > 0) {
-            posterBase64 = await new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = (evt) => resolve(evt.target.result);
-                reader.readAsDataURL(fileInput.files[0]);
-            });
-        }
+        if (fileInput.files.length > 0) posterBase64 = await getBase64(fileInput.files[0]);
 
         const payload = {
             name: document.getElementById('evtName').value,
@@ -1315,15 +1566,9 @@
 
         triggerActionConfirmation(`Publish new gathering '${payload.name}' on ${payload.event_date}?`, async () => {
             const res = await fetch('/api/events', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
             });
-
-            if (res.ok) {
-                e.target.reset();
-                loadEvents();
-            }
+            if (res.ok) { e.target.reset(); loadEvents(); }
         });
     }
 
@@ -1361,11 +1606,10 @@
         const is_walkin = parseInt(document.getElementById('editAttWalkin').value);
 
         triggerActionConfirmation(
-            `Update Attendance Log ID #${id} to Timestamp: ${checked_in_at}, Type: ${is_walkin ? 'Walk-in' : 'Pre-Reg'}?`,
+            `Update Attendance Log ID #${id} to Timestamp: ${checked_in_at}?`,
             async () => {
                 await fetch(`/api/attendance/${id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ checked_in_at, is_walkin, actor: currentUser })
                 });
                 closeEditAttendanceModal();
@@ -1375,34 +1619,28 @@
     }
 
     function triggerDeleteMember(id, name) {
-        triggerActionConfirmation(`Permanently DELETE member profile for '${name}' (ID #${id})?`, async () => {
+        triggerActionConfirmation(`Permanently DELETE member profile for '${name}'?`, async () => {
             await fetch(`/api/youth/${id}`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ actor: currentUser })
+                method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser })
             });
-            youthData = []; // clear cache to refetch
+            youthData = [];
             loadDirectory();
         });
     }
 
     function triggerDeleteEvent(id, name) {
-        triggerActionConfirmation(`Permanently DELETE event '${name}' (ID #${id}) and associated logs?`, async () => {
+        triggerActionConfirmation(`Permanently DELETE event '${name}' and associated logs?`, async () => {
             await fetch(`/api/events/${id}`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ actor: currentUser })
+                method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser })
             });
             loadEvents();
         });
     }
 
     function triggerDeleteAttendance(id, memberName) {
-        triggerActionConfirmation(`DELETE attendance record for '${memberName}' (Log ID #${id})?`, async () => {
+        triggerActionConfirmation(`DELETE attendance record for '${memberName}'?`, async () => {
             await fetch(`/api/attendance/${id}`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ actor: currentUser })
+                method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser })
             });
             loadAttendanceLogs();
         });
