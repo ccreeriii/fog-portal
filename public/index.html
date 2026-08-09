@@ -537,7 +537,7 @@
                 <div style="display: flex; flex-direction: column; gap: 12px; background: var(--bg-light); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
                     <label style="font-weight: 600;"><input type="checkbox" class="permCheckModal" value="access_checkin"> Access "Check-In" Tab</label>
                     <label style="font-weight: 600;"><input type="checkbox" class="permCheckModal" value="access_directory"> Access "Directory" Tab</label>
-                    <label style="font-weight: 600;"><input type="checkbox" class="permCheckModal" value="access_events"> Access "Events & Analytics" Tab</label>
+                    <label style="font-weight: 600;"><input type="checkbox" class="permCheckModal" value="access_events"> Access "Events" Tab</label>
                     <label style="font-weight: 600;"><input type="checkbox" class="permCheckModal" value="access_attendance"> Access "Attendance Logs" Tab</label>
                     <label style="font-weight: 600;"><input type="checkbox" class="permCheckModal" value="edit_attendance"> Permission to EDIT Attendance Records</label>
                     <label style="font-weight: 600;"><input type="checkbox" class="permCheckModal" value="access_activity"> Access "Activity Logs" Tab</label>
@@ -866,7 +866,7 @@
         let html = `<button class="nav-btn active" onclick="switchTab('profileTab')">My Profile</button>`;
         if (userPermissions.includes('access_checkin')) html += `<button class="nav-btn" onclick="switchTab('checkinTab')">Check-In</button>`;
         if (userPermissions.includes('access_directory')) html += `<button class="nav-btn" onclick="switchTab('directoryTab')">Directory</button>`;
-        if (userPermissions.includes('access_events')) html += `<button class="nav-btn" onclick="switchTab('eventsTab')">Events & Analytics</button>`;
+        if (userPermissions.includes('access_events')) html += `<button class="nav-btn" onclick="switchTab('eventsTab')">Events</button>`;
         if (userPermissions.includes('access_attendance')) html += `<button class="nav-btn" onclick="switchTab('attendanceTab')">Attendance Logs</button>`;
         if (userPermissions.includes('access_activity')) html += `<button class="nav-btn" onclick="switchTab('activityLogsTab')">Activity Logs</button>`;
         if (userPermissions.includes('access_permissions')) html += `<button class="nav-btn" onclick="switchTab('permissionsTab')">Add Permissions</button>`;
@@ -1776,5 +1776,28 @@
         });
     }
 </script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    setInterval(() => {
+        // Find the Directory Header
+        const headers = document.querySelectorAll('h2');
+        let dirHeader = Array.from(headers).find(h => h.innerText.includes('Directory') || h.innerText.includes('Members'));
+        
+        // If found and button doesn't exist, inject it
+        if (dirHeader && !document.getElementById('csvBtn')) {
+            const btn = document.createElement('button');
+            btn.id = 'csvBtn';
+            btn.innerHTML = '📊 Export CSV';
+            btn.style.cssText = 'background: #27ae60; color: white; border: none; padding: 8px 15px; border-radius: 5px; margin-left: 15px; cursor: pointer; font-weight: bold; vertical-align: middle;';
+            btn.onclick = () => window.location.href = '/api/directory/export';
+            
+            dirHeader.style.display = 'inline-block';
+            dirHeader.parentNode.insertBefore(btn, dirHeader.nextSibling);
+        }
+    }, 1000);
+});
+</script>
 </body>
+
 </html>
