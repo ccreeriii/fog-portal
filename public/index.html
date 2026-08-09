@@ -1997,7 +1997,103 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 500);
 });
 </script>
+
+<script id="fog_final_patch">
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // A. Dropdown 5-Hour Leeway
+    setInterval(() => {
+        const dropdown = document.querySelector('select[name="event_id"]') || document.querySelector('#checkinEventSelect');
+        if (dropdown && !dropdown.dataset.leewayApplied) {
+            dropdown.dataset.leewayApplied = "true";
+            
+            const targetDate = new Date();
+            targetDate.setHours(targetDate.getHours() - 5); // Subtract 5 hours for the leeway
+            const cutoffStr = targetDate.toISOString().split('T')[0];
+
+            Array.from(dropdown.options).forEach(opt => {
+                const match = opt.innerText.match(/(\d{4}-\d{2}-\d{2})/);
+                if (match && match[1] < cutoffStr) {
+                    opt.remove(); // Removes events older than the 5-hour cutoff
+                }
+            });
+        }
+    }, 1000);
+
+    // B. Modal 4-Card Grid & Attendance Filters
+    setInterval(() => {
+        const modal = document.getElementById('analyticsModal') || document.querySelector('.modal');
+        if (modal && (modal.style.display === 'block' || modal.classList.contains('active'))) {
+            const content = modal.querySelector('#analyticsContent') || modal.querySelector('.content');
+            
+            if (content && !document.getElementById('modalGridUI')) {
+                const txt = content.innerText;
+                const total = parseInt((txt.match(/Total.*?(\d+)/i) || txt.match(/(\d+).*Total/i) || [0,0])[1]);
+                const pre = parseInt((txt.match(/Pre-Reg.*?(\d+)/i) || txt.match(/(\d+).*Pre-Reg/i) || [0,0])[1]);
+                const walk = parseInt((txt.match(/Walk-in.*?(\d+)/i) || txt.match(/(\d+).*Walk-in/i) || [0,0])[1]);
+                const rate = pre > 0 ? Math.round((total / pre) * 100) + '%' : 'N/A';
+
+                const listElement = content.querySelector('ul, table');
+
+                content.innerHTML = `
+                    <div id="modalGridUI" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+                        <div style="background: #3498db; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0; font-size: 22px;">${total}</h3><p style="margin: 5px 0 0; font-size: 11px;">Total</p>
+                        </div>
+                        <div style="background: #2ecc71; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0; font-size: 22px;">${pre}</h3><p style="margin: 5px 0 0; font-size: 11px;">Pre-Reg</p>
+                        </div>
+                        <div style="background: #f39c12; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0; font-size: 22px;">${walk}</h3><p style="margin: 5px 0 0; font-size: 11px;">Walk-in</p>
+                        </div>
+                        <div style="background: #9b59b6; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0; font-size: 22px;">${rate}</h3><p style="margin: 5px 0 0; font-size: 11px;">Turnout</p>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <input type="text" id="attSearch" placeholder="🔍 Search name..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
+                        <select id="attAge" style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
+                            <option value="all">All Ages</option>
+                            <option value="mini">Minis (7-12)</option>
+                            <option value="youth">Youth (13-21)</option>
+                            <option value="adult">Adults (22+)</option>
+                        </select>
+                    </div>
+                    <div id="listWrapper" style="max-height: 250px; overflow-y: auto;"></div>
+                `;
+
+                if (listElement) {
+                    document.getElementById('listWrapper').appendChild(listElement);
+                    
+                    const doFilter = () => {
+                        const q = document.getElementById('attSearch').value.toLowerCase();
+                        const ageFilter = document.getElementById('attAge').value;
+                        const items = listElement.tagName === 'TBODY' ? listElement.children : (listElement.querySelector('tbody') ? listElement.querySelector('tbody').children : listElement.children);
+                        
+                        Array.from(items).forEach(item => {
+                            const text = item.innerText.toLowerCase();
+                            const mQ = text.includes(q);
+                            let mA = true;
+                            const ageM = text.match(/\b(\d{1,2})\b/);
+                            if (ageFilter !== 'all' && ageM) {
+                                const age = parseInt(ageM[1]);
+                                if (ageFilter === 'mini' && (age < 7 || age > 12)) mA = false;
+                                if (ageFilter === 'youth' && (age < 13 || age > 21)) mA = false;
+                                if (ageFilter === 'adult' && age < 22) mA = false;
+                            }
+                            item.style.display = mQ && mA ? '' : 'none';
+                        });
+                    };
+                    document.getElementById('attSearch').addEventListener('input', doFilter);
+                    document.getElementById('attAge').addEventListener('change', doFilter);
+                }
+            }
+        }
+    }, 500);
+});
+</script>
 </body>
+
 
 
 

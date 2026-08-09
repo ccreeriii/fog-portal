@@ -424,6 +424,22 @@ app.delete('/api/attendance/:id', (req, res) => {
     });
 });
 
+
+app.get('/api/directory/export', (req, res) => {
+    db.all("SELECT * FROM members ORDER BY full_name ASC", [], (err, rows) => {
+        if (err || !rows || rows.length === 0) {
+            db.all("SELECT * FROM youth ORDER BY name ASC", [], (e, r) => sendCSV(res, r || []));
+        } else { sendCSV(res, rows); }
+    });
+});
+function sendCSV(res, rows) {
+    let csv = 'Name,Age,Role,Phone,Email,Status\n';
+    (rows || []).forEach(r => { csv += `"${r.full_name||r.name||''}","${r.age||''}","${r.role||''}","${r.phone||r.mobile||''}","${r.email||''}","${r.status||''}"\n`; });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=Community_Directory.csv');
+    res.status(200).send(csv);
+}
+
 app.listen(PORT, () => {
     console.log(`Server running safely on Port ${PORT}`);
 });
