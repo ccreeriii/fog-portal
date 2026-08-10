@@ -9,8 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (dateMatch && dateMatch[1] >= todayStr) {
                 const btn = card.querySelector('button');
                 
-                // Checks for 'View' (or legacy labels) to attach the Form button
-                if (btn && (btn.innerText.includes('Details') || btn.innerText.includes('Analytics') || btn.innerText === 'View') && !card.querySelector('.fog-prereg-btn')) {
+                // Checks for 'Details' to attach the Form button
+                if (btn && (btn.innerText.includes('Details') || btn.innerText.includes('View') || btn.innerText.includes('Analytics')) && !card.querySelector('.fog-prereg-btn')) {
                     const onclickText = btn.getAttribute('onclick') || '';
                     const idMatch = onclickText.match(/['"]?(\d+)['"]?/);
                     
