@@ -87,7 +87,44 @@
         
         .checkin-sub-tab { display: none; }
         .checkin-sub-tab.active { display: block; }
-    </style>
+    
+    /* --- Event Analytics Grid CSS --- */
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+        margin: 20px 0;
+    }
+    .metric-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+        border: 1px solid #e9ecef;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    .metric-card h4 {
+        margin: 0;
+        font-size: 13px;
+        color: #7f8c8d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .metric-card p {
+        margin: 10px 0 0 0;
+        font-size: 28px;
+        font-weight: bold;
+        color: #2c3e50;
+    }
+    .metric-card.highlight {
+        background: #ebf5fb;
+        border-color: #d6eaf8;
+    }
+    .metric-card.highlight p {
+        color: #2980b9;
+    }
+    
+</style>
 </head>
 <body>
 
@@ -440,6 +477,7 @@
 
 <div id="fastEditProfileModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Edit Profile</h2>
         <form id="fastEditProfileForm" onsubmit="event.preventDefault();">
             <input type="hidden" id="fastEditMemberId">
@@ -484,6 +522,7 @@
 
 <div id="editEventModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Edit Gathering / Event</h2>
         <form id="editEventForm" onsubmit="event.preventDefault();">
             <input type="hidden" id="editEvtId">
@@ -527,6 +566,7 @@
 
 <div id="assignPermissionModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Assign User Permissions</h2>
         <div id="permModalUserBanner" style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px 16px; border-radius: 8px; font-weight: 700; color: var(--primary); margin-bottom: 15px;"></div>
         
@@ -554,6 +594,7 @@
 
 <div id="editMemberModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Edit Member Profile</h2>
         <form onsubmit="event.preventDefault();">
             <input type="hidden" id="editMemberId">
@@ -597,6 +638,7 @@
 
 <div id="eventAnalyticsModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 20px;">
             <div id="analyticsModalPoster" style="width: 80px; height: 80px; background: #FFF; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); flex-shrink: 0; display:flex; align-items:center; justify-content:center;"></div>
             <div style="flex: 1;">
@@ -641,6 +683,7 @@
 
 <div id="viewProfileModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Member Profile</h2>
         <div style="text-align: center; margin-bottom: 15px;">
             <div style="display: flex; justify-content: center; margin-bottom: 10px;">
@@ -662,6 +705,7 @@
 
 <div id="confirmModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Confirm Action</h2>
         <div id="confirmSummary" class="modal-summary">Summary of action...</div>
         <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
@@ -673,6 +717,7 @@
 
 <div id="editAttendanceModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Edit Attendance Record</h2>
         <form onsubmit="event.preventDefault();">
             <input type="hidden" id="editAttId">
@@ -1947,13 +1992,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2 & 3. Rename Analytics to Details & Inject 4-Card Grid
     setInterval(() => {
         document.querySelectorAll('button').forEach(btn => {
-            if (btn.innerText.includes('Details')) btn.innerHTML = '📊 Details';
+            if (btn.innerText.includes('Details')) btn.innerHTML = 'Details';
         });
 
         const modal = document.getElementById('analyticsModal') || document.querySelector('.modal');
         if (modal && (modal.style.display === 'block' || modal.classList.contains('active'))) {
             const h2 = modal.querySelector('h2');
-            if (h2 && h2.innerText.includes('Details')) h2.innerText = '📊 Details';
+            if (h2 && h2.innerText.includes('Details')) h2.innerText = 'Details';
 
             const content = modal.querySelector('#analyticsContent') || modal.querySelector('.content');
             if (content && !document.getElementById('gridInjected')) {
@@ -2093,6 +2138,96 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <script src="inject_btn.js"></script>
+
+<script id="fog-modal-override">
+    // 1. ASSASSINATE THE PWA SERVICE WORKER CACHE TRAP
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+                registration.unregister();
+            }
+        });
+    }
+
+    // 2. HARD-OVERRIDE THE MODAL FUNCTION DIRECTLY IN HTML
+    window.openEventDetails = async function(eventId) {
+        try {
+            const [eventRes, attRes] = await Promise.all([
+                fetch('/api/events'),
+                fetch('/api/attendance/' + eventId)
+            ]);
+            
+            const events = await eventRes.json();
+            const attendanceList = await attRes.json();
+            const event = events.find(e => String(e.id) === String(eventId));
+            
+            if(!event) return alert("Event not found");
+
+            const totalCheckedIn = attendanceList.length;
+            const preRegCount = attendanceList.filter(a => a.type === 'Pre-Reg').length;
+            const walkInCount = attendanceList.filter(a => a.type === 'Walk-in').length;
+            const capacity = 100; 
+            const turnoutRate = Math.round((totalCheckedIn / capacity) * 100);
+
+            const detailsHtml = `
+                <div style="text-align: left; margin-bottom: 20px;">
+                    <h3 style="margin-top:0; color:#2c3e50; font-size: 20px;">${event.name}</h3>
+                    <p style="color:#7f8c8d; font-size:13px; margin-top:5px;">📅 ${event.event_date} &nbsp;|&nbsp; ⏰ ${event.time_start} &nbsp;|&nbsp; 📍 ${event.venue}</p>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;">
+                    <div style="background: #eaf4fc; border: 1px solid #cce5ff; border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="font-size: 12px; color: #5a7a9d; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">📊 Total</div>
+                        <div style="font-size: 28px; font-weight: bold; color: #1a5f9a;">${totalCheckedIn}</div>
+                    </div>
+                    <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="font-size: 12px; color: #7f8c8d; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">📈 Turnout Rate</div>
+                        <div style="font-size: 28px; font-weight: bold; color: #2c3e50;">${turnoutRate}%</div>
+                    </div>
+                    <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="font-size: 12px; color: #7f8c8d; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">📝 Pre-Reg</div>
+                        <div style="font-size: 28px; font-weight: bold; color: #2c3e50;">${preRegCount}</div>
+                    </div>
+                    <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="font-size: 12px; color: #7f8c8d; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;">🚶 Walk-in</div>
+                        <div style="font-size: 28px; font-weight: bold; color: #2c3e50;">${walkInCount}</div>
+                    </div>
+                </div>
+                
+                <h4 style="margin-top: 5px; margin-bottom: 10px; color: #34495e; border-bottom: 2px solid #ecf0f1; padding-bottom: 8px; text-align: left; font-size: 15px;">Attendance Log</h4>
+                <div style="max-height: 250px; overflow-y: auto; text-align: left; border: 1px solid #e9ecef; border-radius: 6px; padding: 10px; background: #fff;">
+                    ${attendanceList.length > 0 
+                        ? attendanceList.map(a => `
+                            <div style="padding: 10px 8px; border-bottom: 1px solid #f1f2f6; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong style="color: #2c3e50; font-size: 14px;">${a.full_name}</strong> 
+                                    <span style="font-size:11px; color:#7f8c8d; background: #f0f2f5; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">${a.type}</span>
+                                </div>
+                                <span style="color: #27ae60; font-size: 12px; font-weight: 600;">${new Date(a.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            </div>`).join('')
+                        : '<p style="text-align:center; color:#7f8c8d; margin:15px 0; font-size: 14px;">No attendees checked in yet.</p>'}
+                </div>
+            `;
+
+            document.getElementById('eventDetailsContent').innerHTML = detailsHtml;
+            document.getElementById('eventDetailsModal').style.display = 'flex';
+            
+        } catch (e) {
+            console.error(e);
+            alert("Error loading event details.");
+        }
+    };
+</script>
+
+<script>
+    // Kill the stuck PWA Service Worker
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) { registration.unregister(); }
+        });
+    }
+</script>
+<script src="fog_ui_extensions.js?v=1786338742978"></script>
 </body>
 
 

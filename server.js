@@ -3,6 +3,8 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const app = express();
+// FORCE DISABLE CACHE FOR DEVELOPMENT
+app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private'); next(); });
 const PORT = process.env.PORT || 3000;
 
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
