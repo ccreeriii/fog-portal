@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Pre-Registration</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; min-height: 100vh; align-items: center;}
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 480px; box-sizing: border-box; text-align: center; }
+        #eventBanner { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 15px; display: none; }
+        #eventInfo { background: #e8f4f8; padding: 15px; border-radius: 8px; color: #2c3e50; font-size: 14px; margin-bottom: 20px; white-space: pre-wrap; display: none; line-height: 1.5; text-align: left; }
+        .admin-edit-box { margin-bottom: 20px; display: none; background: #fff3cd; padding: 15px; border-radius: 8px; border: 1px solid #ffeeba; text-align: left; }
+        .admin-edit-box textarea, .admin-edit-box input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; margin-bottom: 10px; font-family: inherit; font-size: 14px; }
+        .choice-box { margin: 25px 0; }
+        .choice-btn { width: 48%; padding: 14px; background: #3498db; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 15px; }
+        .choice-btn:hover { background: #2980b9; }
+        .input-group { margin-bottom: 15px; text-align: left; }
+        label { display: block; font-size: 13px; font-weight: bold; color: #34495e; margin-bottom: 5px; }
+        input { width: 100%; padding: 12px; border: 1px solid #bdc3c7; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
+        input:focus { outline: none; border-color: #3498db; }
+        button.action-btn { width: 100%; padding: 14px; background: #27ae60; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; transition: background 0.3s; margin-top: 10px; }
+        button.action-btn:hover { background: #219653; }
+        #searchResults { max-height: 160px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; margin-top: 5px; display: none; text-align: left; }
+        .search-item { padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; background: #fafafa; }
+        .search-item:hover { background: #e2e8f0; }
+        #qrCanvas { margin: 20px auto; display: flex; justify-content: center; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: fit-content; min-height: 200px; min-width: 200px; align-items: center; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="card" id="mainCard">
+        <img id="eventBanner" src="" alt="Event Banner">
+        <h2 id="eventName" style="margin-top:0; color:#2c3e50;">Event Pre-Registration</h2>
+        
+        <div id="eventInfo"></div>
+        
+        <div class="admin-edit-box" id="adminEditArea">
+            <label style="color:#856404; font-size:13px; margin-bottom:5px;">🔒 ADMIN MODE: Edit Event Details</label>
+            <label style="font-size:12px;">Upload Event Banner:</label>
+            <input type="file" id="bannerFileInput" accept="image/*" onchange="handleBannerUpload(event)" style="margin-bottom:8px; background:white; font-size:12px;">
+            <input type="text" id="adminBannerInput" placeholder="Or paste image URL / Base64 here">
+            <label style="font-size:12px;">Additional Info Paragraph:</label>
+            <textarea id="adminInfoInput" placeholder="Enter event instructions, schedule, or details..."></textarea>
+            <button onclick="saveAdminDetails()" style="background: #f39c12; color:white; border:none; padding: 10px; border-radius:6px; font-weight:bold; cursor:pointer; width:100%;">💾 Save Details to Event Page</button>
+        </div>
+
+        <div class="choice-box" id="choicePrompt">
+            <p style="font-weight: bold; color: #2c3e50; font-size: 18px; margin-bottom: 20px;">Are you new here?</p>
+            <div style="display: flex; justify-content: space-between;">
+                <button class="choice-btn" onclick="selectMemberType('new')" style="background: #27ae60;">Yes (I'm New)</button>
+                <button class="choice-btn" onclick="selectMemberType('existing')">No (Returning)</button>
+            </div>
+        </div>
+
+        <div id="newMemberForm" class="hidden">
+            <h3 style="color: #34495e; text-align: left; margin-bottom: 15px;">Registration Form</h3>
+            <div class="input-group">
+                <label>Full Name *</label>
+                <input type="text" id="regName" required placeholder="Enter full name">
+            </div>
+            <div class="input-group">
+                <label>Age *</label>
+                <input type="number" id="regAge" required placeholder="Enter age">
+            </div>
+            <div class="input-group">
+                <label>Mobile Number (Optional)</label>
+                <input type="tel" id="regMobile" placeholder="09XX XXX XXXX">
+            </div>
+            <div class="input-group">
+                <label>Email Address (Optional)</label>
+                <input type="email" id="regEmail" placeholder="example@email.com">
+            </div>
+            <div class="input-group">
+                <label>Birthday (Optional)</label>
+                <input type="date" id="regBirthday">
+            </div>
+            <button class="action-btn" onclick="submitNewMember()" id="btnSubmitNew">Submit & Get QR Pass</button>
+            <button onclick="location.reload()" style="background:none; border:none; color:#7f8c8d; cursor:pointer; margin-top:15px; text-decoration:underline;">← Start Over</button>
+        </div>
+
+        <div id="returningMemberSearch" class="hidden">
+            <h3 style="color: #34495e; text-align: left; margin-bottom: 15px;">Find Your Profile</h3>
+            <div class="input-group">
+                <label>Search Your Name:</label>
+                <input type="text" id="memberSearchInput" placeholder="Start typing your name..." oninput="searchMembers(this.value)">
+                <div id="searchResults"></div>
+            </div>
+            <p style="font-size: 13px; color: #7f8c8d; margin-top: 20px; text-align:left;">
+                If your name is not in the list, <a href="#" onclick="selectMemberType('new'); return false;" style="color: #3498db; font-weight: bold;">click here to fill up the registration form.</a>
+            </p>
+            <button onclick="location.reload()" style="background:none; border:none; color:#7f8c8d; cursor:pointer; margin-top:15px; text-decoration:underline;">← Start Over</button>
+        </div>
+    </div>
+
+    <div class="card hidden" id="successArea">
+        <h2 style="color: #27ae60; margin-top:0;">Registration Complete!</h2>
+        <p style="color: #7f8c8d;">Save your QR pass to scan at the entrance.</p>
+        <div id="qrCanvas"><span style="color:#bdc3c7; font-size:13px;">Generating Image...</span></div>
+        <button class="action-btn" onclick="downloadQR()" style="background: #27ae60; margin-bottom: 15px;">💾 Download QR Pass</button>
+        <button onclick="location.reload()" style="background: #95a5a6;" class="action-btn">Register Another Person</button>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const eventId = urlParams.get('eventId');
+        let allYouth = [];
+
+        if (eventId) {
+            fetch('/api/event/' + eventId)
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.name) document.getElementById('eventName').innerText = data.name + " Registration";
+                    if (data && (data.prereg_banner || data.poster)) {
+                        const banner = document.getElementById('eventBanner');
+                        banner.src = data.prereg_banner || data.poster;
+                        banner.style.display = 'block';
+                    }
+                    if (data && data.additional_info) {
+                        const infoBox = document.getElementById('eventInfo');
+                        infoBox.innerText = data.additional_info;
+                        infoBox.style.display = 'block';
+                    }
+                    
+                    // SILENT ADMIN CHECK (No annoying popups for public users)
+                    const user = JSON.parse(localStorage.getItem('fog_user') || 'null');
+                    if (user && (user.isSuperAdmin || user.username === 'registrationteam')) {
+                        document.getElementById('adminEditArea').style.display = 'block';
+                        document.getElementById('adminBannerInput').value = data.prereg_banner || data.poster || '';
+                        document.getElementById('adminInfoInput').value = data.additional_info || '';
+                    }
+                }).catch(e => console.error("Event fetch warning", e));
+
+            fetch('/api/youth_search')
+                .then(r => r.json())
+                .then(data => { allYouth = Array.isArray(data) ? data : []; })
+                .catch(e => { allYouth = []; });
+        } else {
+            document.getElementById('eventName').innerText = "Event Not Found";
+        }
+
+        function handleBannerUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) { document.getElementById('adminBannerInput').value = e.target.result; };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        async function saveAdminDetails() {
+            const banner = document.getElementById('adminBannerInput').value;
+            const info = document.getElementById('adminInfoInput').value;
+            const res = await fetch('/api/event/update-details', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ event_id: eventId, prereg_banner: banner, additional_info: info })
+            });
+            const data = await res.json();
+            if (data.success) location.reload();
+        }
+
+        function selectMemberType(type) {
+            document.getElementById('choicePrompt').style.display = 'none';
+            if (type === 'new') {
+                document.getElementById('newMemberForm').classList.remove('hidden');
+            } else {
+                document.getElementById('returningMemberSearch').classList.remove('hidden');
+            }
+        }
+
+        function searchMembers(query) {
+            const resBox = document.getElementById('searchResults');
+            if (!query || query.length < 2) { resBox.style.display = 'none'; return; }
+            
+            const filtered = allYouth.filter(m => (m.name || m.full_name || '').toLowerCase().includes(query.toLowerCase()));
+            if (filtered.length === 0) {
+                resBox.innerHTML = '<div style="padding:12px; color:#e74c3c;">No matches found. Check the link below to register.</div>';
+                resBox.style.display = 'block';
+                return;
+            }
+
+            resBox.innerHTML = filtered.map(m => `
+                <div class="search-item" onclick="registerExisting('${m.name || m.full_name}', '${m.age || 18}')">
+                    <strong>${m.name || m.full_name}</strong> (Age: ${m.age || 'N/A'})
+                </div>
+            `).join('');
+            resBox.style.display = 'block';
+        }
+
+        async function registerExisting(name, age) { await submitData(name, age, '', '', ''); }
+
+        async function submitNewMember() {
+            const name = document.getElementById('regName').value.trim();
+            const age = document.getElementById('regAge').value.trim();
+            if (!name || !age) return alert("Full Name and Age are required.");
+            await submitData(name, age, document.getElementById('regMobile').value.trim(), document.getElementById('regEmail').value.trim(), document.getElementById('regBirthday').value);
+        }
+
+        async function submitData(name, age, mobile, email, birthday) {
+            if(!eventId) return alert("Error: No event selected.");
+            const btn = document.getElementById('btnSubmitNew');
+            if(btn) btn.innerText = "Processing...";
+
+            try {
+                const res = await fetch('/api/register', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ event_id: eventId, name, age, mobile, email, birthday })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    document.getElementById('mainCard').classList.add('hidden');
+                    document.getElementById('successArea').classList.remove('hidden');
+                    const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=" + encodeURIComponent(data.qr_data);
+                    document.getElementById('qrCanvas').innerHTML = '<img id="qrImage" src="' + qrUrl + '" alt="QR Pass" crossorigin="anonymous" style="border-radius: 8px;">';
+                } else {
+                    alert("Error submitting registration.");
+                    if(btn) btn.innerText = "Submit & Get QR Pass";
+                }
+            } catch (e) {
+                alert("Network error.");
+                if(btn) btn.innerText = "Submit & Get QR Pass";
+            }
+        }
+
+        async function downloadQR() {
+            const img = document.getElementById('qrImage');
+            if (!img || !img.src) return alert("QR Code is still generating...");
+            try {
+                const res = await fetch(img.src);
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'FOG-Pass.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } catch (e) { window.open(img.src, '_blank'); }
+        }
+    </script>
+</body>
+</html>
