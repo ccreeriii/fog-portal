@@ -82,10 +82,22 @@ db.serialize(() => {
         username TEXT, action TEXT, details TEXT,
         created_at DATETIME
     )`);
+    
+    // NEW: Pre-registration workflow table
+    db.run(`CREATE TABLE IF NOT EXISTS pre_registrations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        youth_id INTEGER, event_id INTEGER, created_at DATETIME,
+        UNIQUE(youth_id, event_id)
+    )`);
 
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN materials_url TEXT`, () => {});
+    
+    // Safely append Pre-registration settings schema to events
+    db.run(`ALTER TABLE events ADD COLUMN prereg_banner TEXT`, () => {});
+    db.run(`ALTER TABLE events ADD COLUMN prereg_title TEXT`, () => {});
+    db.run(`ALTER TABLE events ADD COLUMN prereg_info TEXT`, () => {});
 
     const superadminPermissions = JSON.stringify([
         'access_checkin', 'access_directory', 'access_events',
@@ -309,19 +321,40 @@ app.get('/api/events/:id/analytics', (req, res) => {
     const eventId = req.params.id;
     db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
         if (err || !event) return res.status(404).json({ error: 'Event not found' });
+        
         db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
             const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
             
-            // NOTE: Safely added "y.age" to this SQL query so the frontend Modal Age Filter functions natively.
+            // Appended y.age so the modal search filter works natively
             const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
             
             db.all(sqlRoster, [eventId], (err3, roster) => {
                 if (err3) return res.status(500).json({ error: err3.message });
-                const totalTurnout = roster.length;
-                const walkins = roster.filter(r => r.is_walkin === 1).length;
-                const preReg = totalTurnout - walkins;
-                const turnoutPercentage = ((totalTurnout / (totalDirectory || 1)) * 100).toFixed(1);
-                res.json({ event, totalDirectory, totalTurnout, turnoutPercentage, walkins, preReg, roster });
+                
+                // Fetch the new Pre-Registration data count
+                db.get(`SELECT COUNT(*) as prereg_count FROM pre_registrations WHERE event_id = ?`, [eventId], (err4, preRegRow) => {
+                    const totalTurnout = roster.length;
+                    const walkins = roster.filter(r => r.is_walkin === 1).length;
+                    const checkedInPreRegs = totalTurnout - walkins;
+                    const totalPreRegistered = preRegRow ? preRegRow.prereg_count : 0;
+                    
+                    // Turnout Rate computed strictly via Checked-in Pre-Reg vs Total Pre-Reg
+                    let turnoutPercentage = '0.0';
+                    if (totalPreRegistered > 0) {
+                        turnoutPercentage = ((checkedInPreRegs / totalPreRegistered) * 100).toFixed(1);
+                    }
+
+                    res.json({ 
+                        event, 
+                        totalDirectory, 
+                        totalTurnout, 
+                        turnoutPercentage, 
+                        walkins, 
+                        preReg: checkedInPreRegs, 
+                        totalPreRegistered, 
+                        roster 
+                    });
+                });
             });
         });
     });
@@ -333,7 +366,7 @@ app.post('/api/events', (req, res) => {
         [name, event_date, time_start, venue, poster, photos_url, materials_url, getManilaTime()],
         function (err) {
             if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'CREATE_EVENT', `Published gathering '${name}'`);
+            logActivity(actor, 'CREATE_EVENT', `Published event '${name}'`);
             res.json({ id: this.lastID });
         }
     );
@@ -368,6 +401,26 @@ app.delete('/api/events/:id', (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
         logActivity(actor, 'DELETE_EVENT', `Deleted event record (ID: ${req.params.id})`);
         res.json({ deleted: this.changes });
+    });
+});
+
+// PRE-REGISTRATION ENDPOINTS (NEW)
+app.post('/api/events/:id/prereg-settings', (req, res) => {
+    const { banner, title, info, actor } = req.body;
+    db.run(`UPDATE events SET prereg_banner = ?, prereg_title = ?, prereg_info = ? WHERE id = ?`,
+        [banner, title, info, req.params.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor || 'System', 'UPDATE_PREREG', `Updated pre-registration settings for Event ID ${req.params.id}`);
+            res.json({ success: true });
+    });
+});
+
+app.post('/api/preregister', (req, res) => {
+    const { event_id, youth_id } = req.body;
+    db.run(`INSERT OR IGNORE INTO pre_registrations (event_id, youth_id, created_at) VALUES (?, ?, ?)`,
+        [event_id, youth_id, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
     });
 });
 
@@ -429,7 +482,6 @@ app.delete('/api/attendance/:id', (req, res) => {
     });
 });
 
-
 app.get('/api/directory/export', (req, res) => {
     db.all("SELECT * FROM members ORDER BY full_name ASC", [], (err, rows) => {
         if (err || !rows || rows.length === 0) {
@@ -437,6 +489,7 @@ app.get('/api/directory/export', (req, res) => {
         } else { sendCSV(res, rows); }
     });
 });
+
 function sendCSV(res, rows) {
     let csv = 'Name,Age,Role,Phone,Email,Status\n';
     (rows || []).forEach(r => { csv += `"${r.full_name||r.name||''}","${r.age||''}","${r.role||''}","${r.phone||r.mobile||''}","${r.email||''}","${r.status||''}"\n`; });
@@ -444,63 +497,6 @@ function sendCSV(res, rows) {
     res.setHeader('Content-Disposition', 'attachment; filename=Community_Directory.csv');
     res.status(200).send(csv);
 }
-
-
-// --- Pre-Registration & Event Management Workflow ---
-app.get('/api/event/:id', (req, res) => {
-    db.run("ALTER TABLE events ADD COLUMN additional_info TEXT", () => {
-        db.get("SELECT id, name, event_date, time_start, venue, poster as prereg_banner, additional_info FROM events WHERE id = ? OR CAST(id AS TEXT) = ?", [req.params.id, req.params.id], (e, r) => {
-            if (e || !r) {
-                db.get("SELECT id, name, event_date, time_start, venue, poster FROM events WHERE id = ? OR CAST(id AS TEXT) = ?", [req.params.id, req.params.id], (err2, row2) => {
-                    res.json(row2 || {});
-                });
-            } else {
-                res.json(r);
-            }
-        });
-    });
-});
-
-app.post('/api/event/update-details', (req, res) => {
-    const { event_id, prereg_banner, additional_info } = req.body;
-    db.run("ALTER TABLE events ADD COLUMN additional_info TEXT", () => {
-        db.run("UPDATE events SET poster = COALESCE(?, poster), additional_info = COALESCE(?, additional_info) WHERE id = ? OR CAST(id AS TEXT) = ?", 
-        [prereg_banner, additional_info, event_id, String(event_id)], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true });
-        });
-    });
-});
-
-app.get('/api/youth_search', (req, res) => {
-    db.all("SELECT id, name, age FROM youth", [], (err, rows) => {
-        res.json(rows || []);
-    });
-});
-
-app.post('/api/register', (req, res) => {
-    const { event_id, name, age, email, birthday, mobile } = req.body;
-    db.get("SELECT id, qr_code FROM youth WHERE LOWER(name) = LOWER(?) AND age = ?", [name, age], (err, row) => {
-        let qr = row ? row.qr_code : `FOG-${Date.now()}-${Math.floor(Math.random()*1000)}`;
-        
-        const logAttendance = (yId) => {
-            db.run("INSERT INTO attendance (event_id, youth_id, full_name, type, checked_in, checked_in_at) VALUES (?, ?, ?, 'Pre-Reg', 0, datetime('now', '+8 hours'))", 
-            [event_id, yId, name], () => {
-                res.json({ success: true, qr_data: qr, isDuplicate: !!row });
-            });
-        };
-
-        if (row) {
-            if (!qr) { qr = `FOG-${row.id}`; db.run("UPDATE youth SET qr_code = ? WHERE id = ?", [qr, row.id]); }
-            logAttendance(row.id);
-        } else {
-            db.run("INSERT INTO youth (name, age, email, mobile, qr_code) VALUES (?, ?, ?, ?, ?)", 
-            [name, age, email || '', mobile || '', qr], function(iErr) {
-                logAttendance(this.lastID);
-            });
-        }
-    });
-});
 
 app.listen(PORT, () => {
     console.log(`Server running safely on Port ${PORT}`);

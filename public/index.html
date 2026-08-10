@@ -29,10 +29,7 @@
 
         nav { display: flex; justify-content: center; background: #FFFFFF; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 5px; padding: 10px; }
         nav button { background: transparent; border: none; padding: 10px 18px; font-weight: 600; color: var(--text-muted); cursor: pointer; border-radius: 6px; transition: all 0.2s; }
-        
-        /* FEATURE 1: Active Nav Highlight */
-        nav button.active { background-color: #27ae60 !important; color: #ffffff !important; font-weight: bold !important; }
-        nav button:hover:not(.active) { background: rgba(255,107,0,0.1); color: var(--primary); }
+        nav button:hover, nav button.active { background: rgba(255,107,0,0.1); color: var(--primary); }
 
         .container { max-width: 1000px; margin: 25px auto; padding: 0 15px; }
         .tab-content { display: none; }
@@ -65,11 +62,6 @@
         .badge-green { background: rgba(16,185,129,0.15); color: var(--success); }
         .badge-blue { background: rgba(59,130,246,0.15); color: #3B82F6; }
 
-        /* FEATURE 2: Event Tabs Styling */
-        .event-tabs-container { display: flex; gap: 10px; margin-bottom: 20px; }
-        .event-tab-btn { padding: 10px 15px; cursor: pointer; background-color: #f1f1f1; border: 1px solid #ccc; border-radius: 5px; transition: all 0.2s ease; font-weight: 600; color: var(--text-muted); flex: 1; }
-        .event-tab-btn.active-tab { background-color: #27ae60; color: #ffffff; border-color: #27ae60; }
-
         .events-grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; margin-top: 15px; }
         .events-list-view { display: block; margin-top: 15px; }
         .event-card { border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: #FFF; display: flex; flex-direction: column; transition: transform 0.2s; }
@@ -90,17 +82,42 @@
 
         .search-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 10px; }
         .search-item:hover { background: var(--bg-light); }
+
         .avatar-circle { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; background: var(--bg-light); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--text-muted); flex-shrink: 0; cursor: pointer; }
 
         .checkin-sub-tab { display: none; }
         .checkin-sub-tab.active { display: block; }
-    </style>
+
+    /* --- Event Analytics Grid CSS --- */
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin: 20px 0;
+    }
+    .metric-card {
+        border-radius: 8px;
+        padding: 15px 5px;
+        text-align: center;
+        color: white;
+    }
+    .metric-card h4 {
+        margin: 5px 0 0 0;
+        font-size: 11px;
+        font-weight: normal;
+    }
+    .metric-card p {
+        margin: 0;
+        font-size: 22px;
+        font-weight: bold;
+    }
+</style>
 </head>
 <body>
 
 <header>
     <h1><span>FIRE OF GOD</span> MINISTRIES</h1>
-    <p>Community Portal & Gathering Check-in System</p>
+    <p>Community Portal & Event Check-in System</p>
 </header>
 
 <nav id="mainNav">
@@ -109,6 +126,52 @@
 </nav>
 
 <div class="container">
+
+    <div id="preregPublicTab" class="tab-content">
+        <div class="card" style="max-width: 600px; margin: 0 auto; overflow: hidden; padding: 0;">
+            <img id="preregPublicBanner" src="" style="width: 100%; max-height: 250px; object-fit: cover; display: none;">
+            <div style="padding: 24px; text-align: center;">
+                <h2 id="preregPublicTitle" style="color: var(--primary); border:none;">Event Pre-Registration</h2>
+                <p id="preregPublicInfo" style="color: var(--text-muted); margin-bottom: 20px;"></p>
+
+                <div id="preregStep1">
+                    <h3 style="margin-bottom: 15px;">Have you attended FOG before?</h3>
+                    <button class="btn btn-primary" style="width:100%; margin-bottom: 10px; padding: 15px;" onclick="showPreregStep(2)">Yes, I have</button>
+                    <button class="btn btn-secondary" style="width:100%; background: #34495e; padding: 15px;" onclick="showPreregStep(3)">No, I'm new</button>
+                    <button class="btn btn-outline" style="margin-top: 25px;" onclick="closePublicPrereg()">Cancel / Back to Home</button>
+                </div>
+
+                <div id="preregStep2" style="display:none; text-align: left;">
+                    <h3 style="margin-bottom: 15px;">Find Your Name</h3>
+                    <input type="text" id="preregSearchInput" class="form-control" placeholder="Type your name..." onkeyup="filterPreregSearch()">
+                    <div id="preregSearchResults" style="max-height: 200px; overflow-y: auto; margin-top: 15px; border: 1px solid var(--border-color); border-radius: 6px; display: none;"></div>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 15px;">Cannot find your name? <a href="#" style="color: var(--primary);" onclick="showPreregStep(3)">Click here</a></p>
+                    <button class="btn btn-outline" style="margin-top: 15px;" onclick="showPreregStep(1)">Back</button>
+                </div>
+
+                <div id="preregStep3" style="display:none; text-align: left;">
+                    <h3 style="margin-bottom: 15px;">New Registration</h3>
+                    <form onsubmit="submitNewPrereg(event)">
+                        <div class="form-group"><label>Full Name *</label><input type="text" id="preregNewName" class="form-control" required></div>
+                        <div style="display:flex; gap:15px;">
+                            <div class="form-group" style="flex:1;"><label>Age *</label><input type="number" id="preregNewAge" class="form-control" required></div>
+                            <div class="form-group" style="flex:1;"><label>Mobile Number</label><input type="text" id="preregNewMobile" class="form-control"></div>
+                        </div>
+                        <div class="form-group"><label>Email Address</label><input type="email" id="preregNewEmail" class="form-control"></div>
+                        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Register & Pre-Register for Event</button>
+                    </form>
+                    <button class="btn btn-outline" style="margin-top: 15px;" onclick="showPreregStep(1)">Back</button>
+                </div>
+
+                <div id="preregStepSuccess" style="display:none;">
+                    <h2 style="color: var(--success); border: none;">✅ Pre-Registered!</h2>
+                    <p>We are excited to see you there.</p>
+                    <button class="btn btn-outline" style="margin-top: 20px;" onclick="closePublicPrereg()">Back to Home</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <div id="publicReg" class="tab-content active">
         <div class="card">
@@ -166,7 +229,7 @@
             <form onsubmit="handleLogin(event)">
                 <div class="form-group">
                     <label>Username / Unique Pass ID</label>
-                    <input type="text" id="loginUser" class="form-control" placeholder="Unique Pass ID or Username" required>
+                    <input type="text" id="loginUser" class="form-control" placeholder="Unique Pass ID (e.g., FOG-MEMBER-001) or Username" required>
                 </div>
                 <div class="form-group">
                     <label>Password</label>
@@ -191,7 +254,7 @@
 
         <div id="adminBackupCard" class="card" style="display: none; border-color: var(--danger);">
             <h2 style="color: var(--danger);">System Backups & Restore</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Latest 10 daily/hourly database backups.</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Latest 10 daily/hourly database backups. Restoring will auto-backup your current live state first.</p>
             <div id="backupListContainer" style="overflow-x: auto;"></div>
         </div>
 
@@ -246,18 +309,22 @@
                 <select id="activeEventDropdown" class="form-control" onchange="updateActiveEventBanner()"></select>
             </div>
 
-            <div id="checkinCounters" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+            <div id="checkinCounters" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
                 <div style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 10px; border-radius: 8px; text-align: center;">
                     <div id="liveTotal" style="font-size: 1.25rem; font-weight: 800; color: var(--primary);">0</div>
-                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Check-Ins</div>
+                    <div style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Checked-In</div>
+                </div>
+                <div style="background: rgba(16,185,129,0.1); border: 1px solid var(--success); padding: 10px; border-radius: 8px; text-align: center;">
+                    <div id="livePreRegTotal" style="font-size: 1.25rem; font-weight: 800; color: var(--success);">0</div>
+                    <div style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Pre-Reg'd</div>
                 </div>
                 <div style="background: var(--bg-light); border: 1px solid var(--border-color); padding: 10px; border-radius: 8px; text-align: center;">
                     <div id="livePreReg" style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">0</div>
-                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Pre-Reg</div>
+                    <div style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Arrived</div>
                 </div>
                 <div style="background: var(--bg-light); border: 1px solid var(--border-color); padding: 10px; border-radius: 8px; text-align: center;">
                     <div id="liveWalkin" style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">0</div>
-                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Walk-Ins</div>
+                    <div style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Walk-Ins</div>
                 </div>
             </div>
 
@@ -306,9 +373,7 @@
     <div id="directoryTab" class="tab-content">
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
-                <h2 style="margin: 0; border: none; padding: 0;">Community Directory
-                    <button class="btn btn-primary btn-sm" style="margin-left: 15px; background: #27ae60;" onclick="window.location.href = '/api/directory/export'">📊 Export CSV</button>
-                </h2>
+                <h2 style="margin: 0; border: none; padding: 0;">Community Directory</h2>
                 <div id="directoryTotalCount" class="badge badge-blue" style="font-size: 0.85rem; padding: 6px 12px;">Total Registered All Ages: 0</div>
             </div>
 
@@ -331,89 +396,65 @@
                 <input type="text" id="directorySearchInput" class="form-control" placeholder="Search directory by name or ID..." oninput="filterDirectory()">
             </div>
 
-            <div id="dirPagerControls" style="display: flex; gap: 15px; align-items: center; margin: 15px 0; background: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); font-weight: bold; font-size: 14px;">
-                <label>Entries per page:</label>
-                <select id="dirPerPage" class="form-control" style="width: 80px;" onchange="dirPerPage = parseInt(this.value); dirCurrentPage = 1; filterDirectory();">
-                    <option value="10">10</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="999999">All</option>
-                </select>
-                <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
-                    <button id="dirPrev" class="btn btn-outline btn-sm" onclick="if(dirCurrentPage > 1) { dirCurrentPage--; filterDirectory(); }">◀ Prev</button>
-                    <span id="dirPageInd" style="color: var(--text-main);">Page 1</span>
-                    <button id="dirNext" class="btn btn-outline btn-sm" onclick="dirCurrentPage++; filterDirectory();">Next ▶</button>
-                </div>
-            </div>
-
             <div id="directoryTableContainer" style="overflow-x: auto;"></div>
         </div>
     </div>
 
     <div id="eventsTab" class="tab-content">
-        <div class="event-tabs-container">
-            <button class="event-tab-btn active-tab" id="btnTabPublished" onclick="switchEventSubTab('published')">📅 Published Gatherings</button>
-            <button class="event-tab-btn" id="btnTabCreate" onclick="switchEventSubTab('create')">➕ Create New Gathering</button>
-        </div>
-
-        <div id="subTabCreate" style="display: none;">
-            <div class="card">
-                <h2>Create New Gathering / Event</h2>
-                <form onsubmit="handleCreateEvent(event)">
-                    <div class="form-group">
-                        <label>Event Name *</label>
-                        <input type="text" id="evtName" class="form-control" required>
+        <div class="card">
+            <h2>Create New Event</h2>
+            <form onsubmit="handleCreateEvent(event)">
+                <div class="form-group">
+                    <label>Event Name *</label>
+                    <input type="text" id="evtName" class="form-control" required>
+                </div>
+                <div style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Date *</label>
+                        <input type="date" id="evtDate" class="form-control" required>
                     </div>
-                    <div style="display: flex; gap: 15px;">
-                        <div class="form-group" style="flex: 1;">
-                            <label>Date *</label>
-                            <input type="date" id="evtDate" class="form-control" required>
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label>Time Start</label>
-                            <input type="time" id="evtTime" class="form-control">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Venue / Location</label>
-                        <input type="text" id="evtVenue" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>Event Poster Image</label>
-                        <input type="file" id="evtPoster" class="form-control" accept="image/*">
-                    </div>
-                    <div class="form-group">
-                        <label>Google Photos Album URL (Optional)</label>
-                        <input type="url" id="evtPhotosUrl" class="form-control" placeholder="https://photos.app.goo.gl/...">
-                    </div>
-                    <div class="form-group">
-                        <label>Google Drive Folder URL (Optional)</label>
-                        <input type="url" id="evtMaterialsUrl" class="form-control" placeholder="https://drive.google.com/...">
-                    </div>
-                    <button type="submit" class="btn btn-primary">Publish Event</button>
-                </form>
-            </div>
-        </div>
-
-        <div id="subTabPublished" style="display: block;">
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
-                    <h2>Published Gatherings</h2>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button id="viewBtnList" class="btn btn-outline btn-sm active" onclick="setEventViewMode('list')">☰ List View</button>
-                        <button id="viewBtnGrid" class="btn btn-outline btn-sm" onclick="setEventViewMode('grid')">▦ Grid View</button>
-                        <button id="viewBtnCal" class="btn btn-outline btn-sm" onclick="setEventViewMode('calendar')">📅 Calendar View</button>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Time Start</label>
+                        <input type="time" id="evtTime" class="form-control">
                     </div>
                 </div>
-
-                <div id="calendarControls" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 15px;">
-                    <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(-1)">◀ Prev</button>
-                    <h3 id="calendarMonthTitle" style="font-size: 1.1rem; color: var(--primary);"></h3>
-                    <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(1)">Next ▶</button>
+                <div class="form-group">
+                    <label>Venue / Location</label>
+                    <input type="text" id="evtVenue" class="form-control">
                 </div>
+                <div class="form-group">
+                    <label>Event Poster Image</label>
+                    <input type="file" id="evtPoster" class="form-control" accept="image/*">
+                </div>
+                <div class="form-group">
+                    <label>Google Photos Album URL (Optional)</label>
+                    <input type="url" id="evtPhotosUrl" class="form-control" placeholder="https://photos.app.goo.gl/...">
+                </div>
+                <div class="form-group">
+                    <label>Google Drive Folder URL (Optional)</label>
+                    <input type="url" id="evtMaterialsUrl" class="form-control" placeholder="https://drive.google.com/...">
+                </div>
+                <button type="submit" class="btn btn-primary">Publish Event</button>
+            </form>
+        </div>
 
-                <div id="eventsListContainer"></div>
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                <h2>Published Events</h2>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button id="viewBtnList" class="btn btn-outline btn-sm active" onclick="setEventViewMode('list')">☰ List View</button>
+                    <button id="viewBtnGrid" class="btn btn-outline btn-sm" onclick="setEventViewMode('grid')">▦ Grid View</button>
+                    <button id="viewBtnCal" class="btn btn-outline btn-sm" onclick="setEventViewMode('calendar')">📅 Calendar View</button>
+                </div>
             </div>
+
+            <div id="calendarControls" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(-1)">◀ Prev</button>
+                <h3 id="calendarMonthTitle" style="font-size: 1.1rem; color: var(--primary);"></h3>
+                <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(1)">Next ▶</button>
+            </div>
+
+            <div id="eventsListContainer"></div>
         </div>
     </div>
 
@@ -467,12 +508,39 @@
 
 </div>
 
+<div id="preregSettingsModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closePreregSettingsModal()" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
+        <h2>Pre-Registration Page Setup</h2>
+        <form id="preregSettingsForm" onsubmit="savePreregSettings(event)">
+            <input type="hidden" id="preregSetEventId">
+            <div class="form-group">
+                <label>Page Banner (Image)</label>
+                <input type="file" id="preregSetBanner" class="form-control" accept="image/*">
+            </div>
+            <div class="form-group">
+                <label>Page Title</label>
+                <input type="text" id="preregSetTitle" class="form-control" placeholder="e.g., FOG Youth Camp 2026 Registration">
+            </div>
+            <div class="form-group">
+                <label>Additional Information</label>
+                <textarea id="preregSetInfo" class="form-control" rows="3" placeholder="Time, venue, what to bring..."></textarea>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button type="button" class="btn btn-secondary" style="background:#8e44ad;" onclick="openPublicPreregFromSettings()">👁️ View Public Form</button>
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div id="imageViewerModal" class="modal" style="background: rgba(0,0,0,0.85); z-index: 9999;" onclick="closeImageViewer()">
     <img id="enlargedImage" style="max-width: 90%; max-height: 90vh; border-radius: 8px; object-fit: contain;">
 </div>
 
 <div id="fastEditProfileModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Edit Profile</h2>
         <form id="fastEditProfileForm" onsubmit="event.preventDefault();">
             <input type="hidden" id="fastEditMemberId">
@@ -517,7 +585,8 @@
 
 <div id="editEventModal" class="modal">
     <div class="modal-content">
-        <h2>Edit Gathering / Event</h2>
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
+        <h2>Edit Event</h2>
         <form id="editEventForm" onsubmit="event.preventDefault();">
             <input type="hidden" id="editEvtId">
             <div class="form-group">
@@ -560,6 +629,7 @@
 
 <div id="assignPermissionModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Assign User Permissions</h2>
         <div id="permModalUserBanner" style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px 16px; border-radius: 8px; font-weight: 700; color: var(--primary); margin-bottom: 15px;"></div>
 
@@ -587,6 +657,7 @@
 
 <div id="editMemberModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Edit Member Profile</h2>
         <form onsubmit="event.preventDefault();">
             <input type="hidden" id="editMemberId">
@@ -630,33 +701,36 @@
 
 <div id="eventAnalyticsModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 20px;">
             <div id="analyticsModalPoster" style="width: 80px; height: 80px; background: #FFF; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); flex-shrink: 0; display:flex; align-items:center; justify-content:center;"></div>
             <div style="flex: 1;">
-                <h2 id="analyticsEventTitle" style="margin-bottom: 5px;">📊 Event Details</h2>
+                <h2 id="analyticsEventTitle" style="margin-bottom: 5px;">Event Analytics</h2>
                 <p id="analyticsEventMeta" style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0; margin-bottom: 8px;"></p>
                 <div id="analyticsEventLinks" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
             </div>
         </div>
 
-        <div class="analytics-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
-            <div class="stat-card" style="background: linear-gradient(135deg, #3498db, #2980b9); color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
-                <h3 id="statTotalTurnout" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px; font-weight: bold;">Total Check-ins</p>
+        <div class="metric-grid">
+            <div style="background: #3498db; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                <h3 id="statTotalTurnout" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px;">Checked-In</p>
             </div>
-            <div class="stat-card" style="background: linear-gradient(135deg, #2ecc71, #27ae60); color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
-                <h3 id="statPreReg" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px; font-weight: bold;">Pre-Reg</p>
+            <div style="background: #2ecc71; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                <h3 id="statTotalPreReg" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px;">Pre-Registered</p>
             </div>
-            <div class="stat-card" style="background: linear-gradient(135deg, #f1c40f, #f39c12); color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
-                <h3 id="statWalkin" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px; font-weight: bold;">Walk-ins</p>
+            <div style="background: #f39c12; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                <h3 id="statWalkins" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px;">Walk-ins</p>
             </div>
-            <div class="stat-card" style="background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
-                <h3 id="statTurnoutPercent" style="margin: 0; font-size: 22px;">0%</h3><p style="margin: 5px 0 0; font-size: 11px; font-weight: bold;">Turnout Rate</p>
+            <div style="background: #9b59b6; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                <h3 id="statTurnoutPercent" style="margin: 0; font-size: 22px;">0%</h3><p style="margin: 5px 0 0; font-size: 11px;">Turnout Rate</p>
             </div>
         </div>
 
+        <h3 style="font-size: 1rem; margin-top: 20px; margin-bottom: 8px; color: var(--text-main);">Checked-In Roster</h3>
+        
         <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-            <input type="text" id="attSearch" placeholder="🔍 Search checked-in name..." class="form-control" style="flex: 1;" oninput="filterModalRoster()">
-            <select id="attAge" class="form-control" style="width: 130px;" onchange="filterModalRoster()">
+            <input type="text" id="attSearchNative" placeholder="🔍 Search roster by name or ID..." class="form-control" style="flex: 1;" oninput="filterAnalyticsRoster()">
+            <select id="attAgeNative" class="form-control" style="width: 130px;" onchange="filterAnalyticsRoster()">
                 <option value="all">All Ages</option>
                 <option value="mini">Minis (7-12)</option>
                 <option value="youth">Youth (13-21)</option>
@@ -664,7 +738,7 @@
             </select>
         </div>
 
-        <div id="analyticsRosterContainer" style="max-height: 250px; overflow-y: auto;"></div>
+        <div id="analyticsRosterContainer" style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px;"></div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px; flex-wrap: wrap; gap: 10px;">
             <button type="button" class="btn btn-outline" onclick="exportAnalyticsCSV()">📥 Export List (CSV)</button>
@@ -678,6 +752,7 @@
 
 <div id="viewProfileModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Member Profile</h2>
         <div style="text-align: center; margin-bottom: 15px;">
             <div style="display: flex; justify-content: center; margin-bottom: 10px;">
@@ -699,6 +774,7 @@
 
 <div id="confirmModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Confirm Action</h2>
         <div id="confirmSummary" class="modal-summary">Summary of action...</div>
         <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
@@ -710,6 +786,7 @@
 
 <div id="editAttendanceModal" class="modal">
     <div class="modal-content">
+        <span class="close-modal" onclick="this.closest('.modal').style.display='none'" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
         <h2>Edit Attendance Record</h2>
         <form onsubmit="event.preventDefault();">
             <input type="hidden" id="editAttId">
@@ -747,10 +824,7 @@
     let qrScanner = null;
     let currentAnalyticsData = null;
     let checkedInYouthIds = new Set();
-    
-    // Directory Pagination Variables
-    let dirCurrentPage = 1;
-    let dirPerPage = 10;
+    let currentPreregEventId = null; // New workflow tracking
 
     async function getBase64(file, maxWidth = 600) {
         return new Promise((resolve, reject) => {
@@ -821,10 +895,6 @@
         if (tabId === 'activityLogsTab') loadActivityLogs();
         if (tabId === 'permissionsTab') loadUserPermissionsList();
 
-        // Highlight Button
-        const clickedBtn = Array.from(document.querySelectorAll('.nav-btn')).find(btn => btn.getAttribute('onclick').includes(tabId));
-        if(clickedBtn) clickedBtn.classList.add('active');
-
         // Superadmin Backups UI visibility
         if (tabId === 'profileTab' && currentUser === 'celsocreeriii@gmail.com') {
             document.getElementById('adminBackupCard').style.display = 'block';
@@ -832,14 +902,6 @@
         } else {
             document.getElementById('adminBackupCard').style.display = 'none';
         }
-    }
-
-    // FEATURE 2: Event Sub-Tabs Logic
-    function switchEventSubTab(tabName) {
-        document.getElementById('subTabPublished').style.display = tabName === 'published' ? 'block' : 'none';
-        document.getElementById('subTabCreate').style.display = tabName === 'create' ? 'block' : 'none';
-        document.getElementById('btnTabPublished').classList.toggle('active-tab', tabName === 'published');
-        document.getElementById('btnTabCreate').classList.toggle('active-tab', tabName === 'create');
     }
 
     async function loadBackups() {
@@ -1053,7 +1115,7 @@
         if(!dropdown) return;
         const eventId = dropdown.value;
         checkedInYouthIds.clear();
-
+        
         if(eventId) {
             document.getElementById('checkinCounters').style.display = 'grid';
             const res = await fetch(`/api/events/${eventId}/analytics`);
@@ -1061,10 +1123,12 @@
             if(data && data.roster && data.roster.length > 0) {
                 data.roster.forEach(r => checkedInYouthIds.add(r.youth_id));
                 document.getElementById('liveTotal').innerText = data.totalTurnout || 0;
+                document.getElementById('livePreRegTotal').innerText = data.totalPreRegistered || 0;
                 document.getElementById('livePreReg').innerText = data.preReg || 0;
                 document.getElementById('liveWalkin').innerText = data.walkins || 0;
             } else {
                 document.getElementById('liveTotal').innerText = '0';
+                document.getElementById('livePreRegTotal').innerText = data.totalPreRegistered || '0';
                 document.getElementById('livePreReg').innerText = '0';
                 document.getElementById('liveWalkin').innerText = '0';
             }
@@ -1219,12 +1283,12 @@
         filterDirectory();
     }
 
-    // Native Pagination and Sorting
     function filterDirectory() {
         const q = document.getElementById('directorySearchInput').value.toLowerCase().trim();
         const sort = document.getElementById('sortDirectorySelect').value;
         const ageCat = document.getElementById('filterAgeCategory').value;
 
+        // Clean logic: valid profiles are those with proper age data
         let validProfiles = youthData.filter(y => y.age !== null && y.age !== '' && !isNaN(y.age));
 
         let matches = validProfiles;
@@ -1242,20 +1306,8 @@
         if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
         if (sort === 'age_desc') matches.sort((a,b) => (b.age || 0) - (a.age || 0));
 
-        // Apply Pagination Native Logic
-        const totalPages = Math.ceil(matches.length / dirPerPage) || 1;
-        if (dirCurrentPage > totalPages) dirCurrentPage = totalPages;
-        if (dirCurrentPage < 1) dirCurrentPage = 1;
-
-        document.getElementById('dirPageInd').innerText = `Page ${dirCurrentPage} of ${totalPages}`;
-        document.getElementById('dirPrev').disabled = (dirCurrentPage === 1);
-        document.getElementById('dirNext').disabled = (dirCurrentPage === totalPages);
-
-        const start = (dirCurrentPage - 1) * dirPerPage;
-        const paginatedMatches = matches.slice(start, start + dirPerPage);
-
         let html = `<table><thead><tr><th>Member</th><th>Age</th><th>Birthday</th><th>Actions</th></tr></thead><tbody>`;
-        html += paginatedMatches.map(y => {
+        html += matches.map(y => {
             const avatarHtml = y.profile_picture
                 ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 35px; height: 35px; font-size: 1rem; cursor:pointer;" onclick="openImageViewer(this.src)">`
                 : `<div class="avatar-circle" style="width: 35px; height: 35px; font-size: 1rem;">${y.name.charAt(0).toUpperCase()}</div>`;
@@ -1356,6 +1408,167 @@
 
     function closeViewProfileModal() { document.getElementById('viewProfileModal').classList.remove('active'); }
 
+    // --- PRE-REG ADMIN & PUBLIC WORKFLOW --- //
+    
+    function openPreregSettings(eventId) {
+        const e = eventsData.find(ev => ev.id == eventId);
+        if (!e) return;
+        document.getElementById('preregSetEventId').value = e.id;
+        document.getElementById('preregSetTitle').value = e.prereg_title || e.name || '';
+        document.getElementById('preregSetInfo').value = e.prereg_info || '';
+        document.getElementById('preregSetBanner').value = '';
+        document.getElementById('preregSettingsModal').classList.add('active');
+    }
+
+    function closePreregSettingsModal() {
+        document.getElementById('preregSettingsModal').classList.remove('active');
+    }
+
+    async function savePreregSettings(e) {
+        e.preventDefault();
+        const id = document.getElementById('preregSetEventId').value;
+        const title = document.getElementById('preregSetTitle').value;
+        const info = document.getElementById('preregSetInfo').value;
+        const fileInput = document.getElementById('preregSetBanner');
+        
+        let bannerBase64 = null;
+        if (fileInput.files.length > 0) bannerBase64 = await getBase64(fileInput.files[0], 1200);
+
+        triggerActionConfirmation('Save Pre-Registration Page Settings?', async () => {
+            const res = await fetch(`/api/events/${id}/prereg-settings`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ banner: bannerBase64, title, info, actor: currentUser })
+            });
+            if(res.ok) {
+                alert('Settings saved successfully!');
+                closePreregSettingsModal();
+                loadEvents(); // Reload events
+            }
+        });
+    }
+
+    async function openPublicPreregFromSettings() {
+        const id = document.getElementById('preregSetEventId').value;
+        closePreregSettingsModal();
+        launchPublicPrereg(id);
+    }
+
+    async function launchPublicPrereg(eventId) {
+        currentPreregEventId = eventId;
+        document.getElementById('mainNav').style.display = 'none'; // Distraction free landing
+        
+        const res = await fetch('/api/events');
+        eventsData = await res.json();
+        const e = eventsData.find(ev => ev.id == eventId);
+        
+        if (e) {
+            document.getElementById('preregPublicTitle').innerText = e.prereg_title || e.name;
+            document.getElementById('preregPublicInfo').innerText = e.prereg_info || `Date: ${e.event_date} | Venue: ${e.venue || 'TBA'}`;
+            const banner = document.getElementById('preregPublicBanner');
+            if (e.prereg_banner) {
+                banner.src = e.prereg_banner;
+                banner.style.display = 'block';
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+
+        if(youthData.length === 0) {
+            const yRes = await fetch('/api/youth');
+            youthData = await yRes.json();
+        }
+
+        switchTab('preregPublicTab');
+        showPreregStep(1);
+    }
+
+    function closePublicPrereg() {
+        currentPreregEventId = null;
+        window.location.reload(); // Hard reset to exit the public landing page securely
+    }
+
+    function showPreregStep(step) {
+        document.getElementById('preregStep1').style.display = step === 1 ? 'block' : 'none';
+        document.getElementById('preregStep2').style.display = step === 2 ? 'block' : 'none';
+        document.getElementById('preregStep3').style.display = step === 3 ? 'block' : 'none';
+        document.getElementById('preregStepSuccess').style.display = step === 4 ? 'block' : 'none';
+        if(step === 2) {
+            document.getElementById('preregSearchInput').value = '';
+            document.getElementById('preregSearchResults').innerHTML = '';
+            document.getElementById('preregSearchResults').style.display = 'none';
+        }
+        if(step === 3) {
+            document.getElementById('preregNewName').value = '';
+            document.getElementById('preregNewAge').value = '';
+            document.getElementById('preregNewEmail').value = '';
+            document.getElementById('preregNewMobile').value = '';
+        }
+    }
+
+    function filterPreregSearch() {
+        const q = document.getElementById('preregSearchInput').value.toLowerCase().trim();
+        const container = document.getElementById('preregSearchResults');
+        if (q.length < 2) {
+            container.style.display = 'none';
+            return;
+        }
+
+        let matches = youthData.filter(y => y.name.toLowerCase().includes(q));
+        
+        if (matches.length > 0) {
+            container.innerHTML = matches.map(y => `
+                <div style="padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="executePreregister(${y.id})">
+                    <div>
+                        <strong>${y.name}</strong><br>
+                        <small style="color: var(--text-muted);">${y.qr_code}</small>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm">Select</button>
+                </div>
+            `).join('');
+            container.style.display = 'block';
+        } else {
+            container.innerHTML = `<div style="padding: 10px; color: var(--text-muted); text-align: center;">No matches found.</div>`;
+            container.style.display = 'block';
+        }
+    }
+
+    async function executePreregister(youthId) {
+        if(!currentPreregEventId) return;
+        const res = await fetch('/api/preregister', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_id: currentPreregEventId, youth_id: youthId })
+        });
+        if(res.ok) {
+            showPreregStep(4); 
+        } else {
+            alert("An error occurred during pre-registration.");
+        }
+    }
+
+    async function submitNewPrereg(e) {
+        e.preventDefault();
+        if(!currentPreregEventId) return;
+
+        const payload = {
+            name: document.getElementById('preregNewName').value,
+            age: document.getElementById('preregNewAge').value,
+            mobile: document.getElementById('preregNewMobile').value,
+            email: document.getElementById('preregNewEmail').value,
+            actor: 'Public Pre-Registration'
+        };
+
+        const regRes = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const regData = await regRes.json();
+
+        if (regData.id) {
+            executePreregister(regData.id);
+        } else {
+            alert(regData.error || 'Failed to create registration.');
+        }
+    }
+
+    // --- EVENT MANAGEMENT --- //
+    
     function openEditEventModal(eventId) {
         const e = eventsData.find(ev => ev.id == eventId);
         if (!e) return;
@@ -1398,11 +1611,10 @@
         });
     }
 
-    // FEATURE 3: Clean Modal Trigger & Inject
     async function openAnalyticsModal(eventId) {
         const res = await fetch(`/api/events/${eventId}/analytics`);
         const data = await res.json();
-        if (!data || data.error) return alert('Failed to load event details');
+        if (!data || data.error) return alert('Failed to load event analytics');
 
         currentAnalyticsData = data;
         const posterContainer = document.getElementById('analyticsModalPoster');
@@ -1417,63 +1629,66 @@
         if(data.event.materials_url) linksHtml += `<a href="${data.event.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration: none;">📁 Materials</a>`;
         document.getElementById('analyticsEventLinks').innerHTML = linksHtml;
 
-        // Native 4-card injection
-        document.getElementById('statTotalTurnout').innerText = data.totalTurnout || 0;
-        document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage || 0}%`;
-        document.getElementById('statPreReg').innerText = data.preReg || 0;
-        document.getElementById('statWalkin').innerText = data.walkins || 0;
-
-        document.getElementById('attSearch').value = '';
-        document.getElementById('attAge').value = 'all';
-
-        filterModalRoster();
+        // Native 4-Card Analytics Render
+        document.getElementById('statTotalTurnout').innerText = data.totalTurnout;
+        document.getElementById('statTotalPreReg').innerText = data.totalPreRegistered;
+        document.getElementById('statWalkins').innerText = data.walkins;
+        document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage}%`;
 
         document.getElementById('analyticsEditEventBtn').onclick = () => openEditEventModal(eventId);
+        
+        // Render Roster & Filter setup
+        document.getElementById('attSearchNative').value = '';
+        document.getElementById('attAgeNative').value = 'all';
+        renderAnalyticsRoster(data.roster);
+
         document.getElementById('eventAnalyticsModal').classList.add('active');
     }
 
-    function filterModalRoster() {
-        if (!currentAnalyticsData || !currentAnalyticsData.roster) return;
-        const q = document.getElementById('attSearch').value.toLowerCase().trim();
-        const ageFilter = document.getElementById('attAge').value;
+    function filterAnalyticsRoster() {
+        const q = document.getElementById('attSearchNative').value.toLowerCase();
+        const ageFilter = document.getElementById('attAgeNative').value;
+        if(!currentAnalyticsData || !currentAnalyticsData.roster) return;
 
-        let matches = currentAnalyticsData.roster.filter(r => {
-            let mQ = true;
-            if(q) mQ = r.name.toLowerCase().includes(q) || (r.qr_code && r.qr_code.toLowerCase().includes(q));
-
-            let mA = true;
-            if (ageFilter !== 'all') {
-                const age = parseInt(r.age) || 0;
-                if (ageFilter === 'mini' && (age < 1 || age > 12)) mA = false;
-                if (ageFilter === 'youth' && (age < 13 || age > 21)) mA = false;
-                if (ageFilter === 'adult' && age < 22) mA = false;
+        const filtered = currentAnalyticsData.roster.filter(r => {
+            const nameMatch = r.name.toLowerCase().includes(q) || (r.qr_code && r.qr_code.toLowerCase().includes(q));
+            let ageMatch = true;
+            const age = parseInt(r.age);
+            if (ageFilter !== 'all' && !isNaN(age)) {
+                if (ageFilter === 'mini' && (age < 7 || age > 12)) ageMatch = false;
+                if (ageFilter === 'youth' && (age < 13 || age > 21)) ageMatch = false;
+                if (ageFilter === 'adult' && age < 22) ageMatch = false;
+            } else if (ageFilter !== 'all' && isNaN(age)) {
+                ageMatch = false;
             }
-            return mQ && mA;
+            return nameMatch && ageMatch;
         });
+        renderAnalyticsRoster(filtered);
+    }
 
+    function renderAnalyticsRoster(list) {
         const rosterContainer = document.getElementById('analyticsRosterContainer');
-        if (matches.length === 0) {
-            rosterContainer.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem;">No members match the filter.</p>`;
+        if (list.length === 0) {
+            rosterContainer.innerHTML = `<p style="text-align:center; color:#7f8c8d; margin:15px 0; font-size: 14px;">No attendees found matching filter.</p>`;
             return;
         }
-
-        rosterContainer.innerHTML = `<table><thead><tr><th>Member</th><th>Timestamp</th><th>Type</th></tr></thead><tbody>` +
-            matches.map(r => {
-                const avatarHtml = r.profile_picture
-                    ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">`
-                    : `<div class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem;">${r.name.charAt(0).toUpperCase()}</div>`;
-                return `
-                <tr>
-                    <td>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            ${avatarHtml}
-                            <div><strong>${r.name}</strong><br><small style="color: var(--text-muted);">${r.qr_code}</small></div>
-                        </div>
-                    </td>
-                    <td><small>${r.checked_in_at}</small></td>
-                    <td><span class="badge ${r.is_walkin ? 'badge-orange' : 'badge-green'}">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
-                </tr>
-            `}).join('') + `</tbody></table>`;
+        rosterContainer.innerHTML = list.map(r => {
+            const avatarHtml = r.profile_picture
+                ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">`
+                : `<div class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem;">${r.name.charAt(0).toUpperCase()}</div>`;
+            return `
+            <div style="padding: 10px 8px; border-bottom: 1px solid #f1f2f6; display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    ${avatarHtml}
+                    <div>
+                        <strong style="color: #2c3e50; font-size: 14px;">${r.name}</strong>
+                        <span style="font-size:11px; color:#7f8c8d; background: #f0f2f5; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>
+                        <br><small style="color: var(--text-muted);">${r.qr_code} ${r.age ? '| Age: '+r.age : ''}</small>
+                    </div>
+                </div>
+                <span style="color: #27ae60; font-size: 12px; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+            </div>
+        `}).join('');
     }
 
     function closeAnalyticsModal() { document.getElementById('eventAnalyticsModal').classList.remove('active'); currentAnalyticsData = null; }
@@ -1579,6 +1794,7 @@
                         </div>
                         <div style="display: flex; gap: 6px;">
                             <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
+                            <button type="button" class="btn btn-secondary btn-sm" style="background:#8e44ad; color:white; border:none;" onclick="openPreregSettings(${e.id})">Form</button>
                             <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                             <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                         </div>
@@ -1607,6 +1823,7 @@
                             </div>
                             <div style="display: flex; gap: 6px; margin-top: 8px;">
                                 <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
+                                <button type="button" class="btn btn-secondary btn-sm" style="background:#8e44ad; color:white; border:none;" onclick="openPreregSettings(${e.id})">Form</button>
                                 <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                                 <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                             </div>
@@ -1625,73 +1842,12 @@
 
         const dropdown = document.getElementById('activeEventDropdown');
         if (dropdown) {
-            // Apply Native 5-Hour Leeway to Check-in Dropdown directly
-            const targetDate = new Date();
-            targetDate.setHours(targetDate.getHours() - 5);
-            const cutoffStr = targetDate.toISOString().split('T')[0];
-
-            dropdown.innerHTML = eventsData
-                .filter(e => e.event_date >= cutoffStr)
-                .map(e => `<option value="${e.id}">${e.name} (${e.event_date})</option>`)
-                .join('');
-                
-            if (dropdown.options.length > 0) updateActiveEventBanner();
+            dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name} (${e.event_date})</option>`).join('');
+            if (eventsData.length > 0) updateActiveEventBanner();
         }
 
         const container = document.getElementById('eventsListContainer');
-
-        if (eventViewMode === 'list') {
-            container.className = 'events-list-view';
-            container.innerHTML = eventsData.map(e => {
-                let linkBadges = '';
-                if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
-                if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
-                return `
-                <div style="border-bottom: 1px solid var(--border-color); padding: 12px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <div>
-                        <strong style="cursor: pointer; color: var(--primary);" onclick="openAnalyticsModal(${e.id})">${e.name}</strong><br>
-                        <small style="color: var(--text-muted);">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
-                        ${linkBadges ? `<div style="margin-top: 6px;">${linkBadges}</div>` : ''}
-                    </div>
-                    <div style="display: flex; gap: 6px;">
-                        <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
-                        <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
-                    </div>
-                </div>
-            `}).join('');
-        } else if (eventViewMode === 'grid') {
-            container.className = 'events-grid-view';
-            container.innerHTML = eventsData.map(e => {
-                let linkBadges = '';
-                if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
-                if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
-                return `
-                <div class="event-card">
-                    ${e.poster
-                        ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">`
-                        : `<div class="event-card-img" style="background: #FFFFFF; border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`
-                    }
-                    <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
-                        <div>
-                            <h3 style="font-size: 1.05rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${e.name}</h3>
-                            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
-                                📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>
-                                📍 ${e.venue || 'No Location'}
-                            </p>
-                            ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
-                        </div>
-                        <div style="display: flex; gap: 6px; margin-top: 8px;">
-                            <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
-                            <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
-                            <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
-                        </div>
-                    </div>
-                </div>
-            `}).join('');
-        } else if (eventViewMode === 'calendar') {
-            renderCalendarView(container);
-        }
+        setEventViewMode(eventViewMode);
     }
 
     function renderCalendarView(container) {
@@ -1717,7 +1873,7 @@
 
             html += `<div class="calendar-day-cell"><strong>${day}</strong>`;
             dayEvents.forEach(e => {
-                html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Details for ${e.name.replace(/"/g, '&quot;')}">${e.name}</div>`;
+                html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${e.name.replace(/"/g, '&quot;')}">${e.name}</div>`;
             });
             html += `</div>`;
         }
@@ -1803,7 +1959,7 @@
         e.preventDefault();
         const fileInput = document.getElementById('evtPoster');
 
-        triggerActionConfirmation(`Publish new gathering?`, async () => {
+        triggerActionConfirmation(`Publish new event?`, async () => {
             let posterBase64 = null;
             if (fileInput.files.length > 0) posterBase64 = await getBase64(fileInput.files[0], 1200);
 
@@ -1821,7 +1977,6 @@
                 document.getElementById('evtName').value = '';
                 document.getElementById('evtPhotosUrl').value = '';
                 document.getElementById('evtMaterialsUrl').value = '';
-                switchEventSubTab('published');
                 loadEvents();
             }
         });
@@ -1873,6 +2028,113 @@
         triggerActionConfirmation(`DELETE attendance record for '${memberName}'?`, async () => {
             await fetch(`/api/attendance/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
             loadAttendanceLogs(); updateActiveEventBanner();
+        });
+    }
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    setInterval(() => {
+        const headers = document.querySelectorAll('h2');
+        let dirHeader = Array.from(headers).find(h => h.innerText.includes('Directory') || h.innerText.includes('Members'));
+        if (dirHeader && !document.getElementById('csvBtn')) {
+            const btn = document.createElement('button');
+            btn.id = 'csvBtn';
+            btn.innerHTML = '📊 Export CSV';
+            btn.style.cssText = 'background: #27ae60; color: white; border: none; padding: 8px 15px; border-radius: 5px; margin-left: 15px; cursor: pointer; font-weight: bold; vertical-align: middle;';
+            btn.onclick = () => window.location.href = '/api/directory/export';
+            dirHeader.style.display = 'inline-block';
+            dirHeader.parentNode.insertBefore(btn, dirHeader.nextSibling);
+        }
+    }, 1000);
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    setInterval(() => {
+        const csvBtn = document.getElementById('csvBtn');
+        const dirTab = document.querySelector('#directory') || document.querySelector('#directoryTab') || (csvBtn ? csvBtn.closest('section, div') : null);
+        const tbody = dirTab ? (dirTab.querySelector('table tbody') || dirTab.querySelector('.list')) : null;
+
+        if (tbody && tbody.children.length > 0 && !document.getElementById('dirPagerControls')) {
+            const pager = document.createElement('div');
+            pager.id = 'dirPagerControls';
+            pager.style.cssText = 'display: flex; gap: 15px; align-items: center; margin: 15px 0; background: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;';
+            pager.innerHTML = `
+                <label>Entries per page:</label>
+                <select id="dirPerPage" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer;">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="999999">All</option>
+                </select>
+                <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
+                    <button id="dirPrev" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">◀ Prev</button>
+                    <span id="dirPageInd" style="color: #2c3e50;">Page 1</span>
+                    <button id="dirNext" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">Next ▶</button>
+                </div>
+            `;
+            tbody.parentNode.parentNode.insertBefore(pager, tbody.parentNode);
+
+            let currentPage = 1;
+            let perPage = 10;
+
+            const updateTable = () => {
+                const rows = Array.from(tbody.children);
+                const totalPages = Math.ceil(rows.length / perPage) || 1;
+                if (currentPage > totalPages) currentPage = totalPages;
+                if (currentPage < 1) currentPage = 1;
+                document.getElementById('dirPageInd').innerText = 'Page ' + currentPage + ' of ' + totalPages;
+                document.getElementById('dirPrev').disabled = (currentPage === 1);
+                document.getElementById('dirNext').disabled = (currentPage === totalPages);
+
+                rows.forEach((row, index) => {
+                    if (perPage >= 999999) row.style.display = '';
+                    else {
+                        const start = (currentPage - 1) * perPage;
+                        const end = start + perPage;
+                        row.style.display = (index >= start && index < end) ? '' : 'none';
+                    }
+                });
+            };
+
+            document.getElementById('dirPerPage').onchange = (e) => { perPage = parseInt(e.target.value); currentPage = 1; updateTable(); };
+            document.getElementById('dirPrev').onclick = () => { if (currentPage > 1) { currentPage--; updateTable(); } };
+            document.getElementById('dirNext').onclick = () => { const rows = Array.from(tbody.children); if (currentPage < Math.ceil(rows.length / perPage)) { currentPage++; updateTable(); } };
+            updateTable();
+            new MutationObserver(() => updateTable()).observe(tbody, { childList: true });
+        }
+    }, 1000);
+});
+</script>
+
+<script id="fog_final_patch">
+document.addEventListener('DOMContentLoaded', () => {
+    // A. Dropdown 5-Hour Leeway (Intact)
+    setInterval(() => {
+        const dropdown = document.querySelector('select[name="event_id"]') || document.querySelector('#checkinEventSelect');
+        if (dropdown && !dropdown.dataset.leewayApplied) {
+            dropdown.dataset.leewayApplied = "true";
+            const targetDate = new Date();
+            targetDate.setHours(targetDate.getHours() - 5); 
+            const cutoffStr = targetDate.toISOString().split('T')[0];
+            Array.from(dropdown.options).forEach(opt => {
+                const match = opt.innerText.match(/(\d{4}-\d{2}-\d{2})/);
+                if (match && match[1] < cutoffStr) opt.remove(); 
+            });
+        }
+    }, 1000);
+    
+    // Note: Block B (The Modal 4-Card UI patch) has been successfully removed because it is now natively embedded in the HTML above!
+});
+</script>
+
+<script>
+    // Kill the stuck PWA Service Worker
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) { registration.unregister(); }
         });
     }
 </script>
