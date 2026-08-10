@@ -35,6 +35,14 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
+        /* NEW: Event Sub-Tabs CSS */
+        .sub-nav { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; flex-wrap: wrap; }
+        .sub-nav-btn { background: transparent; border: none; font-weight: 600; color: var(--text-muted); cursor: pointer; padding: 10px 18px; border-radius: 6px; transition: all 0.2s; font-size: 0.95rem; }
+        .sub-nav-btn:hover { background: var(--bg-light); color: var(--text-main); }
+        .sub-nav-btn.active { background: rgba(255,107,0,0.1); color: var(--primary); border: 1px solid rgba(255,107,0,0.2); }
+        .event-sub-tab { display: none; }
+        .event-sub-tab.active { display: block; }
+
         .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
         .card h2 { color: var(--text-main); font-size: 1.3rem; margin-bottom: 15px; border-bottom: 2px solid var(--bg-light); padding-bottom: 8px; }
 
@@ -401,60 +409,69 @@
     </div>
 
     <div id="eventsTab" class="tab-content">
-        <div class="card">
-            <h2>Create New Event</h2>
-            <form onsubmit="handleCreateEvent(event)">
-                <div class="form-group">
-                    <label>Event Name *</label>
-                    <input type="text" id="evtName" class="form-control" required>
-                </div>
-                <div style="display: flex; gap: 15px;">
-                    <div class="form-group" style="flex: 1;">
-                        <label>Date *</label>
-                        <input type="date" id="evtDate" class="form-control" required>
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label>Time Start</label>
-                        <input type="time" id="evtTime" class="form-control">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Venue / Location</label>
-                    <input type="text" id="evtVenue" class="form-control">
-                </div>
-                <div class="form-group">
-                    <label>Event Poster Image</label>
-                    <input type="file" id="evtPoster" class="form-control" accept="image/*">
-                </div>
-                <div class="form-group">
-                    <label>Google Photos Album URL (Optional)</label>
-                    <input type="url" id="evtPhotosUrl" class="form-control" placeholder="https://photos.app.goo.gl/...">
-                </div>
-                <div class="form-group">
-                    <label>Google Drive Folder URL (Optional)</label>
-                    <input type="url" id="evtMaterialsUrl" class="form-control" placeholder="https://drive.google.com/...">
-                </div>
-                <button type="submit" class="btn btn-primary">Publish Event</button>
-            </form>
+        <div class="sub-nav">
+            <button id="btnSubEventList" class="sub-nav-btn active" onclick="switchEventSubTab('list')">📅 Published Gatherings</button>
+            <button id="btnSubEventCreate" class="sub-nav-btn" onclick="switchEventSubTab('create')">➕ Create New Gathering</button>
         </div>
 
-        <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
-                <h2>Published Events</h2>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <button id="viewBtnList" class="btn btn-outline btn-sm active" onclick="setEventViewMode('list')">☰ List View</button>
-                    <button id="viewBtnGrid" class="btn btn-outline btn-sm" onclick="setEventViewMode('grid')">▦ Grid View</button>
-                    <button id="viewBtnCal" class="btn btn-outline btn-sm" onclick="setEventViewMode('calendar')">📅 Calendar View</button>
+        <div id="subTabEventCreate" class="event-sub-tab">
+            <div class="card">
+                <h2>Create New Event</h2>
+                <form id="createEventForm" onsubmit="handleCreateEvent(event)">
+                    <div class="form-group">
+                        <label>Event Name *</label>
+                        <input type="text" id="evtName" class="form-control" required>
+                    </div>
+                    <div style="display: flex; gap: 15px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label>Date *</label>
+                            <input type="date" id="evtDate" class="form-control" required>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Time Start</label>
+                            <input type="time" id="evtTime" class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Venue / Location</label>
+                        <input type="text" id="evtVenue" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Event Poster Image</label>
+                        <input type="file" id="evtPoster" class="form-control" accept="image/*">
+                    </div>
+                    <div class="form-group">
+                        <label>Google Photos Album URL (Optional)</label>
+                        <input type="url" id="evtPhotosUrl" class="form-control" placeholder="https://photos.app.goo.gl/...">
+                    </div>
+                    <div class="form-group">
+                        <label>Google Drive Folder URL (Optional)</label>
+                        <input type="url" id="evtMaterialsUrl" class="form-control" placeholder="https://drive.google.com/...">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Publish Event</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="subTabEventList" class="event-sub-tab active">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                    <h2>Published Events</h2>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button id="viewBtnList" class="btn btn-outline btn-sm active" onclick="setEventViewMode('list')">☰ List View</button>
+                        <button id="viewBtnGrid" class="btn btn-outline btn-sm" onclick="setEventViewMode('grid')">▦ Grid View</button>
+                        <button id="viewBtnCal" class="btn btn-outline btn-sm" onclick="setEventViewMode('calendar')">📅 Calendar View</button>
+                    </div>
                 </div>
-            </div>
 
-            <div id="calendarControls" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 15px;">
-                <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(-1)">◀ Prev</button>
-                <h3 id="calendarMonthTitle" style="font-size: 1.1rem; color: var(--primary);"></h3>
-                <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(1)">Next ▶</button>
-            </div>
+                <div id="calendarControls" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                    <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(-1)">◀ Prev</button>
+                    <h3 id="calendarMonthTitle" style="font-size: 1.1rem; color: var(--primary);"></h3>
+                    <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(1)">Next ▶</button>
+                </div>
 
-            <div id="eventsListContainer"></div>
+                <div id="eventsListContainer"></div>
+            </div>
         </div>
     </div>
 
@@ -727,7 +744,7 @@
         </div>
 
         <h3 style="font-size: 1rem; margin-top: 20px; margin-bottom: 8px; color: var(--text-main);">Checked-In Roster</h3>
-        
+
         <div style="display: flex; gap: 10px; margin-bottom: 15px;">
             <input type="text" id="attSearchNative" placeholder="🔍 Search roster by name or ID..." class="form-control" style="flex: 1;" oninput="filterAnalyticsRoster()">
             <select id="attAgeNative" class="form-control" style="width: 130px;" onchange="filterAnalyticsRoster()">
@@ -824,7 +841,7 @@
     let qrScanner = null;
     let currentAnalyticsData = null;
     let checkedInYouthIds = new Set();
-    let currentPreregEventId = null; // New workflow tracking
+    let currentPreregEventId = null;
 
     async function getBase64(file, maxWidth = 600) {
         return new Promise((resolve, reject) => {
@@ -895,12 +912,22 @@
         if (tabId === 'activityLogsTab') loadActivityLogs();
         if (tabId === 'permissionsTab') loadUserPermissionsList();
 
-        // Superadmin Backups UI visibility
         if (tabId === 'profileTab' && currentUser === 'celsocreeriii@gmail.com') {
             document.getElementById('adminBackupCard').style.display = 'block';
             loadBackups();
         } else {
             document.getElementById('adminBackupCard').style.display = 'none';
+        }
+    }
+
+    // NEW: Function to manage the two event sub-tabs
+    function switchEventSubTab(tab) {
+        document.getElementById('subTabEventList').classList.toggle('active', tab === 'list');
+        document.getElementById('subTabEventCreate').classList.toggle('active', tab === 'create');
+        document.getElementById('btnSubEventList').classList.toggle('active', tab === 'list');
+        document.getElementById('btnSubEventCreate').classList.toggle('active', tab === 'create');
+        if (tab === 'list') {
+            loadEvents(); 
         }
     }
 
@@ -1115,22 +1142,26 @@
         if(!dropdown) return;
         const eventId = dropdown.value;
         checkedInYouthIds.clear();
-        
+
         if(eventId) {
             document.getElementById('checkinCounters').style.display = 'grid';
-            const res = await fetch(`/api/events/${eventId}/analytics`);
-            const data = await res.json();
-            if(data && data.roster && data.roster.length > 0) {
-                data.roster.forEach(r => checkedInYouthIds.add(r.youth_id));
-                document.getElementById('liveTotal').innerText = data.totalTurnout || 0;
-                document.getElementById('livePreRegTotal').innerText = data.totalPreRegistered || 0;
-                document.getElementById('livePreReg').innerText = data.preReg || 0;
-                document.getElementById('liveWalkin').innerText = data.walkins || 0;
-            } else {
-                document.getElementById('liveTotal').innerText = '0';
-                document.getElementById('livePreRegTotal').innerText = data.totalPreRegistered || '0';
-                document.getElementById('livePreReg').innerText = '0';
-                document.getElementById('liveWalkin').innerText = '0';
+            try {
+                const res = await fetch(`/api/events/${eventId}/analytics`);
+                const data = await res.json();
+                if(data && data.roster && data.roster.length > 0) {
+                    data.roster.forEach(r => checkedInYouthIds.add(r.youth_id));
+                    document.getElementById('liveTotal').innerText = data.totalTurnout || 0;
+                    document.getElementById('livePreRegTotal').innerText = data.totalPreRegistered || 0;
+                    document.getElementById('livePreReg').innerText = data.preReg || 0;
+                    document.getElementById('liveWalkin').innerText = data.walkins || 0;
+                } else {
+                    document.getElementById('liveTotal').innerText = '0';
+                    document.getElementById('livePreRegTotal').innerText = (data && data.totalPreRegistered) ? data.totalPreRegistered : '0';
+                    document.getElementById('livePreReg').innerText = '0';
+                    document.getElementById('liveWalkin').innerText = '0';
+                }
+            } catch(e) {
+                console.error("Failed to load active banner stats", e);
             }
         } else {
             document.getElementById('checkinCounters').style.display = 'none';
@@ -1288,7 +1319,6 @@
         const sort = document.getElementById('sortDirectorySelect').value;
         const ageCat = document.getElementById('filterAgeCategory').value;
 
-        // Clean logic: valid profiles are those with proper age data
         let validProfiles = youthData.filter(y => y.age !== null && y.age !== '' && !isNaN(y.age));
 
         let matches = validProfiles;
@@ -1397,19 +1427,20 @@
             document.getElementById('modalDownloadQrBtn').href = url;
         });
 
-        const res = await fetch(`/api/youth/${youthId}/history`);
-        const history = await res.json();
-        const historyContainer = document.getElementById('modalAttendanceHistory');
-        if (history.length === 0) historyContainer.innerHTML = `<p style="color: var(--text-muted);">No attendance history recorded yet.</p>`;
-        else historyContainer.innerHTML = history.map(h => `<div style="border-bottom: 1px solid var(--border-color); padding: 6px 0;"><strong>${h.event_name}</strong> (${h.event_date}) - <small>${h.checked_in_at}</small></div>`).join('');
-
+        try {
+            const res = await fetch(`/api/youth/${youthId}/history`);
+            const history = await res.json();
+            const historyContainer = document.getElementById('modalAttendanceHistory');
+            if (!history || history.length === 0) historyContainer.innerHTML = `<p style="color: var(--text-muted);">No attendance history recorded yet.</p>`;
+            else historyContainer.innerHTML = history.map(h => `<div style="border-bottom: 1px solid var(--border-color); padding: 6px 0;"><strong>${h.event_name}</strong> (${h.event_date}) - <small>${h.checked_in_at}</small></div>`).join('');
+        } catch(e) {
+            console.error(e);
+        }
         document.getElementById('viewProfileModal').classList.add('active');
     }
 
     function closeViewProfileModal() { document.getElementById('viewProfileModal').classList.remove('active'); }
 
-    // --- PRE-REG ADMIN & PUBLIC WORKFLOW --- //
-    
     function openPreregSettings(eventId) {
         const e = eventsData.find(ev => ev.id == eventId);
         if (!e) return;
@@ -1430,7 +1461,7 @@
         const title = document.getElementById('preregSetTitle').value;
         const info = document.getElementById('preregSetInfo').value;
         const fileInput = document.getElementById('preregSetBanner');
-        
+
         let bannerBase64 = null;
         if (fileInput.files.length > 0) bannerBase64 = await getBase64(fileInput.files[0], 1200);
 
@@ -1442,7 +1473,7 @@
             if(res.ok) {
                 alert('Settings saved successfully!');
                 closePreregSettingsModal();
-                loadEvents(); // Reload events
+                loadEvents(); 
             }
         });
     }
@@ -1455,12 +1486,12 @@
 
     async function launchPublicPrereg(eventId) {
         currentPreregEventId = eventId;
-        document.getElementById('mainNav').style.display = 'none'; // Distraction free landing
-        
+        document.getElementById('mainNav').style.display = 'none'; 
+
         const res = await fetch('/api/events');
         eventsData = await res.json();
         const e = eventsData.find(ev => ev.id == eventId);
-        
+
         if (e) {
             document.getElementById('preregPublicTitle').innerText = e.prereg_title || e.name;
             document.getElementById('preregPublicInfo').innerText = e.prereg_info || `Date: ${e.event_date} | Venue: ${e.venue || 'TBA'}`;
@@ -1484,7 +1515,7 @@
 
     function closePublicPrereg() {
         currentPreregEventId = null;
-        window.location.reload(); // Hard reset to exit the public landing page securely
+        window.location.reload(); 
     }
 
     function showPreregStep(step) {
@@ -1514,7 +1545,7 @@
         }
 
         let matches = youthData.filter(y => y.name.toLowerCase().includes(q));
-        
+
         if (matches.length > 0) {
             container.innerHTML = matches.map(y => `
                 <div style="padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="executePreregister(${y.id})">
@@ -1534,14 +1565,18 @@
 
     async function executePreregister(youthId) {
         if(!currentPreregEventId) return;
-        const res = await fetch('/api/preregister', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ event_id: currentPreregEventId, youth_id: youthId })
-        });
-        if(res.ok) {
-            showPreregStep(4); 
-        } else {
-            alert("An error occurred during pre-registration.");
+        try {
+            const res = await fetch('/api/preregister', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ event_id: currentPreregEventId, youth_id: youthId })
+            });
+            if(res.ok) {
+                showPreregStep(4);
+            } else {
+                alert("An error occurred during pre-registration.");
+            }
+        } catch(e) {
+            alert("Connection error during pre-registration.");
         }
     }
 
@@ -1557,18 +1592,20 @@
             actor: 'Public Pre-Registration'
         };
 
-        const regRes = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        const regData = await regRes.json();
+        try {
+            const regRes = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const regData = await regRes.json();
 
-        if (regData.id) {
-            executePreregister(regData.id);
-        } else {
-            alert(regData.error || 'Failed to create registration.');
+            if (regData.id) {
+                executePreregister(regData.id);
+            } else {
+                alert(regData.error || 'Failed to create registration.');
+            }
+        } catch(err) {
+            alert("Network error.");
         }
     }
 
-    // --- EVENT MANAGEMENT --- //
-    
     function openEditEventModal(eventId) {
         const e = eventsData.find(ev => ev.id == eventId);
         if (!e) return;
@@ -1606,43 +1643,60 @@
             if (fileInput.files.length > 0) posterBase64 = await getBase64(fileInput.files[0], 1200);
 
             const payload = { name, event_date, time_start, venue, poster: posterBase64, photos_url, materials_url, actor: currentUser };
-            const res = await fetch(`/api/events/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-            if(res.ok) { closeEditEventModal(); alert("Event updated successfully!"); loadEvents(); }
+            try {
+                const res = await fetch(`/api/events/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+                if(res.ok) { closeEditEventModal(); alert("Event updated successfully!"); loadEvents(); }
+            } catch(e) {
+                alert("Error connecting to server.");
+            }
         });
     }
 
+    // FIX: ADDED ERROR HANDLING & TRY/CATCH TO PREVENT SILENT FAILURES
     async function openAnalyticsModal(eventId) {
-        const res = await fetch(`/api/events/${eventId}/analytics`);
-        const data = await res.json();
-        if (!data || data.error) return alert('Failed to load event analytics');
+        try {
+            const res = await fetch(`/api/events/${eventId}/analytics`);
+            
+            if (!res.ok) {
+                throw new Error("Server returned " + res.status);
+            }
 
-        currentAnalyticsData = data;
-        const posterContainer = document.getElementById('analyticsModalPoster');
-        if (data.event.poster) posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
-        else posterContainer.innerHTML = `<span style="font-size: 0.7rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
+            const data = await res.json();
+            if (!data || data.error) {
+                alert('Failed to load event analytics: ' + (data ? data.error : 'Unknown Error'));
+                return;
+            }
 
-        document.getElementById('analyticsEventTitle').innerText = data.event.name;
-        document.getElementById('analyticsEventMeta').innerText = `📅 Date: ${data.event.event_date} | 📍 Venue: ${data.event.venue || 'N/A'}`;
+            currentAnalyticsData = data;
+            const posterContainer = document.getElementById('analyticsModalPoster');
+            if (data.event.poster) posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
+            else posterContainer.innerHTML = `<span style="font-size: 0.7rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
 
-        let linksHtml = '';
-        if(data.event.photos_url) linksHtml += `<a href="${data.event.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration: none;">📷 Photos</a>`;
-        if(data.event.materials_url) linksHtml += `<a href="${data.event.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration: none;">📁 Materials</a>`;
-        document.getElementById('analyticsEventLinks').innerHTML = linksHtml;
+            document.getElementById('analyticsEventTitle').innerText = data.event.name;
+            document.getElementById('analyticsEventMeta').innerText = `📅 Date: ${data.event.event_date} | 📍 Venue: ${data.event.venue || 'N/A'}`;
 
-        // Native 4-Card Analytics Render
-        document.getElementById('statTotalTurnout').innerText = data.totalTurnout;
-        document.getElementById('statTotalPreReg').innerText = data.totalPreRegistered;
-        document.getElementById('statWalkins').innerText = data.walkins;
-        document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage}%`;
+            let linksHtml = '';
+            if(data.event.photos_url) linksHtml += `<a href="${data.event.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration: none;">📷 Photos</a>`;
+            if(data.event.materials_url) linksHtml += `<a href="${data.event.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration: none;">📁 Materials</a>`;
+            document.getElementById('analyticsEventLinks').innerHTML = linksHtml;
 
-        document.getElementById('analyticsEditEventBtn').onclick = () => openEditEventModal(eventId);
-        
-        // Render Roster & Filter setup
-        document.getElementById('attSearchNative').value = '';
-        document.getElementById('attAgeNative').value = 'all';
-        renderAnalyticsRoster(data.roster);
+            document.getElementById('statTotalTurnout').innerText = data.totalTurnout;
+            document.getElementById('statTotalPreReg').innerText = data.totalPreRegistered;
+            document.getElementById('statWalkins').innerText = data.walkins;
+            document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage}%`;
 
-        document.getElementById('eventAnalyticsModal').classList.add('active');
+            document.getElementById('analyticsEditEventBtn').onclick = () => openEditEventModal(eventId);
+
+            document.getElementById('attSearchNative').value = '';
+            document.getElementById('attAgeNative').value = 'all';
+            renderAnalyticsRoster(data.roster);
+
+            document.getElementById('eventAnalyticsModal').classList.add('active');
+
+        } catch (error) {
+            console.error("Error opening analytics:", error);
+            alert("Could not connect to the server to load analytics. Please try again.");
+        }
     }
 
     function filterAnalyticsRoster() {
@@ -1837,17 +1891,20 @@
     }
 
     async function loadEvents() {
-        const res = await fetch('/api/events');
-        eventsData = await res.json();
+        try {
+            const res = await fetch('/api/events');
+            eventsData = await res.json();
 
-        const dropdown = document.getElementById('activeEventDropdown');
-        if (dropdown) {
-            dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name} (${e.event_date})</option>`).join('');
-            if (eventsData.length > 0) updateActiveEventBanner();
+            const dropdown = document.getElementById('activeEventDropdown');
+            if (dropdown) {
+                dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name} (${e.event_date})</option>`).join('');
+                if (eventsData.length > 0) updateActiveEventBanner();
+            }
+
+            setEventViewMode(eventViewMode);
+        } catch(e) {
+            console.error("Failed loading events.");
         }
-
-        const container = document.getElementById('eventsListContainer');
-        setEventViewMode(eventViewMode);
     }
 
     function renderCalendarView(container) {
@@ -1972,12 +2029,15 @@
                 actor: currentUser
             };
 
-            const res = await fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (res.ok) {
-                document.getElementById('evtName').value = '';
-                document.getElementById('evtPhotosUrl').value = '';
-                document.getElementById('evtMaterialsUrl').value = '';
-                loadEvents();
+            try {
+                const res = await fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (res.ok) {
+                    document.getElementById('createEventForm').reset();
+                    alert('Event published successfully!');
+                    switchEventSubTab('list');
+                }
+            } catch(e) {
+                alert("Failed to connect to the server.");
             }
         });
     }
@@ -2111,22 +2171,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <script id="fog_final_patch">
 document.addEventListener('DOMContentLoaded', () => {
-    // A. Dropdown 5-Hour Leeway (Intact)
     setInterval(() => {
         const dropdown = document.querySelector('select[name="event_id"]') || document.querySelector('#checkinEventSelect');
         if (dropdown && !dropdown.dataset.leewayApplied) {
             dropdown.dataset.leewayApplied = "true";
             const targetDate = new Date();
-            targetDate.setHours(targetDate.getHours() - 5); 
+            targetDate.setHours(targetDate.getHours() - 5);
             const cutoffStr = targetDate.toISOString().split('T')[0];
             Array.from(dropdown.options).forEach(opt => {
                 const match = opt.innerText.match(/(\d{4}-\d{2}-\d{2})/);
-                if (match && match[1] < cutoffStr) opt.remove(); 
+                if (match && match[1] < cutoffStr) opt.remove();
             });
         }
     }, 1000);
-    
-    // Note: Block B (The Modal 4-Card UI patch) has been successfully removed because it is now natively embedded in the HTML above!
 });
 </script>
 

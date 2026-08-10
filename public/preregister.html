@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Pre-Registration</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .hidden { display: none; }
+        .event-banner { width: 100%; border-radius: 8px; margin-bottom: 20px; }
+        h1 { color: #333; font-size: 24px; margin-bottom: 10px; text-align: center; }
+        p.info { color: #666; margin-bottom: 30px; line-height: 1.5; text-align: center; }
+        .btn { display: inline-block; padding: 12px 20px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; width: 100%; margin-bottom: 10px; font-weight: bold; }
+        .btn:hover { background: #219653; }
+        .btn-secondary { background: #3498db; }
+        .btn-secondary:hover { background: #2980b9; }
+        input[type="text"], input[type="number"] { width: 100%; padding: 12px; margin: 10px 0 20px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; font-size: 16px; }
+        .search-result { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 1px solid #eee; margin-bottom: 10px; border-radius: 5px; background: #fafafa; }
+        .search-result button { width: auto; padding: 8px 15px; margin: 0; font-size: 14px; }
+        .success-message { text-align: center; color: #333; }
+        .success-message h2 { color: #27ae60; font-size: 28px; margin-bottom: 10px; }
+        #qrcode { margin: 20px auto; display: flex; justify-content: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="event-details">
+            <img id="public-banner" src="" alt="Event Banner" class="event-banner hidden">
+            <h1 id="public-title">Loading Event...</h1>
+            <p id="public-info" class="info"></p>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" id="divider">
+
+        <div id="registration-section">
+            <h3 style="text-align: center; margin-bottom: 20px;">Have you attended before?</h3>
+            <button class="btn btn-secondary" onclick="showSearch()">Yes, I have</button>
+            <button class="btn" onclick="showNewForm()">No, I'm new</button>
+
+            <div id="search-section" class="hidden">
+                <h4 style="margin-top: 20px;">Search Your Name</h4>
+                <input type="text" id="search-name" placeholder="Enter your full name...">
+                <button class="btn btn-secondary" onclick="searchUser()">Search</button>
+                <div id="search-results" style="margin-top: 20px;"></div>
+            </div>
+
+            <div id="new-user-section" class="hidden">
+                <h4 style="margin-top: 20px;">New Member Registration</h4>
+                <input type="text" id="new-name" placeholder="Full Name" required>
+                <input type="number" id="new-age" placeholder="Age" required>
+                <input type="text" id="new-mobile" placeholder="Mobile Number (Optional)">
+                <button class="btn" onclick="registerNewUser()">Submit & Pre-register</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/preregister.js"></script>
+</body>
+</html>
