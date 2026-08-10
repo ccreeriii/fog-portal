@@ -3,6 +3,8 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const app = express();
+// FORCE DISABLE CACHE FOR DEVELOPMENT
+app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private'); next(); });
 const PORT = process.env.PORT || 3000;
 
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
@@ -442,6 +444,63 @@ function sendCSV(res, rows) {
     res.setHeader('Content-Disposition', 'attachment; filename=Community_Directory.csv');
     res.status(200).send(csv);
 }
+
+
+// --- Pre-Registration & Event Management Workflow ---
+app.get('/api/event/:id', (req, res) => {
+    db.run("ALTER TABLE events ADD COLUMN additional_info TEXT", () => {
+        db.get("SELECT id, name, event_date, time_start, venue, poster as prereg_banner, additional_info FROM events WHERE id = ? OR CAST(id AS TEXT) = ?", [req.params.id, req.params.id], (e, r) => {
+            if (e || !r) {
+                db.get("SELECT id, name, event_date, time_start, venue, poster FROM events WHERE id = ? OR CAST(id AS TEXT) = ?", [req.params.id, req.params.id], (err2, row2) => {
+                    res.json(row2 || {});
+                });
+            } else {
+                res.json(r);
+            }
+        });
+    });
+});
+
+app.post('/api/event/update-details', (req, res) => {
+    const { event_id, prereg_banner, additional_info } = req.body;
+    db.run("ALTER TABLE events ADD COLUMN additional_info TEXT", () => {
+        db.run("UPDATE events SET poster = COALESCE(?, poster), additional_info = COALESCE(?, additional_info) WHERE id = ? OR CAST(id AS TEXT) = ?", 
+        [prereg_banner, additional_info, event_id, String(event_id)], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
+        });
+    });
+});
+
+app.get('/api/youth_search', (req, res) => {
+    db.all("SELECT id, name, age FROM youth", [], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+app.post('/api/register', (req, res) => {
+    const { event_id, name, age, email, birthday, mobile } = req.body;
+    db.get("SELECT id, qr_code FROM youth WHERE LOWER(name) = LOWER(?) AND age = ?", [name, age], (err, row) => {
+        let qr = row ? row.qr_code : `FOG-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+        
+        const logAttendance = (yId) => {
+            db.run("INSERT INTO attendance (event_id, youth_id, full_name, type, checked_in, checked_in_at) VALUES (?, ?, ?, 'Pre-Reg', 0, datetime('now', '+8 hours'))", 
+            [event_id, yId, name], () => {
+                res.json({ success: true, qr_data: qr, isDuplicate: !!row });
+            });
+        };
+
+        if (row) {
+            if (!qr) { qr = `FOG-${row.id}`; db.run("UPDATE youth SET qr_code = ? WHERE id = ?", [qr, row.id]); }
+            logAttendance(row.id);
+        } else {
+            db.run("INSERT INTO youth (name, age, email, mobile, qr_code) VALUES (?, ?, ?, ?, ?)", 
+            [name, age, email || '', mobile || '', qr], function(iErr) {
+                logAttendance(this.lastID);
+            });
+        }
+    });
+});
 
 app.listen(PORT, () => {
     console.log(`Server running safely on Port ${PORT}`);
