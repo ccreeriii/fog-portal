@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const app = express();
+
 // FORCE DISABLE CACHE FOR DEVELOPMENT
 app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private'); next(); });
 const PORT = process.env.PORT || 3000;
@@ -82,8 +83,7 @@ db.serialize(() => {
         username TEXT, action TEXT, details TEXT,
         created_at DATETIME
     )`);
-    
-    // NEW: Pre-registration workflow table
+
     db.run(`CREATE TABLE IF NOT EXISTS pre_registrations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         youth_id INTEGER, event_id INTEGER, created_at DATETIME,
@@ -93,9 +93,10 @@ db.serialize(() => {
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN materials_url TEXT`, () => {});
-    
-    // Safely append Pre-registration settings schema to events
+
+    // Pre-registration settings schema (Added Bottom Banner)
     db.run(`ALTER TABLE events ADD COLUMN prereg_banner TEXT`, () => {});
+    db.run(`ALTER TABLE events ADD COLUMN prereg_bottom_banner TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_title TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_info TEXT`, () => {});
 
@@ -161,7 +162,7 @@ app.post('/api/backups/restore', (req, res) => {
         db.close((err) => {
             fs.copyFileSync(targetFile, currentDb);
             res.json({ success: true });
-            setTimeout(() => { process.exit(0); }, 1000); // Forces PM2 to restart the app safely
+            setTimeout(() => { process.exit(0); }, 1000); 
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -321,38 +322,29 @@ app.get('/api/events/:id/analytics', (req, res) => {
     const eventId = req.params.id;
     db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
         if (err || !event) return res.status(404).json({ error: 'Event not found' });
-        
+
         db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
             const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
-            
-            // Appended y.age so the modal search filter works natively
+
             const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
-            
+
             db.all(sqlRoster, [eventId], (err3, roster) => {
                 if (err3) return res.status(500).json({ error: err3.message });
-                
-                // Fetch the new Pre-Registration data count
+
                 db.get(`SELECT COUNT(*) as prereg_count FROM pre_registrations WHERE event_id = ?`, [eventId], (err4, preRegRow) => {
                     const totalTurnout = roster.length;
                     const walkins = roster.filter(r => r.is_walkin === 1).length;
                     const checkedInPreRegs = totalTurnout - walkins;
                     const totalPreRegistered = preRegRow ? preRegRow.prereg_count : 0;
-                    
-                    // Turnout Rate computed strictly via Checked-in Pre-Reg vs Total Pre-Reg
+
                     let turnoutPercentage = '0.0';
                     if (totalPreRegistered > 0) {
                         turnoutPercentage = ((checkedInPreRegs / totalPreRegistered) * 100).toFixed(1);
                     }
 
-                    res.json({ 
-                        event, 
-                        totalDirectory, 
-                        totalTurnout, 
-                        turnoutPercentage, 
-                        walkins, 
-                        preReg: checkedInPreRegs, 
-                        totalPreRegistered, 
-                        roster 
+                    res.json({
+                        event, totalDirectory, totalTurnout, turnoutPercentage,
+                        walkins, preReg: checkedInPreRegs, totalPreRegistered, roster
                     });
                 });
             });
@@ -404,11 +396,11 @@ app.delete('/api/events/:id', (req, res) => {
     });
 });
 
-// PRE-REGISTRATION ENDPOINTS (NEW)
+// PRE-REGISTRATION ENDPOINTS
 app.post('/api/events/:id/prereg-settings', (req, res) => {
-    const { banner, title, info, actor } = req.body;
-    db.run(`UPDATE events SET prereg_banner = ?, prereg_title = ?, prereg_info = ? WHERE id = ?`,
-        [banner, title, info, req.params.id], function(err) {
+    const { banner, bottom_banner, title, info, actor } = req.body;
+    db.run(`UPDATE events SET prereg_banner = ?, prereg_bottom_banner = ?, prereg_title = ?, prereg_info = ? WHERE id = ?`,
+        [banner, bottom_banner, title, info, req.params.id], function(err) {
             if (err) return res.status(500).json({ error: err.message });
             logActivity(actor || 'System', 'UPDATE_PREREG', `Updated pre-registration settings for Event ID ${req.params.id}`);
             res.json({ success: true });
