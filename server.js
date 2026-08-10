@@ -121,7 +121,7 @@ app.get('/api/backups', (req, res) => {
         })
         .sort((a, b) => b.time - a.time)
         .slice(0, 10);
-    
+
     files.forEach(f => {
         f.time = new Date(f.time).toLocaleString('en-US', { timeZone: 'Asia/Manila' });
     });
@@ -140,7 +140,7 @@ app.post('/api/backups/restore', (req, res) => {
         const pad = (n) => String(n).padStart(2, '0');
         const timeStr = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
         const autoBackup = path.join(backupDir, `fog_community_pre_restore_${timeStr}.db`);
-        
+
         fs.copyFileSync(currentDb, autoBackup);
         logActivity(actor, 'RESTORE_DB', `Restored from ${filename}. Pre-restore saved to ${path.basename(autoBackup)}`);
 
@@ -169,7 +169,7 @@ app.post('/api/login', (req, res) => {
             return;
         }
 
-        db.get(`SELECT * FROM youth WHERE (qr_code = ? OR email = ? OR name = ?) AND password = ?`, 
+        db.get(`SELECT * FROM youth WHERE (qr_code = ? OR email = ? OR name = ?) AND password = ?`,
             [username, username, username, password], (err2, member) => {
             if (member) {
                 logActivity(member.name, 'LOGIN', 'Member logged into profile');
@@ -309,7 +309,10 @@ app.get('/api/events/:id/analytics', (req, res) => {
         if (err || !event) return res.status(404).json({ error: 'Event not found' });
         db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
             const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
-            const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
+            
+            // NOTE: Safely added "y.age" to this SQL query so the frontend Modal Age Filter functions natively.
+            const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
+            
             db.all(sqlRoster, [eventId], (err3, roster) => {
                 if (err3) return res.status(500).json({ error: err3.message });
                 const totalTurnout = roster.length;

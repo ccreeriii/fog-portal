@@ -3,3 +3,5 @@ fog_community.db
 fog_community.db-journal
 *.log
 .DS_Store
+backups/
+*.db

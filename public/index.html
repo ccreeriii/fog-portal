@@ -29,7 +29,10 @@
 
         nav { display: flex; justify-content: center; background: #FFFFFF; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 5px; padding: 10px; }
         nav button { background: transparent; border: none; padding: 10px 18px; font-weight: 600; color: var(--text-muted); cursor: pointer; border-radius: 6px; transition: all 0.2s; }
-        nav button:hover, nav button.active { background: rgba(255,107,0,0.1); color: var(--primary); }
+        
+        /* FEATURE 1: Active Nav Highlight */
+        nav button.active { background-color: #27ae60 !important; color: #ffffff !important; font-weight: bold !important; }
+        nav button:hover:not(.active) { background: rgba(255,107,0,0.1); color: var(--primary); }
 
         .container { max-width: 1000px; margin: 25px auto; padding: 0 15px; }
         .tab-content { display: none; }
@@ -62,6 +65,11 @@
         .badge-green { background: rgba(16,185,129,0.15); color: var(--success); }
         .badge-blue { background: rgba(59,130,246,0.15); color: #3B82F6; }
 
+        /* FEATURE 2: Event Tabs Styling */
+        .event-tabs-container { display: flex; gap: 10px; margin-bottom: 20px; }
+        .event-tab-btn { padding: 10px 15px; cursor: pointer; background-color: #f1f1f1; border: 1px solid #ccc; border-radius: 5px; transition: all 0.2s ease; font-weight: 600; color: var(--text-muted); flex: 1; }
+        .event-tab-btn.active-tab { background-color: #27ae60; color: #ffffff; border-color: #27ae60; }
+
         .events-grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; margin-top: 15px; }
         .events-list-view { display: block; margin-top: 15px; }
         .event-card { border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: #FFF; display: flex; flex-direction: column; transition: transform 0.2s; }
@@ -82,9 +90,8 @@
 
         .search-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 10px; }
         .search-item:hover { background: var(--bg-light); }
-        
         .avatar-circle { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; background: var(--bg-light); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--text-muted); flex-shrink: 0; cursor: pointer; }
-        
+
         .checkin-sub-tab { display: none; }
         .checkin-sub-tab.active { display: block; }
     </style>
@@ -159,7 +166,7 @@
             <form onsubmit="handleLogin(event)">
                 <div class="form-group">
                     <label>Username / Unique Pass ID</label>
-                    <input type="text" id="loginUser" class="form-control" placeholder="Unique Pass ID (e.g., FOG-MEMBER-001) or Username" required>
+                    <input type="text" id="loginUser" class="form-control" placeholder="Unique Pass ID or Username" required>
                 </div>
                 <div class="form-group">
                     <label>Password</label>
@@ -184,7 +191,7 @@
 
         <div id="adminBackupCard" class="card" style="display: none; border-color: var(--danger);">
             <h2 style="color: var(--danger);">System Backups & Restore</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Latest 10 daily/hourly database backups. Restoring will auto-backup your current live state first.</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Latest 10 daily/hourly database backups.</p>
             <div id="backupListContainer" style="overflow-x: auto;"></div>
         </div>
 
@@ -238,7 +245,7 @@
                 <label>Select Active Event to Check-In</label>
                 <select id="activeEventDropdown" class="form-control" onchange="updateActiveEventBanner()"></select>
             </div>
-            
+
             <div id="checkinCounters" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
                 <div style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 10px; border-radius: 8px; text-align: center;">
                     <div id="liveTotal" style="font-size: 1.25rem; font-weight: 800; color: var(--primary);">0</div>
@@ -299,10 +306,12 @@
     <div id="directoryTab" class="tab-content">
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
-                <h2 style="margin: 0; border: none; padding: 0;">Community Directory</h2>
+                <h2 style="margin: 0; border: none; padding: 0;">Community Directory
+                    <button class="btn btn-primary btn-sm" style="margin-left: 15px; background: #27ae60;" onclick="window.location.href = '/api/directory/export'">📊 Export CSV</button>
+                </h2>
                 <div id="directoryTotalCount" class="badge badge-blue" style="font-size: 0.85rem; padding: 6px 12px;">Total Registered All Ages: 0</div>
             </div>
-            
+
             <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
                 <select id="sortDirectorySelect" class="form-control" style="flex: 1; min-width: 130px;" onchange="filterDirectory()">
                     <option value="name_asc">Name (A-Z)</option>
@@ -321,66 +330,90 @@
             <div class="form-group">
                 <input type="text" id="directorySearchInput" class="form-control" placeholder="Search directory by name or ID..." oninput="filterDirectory()">
             </div>
-            
+
+            <div id="dirPagerControls" style="display: flex; gap: 15px; align-items: center; margin: 15px 0; background: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); font-weight: bold; font-size: 14px;">
+                <label>Entries per page:</label>
+                <select id="dirPerPage" class="form-control" style="width: 80px;" onchange="dirPerPage = parseInt(this.value); dirCurrentPage = 1; filterDirectory();">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="999999">All</option>
+                </select>
+                <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
+                    <button id="dirPrev" class="btn btn-outline btn-sm" onclick="if(dirCurrentPage > 1) { dirCurrentPage--; filterDirectory(); }">◀ Prev</button>
+                    <span id="dirPageInd" style="color: var(--text-main);">Page 1</span>
+                    <button id="dirNext" class="btn btn-outline btn-sm" onclick="dirCurrentPage++; filterDirectory();">Next ▶</button>
+                </div>
+            </div>
+
             <div id="directoryTableContainer" style="overflow-x: auto;"></div>
         </div>
     </div>
 
     <div id="eventsTab" class="tab-content">
-        <div class="card">
-            <h2>Create New Gathering / Event</h2>
-            <form onsubmit="handleCreateEvent(event)">
-                <div class="form-group">
-                    <label>Event Name *</label>
-                    <input type="text" id="evtName" class="form-control" required>
-                </div>
-                <div style="display: flex; gap: 15px;">
-                    <div class="form-group" style="flex: 1;">
-                        <label>Date *</label>
-                        <input type="date" id="evtDate" class="form-control" required>
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label>Time Start</label>
-                        <input type="time" id="evtTime" class="form-control">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Venue / Location</label>
-                    <input type="text" id="evtVenue" class="form-control">
-                </div>
-                <div class="form-group">
-                    <label>Event Poster Image</label>
-                    <input type="file" id="evtPoster" class="form-control" accept="image/*">
-                </div>
-                <div class="form-group">
-                    <label>Google Photos Album URL (Optional)</label>
-                    <input type="url" id="evtPhotosUrl" class="form-control" placeholder="https://photos.app.goo.gl/...">
-                </div>
-                <div class="form-group">
-                    <label>Google Drive Folder URL (Optional)</label>
-                    <input type="url" id="evtMaterialsUrl" class="form-control" placeholder="https://drive.google.com/...">
-                </div>
-                <button type="submit" class="btn btn-primary">Publish Event</button>
-            </form>
+        <div class="event-tabs-container">
+            <button class="event-tab-btn active-tab" id="btnTabPublished" onclick="switchEventSubTab('published')">📅 Published Gatherings</button>
+            <button class="event-tab-btn" id="btnTabCreate" onclick="switchEventSubTab('create')">➕ Create New Gathering</button>
         </div>
 
-        <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
-                <h2>Published Gatherings</h2>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <button id="viewBtnList" class="btn btn-outline btn-sm active" onclick="setEventViewMode('list')">☰ List View</button>
-                    <button id="viewBtnGrid" class="btn btn-outline btn-sm" onclick="setEventViewMode('grid')">▦ Grid View</button>
-                    <button id="viewBtnCal" class="btn btn-outline btn-sm" onclick="setEventViewMode('calendar')">📅 Calendar View</button>
+        <div id="subTabCreate" style="display: none;">
+            <div class="card">
+                <h2>Create New Gathering / Event</h2>
+                <form onsubmit="handleCreateEvent(event)">
+                    <div class="form-group">
+                        <label>Event Name *</label>
+                        <input type="text" id="evtName" class="form-control" required>
+                    </div>
+                    <div style="display: flex; gap: 15px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label>Date *</label>
+                            <input type="date" id="evtDate" class="form-control" required>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Time Start</label>
+                            <input type="time" id="evtTime" class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Venue / Location</label>
+                        <input type="text" id="evtVenue" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Event Poster Image</label>
+                        <input type="file" id="evtPoster" class="form-control" accept="image/*">
+                    </div>
+                    <div class="form-group">
+                        <label>Google Photos Album URL (Optional)</label>
+                        <input type="url" id="evtPhotosUrl" class="form-control" placeholder="https://photos.app.goo.gl/...">
+                    </div>
+                    <div class="form-group">
+                        <label>Google Drive Folder URL (Optional)</label>
+                        <input type="url" id="evtMaterialsUrl" class="form-control" placeholder="https://drive.google.com/...">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Publish Event</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="subTabPublished" style="display: block;">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                    <h2>Published Gatherings</h2>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button id="viewBtnList" class="btn btn-outline btn-sm active" onclick="setEventViewMode('list')">☰ List View</button>
+                        <button id="viewBtnGrid" class="btn btn-outline btn-sm" onclick="setEventViewMode('grid')">▦ Grid View</button>
+                        <button id="viewBtnCal" class="btn btn-outline btn-sm" onclick="setEventViewMode('calendar')">📅 Calendar View</button>
+                    </div>
                 </div>
-            </div>
 
-            <div id="calendarControls" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 15px;">
-                <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(-1)">◀ Prev</button>
-                <h3 id="calendarMonthTitle" style="font-size: 1.1rem; color: var(--primary);"></h3>
-                <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(1)">Next ▶</button>
-            </div>
+                <div id="calendarControls" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                    <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(-1)">◀ Prev</button>
+                    <h3 id="calendarMonthTitle" style="font-size: 1.1rem; color: var(--primary);"></h3>
+                    <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(1)">Next ▶</button>
+                </div>
 
-            <div id="eventsListContainer"></div>
+                <div id="eventsListContainer"></div>
+            </div>
         </div>
     </div>
 
@@ -529,7 +562,7 @@
     <div class="modal-content">
         <h2>Assign User Permissions</h2>
         <div id="permModalUserBanner" style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px 16px; border-radius: 8px; font-weight: 700; color: var(--primary); margin-bottom: 15px;"></div>
-        
+
         <form onsubmit="event.preventDefault(); handleSavePermissionsFromModal();">
             <input type="hidden" id="modalPermUserId">
             <div class="form-group">
@@ -600,34 +633,38 @@
         <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 20px;">
             <div id="analyticsModalPoster" style="width: 80px; height: 80px; background: #FFF; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); flex-shrink: 0; display:flex; align-items:center; justify-content:center;"></div>
             <div style="flex: 1;">
-                <h2 id="analyticsEventTitle" style="margin-bottom: 5px;">Event Analytics</h2>
+                <h2 id="analyticsEventTitle" style="margin-bottom: 5px;">📊 Event Details</h2>
                 <p id="analyticsEventMeta" style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0; margin-bottom: 8px;"></p>
                 <div id="analyticsEventLinks" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
             </div>
         </div>
-        
-        <div class="analytics-grid">
-            <div class="stat-card">
-                <div id="statTotalTurnout" class="val">0</div>
-                <div class="lbl">Checked-In</div>
+
+        <div class="analytics-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+            <div class="stat-card" style="background: linear-gradient(135deg, #3498db, #2980b9); color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                <h3 id="statTotalTurnout" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px; font-weight: bold;">Total Check-ins</p>
             </div>
-            <div class="stat-card">
-                <div id="statTurnoutPercent" class="val">0%</div>
-                <div class="lbl">Turnout Rate</div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #2ecc71, #27ae60); color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                <h3 id="statPreReg" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px; font-weight: bold;">Pre-Reg</p>
             </div>
-            <div class="stat-card">
-                <div id="statBreakdown" class="val" style="font-size: 1.1rem; padding-top: 4px;">0 / 0</div>
-                <div class="lbl">Pre-Reg / Walk-in</div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #f1c40f, #f39c12); color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                <h3 id="statWalkin" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px; font-weight: bold;">Walk-ins</p>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+                <h3 id="statTurnoutPercent" style="margin: 0; font-size: 22px;">0%</h3><p style="margin: 5px 0 0; font-size: 11px; font-weight: bold;">Turnout Rate</p>
             </div>
         </div>
 
-        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-top: 10px;">WALK-IN vs PRE-REGISTERED PROPORTION</div>
-        <div class="progress-bar-bg">
-            <div id="progressBarFill" class="progress-bar-fill" style="width: 0%;"></div>
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <input type="text" id="attSearch" placeholder="🔍 Search checked-in name..." class="form-control" style="flex: 1;" oninput="filterModalRoster()">
+            <select id="attAge" class="form-control" style="width: 130px;" onchange="filterModalRoster()">
+                <option value="all">All Ages</option>
+                <option value="mini">Minis (7-12)</option>
+                <option value="youth">Youth (13-21)</option>
+                <option value="adult">Adults (22+)</option>
+            </select>
         </div>
 
-        <h3 style="font-size: 1rem; margin-top: 20px; margin-bottom: 8px; color: var(--text-main);">Checked-In Roster</h3>
-        <div id="analyticsRosterContainer" style="max-height: 220px; overflow-y: auto;"></div>
+        <div id="analyticsRosterContainer" style="max-height: 250px; overflow-y: auto;"></div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px; flex-wrap: wrap; gap: 10px;">
             <button type="button" class="btn btn-outline" onclick="exportAnalyticsCSV()">📥 Export List (CSV)</button>
@@ -708,8 +745,12 @@
     let eventViewMode = 'list';
     let calCurrentDate = new Date();
     let qrScanner = null;
-    let currentAnalyticsData = null; 
+    let currentAnalyticsData = null;
     let checkedInYouthIds = new Set();
+    
+    // Directory Pagination Variables
+    let dirCurrentPage = 1;
+    let dirPerPage = 10;
 
     async function getBase64(file, maxWidth = 600) {
         return new Promise((resolve, reject) => {
@@ -733,7 +774,7 @@
     }
 
     function openImageViewer(src) {
-        if (!src || src.length < 50) return; 
+        if (!src || src.length < 50) return;
         document.getElementById('enlargedImage').src = src;
         document.getElementById('imageViewerModal').classList.add('active');
     }
@@ -779,7 +820,11 @@
         if (tabId === 'attendanceTab') loadAttendanceLogs();
         if (tabId === 'activityLogsTab') loadActivityLogs();
         if (tabId === 'permissionsTab') loadUserPermissionsList();
-        
+
+        // Highlight Button
+        const clickedBtn = Array.from(document.querySelectorAll('.nav-btn')).find(btn => btn.getAttribute('onclick').includes(tabId));
+        if(clickedBtn) clickedBtn.classList.add('active');
+
         // Superadmin Backups UI visibility
         if (tabId === 'profileTab' && currentUser === 'celsocreeriii@gmail.com') {
             document.getElementById('adminBackupCard').style.display = 'block';
@@ -787,6 +832,14 @@
         } else {
             document.getElementById('adminBackupCard').style.display = 'none';
         }
+    }
+
+    // FEATURE 2: Event Sub-Tabs Logic
+    function switchEventSubTab(tabName) {
+        document.getElementById('subTabPublished').style.display = tabName === 'published' ? 'block' : 'none';
+        document.getElementById('subTabCreate').style.display = tabName === 'create' ? 'block' : 'none';
+        document.getElementById('btnTabPublished').classList.toggle('active-tab', tabName === 'published');
+        document.getElementById('btnTabCreate').classList.toggle('active-tab', tabName === 'create');
     }
 
     async function loadBackups() {
@@ -831,7 +884,7 @@
         document.getElementById('btnCheckinScanner').classList.toggle('active', mode === 'scanner');
         document.getElementById('btnCheckinManual').classList.toggle('active', mode === 'manual');
         document.getElementById('btnCheckinWalkin').classList.toggle('active', mode === 'walkin');
-        
+
         if (mode === 'scanner') initScanner();
         else if (qrScanner) { qrScanner.clear().catch(e => console.log(e)); qrScanner = null; }
         if (mode === 'manual') filterManualCheckin();
@@ -973,7 +1026,7 @@
             });
             document.getElementById('qrPassCard').style.display = 'block';
             document.getElementById('regForm').reset();
-            youthData = []; 
+            youthData = [];
         }
     }
 
@@ -989,7 +1042,7 @@
             }).then(r => r.json()).then(data => {
                 if (data.success) {
                     alert(`Success! Checked in ${data.member_name}`);
-                    updateActiveEventBanner(); 
+                    updateActiveEventBanner();
                 } else alert(data.error || 'Check-in failed');
             });
         }, (err) => {});
@@ -998,11 +1051,9 @@
     async function updateActiveEventBanner() {
         const dropdown = document.getElementById('activeEventDropdown');
         if(!dropdown) return;
-        const selectedText = dropdown.options[dropdown.selectedIndex]?.text || 'No Event Selected';
-        document.getElementById('activeEventBanner').innerText = `Selected Event: ${selectedText}`;
-
         const eventId = dropdown.value;
         checkedInYouthIds.clear();
+
         if(eventId) {
             document.getElementById('checkinCounters').style.display = 'grid';
             const res = await fetch(`/api/events/${eventId}/analytics`);
@@ -1020,7 +1071,7 @@
         } else {
             document.getElementById('checkinCounters').style.display = 'none';
         }
-        
+
         filterManualCheckin();
     }
 
@@ -1038,10 +1089,10 @@
         else matches = youthData.slice(0, 20);
 
         container.innerHTML = matches.map(y => {
-            const avatarHtml = y.profile_picture 
+            const avatarHtml = y.profile_picture
                 ? `<img src="${y.profile_picture}" class="avatar-circle" style="cursor:pointer;" onclick="openImageViewer(this.src)">`
                 : `<div class="avatar-circle">${y.name.charAt(0).toUpperCase()}</div>`;
-            
+
             const isCheckedIn = checkedInYouthIds.has(y.id);
             const btnHtml = isCheckedIn
                 ? `<button type="button" class="btn btn-secondary btn-sm" disabled style="background: #94A3B8; color: #FFF; cursor: not-allowed;">Done</button>`
@@ -1093,9 +1144,9 @@
         let picBase64 = undefined;
         if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0], 400);
 
-        const payload = { 
+        const payload = {
             name, email, age, birthday, social_media, parents_name, profile_picture: picBase64,
-            password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, actor: currentUser 
+            password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, actor: currentUser
         };
 
         triggerActionConfirmation(`Confirm updating profile for ${name}?`, async () => {
@@ -1105,13 +1156,13 @@
             const data = await res.json();
             if(data.success) {
                 closeFastEditProfileModal();
-                youthData = []; 
-                await loadDirectory(); 
-                
+                youthData = [];
+                await loadDirectory();
+
                 if(doCheckIn) quickCheckin(id, name);
                 else {
                     alert("Profile updated successfully!");
-                    updateActiveEventBanner(); 
+                    updateActiveEventBanner();
                 }
             }
         });
@@ -1129,7 +1180,7 @@
 
         if (data.success) {
             alert(`Successfully checked in ${memberName || 'member'}!`);
-            updateActiveEventBanner(); 
+            updateActiveEventBanner();
         } else alert(data.error || 'Check-in failed');
     }
 
@@ -1155,7 +1206,7 @@
             const checkinData = await checkinRes.json();
             if (checkinData.success) {
                 alert(`Successfully registered and checked in walk-in: ${payload.name}`);
-                e.target.reset(); youthData = []; updateActiveEventBanner(); 
+                e.target.reset(); youthData = []; updateActiveEventBanner();
             } else alert(checkinData.error || 'Registration succeeded, but check-in failed.');
         } else alert(regData.error || 'Failed to register walk-in.');
     }
@@ -1168,12 +1219,12 @@
         filterDirectory();
     }
 
+    // Native Pagination and Sorting
     function filterDirectory() {
         const q = document.getElementById('directorySearchInput').value.toLowerCase().trim();
         const sort = document.getElementById('sortDirectorySelect').value;
         const ageCat = document.getElementById('filterAgeCategory').value;
 
-        // Clean logic: valid profiles are those with proper age data
         let validProfiles = youthData.filter(y => y.age !== null && y.age !== '' && !isNaN(y.age));
 
         let matches = validProfiles;
@@ -1191,9 +1242,21 @@
         if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
         if (sort === 'age_desc') matches.sort((a,b) => (b.age || 0) - (a.age || 0));
 
+        // Apply Pagination Native Logic
+        const totalPages = Math.ceil(matches.length / dirPerPage) || 1;
+        if (dirCurrentPage > totalPages) dirCurrentPage = totalPages;
+        if (dirCurrentPage < 1) dirCurrentPage = 1;
+
+        document.getElementById('dirPageInd').innerText = `Page ${dirCurrentPage} of ${totalPages}`;
+        document.getElementById('dirPrev').disabled = (dirCurrentPage === 1);
+        document.getElementById('dirNext').disabled = (dirCurrentPage === totalPages);
+
+        const start = (dirCurrentPage - 1) * dirPerPage;
+        const paginatedMatches = matches.slice(start, start + dirPerPage);
+
         let html = `<table><thead><tr><th>Member</th><th>Age</th><th>Birthday</th><th>Actions</th></tr></thead><tbody>`;
-        html += matches.map(y => {
-            const avatarHtml = y.profile_picture 
+        html += paginatedMatches.map(y => {
+            const avatarHtml = y.profile_picture
                 ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 35px; height: 35px; font-size: 1rem; cursor:pointer;" onclick="openImageViewer(this.src)">`
                 : `<div class="avatar-circle" style="width: 35px; height: 35px; font-size: 1rem;">${y.name.charAt(0).toUpperCase()}</div>`;
             return `
@@ -1296,7 +1359,7 @@
     function openEditEventModal(eventId) {
         const e = eventsData.find(ev => ev.id == eventId);
         if (!e) return;
-        
+
         document.getElementById('editEvtId').value = e.id;
         document.getElementById('editEvtName').value = e.name || '';
         document.getElementById('editEvtDate').value = e.event_date || '';
@@ -1304,7 +1367,7 @@
         document.getElementById('editEvtVenue').value = e.venue || '';
         document.getElementById('editEvtPhotosUrl').value = e.photos_url || '';
         document.getElementById('editEvtMaterialsUrl').value = e.materials_url || '';
-        document.getElementById('editEvtPoster').value = ''; 
+        document.getElementById('editEvtPoster').value = '';
 
         closeAnalyticsModal();
         document.getElementById('editEventModal').classList.add('active');
@@ -1335,10 +1398,11 @@
         });
     }
 
+    // FEATURE 3: Clean Modal Trigger & Inject
     async function openAnalyticsModal(eventId) {
         const res = await fetch(`/api/events/${eventId}/analytics`);
         const data = await res.json();
-        if (!data || data.error) return alert('Failed to load event analytics');
+        if (!data || data.error) return alert('Failed to load event details');
 
         currentAnalyticsData = data;
         const posterContainer = document.getElementById('analyticsModalPoster');
@@ -1353,37 +1417,63 @@
         if(data.event.materials_url) linksHtml += `<a href="${data.event.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration: none;">📁 Materials</a>`;
         document.getElementById('analyticsEventLinks').innerHTML = linksHtml;
 
-        document.getElementById('statTotalTurnout').innerText = data.totalTurnout;
-        document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage}%`;
-        document.getElementById('statBreakdown').innerText = `${data.preReg} / ${data.walkins}`;
+        // Native 4-card injection
+        document.getElementById('statTotalTurnout').innerText = data.totalTurnout || 0;
+        document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage || 0}%`;
+        document.getElementById('statPreReg').innerText = data.preReg || 0;
+        document.getElementById('statWalkin').innerText = data.walkins || 0;
 
-        const preRegPct = data.totalTurnout > 0 ? ((data.preReg / data.totalTurnout) * 100).toFixed(0) : 0;
-        document.getElementById('progressBarFill').style.width = `${preRegPct}%`;
+        document.getElementById('attSearch').value = '';
+        document.getElementById('attAge').value = 'all';
 
-        const rosterContainer = document.getElementById('analyticsRosterContainer');
-        if (data.roster.length === 0) rosterContainer.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem;">No members checked in yet for this gathering.</p>`;
-        else {
-            rosterContainer.innerHTML = `<table><thead><tr><th>Member</th><th>Timestamp</th><th>Type</th></tr></thead><tbody>` +
-                data.roster.map(r => {
-                    const avatarHtml = r.profile_picture 
-                        ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">`
-                        : `<div class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem;">${r.name.charAt(0).toUpperCase()}</div>`;
-                    return `
-                    <tr>
-                        <td>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                ${avatarHtml}
-                                <div><strong>${r.name}</strong><br><small style="color: var(--text-muted);">${r.qr_code}</small></div>
-                            </div>
-                        </td>
-                        <td><small>${r.checked_in_at}</small></td>
-                        <td><span class="badge ${r.is_walkin ? 'badge-orange' : 'badge-green'}">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
-                    </tr>
-                `}).join('') + `</tbody></table>`;
-        }
+        filterModalRoster();
 
         document.getElementById('analyticsEditEventBtn').onclick = () => openEditEventModal(eventId);
         document.getElementById('eventAnalyticsModal').classList.add('active');
+    }
+
+    function filterModalRoster() {
+        if (!currentAnalyticsData || !currentAnalyticsData.roster) return;
+        const q = document.getElementById('attSearch').value.toLowerCase().trim();
+        const ageFilter = document.getElementById('attAge').value;
+
+        let matches = currentAnalyticsData.roster.filter(r => {
+            let mQ = true;
+            if(q) mQ = r.name.toLowerCase().includes(q) || (r.qr_code && r.qr_code.toLowerCase().includes(q));
+
+            let mA = true;
+            if (ageFilter !== 'all') {
+                const age = parseInt(r.age) || 0;
+                if (ageFilter === 'mini' && (age < 1 || age > 12)) mA = false;
+                if (ageFilter === 'youth' && (age < 13 || age > 21)) mA = false;
+                if (ageFilter === 'adult' && age < 22) mA = false;
+            }
+            return mQ && mA;
+        });
+
+        const rosterContainer = document.getElementById('analyticsRosterContainer');
+        if (matches.length === 0) {
+            rosterContainer.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem;">No members match the filter.</p>`;
+            return;
+        }
+
+        rosterContainer.innerHTML = `<table><thead><tr><th>Member</th><th>Timestamp</th><th>Type</th></tr></thead><tbody>` +
+            matches.map(r => {
+                const avatarHtml = r.profile_picture
+                    ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">`
+                    : `<div class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem;">${r.name.charAt(0).toUpperCase()}</div>`;
+                return `
+                <tr>
+                    <td>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            ${avatarHtml}
+                            <div><strong>${r.name}</strong><br><small style="color: var(--text-muted);">${r.qr_code}</small></div>
+                        </div>
+                    </td>
+                    <td><small>${r.checked_in_at}</small></td>
+                    <td><span class="badge ${r.is_walkin ? 'badge-orange' : 'badge-green'}">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
+                </tr>
+            `}).join('') + `</tbody></table>`;
     }
 
     function closeAnalyticsModal() { document.getElementById('eventAnalyticsModal').classList.remove('active'); currentAnalyticsData = null; }
@@ -1470,7 +1560,7 @@
         document.getElementById('viewBtnGrid').classList.toggle('active', mode === 'grid');
         document.getElementById('viewBtnCal').classList.toggle('active', mode === 'calendar');
         document.getElementById('calendarControls').style.display = mode === 'calendar' ? 'flex' : 'none';
-        
+
         if(eventsData.length === 0) loadEvents();
         else {
             const container = document.getElementById('eventsListContainer');
@@ -1488,7 +1578,7 @@
                             ${linkBadges ? `<div style="margin-top: 6px;">${linkBadges}</div>` : ''}
                         </div>
                         <div style="display: flex; gap: 6px;">
-                            <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
                             <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                             <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                         </div>
@@ -1502,8 +1592,8 @@
                     if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
                     return `
                     <div class="event-card">
-                        ${e.poster 
-                            ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` 
+                        ${e.poster
+                            ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">`
                             : `<div class="event-card-img" style="background: #FFFFFF; border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`
                         }
                         <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
@@ -1516,7 +1606,7 @@
                                 ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
                             </div>
                             <div style="display: flex; gap: 6px; margin-top: 8px;">
-                                <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                                <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
                                 <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                                 <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                             </div>
@@ -1535,8 +1625,17 @@
 
         const dropdown = document.getElementById('activeEventDropdown');
         if (dropdown) {
-            dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name} (${e.event_date})</option>`).join('');
-            if (eventsData.length > 0) updateActiveEventBanner();
+            // Apply Native 5-Hour Leeway to Check-in Dropdown directly
+            const targetDate = new Date();
+            targetDate.setHours(targetDate.getHours() - 5);
+            const cutoffStr = targetDate.toISOString().split('T')[0];
+
+            dropdown.innerHTML = eventsData
+                .filter(e => e.event_date >= cutoffStr)
+                .map(e => `<option value="${e.id}">${e.name} (${e.event_date})</option>`)
+                .join('');
+                
+            if (dropdown.options.length > 0) updateActiveEventBanner();
         }
 
         const container = document.getElementById('eventsListContainer');
@@ -1555,7 +1654,7 @@
                         ${linkBadges ? `<div style="margin-top: 6px;">${linkBadges}</div>` : ''}
                     </div>
                     <div style="display: flex; gap: 6px;">
-                        <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
                         <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                         <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                     </div>
@@ -1569,8 +1668,8 @@
                 if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
                 return `
                 <div class="event-card">
-                    ${e.poster 
-                        ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` 
+                    ${e.poster
+                        ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">`
                         : `<div class="event-card-img" style="background: #FFFFFF; border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`
                     }
                     <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
@@ -1583,7 +1682,7 @@
                             ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
                         </div>
                         <div style="display: flex; gap: 6px; margin-top: 8px;">
-                            <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                            <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
                             <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                             <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                         </div>
@@ -1618,7 +1717,7 @@
 
             html += `<div class="calendar-day-cell"><strong>${day}</strong>`;
             dayEvents.forEach(e => {
-                html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${e.name.replace(/"/g, '&quot;')}">${e.name}</div>`;
+                html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Details for ${e.name.replace(/"/g, '&quot;')}">${e.name}</div>`;
             });
             html += `</div>`;
         }
@@ -1703,7 +1802,7 @@
     function handleCreateEvent(e) {
         e.preventDefault();
         const fileInput = document.getElementById('evtPoster');
-        
+
         triggerActionConfirmation(`Publish new gathering?`, async () => {
             let posterBase64 = null;
             if (fileInput.files.length > 0) posterBase64 = await getBase64(fileInput.files[0], 1200);
@@ -1711,18 +1810,19 @@
             const payload = {
                 name: document.getElementById('evtName').value, event_date: document.getElementById('evtDate').value,
                 time_start: document.getElementById('evtTime').value, venue: document.getElementById('evtVenue').value,
-                poster: posterBase64, 
-                photos_url: document.getElementById('evtPhotosUrl').value, 
-                materials_url: document.getElementById('evtMaterialsUrl').value, 
+                poster: posterBase64,
+                photos_url: document.getElementById('evtPhotosUrl').value,
+                materials_url: document.getElementById('evtMaterialsUrl').value,
                 actor: currentUser
             };
 
             const res = await fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (res.ok) { 
-                document.getElementById('evtName').value = ''; 
+            if (res.ok) {
+                document.getElementById('evtName').value = '';
                 document.getElementById('evtPhotosUrl').value = '';
                 document.getElementById('evtMaterialsUrl').value = '';
-                loadEvents(); 
+                switchEventSubTab('published');
+                loadEvents();
             }
         });
     }
@@ -1776,326 +1876,5 @@
         });
     }
 </script>
-
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    setInterval(() => {
-        // Find the Directory Header
-        const headers = document.querySelectorAll('h2');
-        let dirHeader = Array.from(headers).find(h => h.innerText.includes('Directory') || h.innerText.includes('Members'));
-        
-        // If found and button doesn't exist, inject it
-        if (dirHeader && !document.getElementById('csvBtn')) {
-            const btn = document.createElement('button');
-            btn.id = 'csvBtn';
-            btn.innerHTML = '📊 Export CSV';
-            btn.style.cssText = 'background: #27ae60; color: white; border: none; padding: 8px 15px; border-radius: 5px; margin-left: 15px; cursor: pointer; font-weight: bold; vertical-align: middle;';
-            btn.onclick = () => window.location.href = '/api/directory/export';
-            
-            dirHeader.style.display = 'inline-block';
-            dirHeader.parentNode.insertBefore(btn, dirHeader.nextSibling);
-        }
-    }, 1000);
-});
-</script>
-
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // FEATURE 1: Upcoming Events Filter (Hides Past Events in Dropdown)
-    setInterval(() => {
-        const eventDropdown = document.querySelector('select[name="event_id"]') || document.querySelector('#eventSelect') || document.querySelector('#checkinEventSelect');
-        if (eventDropdown && !eventDropdown.dataset.dateFiltered) {
-            const todayStr = new Date().toISOString().split('T')[0]; // Gets YYYY-MM-DD
-            let hasDates = false;
-            
-            Array.from(eventDropdown.options).forEach(opt => {
-                const dateMatch = opt.innerText.match(/\d{4}-\d{2}-\d{2}/);
-                if (dateMatch) {
-                    hasDates = true;
-                    if (dateMatch[0] < todayStr) {
-                        opt.style.display = 'none'; 
-                        opt.disabled = true; // Hides and disables past events
-                    }
-                }
-            });
-            
-            if (hasDates) eventDropdown.dataset.dateFiltered = "true";
-        }
-    }, 1000);
-
-    // FEATURE 2: Community Directory Pagination
-    setInterval(() => {
-        const csvBtn = document.getElementById('csvBtn');
-        const dirTab = document.querySelector('#directory') || document.querySelector('#directoryTab') || (csvBtn ? csvBtn.closest('section, div') : null);
-        const tbody = dirTab ? (dirTab.querySelector('table tbody') || dirTab.querySelector('.list')) : null;
-        
-        if (tbody && tbody.children.length > 0 && !document.getElementById('dirPagerControls')) {
-            const pager = document.createElement('div');
-            pager.id = 'dirPagerControls';
-            pager.style.cssText = 'display: flex; gap: 15px; align-items: center; margin: 15px 0; background: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;';
-            pager.innerHTML = `
-                <label>Entries per page:</label>
-                <select id="dirPerPage" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer;">
-                    <option value="10">10</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="999999">All</option>
-                </select>
-                <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
-                    <button id="dirPrev" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">◀ Prev</button>
-                    <span id="dirPageInd" style="color: #2c3e50;">Page 1</span>
-                    <button id="dirNext" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">Next ▶</button>
-                </div>
-            `;
-            
-            // Insert the pager safely above the table
-            tbody.parentNode.parentNode.insertBefore(pager, tbody.parentNode);
-
-            let currentPage = 1;
-            let perPage = 10;
-
-            const updateTable = () => {
-                const rows = Array.from(tbody.children);
-                const totalPages = Math.ceil(rows.length / perPage) || 1;
-                
-                if (currentPage > totalPages) currentPage = totalPages;
-                if (currentPage < 1) currentPage = 1;
-
-                document.getElementById('dirPageInd').innerText = 'Page ' + currentPage + ' of ' + totalPages;
-                document.getElementById('dirPrev').disabled = (currentPage === 1);
-                document.getElementById('dirNext').disabled = (currentPage === totalPages);
-
-                rows.forEach((row, index) => {
-                    if (perPage >= 999999) {
-                        row.style.display = '';
-                    } else {
-                        const start = (currentPage - 1) * perPage;
-                        const end = start + perPage;
-                        row.style.display = (index >= start && index < end) ? '' : 'none';
-                    }
-                });
-            };
-
-            document.getElementById('dirPerPage').onchange = (e) => {
-                perPage = parseInt(e.target.value);
-                currentPage = 1;
-                updateTable();
-            };
-
-            document.getElementById('dirPrev').onclick = () => {
-                if (currentPage > 1) { currentPage--; updateTable(); }
-            };
-
-            document.getElementById('dirNext').onclick = () => {
-                const rows = Array.from(tbody.children);
-                if (currentPage < Math.ceil(rows.length / perPage)) { currentPage++; updateTable(); }
-            };
-
-            // Run it immediately and re-run if data changes
-            updateTable();
-            new MutationObserver(() => updateTable()).observe(tbody, { childList: true });
-        }
-    }, 1000);
-});
-</script>
-
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    // Fetch exact dates from database to guarantee accuracy
-    fetch('/api/events').then(r => r.json()).then(events => {
-        const today = new Date();
-        today.setHours(0,0,0,0);
-        
-        // Find IDs of events that are strictly in the past
-        const pastEventIds = events.filter(e => {
-            if(!e.event_date) return false;
-            return new Date(e.event_date) < today;
-        }).map(e => String(e.id));
-
-        setInterval(() => {
-            const dropdowns = document.querySelectorAll('select[name="event_id"], #eventSelect, #checkinEventSelect');
-            dropdowns.forEach(dropdown => {
-                Array.from(dropdown.options).forEach(opt => {
-                    // Completely remove the option so mobile browsers can't show it
-                    if (pastEventIds.includes(String(opt.value))) {
-                        opt.remove(); 
-                    }
-                });
-            });
-        }, 1000);
-    }).catch(e => console.log('Filter error:', e));
-});
-</script>
-
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    // 1. Aggressively remove past events from the check-in dropdown (Zero Network Delay)
-    setInterval(() => {
-        const dropdown = document.querySelector('select[name="event_id"]') || document.querySelector('#checkinEventSelect');
-        if (dropdown) {
-            const todayStr = new Date().toISOString().split('T')[0];
-            Array.from(dropdown.options).forEach(opt => {
-                const match = opt.innerText.match(/(\d{4}-\d{2}-\d{2})/);
-                if (match && match[1] < todayStr) {
-                    opt.remove(); // Instantly destroy past date options
-                }
-            });
-        }
-    }, 800);
-
-    // 2 & 3. Rename Analytics to Event Details & Inject 4-Card Grid
-    setInterval(() => {
-        document.querySelectorAll('button').forEach(btn => {
-            if (btn.innerText.includes('Analytics')) btn.innerHTML = '📊 Event Details';
-        });
-
-        const modal = document.getElementById('analyticsModal') || document.querySelector('.modal');
-        if (modal && (modal.style.display === 'block' || modal.classList.contains('active'))) {
-            const h2 = modal.querySelector('h2');
-            if (h2 && h2.innerText.includes('Analytics')) h2.innerText = '📊 Event Details';
-
-            const content = modal.querySelector('#analyticsContent') || modal.querySelector('.content');
-            if (content && !document.getElementById('gridInjected')) {
-                // Read the old text values
-                const txt = content.innerText;
-                const totM = txt.match(/Total.*?(\d+)/i) || txt.match(/(\d+).*Total/i) || [0,0];
-                const preM = txt.match(/Pre-Reg.*?(\d+)/i) || txt.match(/(\d+).*Pre-Reg/i) || [0,0];
-                const walkM = txt.match(/Walk-in.*?(\d+)/i) || txt.match(/(\d+).*Walk-in/i) || [0,0];
-                
-                const total = parseInt(totM[1]) || 0;
-                const pre = parseInt(preM[1]) || 0;
-                const walk = parseInt(walkM[1]) || 0;
-                const rate = pre > 0 ? Math.round((total / pre) * 100) + '%' : 'N/A';
-
-                const listObj = content.querySelector('ul, table');
-                
-                // Inject the new Grid UI
-                content.innerHTML = `
-                    <div id="gridInjected" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
-                        <div style="background: linear-gradient(135deg, #3498db, #2980b9); color: white; padding: 15px 10px; border-radius: 8px; text-align: center;">
-                            <h3 style="margin: 0; font-size: 24px;">${total}</h3>
-                            <p style="margin: 5px 0 0; font-size: 12px; font-weight: bold;">Total Check-ins</p>
-                        </div>
-                        <div style="background: linear-gradient(135deg, #2ecc71, #27ae60); color: white; padding: 15px 10px; border-radius: 8px; text-align: center;">
-                            <h3 style="margin: 0; font-size: 24px;">${pre}</h3>
-                            <p style="margin: 5px 0 0; font-size: 12px; font-weight: bold;">Pre-Reg</p>
-                        </div>
-                        <div style="background: linear-gradient(135deg, #f1c40f, #f39c12); color: white; padding: 15px 10px; border-radius: 8px; text-align: center;">
-                            <h3 style="margin: 0; font-size: 24px;">${walk}</h3>
-                            <p style="margin: 5px 0 0; font-size: 12px; font-weight: bold;">Walk-ins</p>
-                        </div>
-                        <div style="background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white; padding: 15px 10px; border-radius: 8px; text-align: center;">
-                            <h3 style="margin: 0; font-size: 24px;">${rate}</h3>
-                            <p style="margin: 5px 0 0; font-size: 12px; font-weight: bold;">Turnout Rate</p>
-                        </div>
-                    </div>
-                `;
-                if (listObj) content.appendChild(listObj);
-            }
-        }
-    }, 500);
-});
-</script>
-
-<script id="fog_final_patch">
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // A. Dropdown 5-Hour Leeway
-    setInterval(() => {
-        const dropdown = document.querySelector('select[name="event_id"]') || document.querySelector('#checkinEventSelect');
-        if (dropdown && !dropdown.dataset.leewayApplied) {
-            dropdown.dataset.leewayApplied = "true";
-            
-            const targetDate = new Date();
-            targetDate.setHours(targetDate.getHours() - 5); // Subtract 5 hours for the leeway
-            const cutoffStr = targetDate.toISOString().split('T')[0];
-
-            Array.from(dropdown.options).forEach(opt => {
-                const match = opt.innerText.match(/(\d{4}-\d{2}-\d{2})/);
-                if (match && match[1] < cutoffStr) {
-                    opt.remove(); // Removes events older than the 5-hour cutoff
-                }
-            });
-        }
-    }, 1000);
-
-    // B. Modal 4-Card Grid & Attendance Filters
-    setInterval(() => {
-        const modal = document.getElementById('analyticsModal') || document.querySelector('.modal');
-        if (modal && (modal.style.display === 'block' || modal.classList.contains('active'))) {
-            const content = modal.querySelector('#analyticsContent') || modal.querySelector('.content');
-            
-            if (content && !document.getElementById('modalGridUI')) {
-                const txt = content.innerText;
-                const total = parseInt((txt.match(/Total.*?(\d+)/i) || txt.match(/(\d+).*Total/i) || [0,0])[1]);
-                const pre = parseInt((txt.match(/Pre-Reg.*?(\d+)/i) || txt.match(/(\d+).*Pre-Reg/i) || [0,0])[1]);
-                const walk = parseInt((txt.match(/Walk-in.*?(\d+)/i) || txt.match(/(\d+).*Walk-in/i) || [0,0])[1]);
-                const rate = pre > 0 ? Math.round((total / pre) * 100) + '%' : 'N/A';
-
-                const listElement = content.querySelector('ul, table');
-
-                content.innerHTML = `
-                    <div id="modalGridUI" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
-                        <div style="background: #3498db; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
-                            <h3 style="margin: 0; font-size: 22px;">${total}</h3><p style="margin: 5px 0 0; font-size: 11px;">Total</p>
-                        </div>
-                        <div style="background: #2ecc71; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
-                            <h3 style="margin: 0; font-size: 22px;">${pre}</h3><p style="margin: 5px 0 0; font-size: 11px;">Pre-Reg</p>
-                        </div>
-                        <div style="background: #f39c12; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
-                            <h3 style="margin: 0; font-size: 22px;">${walk}</h3><p style="margin: 5px 0 0; font-size: 11px;">Walk-in</p>
-                        </div>
-                        <div style="background: #9b59b6; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
-                            <h3 style="margin: 0; font-size: 22px;">${rate}</h3><p style="margin: 5px 0 0; font-size: 11px;">Turnout</p>
-                        </div>
-                    </div>
-                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                        <input type="text" id="attSearch" placeholder="🔍 Search name..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
-                        <select id="attAge" style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
-                            <option value="all">All Ages</option>
-                            <option value="mini">Minis (7-12)</option>
-                            <option value="youth">Youth (13-21)</option>
-                            <option value="adult">Adults (22+)</option>
-                        </select>
-                    </div>
-                    <div id="listWrapper" style="max-height: 250px; overflow-y: auto;"></div>
-                `;
-
-                if (listElement) {
-                    document.getElementById('listWrapper').appendChild(listElement);
-                    
-                    const doFilter = () => {
-                        const q = document.getElementById('attSearch').value.toLowerCase();
-                        const ageFilter = document.getElementById('attAge').value;
-                        const items = listElement.tagName === 'TBODY' ? listElement.children : (listElement.querySelector('tbody') ? listElement.querySelector('tbody').children : listElement.children);
-                        
-                        Array.from(items).forEach(item => {
-                            const text = item.innerText.toLowerCase();
-                            const mQ = text.includes(q);
-                            let mA = true;
-                            const ageM = text.match(/\b(\d{1,2})\b/);
-                            if (ageFilter !== 'all' && ageM) {
-                                const age = parseInt(ageM[1]);
-                                if (ageFilter === 'mini' && (age < 7 || age > 12)) mA = false;
-                                if (ageFilter === 'youth' && (age < 13 || age > 21)) mA = false;
-                                if (ageFilter === 'adult' && age < 22) mA = false;
-                            }
-                            item.style.display = mQ && mA ? '' : 'none';
-                        });
-                    };
-                    document.getElementById('attSearch').addEventListener('input', doFilter);
-                    document.getElementById('attAge').addEventListener('change', doFilter);
-                }
-            }
-        }
-    }, 500);
-});
-</script>
 </body>
-
-
-
-
-
 </html>
