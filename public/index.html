@@ -1488,7 +1488,7 @@
                             ${linkBadges ? `<div style="margin-top: 6px;">${linkBadges}</div>` : ''}
                         </div>
                         <div style="display: flex; gap: 6px;">
-                            <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">View</button>
                             <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                             <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                         </div>
@@ -1516,7 +1516,7 @@
                                 ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
                             </div>
                             <div style="display: flex; gap: 6px; margin-top: 8px;">
-                                <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                                <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">View</button>
                                 <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                                 <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                             </div>
@@ -1555,7 +1555,7 @@
                         ${linkBadges ? `<div style="margin-top: 6px;">${linkBadges}</div>` : ''}
                     </div>
                     <div style="display: flex; gap: 6px;">
-                        <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">View</button>
                         <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                         <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                     </div>
@@ -1583,7 +1583,7 @@
                             ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
                         </div>
                         <div style="display: flex; gap: 6px; margin-top: 8px;">
-                            <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Analytics</button>
+                            <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">View</button>
                             <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
                             <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
                         </div>
@@ -1947,13 +1947,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2 & 3. Rename Analytics to Event Details & Inject 4-Card Grid
     setInterval(() => {
         document.querySelectorAll('button').forEach(btn => {
-            if (btn.innerText.includes('Analytics')) btn.innerHTML = '📊 Event Details';
+            if (btn.innerText.includes('View')) btn.innerHTML = '📊 Event Details';
         });
 
         const modal = document.getElementById('analyticsModal') || document.querySelector('.modal');
         if (modal && (modal.style.display === 'block' || modal.classList.contains('active'))) {
             const h2 = modal.querySelector('h2');
-            if (h2 && h2.innerText.includes('Analytics')) h2.innerText = '📊 Event Details';
+            if (h2 && h2.innerText.includes('View')) h2.innerText = '📊 Event Details';
 
             const content = modal.querySelector('#analyticsContent') || modal.querySelector('.content');
             if (content && !document.getElementById('gridInjected')) {
