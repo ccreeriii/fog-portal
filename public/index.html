@@ -97,8 +97,8 @@
 
         .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; }
         .metric-card { border-radius: 8px; padding: 15px 5px; text-align: center; color: white; }
-        .metric-card h4 { margin: 5px 0 0 0; font-size: 11px; font-weight: normal; }
-        .metric-card p { margin: 0; font-size: 22px; font-weight: bold; }
+        .metric-card-clickable { cursor: pointer; transition: all 0.2s; }
+        .metric-card-clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
     </style>
 </head>
 <body>
@@ -731,30 +731,31 @@
         </div>
 
         <div class="metric-grid">
-            <div style="background: #3498db; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+            <div id="cardTurnout" class="metric-card metric-card-clickable" style="background: #3498db;" onclick="setAnalyticsCardFilter('all')">
                 <h3 id="statTotalTurnout" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px;">Checked-In</p>
             </div>
-            <div style="background: #2ecc71; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+            <div id="cardPreReg" class="metric-card metric-card-clickable" style="background: #2ecc71;" onclick="setAnalyticsCardFilter('prereg')">
                 <h3 id="statTotalPreReg" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px;">Pre-Registered</p>
             </div>
-            <div style="background: #f39c12; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+            <div id="cardWalkin" class="metric-card metric-card-clickable" style="background: #f39c12;" onclick="setAnalyticsCardFilter('walkin')">
                 <h3 id="statWalkins" style="margin: 0; font-size: 22px;">0</h3><p style="margin: 5px 0 0; font-size: 11px;">Walk-ins</p>
             </div>
-            <div style="background: #9b59b6; color: white; padding: 15px 5px; border-radius: 8px; text-align: center;">
+            <div class="metric-card" style="background: #9b59b6;">
                 <h3 id="statTurnoutPercent" style="margin: 0; font-size: 22px;">0%</h3><p style="margin: 5px 0 0; font-size: 11px;">Turnout Rate</p>
             </div>
         </div>
 
         <h3 style="font-size: 1rem; margin-top: 20px; margin-bottom: 8px; color: var(--text-main);">Checked-In Roster</h3>
 
-        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-            <input type="text" id="attSearchNative" placeholder="🔍 Search roster by name or ID..." class="form-control" style="flex: 1;" oninput="filterAnalyticsRoster()">
-            <select id="attAgeNative" class="form-control" style="width: 130px;" onchange="filterAnalyticsRoster()">
+        <div style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
+            <input type="text" id="attSearchNative" placeholder="🔍 Search roster by name or ID..." class="form-control" style="flex: 1; margin: 0;" oninput="filterAnalyticsRoster()">
+            <select id="attAgeNative" class="form-control" style="width: 130px; margin: 0;" onchange="filterAnalyticsRoster()">
                 <option value="all">All Ages</option>
                 <option value="mini">Minis (7-12)</option>
                 <option value="youth">Youth (13-21)</option>
                 <option value="adult">Adults (22+)</option>
             </select>
+            <div id="attRosterCount" class="badge badge-blue" style="font-size: 0.85rem; padding: 10px 12px; margin: 0; white-space: nowrap;">Total: 0</div>
         </div>
 
         <div id="analyticsRosterContainer" style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px;"></div>
@@ -844,6 +845,7 @@
     let currentAnalyticsData = null;
     let checkedInYouthIds = new Set();
     let currentPreregEventId = null;
+    let currentRosterFilter = 'all'; // State tracking for the clickable analytics cards
 
     async function getBase64(file, maxWidth = 600) {
         return new Promise((resolve, reject) => {
@@ -889,10 +891,9 @@
         const urlParams = new URLSearchParams(window.location.search);
         const eventIdParam = urlParams.get('event');
 
-        // Check if user is sharing/refreshing a pre-registration form
         if (eventIdParam) {
             launchPublicPrereg(eventIdParam);
-            return; // Halt normal login load to lock them in the form
+            return; 
         }
 
         const savedSession = localStorage.getItem('fog_user');
@@ -1696,6 +1697,15 @@
         });
     }
 
+    // --- Analytics Card Filter Functions ---
+    function setAnalyticsCardFilter(type) {
+        currentRosterFilter = type;
+        document.getElementById('cardTurnout').style.opacity = type === 'all' ? '1' : '0.5';
+        document.getElementById('cardPreReg').style.opacity = type === 'prereg' ? '1' : '0.5';
+        document.getElementById('cardWalkin').style.opacity = type === 'walkin' ? '1' : '0.5';
+        filterAnalyticsRoster();
+    }
+
     async function openAnalyticsModal(eventId) {
         try {
             const res = await fetch(`/api/events/${eventId}/analytics`);
@@ -1732,7 +1742,14 @@
 
             document.getElementById('attSearchNative').value = '';
             document.getElementById('attAgeNative').value = 'all';
-            renderAnalyticsRoster(data.roster);
+            
+            // Reset UI Filter state before showing
+            currentRosterFilter = 'all';
+            document.getElementById('cardTurnout').style.opacity = '1';
+            document.getElementById('cardPreReg').style.opacity = '0.5';
+            document.getElementById('cardWalkin').style.opacity = '0.5';
+
+            filterAnalyticsRoster();
 
             document.getElementById('eventAnalyticsModal').classList.add('active');
 
@@ -1758,8 +1775,15 @@
             } else if (ageFilter !== 'all' && isNaN(age)) {
                 ageMatch = false;
             }
-            return nameMatch && ageMatch;
+
+            let typeMatch = true;
+            if (currentRosterFilter === 'prereg' && r.is_walkin === 1) typeMatch = false;
+            if (currentRosterFilter === 'walkin' && r.is_walkin === 0) typeMatch = false;
+
+            return nameMatch && ageMatch && typeMatch;
         });
+
+        document.getElementById('attRosterCount').innerText = `Total: ${filtered.length}`;
         renderAnalyticsRoster(filtered);
     }
 
