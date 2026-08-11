@@ -1547,11 +1547,12 @@
 
             const banner = document.getElementById('preregPublicBanner');
             
-            if (e.poster) {
-                banner.src = e.poster;
-                banner.style.display = 'block';
-            } else if (e.prereg_banner) {
+            // FIX: PRIORITY 1 = e.prereg_banner (UI Banner). PRIORITY 2 = e.poster (Fallback)
+            if (e.prereg_banner) {
                 banner.src = e.prereg_banner;
+                banner.style.display = 'block';
+            } else if (e.poster) {
+                banner.src = e.poster;
                 banner.style.display = 'block';
             } else {
                 banner.style.display = 'none';
@@ -2293,7 +2294,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <option value="999999">All</option>
                 </select>
                 <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
-                    <button id="dirPrev" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">◀ Prev</button>
+                    <button id="dirPrev" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: cursor; background: white;">◀ Prev</button>
                     <span id="dirPageInd" style="color: #2c3e50;">Page 1</span>
                     <button id="dirNext" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">Next ▶</button>
                 </div>
