@@ -13,7 +13,6 @@ process.on('unhandledRejection', (reason, promise) => console.error('Unhandled R
 
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
 
 // Standardize GMT+8 Manila Time Engine
 const getManilaTime = () => {
@@ -120,6 +119,50 @@ function logActivity(username, action, details) {
     );
 }
 
+// ==============================================================================
+// NEW: DYNAMIC OPEN GRAPH INJECTOR FOR FACEBOOK / MESSENGER SHARING
+// ==============================================================================
+app.get('/', (req, res, next) => {
+    const eventId = req.query.event;
+    if (!eventId) return next(); // If no event ID, fall through to static serving
+
+    db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
+        if (err || !event) return next();
+
+        const filePath = path.join(__dirname, 'public', 'index.html');
+        fs.readFile(filePath, 'utf8', (err, data) => {
+            if (err) return next();
+
+            const title = (event.prereg_title || event.name || 'Community Event').replace(/"/g, '&quot;');
+            const description = (event.prereg_info || `Join me at ${title}!`).replace(/"/g, '&quot;');
+            
+            const host = req.get('host');
+            const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+            const imageUrl = `${protocol}://${host}/api/events/${eventId}/poster.jpg`;
+
+            const metaTags = `
+    <meta property="og:title" content="${title}" />
+    <meta property="og:description" content="${description}" />
+    <meta property="og:image" content="${imageUrl}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="${protocol}://${host}/?event=${eventId}" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${title}" />
+    <meta name="twitter:description" content="${description}" />
+    <meta name="twitter:image" content="${imageUrl}" />
+            `;
+
+            const modifiedHtml = data.replace('</head>', `${metaTags}\n</head>`);
+            res.send(modifiedHtml);
+        });
+    });
+});
+
+// CORE: Serve Static Files (Moved below the interceptor)
+app.use(express.static(path.join(__dirname, 'public')));
+
 // BACKUP & RESTORE API
 app.get('/api/backups', (req, res) => {
     if (!fs.existsSync(backupDir)) return res.json([]);
@@ -161,7 +204,7 @@ app.post('/api/backups/restore', (req, res) => {
         db.close((err) => {
             fs.copyFileSync(targetFile, currentDb);
             res.json({ success: true });
-            setTimeout(() => { process.exit(0); }, 1000); 
+            setTimeout(() => { process.exit(0); }, 1000);
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -347,6 +390,38 @@ app.get('/api/events/:id/analytics', (req, res) => {
                 });
             });
         });
+    });
+});
+
+// ==============================================================================
+// NEW: IMAGE SERVING ENDPOINT FOR SOCIAL MEDIA SCRAPERS
+// ==============================================================================
+app.get('/api/events/:id/poster.jpg', (req, res) => {
+    const eventId = req.params.id;
+    db.get(`SELECT poster, prereg_banner FROM events WHERE id = ?`, [eventId], (err, event) => {
+        if (err || !event) return res.status(404).send('Not found');
+
+        // Priority 1: The Event Poster. Priority 2: Pre-Reg Banner
+        const base64String = event.poster || event.prereg_banner;
+
+        if (base64String && base64String.startsWith('data:image')) {
+            try {
+                const parts = base64String.split(';');
+                const mimeData = parts[0].split(':')[1];
+                const base64Data = parts[1].split(',')[1];
+                const imgBuffer = Buffer.from(base64Data, 'base64');
+
+                res.writeHead(200, {
+                    'Content-Type': mimeData,
+                    'Content-Length': imgBuffer.length
+                });
+                res.end(imgBuffer);
+            } catch (error) {
+                res.status(500).send('Error processing image');
+            }
+        } else {
+            res.status(404).send('No image uploaded for this event');
+        }
     });
 });
 
