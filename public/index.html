@@ -528,6 +528,16 @@
 
 </div>
 
+<div id="addAttendeeModal" class="modal" style="z-index: 1001;">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeAddAttendeeModal()" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
+        <h2>Add Entry to Event</h2>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px; margin-top: -10px;">Search the directory to manually add an attendance or pre-reg record to this event.</p>
+        <input type="text" id="addAttendeeSearch" class="form-control" placeholder="Search member by name..." oninput="filterAddAttendeeSearch()">
+        <div id="addAttendeeResults" style="max-height: 300px; overflow-y: auto; margin-top: 15px;"></div>
+    </div>
+</div>
+
 <div id="preregSettingsModal" class="modal">
     <div class="modal-content">
         <span class="close-modal" onclick="closePreregSettingsModal()" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
@@ -768,6 +778,7 @@
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px; flex-wrap: wrap; gap: 10px;">
             <button type="button" class="btn btn-outline" onclick="exportAnalyticsCSV()">📥 Export List (CSV)</button>
             <div style="display: flex; gap: 10px;">
+                <button type="button" class="btn btn-primary" onclick="openAddAttendeeModal()">➕ Add Entry</button>
                 <button type="button" class="btn btn-outline" id="analyticsEditEventBtn">Edit Event</button>
                 <button type="button" class="btn btn-secondary" onclick="closeAnalyticsModal()">Close</button>
             </div>
@@ -1804,6 +1815,72 @@
         filterAnalyticsRoster();
     }
 
+    // ==============================================================================
+    // NEW: EVENT ROSTER ADD/EDIT/DELETE UI LOGIC
+    // ==============================================================================
+
+    function openAddAttendeeModal() {
+        if(!currentAnalyticsData) return;
+        document.getElementById('addAttendeeSearch').value = '';
+        document.getElementById('addAttendeeResults').innerHTML = '';
+        document.getElementById('addAttendeeModal').classList.add('active');
+        if(youthData.length === 0) loadDirectory();
+    }
+
+    function closeAddAttendeeModal() {
+        document.getElementById('addAttendeeModal').classList.remove('active');
+    }
+
+    function filterAddAttendeeSearch() {
+        const q = document.getElementById('addAttendeeSearch').value.toLowerCase().trim();
+        const container = document.getElementById('addAttendeeResults');
+        if (q.length < 2) { container.innerHTML = ''; return; }
+
+        const matches = youthData.filter(y => y.name.toLowerCase().includes(q));
+
+        // Prevent double-adding visually
+        const existingIds = currentAnalyticsData.roster.map(r => r.youth_id);
+
+        container.innerHTML = matches.map(y => {
+            const isExisting = existingIds.includes(y.id);
+            const buttons = isExisting
+                ? `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold;">Already In Roster</span>`
+                : `<button class="btn btn-primary btn-sm" onclick="submitAddAttendee(${y.id}, 0, '${y.name.replace(/'/g, "\\'")}')">Add Pre-Reg</button>
+                   <button class="btn btn-outline btn-sm" onclick="submitAddAttendee(${y.id}, 1, '${y.name.replace(/'/g, "\\'")}')">Add Walk-in</button>`;
+
+            return `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border-color);">
+                <div>
+                    <strong>${y.name}</strong><br>
+                    <small style="color: var(--text-muted);">${y.qr_code}</small>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    ${buttons}
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async function submitAddAttendee(youthId, isWalkin, name) {
+        const eventId = currentAnalyticsData.event.id;
+        try {
+            const res = await fetch('/api/checkin', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ youth_id: youthId, event_id: eventId, is_walkin: isWalkin, actor: currentUser })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(`Added ${name} to the event!`);
+                closeAddAttendeeModal();
+                openAnalyticsModal(eventId); // Refresh modal data live
+            } else {
+                alert(data.error || 'Failed to add attendee.');
+            }
+        } catch(e) {
+            alert('Connection error.');
+        }
+    }
+
     async function openAnalyticsModal(eventId) {
         try {
             const res = await fetch(`/api/events/${eventId}/analytics`);
@@ -1894,6 +1971,17 @@
             const avatarHtml = r.profile_picture
                 ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">`
                 : `<div class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem;">${r.name.charAt(0).toUpperCase()}</div>`;
+            
+            let actionButtons = '';
+            if (userPermissions.includes('edit_attendance')) {
+                actionButtons = `
+                    <div style="display: flex; gap: 5px; margin-top: 4px; justify-content: flex-end;">
+                        <button class="btn btn-outline btn-sm" style="font-size: 10px; padding: 2px 6px;" onclick="openEditAttendanceModal(${r.log_id}, '${r.checked_in_at}', ${r.is_walkin})">✏️ Edit</button>
+                        <button class="btn btn-danger btn-sm" style="font-size: 10px; padding: 2px 6px;" onclick="triggerDeleteAttendance(${r.log_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️ Del</button>
+                    </div>
+                `;
+            }
+
             return `
             <div style="padding: 10px 8px; border-bottom: 1px solid #f1f2f6; display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -1904,7 +1992,10 @@
                         <br><small style="color: var(--text-muted);">${r.qr_code} ${r.age ? '| Age: '+r.age : ''}</small>
                     </div>
                 </div>
-                <span style="color: #27ae60; font-size: 12px; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                <div style="text-align: right;">
+                    <span style="color: #27ae60; font-size: 12px; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    ${actionButtons}
+                </div>
             </div>
         `}).join('');
     }
@@ -2230,7 +2321,9 @@
 
         triggerActionConfirmation(`Update Attendance Log ID #${id}?`, async () => {
             await fetch(`/api/attendance/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checked_in_at, is_walkin, actor: currentUser }) });
-            closeEditAttendanceModal(); loadAttendanceLogs();
+            closeEditAttendanceModal(); 
+            loadAttendanceLogs();
+            if (currentAnalyticsData) openAnalyticsModal(currentAnalyticsData.event.id); // Refresh roster live
         });
     }
 
@@ -2251,7 +2344,9 @@
     function triggerDeleteAttendance(id, memberName) {
         triggerActionConfirmation(`DELETE attendance record for '${memberName}'?`, async () => {
             await fetch(`/api/attendance/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
-            loadAttendanceLogs(); updateActiveEventBanner();
+            loadAttendanceLogs(); 
+            updateActiveEventBanner();
+            if (currentAnalyticsData) openAnalyticsModal(currentAnalyticsData.event.id); // Refresh roster live
         });
     }
 </script>
@@ -2294,7 +2389,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <option value="999999">All</option>
                 </select>
                 <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
-                    <button id="dirPrev" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: cursor; background: white;">◀ Prev</button>
+                    <button id="dirPrev" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">◀ Prev</button>
                     <span id="dirPageInd" style="color: #2c3e50;">Page 1</span>
                     <button id="dirNext" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">Next ▶</button>
                 </div>
