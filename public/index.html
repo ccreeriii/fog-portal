@@ -2537,3 +2537,26 @@ document.addEventListener('DOMContentLoaded', () => {
         transform: none !important;
     }
 </style>
+
+<script>
+    // Run a silent background check to see if the user is authenticated
+    setInterval(function() {
+        var loginTab = document.getElementById('loginTab');
+        var activeTabs = document.querySelectorAll('.tab-content.active');
+        var userIsLoggedIn = false;
+        
+        // Loop through all active tabs on the screen
+        for (var i = 0; i < activeTabs.length; i++) {
+            var tabId = activeTabs[i].id;
+            // If a tab is active and it's NOT a public-facing tab, the user is in the dashboard
+            if (tabId !== 'loginTab' && tabId !== 'publicReg' && tabId !== 'welcomeTab') {
+                userIsLoggedIn = true;
+            }
+        }
+
+        // If the user is logged in, securely hide the login form
+        if (loginTab && userIsLoggedIn) {
+            loginTab.style.setProperty('display', 'none', 'important');
+        }
+    }, 100);
+</script>
