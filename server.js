@@ -135,7 +135,7 @@ app.get('/', (req, res, next) => {
 
             const title = (event.prereg_title || event.name || 'Community Event').replace(/"/g, '&quot;');
             const description = (event.prereg_info || `Join me at ${title}!`).replace(/"/g, '&quot;');
-            
+
             const host = req.get('host');
             const protocol = req.headers['x-forwarded-proto'] || req.protocol;
             const imageUrl = `${protocol}://${host}/api/events/${eventId}/poster.jpg`;
@@ -367,16 +367,27 @@ app.get('/api/events/:id/analytics', (req, res) => {
 
         db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
             const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
-            const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
+            
+            // Query 1: Total Arrived (Checked-in + Walkins)
+            const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture 
+                               FROM attendance a JOIN youth y ON a.youth_id = y.id 
+                               WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
 
             db.all(sqlRoster, [eventId], (err3, roster) => {
                 if (err3) return res.status(500).json({ error: err3.message });
 
-                db.get(`SELECT COUNT(*) as prereg_count FROM pre_registrations WHERE event_id = ?`, [eventId], (err4, preRegRow) => {
+                // Query 2: Expected Pre-Registered (Everyone who submitted the form)
+                const sqlPreReg = `SELECT p.youth_id, p.created_at, y.name, y.age, y.email, y.qr_code, y.profile_picture 
+                                   FROM pre_registrations p JOIN youth y ON p.youth_id = y.id 
+                                   WHERE p.event_id = ? ORDER BY p.created_at DESC`;
+
+                db.all(sqlPreReg, [eventId], (err4, preRegList) => {
+                    if (err4) return res.status(500).json({ error: err4.message });
+
                     const totalTurnout = roster.length;
                     const walkins = roster.filter(r => r.is_walkin === 1).length;
                     const checkedInPreRegs = totalTurnout - walkins;
-                    const totalPreRegistered = preRegRow ? preRegRow.prereg_count : 0;
+                    const totalPreRegistered = preRegList.length;
 
                     let turnoutPercentage = '0.0';
                     if (totalPreRegistered > 0) {
@@ -385,7 +396,7 @@ app.get('/api/events/:id/analytics', (req, res) => {
 
                     res.json({
                         event, totalDirectory, totalTurnout, turnoutPercentage,
-                        walkins, preReg: checkedInPreRegs, totalPreRegistered, roster
+                        walkins, preReg: checkedInPreRegs, totalPreRegistered, roster, preRegList
                     });
                 });
             });
