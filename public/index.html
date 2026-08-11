@@ -100,6 +100,22 @@
         .metric-card-clickable { cursor: pointer; transition: all 0.2s; }
         .metric-card-clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
     </style>
+
+    <style>
+        #publicReg, 
+        #memberReg, 
+        .registration-section,
+        [id*="Registration"],
+        button[onclick*="publicReg"] {
+            display: none !important;
+        }
+    </style>
+
+    <style>
+        button[onclick*="loginTab"] {
+            display: none !important;
+        }
+    </style>
 </head>
 <body>
 
@@ -109,8 +125,8 @@
 </header>
 
 <nav id="mainNav" style="display: none;">
-    <button class="nav-btn active" onclick="switchTab('publicReg')">Registration</button>
-    <button class="nav-btn" onclick="switchTab('loginTab')">Login</button>
+    
+    <button class="nav-btn active" onclick="switchTab('loginTab')">Login</button>
 </nav>
 
 <div class="container" id="mainContainer" style="display: none;">
@@ -184,7 +200,7 @@
     </div>
 
 
-    <div id="publicReg" class="tab-content active">
+    <div id="publicReg" class="tab-content">
         <div class="card">
             <h2>Community Member Registration</h2>
             <form onsubmit="handlePublicRegistration(event)" id="regForm">
@@ -234,7 +250,7 @@
         </div>
     </div>
 
-    <div id="loginTab" class="tab-content">
+    <div id="loginTab" class="tab-content active">
         <div class="card" style="max-width: 400px; margin: 40px auto;">
             <h2>Portal Login</h2>
             <form onsubmit="handleLogin(event)">
@@ -1042,7 +1058,7 @@
 
     function buildNav() {
         const nav = document.getElementById('mainNav');
-        let html = `<button class="nav-btn active" onclick="switchTab('profileTab')">My Profile</button>`;
+        let html = `<button class="nav-btn" onclick="switchTab('profileTab')">My Profile</button>`;
         if (userPermissions.includes('access_checkin')) html += `<button class="nav-btn" onclick="switchTab('checkinTab')">Check-In</button>`;
         if (userPermissions.includes('access_directory')) html += `<button class="nav-btn" onclick="switchTab('directoryTab')">Directory</button>`;
         if (userPermissions.includes('access_events')) html += `<button class="nav-btn" onclick="switchTab('eventsTab')">Events</button>`;
@@ -1058,7 +1074,7 @@
             await fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser }) });
         }
         localStorage.removeItem('fog_user'); currentUser = null; currentMember = null; userPermissions = [];
-        document.getElementById('mainNav').innerHTML = `<button class="nav-btn active" onclick="switchTab('publicReg')">Registration</button><button class="nav-btn" onclick="switchTab('loginTab')">Login</button>`;
+        document.getElementById('mainNav').innerHTML = `<button class="nav-btn active" onclick="switchTab('loginTab')">Login</button>`;
         switchTab('publicReg');
     }
 
@@ -2497,3 +2513,27 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
+<style>
+    /* 1. Hide the Navigation Tab Buttons */
+    button[onclick*="publicReg"],
+    button[onclick*="loginTab"] { 
+        display: none !important; 
+    }
+
+    /* 2. Hide the Registration Form */
+    #publicReg, 
+    #memberReg { 
+        display: none !important; 
+    }
+
+    /* 3. Force Login Form to display permanently */
+    #loginTab {
+        display: block !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        position: relative !important;
+        height: auto !important;
+        transform: none !important;
+    }
+</style>
