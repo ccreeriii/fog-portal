@@ -103,17 +103,17 @@
 </head>
 <body>
 
-<header id="mainHeader">
+<header id="mainHeader" style="display: none;">
     <h1><span>FIRE OF GOD</span> MINISTRIES</h1>
     <p>Community Portal</p>
 </header>
 
-<nav id="mainNav">
+<nav id="mainNav" style="display: none;">
     <button class="nav-btn active" onclick="switchTab('publicReg')">Registration</button>
     <button class="nav-btn" onclick="switchTab('loginTab')">Login</button>
 </nav>
 
-<div class="container">
+<div class="container" id="mainContainer" style="display: none;">
 
     <div id="preregPublicTab" class="tab-content">
         <div class="card" style="max-width: 600px; margin: 0 auto; overflow: hidden; padding: 0;">
@@ -892,15 +892,23 @@
         document.body.removeChild(link);
     }
 
+    // ==============================================================================
+    // WINDOW ONLOAD LOGIC (Handles smooth routing & prevents flicker)
+    // ==============================================================================
     window.onload = () => {
         const urlParams = new URLSearchParams(window.location.search);
         const eventIdParam = urlParams.get('event');
 
+        // Check if user is hitting a Pre-Reg Link
         if (eventIdParam) {
-            document.getElementById('mainHeader').style.display = 'none';
             launchPublicPrereg(eventIdParam);
             return;
         }
+
+        // Otherwise, unhide the main portal UI and proceed normally
+        document.getElementById('mainHeader').style.display = 'block';
+        document.getElementById('mainNav').style.display = 'flex';
+        document.getElementById('mainContainer').style.display = 'block';
 
         const savedSession = localStorage.getItem('fog_user');
         if (savedSession) {
@@ -1509,8 +1517,9 @@
 
     async function launchPublicPrereg(eventId) {
         currentPreregEventId = eventId;
-        document.getElementById('mainNav').style.display = 'none';
-        document.getElementById('mainHeader').style.display = 'none'; 
+        
+        // UNHIDE JUST THE MAIN CONTAINER (Header/Nav stay hidden)
+        document.getElementById('mainContainer').style.display = 'block';
 
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('event') !== String(eventId)) {
@@ -1538,7 +1547,6 @@
 
             const banner = document.getElementById('preregPublicBanner');
             
-            // FIX: PRIORITY 1 = e.poster. PRIORITY 2 = e.prereg_banner
             if (e.poster) {
                 banner.src = e.poster;
                 banner.style.display = 'block';
