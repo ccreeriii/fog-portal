@@ -94,7 +94,6 @@ db.serialize(() => {
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN materials_url TEXT`, () => {});
 
-    // Pre-registration settings schema (Added Bottom Banner)
     db.run(`ALTER TABLE events ADD COLUMN prereg_banner TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_bottom_banner TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_title TEXT`, () => {});
@@ -325,7 +324,6 @@ app.get('/api/events/:id/analytics', (req, res) => {
 
         db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
             const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
-
             const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
 
             db.all(sqlRoster, [eventId], (err3, roster) => {
@@ -404,6 +402,13 @@ app.post('/api/events/:id/prereg-settings', (req, res) => {
             if (err) return res.status(500).json({ error: err.message });
             logActivity(actor || 'System', 'UPDATE_PREREG', `Updated pre-registration settings for Event ID ${req.params.id}`);
             res.json({ success: true });
+    });
+});
+
+app.get('/api/events/:id/preregs', (req, res) => {
+    db.all(`SELECT youth_id FROM pre_registrations WHERE event_id = ?`, [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows.map(r => r.youth_id));
     });
 });
 
