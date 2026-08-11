@@ -117,11 +117,14 @@
 
     <div id="preregPublicTab" class="tab-content">
         <div class="card" style="max-width: 600px; margin: 0 auto; overflow: hidden; padding: 0;">
+            <!-- Top Banner -->
             <img id="preregPublicBanner" src="" style="width: 100%; max-height: 250px; object-fit: cover; display: none;">
+            
             <div style="padding: 24px; text-align: center;">
                 <h2 id="preregPublicTitle" style="color: var(--primary); border:none;">Event Pre-Registration</h2>
                 <p id="preregPublicInfo" style="color: var(--text-muted); margin-bottom: 20px;"></p>
 
+                <!-- Step 1: Initial Selection -->
                 <div id="preregStep1">
                     <h3 style="margin-bottom: 15px;">Have you attended our activities before?</h3>
                     <div style="display: flex; gap: 15px; justify-content: center;">
@@ -130,6 +133,7 @@
                     </div>
                 </div>
 
+                <!-- Step 2: Existing Member Search -->
                 <div id="preregStep2" style="display:none; text-align: left;">
                     <h3 style="margin-bottom: 15px;">Find Your Name</h3>
                     <input type="text" id="preregSearchInput" class="form-control" placeholder="Type your name..." onkeyup="filterPreregSearch()">
@@ -138,6 +142,7 @@
                     <button class="btn btn-outline" style="margin-top: 15px;" onclick="showPreregStep(1)">Back</button>
                 </div>
 
+                <!-- Step 3: New Member Registration -->
                 <div id="preregStep3" style="display:none; text-align: left;">
                     <h3 style="margin-bottom: 15px;">New Registration</h3>
                     <form onsubmit="submitNewPrereg(event)">
@@ -152,6 +157,7 @@
                     <button class="btn btn-outline" style="margin-top: 15px;" onclick="showPreregStep(1)">Back</button>
                 </div>
 
+                <!-- Step 4: Success & QR Code Delivery -->
                 <div id="preregStepSuccess" style="display:none; text-align: center;">
                     <h2 style="color: var(--success); border: none; margin-bottom: 5px;">✅ Pre-Registered!</h2>
                     <p style="margin-bottom: 15px;">We are excited to see you there.</p>
@@ -171,7 +177,8 @@
                     <button class="btn btn-outline" style="width: 100%; margin-top: 5px;" onclick="closePublicPrereg()">Close</button>
                 </div>
 
-                <img id="preregPublicBottomBanner" src="" style="width: 100%; object-fit: contain; margin-top: 25px; display: none; border-radius: 8px;">
+                <!-- Secondary Bottom Banner / Document Field -->
+                <img id="preregPublicBottomBanner" src="" style="width: 100%; object-fit: contain; margin-top: 30px; border-top: 1px solid var(--border-color); padding-top: 20px; display: none;">
 
             </div>
         </div>
@@ -522,6 +529,7 @@
 
 </div>
 
+<!-- SETTINGS MODAL -->
 <div id="preregSettingsModal" class="modal">
     <div class="modal-content">
         <span class="close-modal" onclick="closePreregSettingsModal()" style="float:right; font-size:28px; cursor:pointer; color:#7f8c8d; line-height:1; padding:0 5px;">&times;</span>
@@ -883,7 +891,17 @@
         document.body.removeChild(link);
     }
 
+    // --- NEW: Handle Refresh Persistence ---
     window.onload = () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const eventIdParam = urlParams.get('event');
+
+        // Check if user is sharing/refreshing a pre-registration form
+        if (eventIdParam) {
+            launchPublicPrereg(eventIdParam);
+            return; // Halt normal login load to lock them in the form
+        }
+
         const savedSession = localStorage.getItem('fog_user');
         if (savedSession) {
             const s = JSON.parse(savedSession);
@@ -1492,9 +1510,18 @@
     async function launchPublicPrereg(eventId) {
         currentPreregEventId = eventId;
         document.getElementById('mainNav').style.display = 'none'; 
+        
+        // --- NEW: Update URL to persist on refresh ---
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('event') !== String(eventId)) {
+            window.history.pushState(null, '', '?event=' + eventId);
+        }
 
-        const res = await fetch('/api/events');
-        eventsData = await res.json();
+        if(eventsData.length === 0) {
+            const res = await fetch('/api/events');
+            eventsData = await res.json();
+        }
+        
         const e = eventsData.find(ev => ev.id == eventId);
 
         if (e) {
@@ -1529,6 +1556,8 @@
 
     function closePublicPrereg() {
         currentPreregEventId = null;
+        // --- NEW: Clear query param safely when exiting ---
+        window.history.pushState(null, '', window.location.pathname);
         window.location.reload(); 
     }
 
@@ -1585,7 +1614,6 @@
                 body: JSON.stringify({ event_id: currentPreregEventId, youth_id: youthId })
             });
             if(res.ok) {
-                // Generate and display QR Code on the Success Screen
                 document.getElementById('preregSuccessQrContainer').innerHTML = '';
                 if(qrCode) {
                     QRCode.toDataURL(qrCode, { width: 200 }, function (err, url) {
