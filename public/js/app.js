@@ -55,7 +55,6 @@ function downloadCSV(rows, filename) {
     document.body.removeChild(link);
 }
 
-// WINDOW ONLOAD LOGIC
 window.onload = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const eventIdParam = urlParams.get('event');
@@ -84,18 +83,13 @@ window.onload = () => {
     }
 };
 
-// ==========================================
-// PHASE 3 - GLOBAL MODAL CLICK-TO-CLOSE
-// ==========================================
 window.onclick = function(event) {
-    // If the user clicks on the dark overlay (the .modal background) itself, close the modal
     if (event.target.classList.contains('modal')) {
         event.target.classList.remove('active');
         if(event.target.id === 'eventAnalyticsModal') currentAnalyticsData = null;
         if(event.target.id === 'confirmModal') pendingAction = null;
     }
 };
-// ==========================================
 
 function openSidebar() {
     document.getElementById('sidebarNav').classList.add('active');
@@ -177,6 +171,17 @@ function switchTab(tabId) {
     }
 }
 
+function switchEventSubTab(tab) {
+    document.getElementById('subTabEventList').classList.toggle('active', tab === 'list');
+    document.getElementById('subTabEventCreate').classList.toggle('active', tab === 'create');
+    document.getElementById('btnSubEventList').classList.toggle('active', tab === 'list');
+    document.getElementById('btnSubEventCreate').classList.toggle('active', tab === 'create');
+    if (tab === 'list') loadEvents();
+}
+
+// ------------------------------------------
+// RESPONSIVE TABLES REBUILD (Directory/Logs/Backups)
+// ------------------------------------------
 async function loadBackups() {
     const res = await fetch('/api/backups');
     const backups = await res.json();
@@ -186,22 +191,29 @@ async function loadBackups() {
         return;
     }
     
-    let html = backups.map(b => `
-        <div class="data-row">
-            <div class="data-row-main">
-                <div style="background: var(--bg-light); width: 45px; height: 45px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">💾</div>
-                <div>
-                    <strong style="color:var(--text-main); font-size:1.05rem;">${b.name}</strong><br>
-                    <small style="color: var(--text-muted);">${b.time}</small>
+    let html = `<table class="responsive-table">
+        <thead>
+            <tr><th>Backup File</th><th class="hide-mobile">Date / Time</th><th>Size</th><th>Action</th></tr>
+        </thead>
+        <tbody>`;
+    html += backups.map(b => `
+        <tr>
+            <td>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <div style="background: var(--bg-light); width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">💾</div>
+                    <div>
+                        <strong style="color:var(--text-main); font-size:1.05rem;">${b.name}</strong>
+                        <div class="mobile-meta">${b.time}</div>
+                    </div>
                 </div>
-            </div>
-            <div class="data-row-meta">
-                <span class="badge badge-blue">${b.size}</span>
-            </div>
-            <div class="data-row-actions">
+            </td>
+            <td class="hide-mobile" style="color: var(--text-muted);">${b.time}</td>
+            <td><span class="badge badge-blue">${b.size}</span></td>
+            <td class="actions-cell">
                 <button type="button" class="btn btn-danger btn-sm" onclick="triggerRestore('${b.name}')">Restore</button>
-            </div>
-        </div>`).join('');
+            </td>
+        </tr>`).join('');
+    html += `</tbody></table>`;
     container.innerHTML = html;
 }
 
@@ -533,28 +545,36 @@ function filterDirectory() {
     if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
     if (sort === 'age_desc') matches.sort((a,b) => (b.age || 0) - (a.age || 0));
 
-    let html = matches.map(y => {
+    let html = `<table class="responsive-table">
+        <thead>
+            <tr><th>Member</th><th class="hide-mobile">Age</th><th class="hide-mobile">Birthday</th><th>Actions</th></tr>
+        </thead>
+        <tbody>`;
+        
+    html += matches.map(y => {
         const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem;">${y.name.charAt(0).toUpperCase()}</div>`;
         return `
-        <div class="data-row">
-            <div class="data-row-main">
-                ${avatarHtml}
-                <div>
-                    <strong style="color:var(--text-main); font-size:1.05rem;">${y.name}</strong><br>
-                    <small style="color: var(--text-muted);">${y.qr_code}</small>
+        <tr>
+            <td>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    ${avatarHtml}
+                    <div>
+                        <strong style="color:var(--text-main); font-size:1.05rem;">${y.name}</strong>
+                        <div class="desktop-meta"><small style="color: var(--text-muted);">${y.qr_code}</small></div>
+                        <div class="mobile-meta">${y.qr_code} | Age: ${y.age || 'N/A'} | B-Day: ${y.birthday || 'N/A'}</div>
+                    </div>
                 </div>
-            </div>
-            <div class="data-row-meta">
-                <span><strong>Age:</strong> ${y.age || 'N/A'}</span>
-                <span><strong>B-Day:</strong> ${y.birthday || 'N/A'}</span>
-            </div>
-            <div class="data-row-actions">
+            </td>
+            <td class="hide-mobile" style="color:var(--text-muted);">${y.age || 'N/A'}</td>
+            <td class="hide-mobile" style="color:var(--text-muted);">${y.birthday || 'N/A'}</td>
+            <td class="actions-cell">
                 <button type="button" class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">View</button>
                 <button type="button" class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>
                 <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Del</button>
-            </div>
-        </div>`}).join('');
-    
+            </td>
+        </tr>`}).join('');
+        
+    html += `</tbody></table>`;
     document.getElementById('directoryTableContainer').innerHTML = html;
 }
 
@@ -972,6 +992,7 @@ function filterAnalyticsRoster() {
     renderAnalyticsRoster(filtered);
 }
 
+// RESTORED & UPGRADED: Delete and Edit buttons added to the Event Analytics Roster
 function renderAnalyticsRoster(list) {
     const rosterContainer = document.getElementById('analyticsRosterContainer');
     if (list.length === 0) { rosterContainer.innerHTML = `<p style="text-align:center; color:var(--text-muted); margin:15px 0; font-size: 0.9rem;">No attendees found.</p>`; return; }
@@ -988,16 +1009,20 @@ function renderAnalyticsRoster(list) {
             } else {
                 statusBadge = `<span style="font-size:11px; color:#F59E0B; background: rgba(245,158,11,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">Expected</span>`;
                 timeText = `<span style="color: #F59E0B; font-size: 0.8rem; font-weight: 600;">Not Arrived</span>`;
+                
+                actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="openFastEditProfileModal(${r.youth_id})">✏️ Edit</button>
+                    <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeletePreReg(${currentAnalyticsData.event.id}, ${r.youth_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️ Remove</button>
+                </div>`;
             }
         } else {
             statusBadge = `<span style="font-size:11px; color:var(--text-muted); background: var(--bg-light); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>`;
             timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
-            if (userPermissions.includes('edit_attendance')) {
-                actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
-                    <button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="openEditAttendanceModal(${r.log_id}, '${r.checked_in_at}', ${r.is_walkin})">✏️ Edit</button>
-                    <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️</button>
-                </div>`;
-            }
+            
+            actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
+                <button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="openEditAttendanceModal(${r.log_id}, '${r.checked_in_at}', ${r.is_walkin})">✏️ Edit</button>
+                <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️ Remove</button>
+            </div>`;
         }
         return `
         <div style="padding: 12px 10px; border-bottom: 1px solid var(--bg-light); display: flex; justify-content: space-between; align-items: center;">
@@ -1012,7 +1037,21 @@ function renderAnalyticsRoster(list) {
         </div>`;
     }).join('');
 }
-function closeAnalyticsModal() { document.getElementById('eventAnalyticsModal').classList.remove('active'); currentAnalyticsData = null; }
+
+// NEW: API Call to perfectly delete a pre-registration and reload UI
+function triggerDeletePreReg(eventId, youthId, memberName) {
+    triggerActionConfirmation(`Remove pre-registration for '${memberName}'?`, async () => {
+        try {
+            const res = await fetch(`/api/events/${eventId}/preregs/${youthId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
+            const data = await res.json();
+            if (data.success) {
+                if (currentAnalyticsData) openAnalyticsModal(eventId);
+            } else {
+                alert(data.error || 'Failed to remove entry');
+            }
+        } catch(e) { alert('Network error. Failed to remove.'); }
+    });
+}
 
 function exportAnalyticsCSV() {
     if (!currentAnalyticsData) return alert('No data available to export.');
@@ -1193,7 +1232,7 @@ function renderCalendarView(container) {
 function changeCalendarMonth(delta) { calCurrentDate.setMonth(calCurrentDate.getMonth() + delta); loadEvents(); }
 
 // ------------------------------------------
-// PHASE 2 - MOBILE CARDS: ATTENDANCE LOGS
+// RESPONSIVE TABLES: ATTENDANCE LOGS
 // ------------------------------------------
 
 async function loadAttendanceLogs() {
@@ -1207,25 +1246,33 @@ function filterAttendanceLogs() {
     let matches = cachedAttendanceLogs;
     if(q) matches = matches.filter(l => l.member_name.toLowerCase().includes(q) || l.event_name.toLowerCase().includes(q));
 
-    let html = matches.map(l => `
-        <div class="data-row">
-            <div class="data-row-main">
-                <div style="background: rgba(16,185,129,0.1); width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">✅</div>
-                <div>
-                    <strong style="color:var(--text-main); font-size:1.05rem;">${l.member_name}</strong><br>
-                    <small style="color: var(--text-muted);">${l.event_name}</small>
+    let html = `<table class="responsive-table">
+        <thead>
+            <tr><th>Member</th><th class="hide-mobile">Event</th><th class="hide-mobile">Time</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody>`;
+        
+    html += matches.map(l => `
+        <tr>
+            <td>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <div style="background: rgba(16,185,129,0.1); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">✅</div>
+                    <div>
+                        <strong style="color:var(--text-main); font-size:1.05rem;">${l.member_name}</strong>
+                        <div class="mobile-meta">${l.event_name} | ${l.checked_in_at}</div>
+                    </div>
                 </div>
-            </div>
-            <div class="data-row-meta">
-                <span><strong>Time:</strong> ${l.checked_in_at}</span>
-                <span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}" style="width: fit-content;">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>
-            </div>
-            <div class="data-row-actions">
+            </td>
+            <td class="hide-mobile" style="color:var(--text-muted);">${l.event_name}</td>
+            <td class="hide-mobile" style="color:var(--text-muted);">${l.checked_in_at}</td>
+            <td><span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
+            <td class="actions-cell">
                 ${userPermissions.includes('edit_attendance') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
                 <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${l.member_name.replace(/'/g, "\\'")}')">Del</button>
-            </div>
-        </div>`).join('');
-    
+            </td>
+        </tr>`).join('');
+        
+    html += `</tbody></table>`;
     document.getElementById('attendanceLogsContainer').innerHTML = html;
 }
 
@@ -1237,7 +1284,7 @@ function exportAttendanceLogsCSV() {
 }
 
 // ------------------------------------------
-// PHASE 2 - MOBILE CARDS: ACTIVITY LOGS
+// RESPONSIVE TABLES: ACTIVITY LOGS
 // ------------------------------------------
 
 async function loadActivityLogs() {
@@ -1251,21 +1298,29 @@ function filterActivityLogs() {
     let matches = cachedActivityLogs;
     if(q) matches = matches.filter(l => l.username.toLowerCase().includes(q) || l.action.toLowerCase().includes(q) || l.details.toLowerCase().includes(q));
 
-    let html = matches.map(l => `
-        <div class="data-row">
-            <div class="data-row-main">
-                <div style="background: rgba(59,130,246,0.1); width: 45px; height: 45px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">📝</div>
-                <div>
-                    <strong style="color:var(--text-main); font-size:1.05rem;">${l.username}</strong><br>
-                    <span class="badge badge-orange" style="margin-top: 4px;">${l.action}</span>
-                </div>
-            </div>
-            <div class="data-row-meta" style="flex: 2; min-width: 200px;">
-                <span style="color:var(--text-main);">${l.details}</span>
-                <span>${l.created_at}</span>
-            </div>
-        </div>`).join('');
+    let html = `<table class="responsive-table">
+        <thead>
+            <tr><th>User</th><th class="hide-mobile">Action</th><th>Details</th><th class="hide-mobile">Timestamp</th></tr>
+        </thead>
+        <tbody>`;
         
+    html += matches.map(l => `
+        <tr>
+            <td>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <div style="background: rgba(59,130,246,0.1); width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">📝</div>
+                    <div>
+                        <strong style="color:var(--text-main); font-size:1.05rem;">${l.username}</strong>
+                        <div class="mobile-meta"><span class="badge badge-orange">${l.action}</span> | ${l.created_at}</div>
+                    </div>
+                </div>
+            </td>
+            <td class="hide-mobile"><span class="badge badge-orange">${l.action}</span></td>
+            <td style="color:var(--text-main);">${l.details}</td>
+            <td class="hide-mobile" style="color:var(--text-muted);"><small>${l.created_at}</small></td>
+        </tr>`).join('');
+        
+    html += `</tbody></table>`;
     document.getElementById('activityLogsContainer').innerHTML = html;
 }
 
@@ -1300,8 +1355,12 @@ function triggerActionConfirmation(summaryText, actionFn) {
     pendingAction = actionFn;
     document.getElementById('confirmModal').classList.add('active');
 }
+document.getElementById('executeConfirmBtn').onclick = async () => { 
+    if (pendingAction) await pendingAction(); 
+    document.getElementById('confirmModal').classList.remove('active'); 
+    pendingAction = null; 
+};
 function closeConfirmModal() { document.getElementById('confirmModal').classList.remove('active'); pendingAction = null; }
-document.getElementById('executeConfirmBtn').onclick = async () => { if (pendingAction) await pendingAction(); closeConfirmModal(); };
 
 function openEditAttendanceModal(id, time, isWalkin) {
     document.getElementById('editAttId').value = id; document.getElementById('editAttTime').value = time;
@@ -1360,12 +1419,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 1000);
 });
 
-// PHASE 2 - UPDATED PAGINATION ENGINE FOR DATA CARDS
+// RESPONSIVE TABLE PAGINATION ENGINE
 document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
         const dataContainer = document.getElementById('directoryTableContainer');
+        const tbody = dataContainer ? dataContainer.querySelector('tbody') : null;
 
-        if (dataContainer && dataContainer.children.length > 0 && !document.getElementById('dirPagerControls')) {
+        if (tbody && tbody.children.length > 0 && !document.getElementById('dirPagerControls')) {
             const pager = document.createElement('div');
             pager.id = 'dirPagerControls';
             pager.style.cssText = 'display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; flex-wrap: wrap;';
@@ -1391,7 +1451,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let perPage = 10;
 
             const updateTable = () => {
-                const rows = Array.from(dataContainer.children).filter(el => el.classList.contains('data-row'));
+                const rows = Array.from(tbody.children);
                 if(rows.length === 0) return;
                 
                 const totalPages = Math.ceil(rows.length / perPage) || 1;
@@ -1402,11 +1462,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('dirNext').disabled = (currentPage === totalPages);
 
                 rows.forEach((row, index) => {
-                    if (perPage >= 999999) row.style.display = 'flex';
+                    if (perPage >= 999999) row.style.display = '';
                     else {
                         const start = (currentPage - 1) * perPage;
                         const end = start + perPage;
-                        row.style.display = (index >= start && index < end) ? 'flex' : 'none';
+                        row.style.display = (index >= start && index < end) ? '' : 'none';
                     }
                 });
             };
@@ -1414,11 +1474,11 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('dirPerPage').onchange = (e) => { perPage = parseInt(e.target.value); currentPage = 1; updateTable(); };
             document.getElementById('dirPrev').onclick = () => { if (currentPage > 1) { currentPage--; updateTable(); } };
             document.getElementById('dirNext').onclick = () => { 
-                const rows = Array.from(dataContainer.children).filter(el => el.classList.contains('data-row'));
+                const rows = Array.from(tbody.children);
                 if (currentPage < Math.ceil(rows.length / perPage)) { currentPage++; updateTable(); } 
             };
             updateTable();
-            new MutationObserver(() => updateTable()).observe(dataContainer, { childList: true });
+            new MutationObserver(() => updateTable()).observe(tbody, { childList: true });
         }
     }, 1000);
 });

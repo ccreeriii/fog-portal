@@ -120,11 +120,11 @@ function logActivity(username, action, details) {
 }
 
 // ==============================================================================
-// NEW: DYNAMIC OPEN GRAPH INJECTOR FOR FACEBOOK / MESSENGER SHARING
+// DYNAMIC OPEN GRAPH INJECTOR FOR FACEBOOK / MESSENGER SHARING
 // ==============================================================================
 app.get('/', (req, res, next) => {
     const eventId = req.query.event;
-    if (!eventId) return next(); // If no event ID, fall through to static serving
+    if (!eventId) return next();
 
     db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
         if (err || !event) return next();
@@ -160,7 +160,6 @@ app.get('/', (req, res, next) => {
     });
 });
 
-// CORE: Serve Static Files (Moved below the interceptor)
 app.use(express.static(path.join(__dirname, 'public')));
 
 // BACKUP & RESTORE API
@@ -367,18 +366,16 @@ app.get('/api/events/:id/analytics', (req, res) => {
 
         db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
             const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
-            
-            // Query 1: Total Arrived (Checked-in + Walkins)
-            const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture 
-                               FROM attendance a JOIN youth y ON a.youth_id = y.id 
+
+            const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture
+                               FROM attendance a JOIN youth y ON a.youth_id = y.id
                                WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
 
             db.all(sqlRoster, [eventId], (err3, roster) => {
                 if (err3) return res.status(500).json({ error: err3.message });
 
-                // Query 2: Expected Pre-Registered (Everyone who submitted the form)
-                const sqlPreReg = `SELECT p.youth_id, p.created_at, y.name, y.age, y.email, y.qr_code, y.profile_picture 
-                                   FROM pre_registrations p JOIN youth y ON p.youth_id = y.id 
+                const sqlPreReg = `SELECT p.youth_id, p.created_at, y.name, y.age, y.email, y.qr_code, y.profile_picture
+                                   FROM pre_registrations p JOIN youth y ON p.youth_id = y.id
                                    WHERE p.event_id = ? ORDER BY p.created_at DESC`;
 
                 db.all(sqlPreReg, [eventId], (err4, preRegList) => {
@@ -404,15 +401,11 @@ app.get('/api/events/:id/analytics', (req, res) => {
     });
 });
 
-// ==============================================================================
-// NEW: IMAGE SERVING ENDPOINT FOR SOCIAL MEDIA SCRAPERS
-// ==============================================================================
 app.get('/api/events/:id/poster.jpg', (req, res) => {
     const eventId = req.params.id;
     db.get(`SELECT poster, prereg_banner FROM events WHERE id = ?`, [eventId], (err, event) => {
         if (err || !event) return res.status(404).send('Not found');
 
-        // Priority 1: The Event Poster. Priority 2: Pre-Reg Banner
         const base64String = event.poster || event.prereg_banner;
 
         if (base64String && base64String.startsWith('data:image')) {
@@ -504,6 +497,17 @@ app.post('/api/preregister', (req, res) => {
         [event_id, youth_id, getManilaTime()], function(err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ success: true });
+    });
+});
+
+// NEW: Delete a Pre-Registration
+app.delete('/api/events/:event_id/preregs/:youth_id', (req, res) => {
+    const { actor } = req.body;
+    db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`,
+        [req.params.event_id, req.params.youth_id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'DELETE_PREREG', `Removed pre-registration for youth ID ${req.params.youth_id} from Event ${req.params.event_id}`);
+            res.json({ success: true, deleted: this.changes });
     });
 });
 
