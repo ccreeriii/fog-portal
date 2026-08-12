@@ -84,6 +84,7 @@ window.onload = () => {
 };
 
 window.onclick = function(event) {
+    // Only close if the background overlay itself is clicked, not inner elements like close buttons
     if (event.target.classList.contains('modal')) {
         event.target.classList.remove('active');
         if(event.target.id === 'eventAnalyticsModal') currentAnalyticsData = null;
@@ -844,6 +845,7 @@ async function sharePreRegLink() {
     }
 }
 
+// RESTORED FIX: Ensuring the Edit Event Modal works globally
 function openEditEventModal(eventId) {
     const e = eventsData.find(ev => ev.id == eventId);
     if (!e) return;
@@ -855,7 +857,7 @@ function openEditEventModal(eventId) {
     document.getElementById('editEvtPhotosUrl').value = e.photos_url || '';
     document.getElementById('editEvtMaterialsUrl').value = e.materials_url || '';
     document.getElementById('editEvtPoster').value = '';
-    closeAnalyticsModal();
+    closeAnalyticsModal(); // Close analytics modal if it was open
     document.getElementById('editEventModal').classList.add('active');
 }
 function closeEditEventModal() { document.getElementById('editEventModal').classList.remove('active'); }
@@ -955,7 +957,10 @@ async function openAnalyticsModal(eventId) {
         document.getElementById('statTotalPreReg').innerText = data.totalPreRegistered;
         document.getElementById('statWalkins').innerText = data.walkins;
         document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage}%`;
+        
+        // FIX: Ensure the bottom Edit Event button correctly triggers the global edit function
         document.getElementById('analyticsEditEventBtn').onclick = () => openEditEventModal(eventId);
+        
         document.getElementById('attSearchNative').value = '';
         document.getElementById('attAgeNative').value = 'all';
         currentRosterFilter = 'all';
@@ -993,8 +998,7 @@ function filterAnalyticsRoster() {
     renderAnalyticsRoster(filtered);
 }
 
-// RESTORED: Edited to exclusively render the 'Remove' button. 
-// Inline 'Edit' buttons removed to keep UI clean, as requested.
+// RESTORED FIX: Removed the tiny inline "✏️ Edit" buttons here, left "🗑️ Remove" active
 function renderAnalyticsRoster(list) {
     const rosterContainer = document.getElementById('analyticsRosterContainer');
     if (list.length === 0) { rosterContainer.innerHTML = `<p style="text-align:center; color:var(--text-muted); margin:15px 0; font-size: 0.9rem;">No attendees found.</p>`; return; }
@@ -1039,6 +1043,8 @@ function renderAnalyticsRoster(list) {
         </div>`;
     }).join('');
 }
+
+function closeAnalyticsModal() { document.getElementById('eventAnalyticsModal').classList.remove('active'); currentAnalyticsData = null; }
 
 function triggerDeletePreReg(eventId, youthId, memberName) {
     triggerActionConfirmation(`Remove pre-registration for '${memberName}'?`, async () => {
@@ -1232,6 +1238,10 @@ function renderCalendarView(container) {
 
 function changeCalendarMonth(delta) { calCurrentDate.setMonth(calCurrentDate.getMonth() + delta); loadEvents(); }
 
+// ------------------------------------------
+// RESPONSIVE TABLES: ATTENDANCE LOGS
+// ------------------------------------------
+
 async function loadAttendanceLogs() {
     const res = await fetch('/api/attendance/logs');
     cachedAttendanceLogs = await res.json();
@@ -1279,6 +1289,10 @@ function exportAttendanceLogsCSV() {
     cachedAttendanceLogs.forEach(l => rows.push([l.id, `"${l.member_name}"`, `"${l.event_name}"`, `"${l.checked_in_at}"`, `"${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}"`]));
     downloadCSV(rows, 'All_Attendance_Logs.csv');
 }
+
+// ------------------------------------------
+// RESPONSIVE TABLES: ACTIVITY LOGS
+// ------------------------------------------
 
 async function loadActivityLogs() {
     const res = await fetch('/api/activity-logs');
