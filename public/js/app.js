@@ -55,6 +55,18 @@ function downloadCSV(rows, filename) {
     document.body.removeChild(link);
 }
 
+// ARMORED: Global Permission Helper that bypasses bad caching
+function hasPerm(perm) {
+    if (currentUser === 'celsocreeriii@gmail.com') return true;
+    if (!userPermissions || !Array.isArray(userPermissions)) return false;
+    
+    // Legacy mapping: If they had old access, grant them CRUD so they aren't locked out
+    if (['add_entries', 'edit_entries', 'delete_entries'].includes(perm)) {
+        if (userPermissions.includes('access_directory') || userPermissions.includes('access_events')) return true;
+    }
+    return userPermissions.includes(perm);
+}
+
 window.onload = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const eventIdParam = urlParams.get('event');
@@ -70,13 +82,20 @@ window.onload = () => {
     const savedSession = localStorage.getItem('fog_user');
     if (savedSession) {
         const s = JSON.parse(savedSession);
-        currentUser = s.username; userPermissions = s.permissions; currentMember = s.member;
+        currentUser = s.username; 
+        currentMember = s.member;
+        userPermissions = Array.isArray(s.permissions) ? s.permissions : [];
+        
         buildNav();
+        applyGranularPermissions();
+        
         if (currentMember) populateProfileTab(currentMember);
         else populateAdminProfile(currentUser);
+        
         if (currentMember) switchTab('profileTab');
-        else if (userPermissions.length === 1 && userPermissions.includes('access_checkin')) switchTab('checkinTab');
+        else if (hasPerm('access_checkin') && !hasPerm('access_directory')) switchTab('checkinTab');
         else switchTab('profileTab');
+        
         loadEvents(); loadDirectory();
     } else {
         switchTab('loginTab'); 
@@ -84,7 +103,6 @@ window.onload = () => {
 };
 
 window.onclick = function(event) {
-    // Only close if the background overlay itself is clicked, not inner elements like close buttons
     if (event.target.classList.contains('modal')) {
         event.target.classList.remove('active');
         if(event.target.id === 'eventAnalyticsModal') currentAnalyticsData = null;
@@ -107,22 +125,22 @@ function buildNav() {
     const bottomNav = document.getElementById('bottomNav');
     const hamburger = document.getElementById('hamburgerBtn');
 
+    const isAdmin = currentUser === 'celsocreeriii@gmail.com' || (userPermissions && userPermissions.length > 0);
+
     let sidebarHtml = `<h2>Main Menu</h2>`;
     let bottomHtml = ``;
-
-    const isAdmin = userPermissions.length > 0;
 
     if (isAdmin) {
         hamburger.style.display = 'block';
         bottomNav.style.display = 'none';
 
         sidebarHtml += `<button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
-        if (userPermissions.includes('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
-        if (userPermissions.includes('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
-        if (userPermissions.includes('access_events')) sidebarHtml += `<button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Planner</button>`;
-        if (userPermissions.includes('access_attendance')) sidebarHtml += `<button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
-        if (userPermissions.includes('access_activity')) sidebarHtml += `<button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
-        if (userPermissions.includes('access_permissions')) sidebarHtml += `<button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔐 Permissions</button>`;
+        if (hasPerm('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
+        if (hasPerm('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
+        if (hasPerm('access_events')) sidebarHtml += `<button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Planner</button>`;
+        if (hasPerm('access_attendance')) sidebarHtml += `<button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
+        if (hasPerm('access_activity')) sidebarHtml += `<button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
+        if (hasPerm('access_permissions')) sidebarHtml += `<button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔐 Permissions</button>`;
         sidebarHtml += `<button class="nav-btn text-danger" onclick="handleLogout()">🚪 Logout (${currentUser})</button>`;
 
         sidebar.innerHTML = sidebarHtml;
@@ -137,6 +155,27 @@ function buildNav() {
         sidebar.innerHTML = '';
         bottomNav.innerHTML = bottomHtml;
     }
+}
+
+// ARMORED: Global permissions dynamically hide/show buttons safely
+function applyGranularPermissions() {
+    const canAdd = hasPerm('add_entries');
+    
+    const btnSubEventCreate = document.getElementById('btnSubEventCreate');
+    if(btnSubEventCreate) btnSubEventCreate.style.display = canAdd ? 'inline-block' : 'none';
+
+    const btnCheckinWalkin = document.getElementById('btnCheckinWalkin');
+    if(btnCheckinWalkin) btnCheckinWalkin.style.display = canAdd ? 'inline-block' : 'none';
+
+    const addEntryAnalyticsBtn = document.getElementById('addEntryAnalyticsBtn');
+    if(addEntryAnalyticsBtn) addEntryAnalyticsBtn.style.display = canAdd ? 'flex' : 'none';
+}
+
+function resetPermUserList() {
+    const searchInput = document.getElementById('permUserSearchInput');
+    const container = document.getElementById('permUserListContainer');
+    if(searchInput) searchInput.value = '';
+    if(container) container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>`;
 }
 
 function switchTab(tabId) {
@@ -161,7 +200,7 @@ function switchTab(tabId) {
     if (tabId === 'eventsTab') { loadEvents(); }
     if (tabId === 'attendanceTab') loadAttendanceLogs();
     if (tabId === 'activityLogsTab') loadActivityLogs();
-    if (tabId === 'permissionsTab') loadUserPermissionsList();
+    if (tabId === 'permissionsTab') resetPermUserList();
 
     if (tabId === 'profileTab' && currentUser === 'celsocreeriii@gmail.com') {
         document.getElementById('adminBackupCard').style.display = 'block';
@@ -255,10 +294,11 @@ async function handleLogin(e) {
         currentUser = data.username; userPermissions = data.permissions || []; currentMember = data.member;
         localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
         buildNav();
+        applyGranularPermissions();
         if (currentMember) { populateProfileTab(currentMember); switchTab('profileTab'); }
         else {
             populateAdminProfile(currentUser);
-            if (userPermissions.length === 1 && userPermissions.includes('access_checkin')) switchTab('checkinTab');
+            if (hasPerm('access_checkin')) switchTab('checkinTab');
             else switchTab('profileTab');
         }
         loadEvents(); loadDirectory();
@@ -276,8 +316,8 @@ async function handleLogout() {
 
 function populateProfileTab(member) {
     document.getElementById('myMemberId').value = member.id;
-    document.getElementById('myProfileName').innerText = member.name;
-    document.getElementById('myProfileCode').innerText = `Unique Pass ID: ${member.qr_code}`;
+    document.getElementById('myProfileName').innerText = member.name || 'Member';
+    document.getElementById('myProfileCode').innerText = `Unique Pass ID: ${member.qr_code || 'N/A'}`;
     document.getElementById('myEditName').value = member.name || '';
     document.getElementById('myEditEmail').value = member.email || '';
     document.getElementById('myEditAge').value = member.age || '';
@@ -288,14 +328,18 @@ function populateProfileTab(member) {
     const avatar = document.getElementById('myProfileAvatar');
     if (member.profile_picture) {
         avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
-    } else avatar.innerHTML = member.name.charAt(0).toUpperCase();
+    } else avatar.innerHTML = (member.name || 'U').charAt(0).toUpperCase();
 
     document.getElementById('myQrContainer').innerHTML = '';
-    QRCode.toDataURL(member.qr_code, { width: 220 }, function (err, url) {
-        const img = document.createElement('img'); img.src = url;
-        document.getElementById('myQrContainer').appendChild(img);
-        document.getElementById('myDownloadQrBtn').href = url;
-    });
+    if(member.qr_code) {
+        QRCode.toDataURL(member.qr_code, { width: 220 }, function (err, url) {
+            if(!err) {
+                const img = document.createElement('img'); img.src = url;
+                document.getElementById('myQrContainer').appendChild(img);
+                document.getElementById('myDownloadQrBtn').href = url;
+            }
+        });
+    }
 }
 
 function populateAdminProfile(username) {
@@ -421,27 +465,31 @@ async function filterManualCheckin() {
     if (youthData.length === 0) { const res = await fetch('/api/youth'); youthData = await res.json(); }
 
     let matches = youthData;
-    if (query) matches = youthData.filter(y => y.name.toLowerCase().includes(query) || (y.qr_code && y.qr_code.toLowerCase().includes(query)));
-    else matches = youthData.slice(0, 20);
+    if (query) {
+        matches = youthData.filter(y => (y.name || '').toLowerCase().includes(query) || ((y.qr_code || '').toLowerCase().includes(query)));
+    } else {
+        matches = youthData.slice(0, 20);
+    }
 
     container.innerHTML = matches.map(y => {
+        const safeName = y.name || 'Unknown';
         const avatarHtml = y.profile_picture
             ? `<img src="${y.profile_picture}" class="avatar-circle" style="cursor:pointer;" onclick="openImageViewer(this.src)">`
-            : `<div class="avatar-circle">${y.name.charAt(0).toUpperCase()}</div>`;
+            : `<div class="avatar-circle">${safeName.charAt(0).toUpperCase()}</div>`;
 
         const isCheckedIn = checkedInYouthIds.has(y.id);
         const btnHtml = isCheckedIn
             ? `<button type="button" class="btn btn-secondary btn-sm" disabled style="background: #94A3B8; color: #FFF; cursor: not-allowed;">Done</button>`
-            : `<button type="button" class="btn btn-primary btn-sm" onclick="quickCheckin(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Check In</button>`;
+            : `<button type="button" class="btn btn-primary btn-sm" onclick="quickCheckin(${y.id}, '${safeName.replace(/'/g, "\\'")}')">Check In</button>`;
 
         return `
         <div class="search-item">
             <div style="display: flex; gap: 10px; align-items: center;">
                 ${avatarHtml}
-                <div><strong>${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code} | Age: ${y.age || 'N/A'}</small></div>
+                <div><strong>${safeName}</strong><br><small style="color: var(--text-muted);">${y.qr_code || ''} | Age: ${y.age || 'N/A'}</small></div>
             </div>
             <div style="display: flex; gap: 6px;">
-                <button type="button" class="btn btn-outline btn-sm" onclick="openFastEditProfileModal(${y.id})">Edit</button>
+                ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openFastEditProfileModal(${y.id})">Edit</button>` : ''}
                 ${btnHtml}
             </div>
         </div>`;
@@ -533,17 +581,21 @@ function filterDirectory() {
     const sort = document.getElementById('sortDirectorySelect').value;
     const ageCat = document.getElementById('filterAgeCategory').value;
 
-    let matches = youthData.filter(y => y.age !== null && y.age !== '' && !isNaN(y.age));
-    if (q) matches = matches.filter(y => y.name.toLowerCase().includes(q) || (y.qr_code && y.qr_code.toLowerCase().includes(q)));
+    // ARMORED: Safe fetching that does not instantly delete entries without ages
+    let matches = youthData || [];
+    if (q) {
+        matches = matches.filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
+    }
 
     let labelText = "Total Registered";
-    if (ageCat === 'minis') { matches = matches.filter(y => y.age <= 12); labelText = "Minis"; }
-    if (ageCat === 'youth') { matches = matches.filter(y => y.age >= 13 && y.age <= 21); labelText = "Youth"; }
-    if (ageCat === 'adult') { matches = matches.filter(y => y.age >= 22); labelText = "Adults"; }
+    if (ageCat === 'minis') { matches = matches.filter(y => y.age && y.age <= 12); labelText = "Minis"; }
+    else if (ageCat === 'youth') { matches = matches.filter(y => y.age && y.age >= 13 && y.age <= 21); labelText = "Youth"; }
+    else if (ageCat === 'adult') { matches = matches.filter(y => y.age && y.age >= 22); labelText = "Adults"; }
 
     document.getElementById('directoryTotalCount').innerText = `${labelText}: ${matches.length}`;
-    if (sort === 'name_asc') matches.sort((a,b) => a.name.localeCompare(b.name));
-    if (sort === 'name_desc') matches.sort((a,b) => b.name.localeCompare(a.name));
+    
+    if (sort === 'name_asc') matches.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+    if (sort === 'name_desc') matches.sort((a,b) => (b.name || '').localeCompare(a.name || ''));
     if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
     if (sort === 'age_desc') matches.sort((a,b) => (b.age || 0) - (a.age || 0));
 
@@ -554,16 +606,17 @@ function filterDirectory() {
         <tbody>`;
         
     html += matches.map(y => {
-        const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem;">${y.name.charAt(0).toUpperCase()}</div>`;
+        const safeName = y.name || 'Unknown';
+        const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem;">${safeName.charAt(0).toUpperCase()}</div>`;
         return `
         <tr>
             <td>
                 <div style="display: flex; gap: 12px; align-items: center;">
                     ${avatarHtml}
                     <div>
-                        <strong style="color:var(--text-main); font-size:1.05rem;">${y.name}</strong>
-                        <div class="desktop-meta"><small style="color: var(--text-muted);">${y.qr_code}</small></div>
-                        <div class="mobile-meta">${y.qr_code} | Age: ${y.age || 'N/A'} | B-Day: ${y.birthday || 'N/A'}</div>
+                        <strong style="color:var(--text-main); font-size:1.05rem;">${safeName}</strong>
+                        <div class="desktop-meta"><small style="color: var(--text-muted);">${y.qr_code || ''}</small></div>
+                        <div class="mobile-meta">${y.qr_code || ''} | Age: ${y.age || 'N/A'} | B-Day: ${y.birthday || 'N/A'}</div>
                     </div>
                 </div>
             </td>
@@ -571,8 +624,8 @@ function filterDirectory() {
             <td class="hide-mobile" style="color:var(--text-muted);">${y.birthday || 'N/A'}</td>
             <td class="actions-cell">
                 <button type="button" class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">View</button>
-                <button type="button" class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>
-                <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Del</button>
+                ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>` : ''}
+                ${hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
             </td>
         </tr>`}).join('');
         
@@ -620,8 +673,9 @@ async function saveMemberEditWithConfirm() {
 async function openViewProfileModal(youthId) {
     const member = youthData.find(y => y.id == youthId);
     if (!member) return;
-    document.getElementById('modalProfileName').innerText = member.name;
-    document.getElementById('modalProfileCode').innerText = `Unique Pass ID: ${member.qr_code}`;
+    const safeName = member.name || 'Unknown';
+    document.getElementById('modalProfileName').innerText = safeName;
+    document.getElementById('modalProfileCode').innerText = `Unique Pass ID: ${member.qr_code || ''}`;
     document.getElementById('modalBioSummary').innerHTML = `
         <strong>Email Address:</strong> ${member.email || 'N/A'}<br>
         <strong>Age / Birthday:</strong> ${member.age || 'N/A'} (${member.birthday || 'N/A'})<br>
@@ -631,14 +685,18 @@ async function openViewProfileModal(youthId) {
 
     const avatar = document.getElementById('viewModalProfileAvatar');
     if (member.profile_picture) avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
-    else avatar.innerHTML = member.name.charAt(0).toUpperCase();
+    else avatar.innerHTML = safeName.charAt(0).toUpperCase();
 
     document.getElementById('modalQrContainer').innerHTML = '';
-    QRCode.toDataURL(member.qr_code, { width: 180 }, function (err, url) {
-        const img = document.createElement('img'); img.src = url;
-        document.getElementById('modalQrContainer').appendChild(img);
-        document.getElementById('modalDownloadQrBtn').href = url;
-    });
+    if(member.qr_code) {
+        QRCode.toDataURL(member.qr_code, { width: 180 }, function (err, url) {
+            if(!err) {
+                const img = document.createElement('img'); img.src = url;
+                document.getElementById('modalQrContainer').appendChild(img);
+                document.getElementById('modalDownloadQrBtn').href = url;
+            }
+        });
+    }
 
     try {
         const res = await fetch(`/api/youth/${youthId}/history`);
@@ -752,14 +810,14 @@ function filterPreregSearch() {
     const container = document.getElementById('preregSearchResults');
     if (q.length < 2) { container.style.display = 'none'; return; }
 
-    let matches = youthData.filter(y => y.name.toLowerCase().includes(q));
+    let matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q));
     if (matches.length > 0) {
         container.innerHTML = matches.map(y => {
             const isRegistered = currentPreRegYouthIds.has(y.id);
             const btnHtml = isRegistered ? `<button type="button" class="btn btn-secondary btn-sm" disabled style="border: none; font-size: 0.75rem;">Already registered</button>` : `<button type="button" class="btn btn-primary btn-sm" style="font-size: 0.75rem;" onclick="executePreregister(${y.id}, '${y.qr_code}')">Register</button>`;
             return `
             <div style="padding: 12px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
-                <div style="flex: 1; word-break: break-word; color: var(--text-main); font-weight:600;">${y.name}</div>
+                <div style="flex: 1; word-break: break-word; color: var(--text-main); font-weight:600;">${y.name || 'Unknown'}</div>
                 <div>${btnHtml}</div>
             </div>`}).join('');
         container.style.display = 'block';
@@ -845,7 +903,7 @@ async function sharePreRegLink() {
     }
 }
 
-// RESTORED FIX: Ensuring the Edit Event Modal works globally
+// ARMORED: Safe Edit Event modal that won't fail
 function openEditEventModal(eventId) {
     const e = eventsData.find(ev => ev.id == eventId);
     if (!e) return;
@@ -857,7 +915,7 @@ function openEditEventModal(eventId) {
     document.getElementById('editEvtPhotosUrl').value = e.photos_url || '';
     document.getElementById('editEvtMaterialsUrl').value = e.materials_url || '';
     document.getElementById('editEvtPoster').value = '';
-    closeAnalyticsModal(); // Close analytics modal if it was open
+    closeAnalyticsModal(); 
     document.getElementById('editEventModal').classList.add('active');
 }
 function closeEditEventModal() { document.getElementById('editEventModal').classList.remove('active'); }
@@ -884,232 +942,59 @@ async function submitEditEvent() {
     });
 }
 
-function setAnalyticsCardFilter(type) {
-    currentRosterFilter = type;
-    document.getElementById('cardTurnout').style.opacity = type === 'all' ? '1' : '0.5';
-    document.getElementById('cardPreReg').style.opacity = type === 'prereg' ? '1' : '0.5';
-    document.getElementById('cardWalkin').style.opacity = type === 'walkin' ? '1' : '0.5';
-    filterAnalyticsRoster();
-}
-
-function openAddAttendeeModal() {
-    if(!currentAnalyticsData) return;
-    document.getElementById('addAttendeeSearch').value = '';
-    document.getElementById('addAttendeeResults').innerHTML = '';
-    document.getElementById('addAttendeeModal').classList.add('active');
-    if(youthData.length === 0) loadDirectory();
-}
-function closeAddAttendeeModal() { document.getElementById('addAttendeeModal').classList.remove('active'); }
-
-function filterAddAttendeeSearch() {
-    const q = document.getElementById('addAttendeeSearch').value.toLowerCase().trim();
-    const container = document.getElementById('addAttendeeResults');
-    if (q.length < 2) { container.innerHTML = ''; return; }
-
-    const matches = youthData.filter(y => y.name.toLowerCase().includes(q));
-    const existingIds = currentAnalyticsData.roster.map(r => r.youth_id);
-
-    container.innerHTML = matches.map(y => {
-        const isExisting = existingIds.includes(y.id);
-        const buttons = isExisting
-            ? `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold;">Already In Roster</span>`
-            : `<button type="button" class="btn btn-primary btn-sm" onclick="submitAddAttendee(${y.id}, 0, '${y.name.replace(/'/g, "\\'")}')">Add Pre-Reg</button>
-               <button type="button" class="btn btn-outline btn-sm" onclick="submitAddAttendee(${y.id}, 1, '${y.name.replace(/'/g, "\\'")}')">Add Walk-in</button>`;
-        return `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border-color);">
-            <div><strong style="color:var(--text-main);">${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code}</small></div>
-            <div style="display: flex; gap: 5px;">${buttons}</div>
-        </div>`;
-    }).join('');
-}
-
-async function submitAddAttendee(youthId, isWalkin, name) {
-    const eventId = currentAnalyticsData.event.id;
-    try {
-        const res = await fetch('/api/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youth_id: youthId, event_id: eventId, is_walkin: isWalkin, actor: currentUser }) });
-        const data = await res.json();
-        if (data.success) { alert(`Added ${name} to the event!`); closeAddAttendeeModal(); openAnalyticsModal(eventId); }
-        else alert(data.error || 'Failed to add attendee.');
-    } catch(e) { alert('Connection error.'); }
-}
-
-async function openAnalyticsModal(eventId) {
-    try {
-        const res = await fetch(`/api/events/${eventId}/analytics`);
-        if (!res.ok) throw new Error("Server returned " + res.status);
-        const data = await res.json();
-        if (!data || data.error) return alert('Failed to load event analytics');
-
-        currentAnalyticsData = data;
-        const posterContainer = document.getElementById('analyticsModalPoster');
-        if (data.event.poster) posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
-        else posterContainer.innerHTML = `<span style="font-size: 0.75rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
-
-        document.getElementById('analyticsEventTitle').innerText = data.event.name;
-        document.getElementById('analyticsEventMeta').innerText = `📅 Date: ${data.event.event_date} | 📍 Venue: ${data.event.venue || 'N/A'}`;
-
-        let linksHtml = '';
-        if(data.event.photos_url) linksHtml += `<a href="${data.event.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration: none;">📷 Photos</a>`;
-        if(data.event.materials_url) linksHtml += `<a href="${data.event.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration: none;">📁 Materials</a>`;
-        document.getElementById('analyticsEventLinks').innerHTML = linksHtml;
-
-        document.getElementById('statTotalTurnout').innerText = data.totalTurnout;
-        document.getElementById('statTotalPreReg').innerText = data.totalPreRegistered;
-        document.getElementById('statWalkins').innerText = data.walkins;
-        document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage}%`;
-        
-        // FIX: Ensure the bottom Edit Event button correctly triggers the global edit function
-        document.getElementById('analyticsEditEventBtn').onclick = () => openEditEventModal(eventId);
-        
-        document.getElementById('attSearchNative').value = '';
-        document.getElementById('attAgeNative').value = 'all';
-        currentRosterFilter = 'all';
-        document.getElementById('cardTurnout').style.opacity = '1';
-        document.getElementById('cardPreReg').style.opacity = '0.5';
-        document.getElementById('cardWalkin').style.opacity = '0.5';
-        filterAnalyticsRoster();
-        document.getElementById('eventAnalyticsModal').classList.add('active');
-    } catch (error) { alert("Could not connect to the server to load analytics."); }
-}
-
-function filterAnalyticsRoster() {
-    const q = document.getElementById('attSearchNative').value.toLowerCase();
-    const ageFilter = document.getElementById('attAgeNative').value;
-    if(!currentAnalyticsData) return;
-
-    let sourceList = [];
-    if (currentRosterFilter === 'prereg') sourceList = currentAnalyticsData.preRegList || [];
-    else if (currentRosterFilter === 'walkin') sourceList = (currentAnalyticsData.roster || []).filter(r => r.is_walkin === 1);
-    else sourceList = currentAnalyticsData.roster || [];
-
-    const filtered = sourceList.filter(r => {
-        const nameMatch = r.name.toLowerCase().includes(q) || (r.qr_code && r.qr_code.toLowerCase().includes(q));
-        let ageMatch = true;
-        const age = parseInt(r.age);
-        if (ageFilter !== 'all' && !isNaN(age)) {
-            if (ageFilter === 'mini' && (age < 7 || age > 12)) ageMatch = false;
-            if (ageFilter === 'youth' && (age < 13 || age > 21)) ageMatch = false;
-            if (ageFilter === 'adult' && age < 22) ageMatch = false;
-        } else if (ageFilter !== 'all' && isNaN(age)) ageMatch = false;
-        return nameMatch && ageMatch;
-    });
-
-    document.getElementById('attRosterCount').innerText = `Total: ${filtered.length}`;
-    renderAnalyticsRoster(filtered);
-}
-
-// RESTORED FIX: Removed the tiny inline "✏️ Edit" buttons here, left "🗑️ Remove" active
-function renderAnalyticsRoster(list) {
-    const rosterContainer = document.getElementById('analyticsRosterContainer');
-    if (list.length === 0) { rosterContainer.innerHTML = `<p style="text-align:center; color:var(--text-muted); margin:15px 0; font-size: 0.9rem;">No attendees found.</p>`; return; }
-
-    rosterContainer.innerHTML = list.map(r => {
-        const avatarHtml = r.profile_picture ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.85rem;">${r.name.charAt(0).toUpperCase()}</div>`;
-        let statusBadge = '', actionButtons = '', timeText = '';
-
-        if (currentRosterFilter === 'prereg') {
-            const arrived = (currentAnalyticsData.roster || []).find(a => a.youth_id === r.youth_id);
-            if (arrived) {
-                statusBadge = `<span style="font-size:11px; color:var(--success); background: rgba(16,185,129,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">Arrived</span>`;
-                timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(arrived.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
-            } else {
-                statusBadge = `<span style="font-size:11px; color:#F59E0B; background: rgba(245,158,11,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">Expected</span>`;
-                timeText = `<span style="color: #F59E0B; font-size: 0.8rem; font-weight: 600;">Not Arrived</span>`;
-                
-                actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
-                    <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeletePreReg(${currentAnalyticsData.event.id}, ${r.youth_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️ Remove</button>
-                </div>`;
-            }
-        } else {
-            statusBadge = `<span style="font-size:11px; color:var(--text-muted); background: var(--bg-light); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>`;
-            timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
-            
-            if (userPermissions.includes('edit_attendance')) {
-                actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
-                    <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️ Remove</button>
-                </div>`;
-            }
-        }
-        return `
-        <div style="padding: 12px 10px; border-bottom: 1px solid var(--bg-light); display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; gap: 10px; align-items: center;">
-                ${avatarHtml}
-                <div>
-                    <strong style="color: var(--text-main); font-size: 0.95rem;">${r.name}</strong>${statusBadge}<br>
-                    <small style="color: var(--text-muted);">${r.qr_code} ${r.age ? '| Age: '+r.age : ''}</small>
-                </div>
-            </div>
-            <div style="text-align: right;">${timeText}${actionButtons}</div>
-        </div>`;
-    }).join('');
-}
-
-function closeAnalyticsModal() { document.getElementById('eventAnalyticsModal').classList.remove('active'); currentAnalyticsData = null; }
-
-function triggerDeletePreReg(eventId, youthId, memberName) {
-    triggerActionConfirmation(`Remove pre-registration for '${memberName}'?`, async () => {
-        try {
-            const res = await fetch(`/api/events/${eventId}/preregs/${youthId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
-            const data = await res.json();
-            if (data.success) {
-                if (currentAnalyticsData) openAnalyticsModal(eventId);
-            } else {
-                alert(data.error || 'Failed to remove entry');
-            }
-        } catch(e) { alert('Network error. Failed to remove.'); }
-    });
-}
-
-function exportAnalyticsCSV() {
-    if (!currentAnalyticsData) return alert('No data available to export.');
-    let sourceList = [];
-    let isExpectedView = (currentRosterFilter === 'prereg');
-
-    if (isExpectedView) sourceList = currentAnalyticsData.preRegList || [];
-    else if (currentRosterFilter === 'walkin') sourceList = (currentAnalyticsData.roster || []).filter(r => r.is_walkin === 1);
-    else sourceList = currentAnalyticsData.roster || [];
-
-    const rows = [['Member Name', 'Unique Pass ID / Email', 'Status / Timestamp']];
-    sourceList.forEach(r => {
-        const identifier = r.email ? r.email : r.qr_code;
-        let status = '';
-        if (isExpectedView) {
-            const arrived = (currentAnalyticsData.roster || []).find(a => a.youth_id === r.youth_id);
-            status = arrived ? `Arrived at ${arrived.checked_in_at}` : 'Expected (Not Arrived)';
-        } else { status = r.is_walkin ? `Walk-in (${r.checked_in_at})` : `Pre-Reg (${r.checked_in_at})`; }
-        rows.push([`"${r.name}"`, `"${identifier}"`, `"${status}"`]);
-    });
-    downloadCSV(rows, `Roster_${currentAnalyticsData.event.name.replace(/\s+/g, '_')}.csv`);
-}
-
-async function loadUserPermissionsList() {
-    const res = await fetch('/api/users/list');
-    allUsersList = await res.json();
-    filterPermUserList();
-}
-
 function filterPermUserList() {
     const q = document.getElementById('permUserSearchInput').value.toLowerCase().trim();
     const container = document.getElementById('permUserListContainer');
-    let matches = allUsersList;
-    if (q) matches = allUsersList.filter(u => u.display_name.toLowerCase().includes(q));
+    
+    if (q.length < 3) { 
+        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>`; 
+        return; 
+    }
 
-    if (matches.length === 0) { container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No accounts found matching '${q}'</div>`; return; }
+    if (!youthData || youthData.length === 0) {
+        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Directory is empty or still loading...</div>`;
+        return;
+    }
+
+    const matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
+
+    if (matches.length === 0) { 
+        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No accounts found matching '${q}'</div>`; 
+        return; 
+    }
 
     container.innerHTML = matches.map(u => `
         <div class="search-item">
-            <div><strong style="color:var(--text-main); font-size:1.05rem;">${u.display_name}</strong></div>
-            <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${u.display_name.replace(/'/g, "\\'")}', '${JSON.stringify(u.permissions).replace(/'/g, "\\'")}')">Edit Permissions</button>
+            <div><strong style="color:var(--text-main); font-size:1.05rem;">${u.name || 'Unknown'}</strong><br><small style="color: var(--text-muted);">${u.qr_code || ''}</small></div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${(u.name || '').replace(/'/g, "\\'")}')">Select</button>
         </div>
     `).join('');
 }
 
-function openAssignPermissionModal(id, displayName, permsJson) {
-    const perms = JSON.parse(permsJson || '[]');
-    document.getElementById('modalPermUserId').value = id;
-    document.getElementById('permModalUserBanner').innerText = `Assign Permissions for: ${displayName}`;
-    document.querySelectorAll('.permCheckModal').forEach(chk => { chk.checked = perms.includes(chk.value); });
-    document.getElementById('assignPermissionModal').classList.add('active');
+async function loadUserPermissionsList() {
+    if (youthData.length === 0) {
+        try {
+            const res = await fetch('/api/youth');
+            youthData = await res.json();
+        } catch (e) { console.error("Failed to load youth data for permissions"); }
+    }
+    filterPermUserList(); 
+}
+
+async function openAssignPermissionModal(id, displayName) {
+    try {
+        const res = await fetch('/api/youth');
+        const dbYouth = await res.json();
+        const targetYouth = dbYouth.find(y => y.id === id);
+        const perms = JSON.parse(targetYouth.permissions || '[]');
+
+        document.getElementById('modalPermUserId').value = id;
+        document.getElementById('permModalUserBanner').innerText = `Assign Permissions for: ${displayName}`;
+        document.querySelectorAll('.permCheckModal').forEach(chk => { chk.checked = perms.includes(chk.value); });
+        document.getElementById('assignPermissionModal').classList.add('active');
+    } catch(e) {
+        alert("Failed to load user permissions from server.");
+    }
 }
 function closeAssignPermissionModal() { document.getElementById('assignPermissionModal').classList.remove('active'); }
 
@@ -1119,25 +1004,14 @@ function handleSavePermissionsFromModal() {
     document.querySelectorAll('.permCheckModal:checked').forEach(chk => { selectedPerms.push(chk.value); });
 
     triggerActionConfirmation(`Confirm updating permission set?`, async () => {
-        const res = await fetch(`/api/users/${userId}/permissions`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permissions: selectedPerms, actor: currentUser }) });
+        const res = await fetch(`/api/youth/${userId}/permissions`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permissions: selectedPerms, actor: currentUser }) });
         const data = await res.json();
-        if (data.success) { alert('Permissions updated successfully!'); closeAssignPermissionModal(); loadUserPermissionsList(); }
-    });
-}
-
-function handleCreateUserAccount(e) {
-    e.preventDefault();
-    const username = document.getElementById('newUsername').value;
-    const password = document.getElementById('newPassword').value;
-
-    triggerActionConfirmation(`Create new leader account '${username}'?`, async () => {
-        const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser, username, password, permissions: ['access_checkin', 'access_directory'] }) });
-        const data = await res.json();
-        if (data.success) {
-            alert(`User account created! Click 'Edit Permissions' to customize access.`);
-            document.getElementById('newUsername').value = ''; document.getElementById('newPassword').value = '';
-            loadUserPermissionsList();
-        } else alert(data.error || 'Failed to create user');
+        if (data.success) { 
+            alert('Permissions updated successfully!'); 
+            closeAssignPermissionModal(); 
+            resetPermUserList(); 
+            youthData = []; await loadDirectory(); 
+        }
     });
 }
 
@@ -1154,26 +1028,28 @@ function setEventViewMode(mode) {
         if (eventViewMode === 'list') {
             container.className = 'events-list-view';
             container.innerHTML = eventsData.map(e => {
+                const safeName = e.name || 'Event';
                 let linkBadges = '';
                 if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
                 if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
                 return `
                 <div style="border-bottom: 1px solid var(--border-color); padding: 15px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div>
-                        <strong style="cursor: pointer; color: var(--primary); font-size: 1.1rem;" onclick="openAnalyticsModal(${e.id})">${e.name}</strong><br>
+                        <strong style="cursor: pointer; color: var(--primary); font-size: 1.1rem;" onclick="openAnalyticsModal(${e.id})">${safeName}</strong><br>
                         <small style="color: var(--text-muted); font-size: 0.85rem;">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
                         ${linkBadges ? `<div style="margin-top: 8px;">${linkBadges}</div>` : ''}
                     </div>
                     <div style="display: flex; gap: 6px;">
                         <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
-                        <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Del</button>
+                        ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
+                        ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
+                        ${hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
                     </div>
                 </div>`}).join('');
         } else if (eventViewMode === 'grid') {
             container.className = 'events-grid-view';
             container.innerHTML = eventsData.map(e => {
+                const safeName = e.name || 'Event';
                 let linkBadges = '';
                 if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
                 if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
@@ -1182,15 +1058,15 @@ function setEventViewMode(mode) {
                     ${e.poster ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` : `<div class="event-card-img" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`}
                     <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
-                            <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${e.name}</h3>
+                            <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${safeName}</h3>
                             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>📍 ${e.venue || 'No Location'}</p>
                             ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
                         </div>
                         <div style="display: flex; gap: 6px; margin-top: 10px;">
                             <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>
-                            <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
-                            <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Del</button>
+                            ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
+                            ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
+                            ${hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
                         </div>
                     </div>
                 </div>`}).join('');
@@ -1204,7 +1080,7 @@ async function loadEvents() {
         eventsData = await res.json();
         const dropdown = document.getElementById('activeEventDropdown');
         if (dropdown) {
-            dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name} (${e.event_date})</option>`).join('');
+            dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name || 'Event'} (${e.event_date || ''})</option>`).join('');
             if (eventsData.length > 0) updateActiveEventBanner();
         }
         setEventViewMode(eventViewMode);
@@ -1229,7 +1105,7 @@ function renderCalendarView(container) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const dayEvents = eventsData.filter(e => e.event_date === dateStr);
         html += `<div class="calendar-day-cell"><strong style="color:var(--text-main);">${day}</strong>`;
-        dayEvents.forEach(e => html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${e.name.replace(/"/g, '&quot;')}">${e.name}</div>`);
+        dayEvents.forEach(e => html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${(e.name || '').replace(/"/g, '&quot;')}">${e.name || 'Event'}</div>`);
         html += `</div>`;
     }
     html += `</div>`;
@@ -1251,7 +1127,7 @@ async function loadAttendanceLogs() {
 function filterAttendanceLogs() {
     const q = document.getElementById('attendanceSearchInput').value.toLowerCase().trim();
     let matches = cachedAttendanceLogs;
-    if(q) matches = matches.filter(l => l.member_name.toLowerCase().includes(q) || l.event_name.toLowerCase().includes(q));
+    if(q) matches = matches.filter(l => (l.member_name || '').toLowerCase().includes(q) || (l.event_name || '').toLowerCase().includes(q));
 
     let html = `<table class="responsive-table">
         <thead>
@@ -1265,17 +1141,17 @@ function filterAttendanceLogs() {
                 <div style="display: flex; gap: 12px; align-items: center;">
                     <div style="background: rgba(16,185,129,0.1); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">✅</div>
                     <div>
-                        <strong style="color:var(--text-main); font-size:1.05rem;">${l.member_name}</strong>
-                        <div class="mobile-meta">${l.event_name} | ${l.checked_in_at}</div>
+                        <strong style="color:var(--text-main); font-size:1.05rem;">${l.member_name || 'Unknown'}</strong>
+                        <div class="mobile-meta">${l.event_name || ''} | ${l.checked_in_at || ''}</div>
                     </div>
                 </div>
             </td>
-            <td class="hide-mobile" style="color:var(--text-muted);">${l.event_name}</td>
-            <td class="hide-mobile" style="color:var(--text-muted);">${l.checked_in_at}</td>
+            <td class="hide-mobile" style="color:var(--text-muted);">${l.event_name || ''}</td>
+            <td class="hide-mobile" style="color:var(--text-muted);">${l.checked_in_at || ''}</td>
             <td><span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
             <td class="actions-cell">
-                ${userPermissions.includes('edit_attendance') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
-                <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${l.member_name.replace(/'/g, "\\'")}')">Del</button>
+                ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
+                ${hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${(l.member_name || '').replace(/'/g, "\\'")}')">Del</button>` : ''}
             </td>
         </tr>`).join('');
         
@@ -1286,7 +1162,7 @@ function filterAttendanceLogs() {
 function exportAttendanceLogsCSV() {
     if(!cachedAttendanceLogs || cachedAttendanceLogs.length === 0) return alert('No attendance logs to export.');
     const rows = [['Log ID', 'Member Name', 'Event', 'Checked In At', 'Status']];
-    cachedAttendanceLogs.forEach(l => rows.push([l.id, `"${l.member_name}"`, `"${l.event_name}"`, `"${l.checked_in_at}"`, `"${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}"`]));
+    cachedAttendanceLogs.forEach(l => rows.push([l.id, `"${l.member_name || ''}"`, `"${l.event_name || ''}"`, `"${l.checked_in_at || ''}"`, `"${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}"`]));
     downloadCSV(rows, 'All_Attendance_Logs.csv');
 }
 
@@ -1303,7 +1179,7 @@ async function loadActivityLogs() {
 function filterActivityLogs() {
     const q = document.getElementById('activitySearchInput').value.toLowerCase().trim();
     let matches = cachedActivityLogs;
-    if(q) matches = matches.filter(l => l.username.toLowerCase().includes(q) || l.action.toLowerCase().includes(q) || l.details.toLowerCase().includes(q));
+    if(q) matches = matches.filter(l => (l.username || '').toLowerCase().includes(q) || (l.action || '').toLowerCase().includes(q) || (l.details || '').toLowerCase().includes(q));
 
     let html = `<table class="responsive-table">
         <thead>
@@ -1317,14 +1193,14 @@ function filterActivityLogs() {
                 <div style="display: flex; gap: 12px; align-items: center;">
                     <div style="background: rgba(59,130,246,0.1); width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">📝</div>
                     <div>
-                        <strong style="color:var(--text-main); font-size:1.05rem;">${l.username}</strong>
-                        <div class="mobile-meta"><span class="badge badge-orange">${l.action}</span> | ${l.created_at}</div>
+                        <strong style="color:var(--text-main); font-size:1.05rem;">${l.username || 'System'}</strong>
+                        <div class="mobile-meta"><span class="badge badge-orange">${l.action || ''}</span> | ${l.created_at || ''}</div>
                     </div>
                 </div>
             </td>
-            <td class="hide-mobile"><span class="badge badge-orange">${l.action}</span></td>
-            <td style="color:var(--text-main);">${l.details}</td>
-            <td class="hide-mobile" style="color:var(--text-muted);"><small>${l.created_at}</small></td>
+            <td class="hide-mobile"><span class="badge badge-orange">${l.action || ''}</span></td>
+            <td style="color:var(--text-main);">${l.details || ''}</td>
+            <td class="hide-mobile" style="color:var(--text-muted);"><small>${l.created_at || ''}</small></td>
         </tr>`).join('');
         
     html += `</tbody></table>`;
@@ -1334,7 +1210,7 @@ function filterActivityLogs() {
 function exportActivityLogsCSV() {
     if(!cachedActivityLogs || cachedActivityLogs.length === 0) return alert('No activity logs to export.');
     const rows = [['Log ID', 'Timestamp', 'User', 'Action', 'Details']];
-    cachedActivityLogs.forEach(l => rows.push([l.id, `"${l.created_at}"`, `"${l.username}"`, `"${l.action}"`, `"${l.details}"`]));
+    cachedActivityLogs.forEach(l => rows.push([l.id, `"${l.created_at || ''}"`, `"${l.username || ''}"`, `"${l.action || ''}"`, `"${l.details || ''}"`]));
     downloadCSV(rows, 'All_Activity_Logs.csv');
 }
 

@@ -252,7 +252,7 @@
             <div style="display: flex; gap: 10px; border-bottom: 2px solid var(--border-color); padding-bottom: 20px; margin-bottom: 20px; flex-wrap: wrap;">
                 <button id="btnCheckinScanner" class="btn btn-outline active" onclick="switchCheckinMode('scanner')" style="flex:1;">📷 Scanner</button>
                 <button id="btnCheckinManual" class="btn btn-outline" onclick="switchCheckinMode('manual')" style="flex:1;">🔍 Search</button>
-                <button id="btnCheckinWalkin" class="btn btn-outline" onclick="switchCheckinMode('walkin')" style="flex:1;">📝 Walk-In</button>
+                <button id="btnCheckinWalkin" class="btn btn-outline" onclick="switchCheckinMode('walkin')" style="flex:1; display:none;">📝 Walk-In</button>
             </div>
 
             <div id="checkinModeScanner" class="checkin-sub-tab active">
@@ -324,7 +324,7 @@
     <div id="eventsTab" class="tab-content">
         <div class="sub-nav">
             <button id="btnSubEventList" class="sub-nav-btn active" onclick="switchEventSubTab('list')">📅 Published Gatherings</button>
-            <button id="btnSubEventCreate" class="sub-nav-btn" onclick="switchEventSubTab('create')">➕ Create New Gathering</button>
+            <button id="btnSubEventCreate" class="sub-nav-btn" onclick="switchEventSubTab('create')" style="display:none;">➕ Create New Gathering</button>
         </div>
 
         <div id="subTabEventCreate" class="event-sub-tab">
@@ -414,25 +414,12 @@
         <div class="card">
             <h2>User Directory & Permission Management</h2>
             <div class="form-group">
-                <label>Filter Registered Accounts</label>
+                <label>Search Directory (Min. 3 characters)</label>
                 <input type="text" id="permUserSearchInput" class="form-control" placeholder="Search name or unique pass ID..." oninput="filterPermUserList()">
             </div>
-            <div id="permUserListContainer" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; margin-top: 20px;"></div>
-        </div>
-
-        <div class="card">
-            <h2>Create New Leader Account</h2>
-            <form onsubmit="handleCreateUserAccount(event)">
-                <div class="form-group">
-                    <label>Username / Leader Account Name</label>
-                    <input type="text" id="newUsername" class="form-control" required>
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="newPassword" class="form-control" required>
-                </div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Create Leader Account</button>
-            </form>
+            <div id="permUserListContainer" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; margin-top: 20px;">
+                <div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>
+            </div>
         </div>
     </div>
 
@@ -591,9 +578,12 @@
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_directory" style="width:20px;height:20px;"> Access "Directory"</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_events" style="width:20px;height:20px;"> Access "Events"</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_attendance" style="width:20px;height:20px;"> Access "Attendance Logs"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="edit_attendance" style="width:20px;height:20px;"> EDIT Attendance Records</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_activity" style="width:20px;height:20px;"> Access "Activity Logs"</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_permissions" style="width:20px;height:20px;"> Access "Add Permissions"</label>
+                    <hr style="border:0; border-top:1px solid var(--border-color); margin: 5px 0;">
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: var(--primary);"><input type="checkbox" class="permCheckModal" value="add_entries" style="width:20px;height:20px;"> ➕ Add Entries (Forms, Check-in, Walk-ins)</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: #8B5CF6;"><input type="checkbox" class="permCheckModal" value="edit_entries" style="width:20px;height:20px;"> ✏️ Edit Entries (Profiles, Events, Logs)</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: var(--danger);"><input type="checkbox" class="permCheckModal" value="delete_entries" style="width:20px;height:20px;"> 🗑️ Delete Entries (Profiles, Events, Logs)</label>
                 </div>
             </div>
             <div class="modal-footer">
@@ -692,12 +682,12 @@
 
         <div id="analyticsRosterContainer" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px;"></div>
 
-        <div class="modal-footer" style="flex-direction: column;">
-            <div style="display: flex; gap: 10px;">
-                <button type="button" class="btn btn-primary" style="flex:1;" onclick="openAddAttendeeModal()">➕ Add Entry</button>
-                <button type="button" class="btn btn-outline" style="flex:1;" id="analyticsEditEventBtn">Edit Event</button>
+        <div class="modal-footer" style="flex-direction: column; gap: 10px;">
+            <div style="display: flex; gap: 10px; width: 100%;">
+                <button type="button" class="btn btn-primary" id="addEntryAnalyticsBtn" style="flex:1; display:none;" onclick="openAddAttendeeModal()">➕ Add Entry</button>
+                <button type="button" class="btn btn-outline" style="flex:1;" id="analyticsEditEventBtn">✏️ Edit Event</button>
             </div>
-            <button type="button" class="btn btn-outline" onclick="exportAnalyticsCSV()">📥 Export List (CSV)</button>
+            <button type="button" class="btn btn-outline" style="width: 100%;" onclick="exportAnalyticsCSV()">📥 Export List (CSV)</button>
         </div>
     </div>
 </div>

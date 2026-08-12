@@ -100,17 +100,31 @@ db.serialize(() => {
 
     const superadminPermissions = JSON.stringify([
         'access_checkin', 'access_directory', 'access_events',
-        'access_attendance', 'edit_attendance', 'access_activity', 'access_permissions'
+        'access_attendance', 'access_activity', 'access_permissions',
+        'add_entries', 'edit_entries', 'delete_entries'
     ]);
-    const regTeamPermissions = JSON.stringify(['access_checkin']);
-
-    db.run(`INSERT OR REPLACE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
-        ['registrationteam', 'JesusisLord', regTeamPermissions, getManilaTime()]
-    );
 
     db.run(`INSERT OR IGNORE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
         ['celsocreeriii@gmail.com', 'JesusisLord', superadminPermissions, getManilaTime()]
     );
+    // Force update the superadmin to ensure they always have all checkboxes
+    db.run(`UPDATE users SET permissions = ? WHERE username = 'celsocreeriii@gmail.com'`, [superadminPermissions]);
+
+    // ARMORED: Background Auto-Sync Engine
+    db.all(`SELECT id, qr_code FROM youth WHERE id NOT IN (SELECT youth_id FROM users WHERE youth_id IS NOT NULL)`, [], (err, rows) => {
+        if (rows && rows.length > 0) {
+            const stmt = db.prepare(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`);
+            let addedCount = 0;
+            rows.forEach(r => { 
+                if(r.qr_code) { 
+                    stmt.run([r.qr_code, r.qr_code, r.id, getManilaTime()]); 
+                    addedCount++;
+                }
+            });
+            stmt.finalize();
+            console.log(`[SYNC ENGINE] Auto-created login accounts for ${addedCount} community members.`);
+        }
+    });
 });
 
 function logActivity(username, action, details) {
@@ -262,39 +276,6 @@ app.put('/api/youth/profile/:id', (req, res) => {
             res.json({ success: true, member });
         });
     });
-});
-
-app.get('/api/users/list', (req, res) => {
-    const sql = `SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`;
-    db.all(sql, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows.map(r => ({
-            id: r.id, username: r.username, display_name: r.member_name ? `${r.member_name} (${r.member_code || r.username})` : r.username, permissions: JSON.parse(r.permissions || '[]')
-        })));
-    });
-});
-
-app.put('/api/users/:id/permissions', (req, res) => {
-    const { permissions, actor } = req.body;
-    const permString = JSON.stringify(permissions || []);
-    db.run(`UPDATE users SET permissions = ? WHERE id = ?`, [permString, req.params.id], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        logActivity(actor, 'UPDATE_PERMISSIONS', `Updated permissions for User ID ${req.params.id}`);
-        res.json({ success: true, updated: this.changes });
-    });
-});
-
-app.post('/api/users', (req, res) => {
-    const { actor, username, password, permissions } = req.body;
-    const permString = JSON.stringify(permissions || []);
-    db.run(`INSERT INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
-        [username, password, permString, getManilaTime()],
-        function (err) {
-            if (err) return res.status(400).json({ error: 'Username already exists' });
-            logActivity(actor, 'CREATE_USER', `Created account '${username}'`);
-            res.json({ id: this.lastID, success: true });
-        }
-    );
 });
 
 app.get('/api/activity-logs', (req, res) => {
@@ -500,7 +481,7 @@ app.post('/api/preregister', (req, res) => {
     });
 });
 
-// NEW: Delete a Pre-Registration
+// Delete a Pre-Registration
 app.delete('/api/events/:event_id/preregs/:youth_id', (req, res) => {
     const { actor } = req.body;
     db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`,
@@ -574,6 +555,30 @@ app.get('/api/directory/export', (req, res) => {
         if (err || !rows || rows.length === 0) {
             db.all("SELECT * FROM youth ORDER BY name ASC", [], (e, r) => sendCSV(res, r || []));
         } else { sendCSV(res, rows); }
+    });
+});
+
+// USER & PERMISSION MANAGEMENT ENDPOINTS RESTORED
+app.get('/api/users/list', (req, res) => {
+    const sql = `SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`;
+    db.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows.map(r => ({
+            id: r.id, 
+            username: r.username, 
+            display_name: r.member_name ? `${r.member_name} (${r.member_code || r.username})` : r.username, 
+            permissions: r.permissions || '[]'
+        })));
+    });
+});
+
+app.put('/api/users/:id/permissions', (req, res) => {
+    const { permissions, actor } = req.body;
+    const permString = JSON.stringify(permissions || []);
+    db.run(`UPDATE users SET permissions = ? WHERE id = ?`, [permString, req.params.id], function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        logActivity(actor, 'UPDATE_PERMISSIONS', `Updated permissions for User ID ${req.params.id}`);
+        res.json({ success: true, updated: this.changes });
     });
 });
 
