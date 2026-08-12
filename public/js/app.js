@@ -55,7 +55,7 @@ function downloadCSV(rows, filename) {
     document.body.removeChild(link);
 }
 
-// WINDOW ONLOAD LOGIC (Handles smooth routing & prevents flicker)
+// WINDOW ONLOAD LOGIC (Handles smooth routing)
 window.onload = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const eventIdParam = urlParams.get('event');
@@ -66,7 +66,6 @@ window.onload = () => {
     }
 
     document.getElementById('mainHeader').style.display = 'block';
-    document.getElementById('mainNav').style.display = 'flex';
     document.getElementById('mainContainer').style.display = 'block';
 
     const savedSession = localStorage.getItem('fog_user');
@@ -81,15 +80,84 @@ window.onload = () => {
         else switchTab('profileTab');
         loadEvents(); loadDirectory();
     } else {
-        switchTab('publicReg');
+        // Fix: Properly route to the native login tab if no session exists
+        switchTab('loginTab'); 
     }
 };
 
+// ==========================================
+// NEW: NAVIGATION / SIDEBAR LOGIC (PHASE 1)
+// ==========================================
+
+function openSidebar() {
+    document.getElementById('sidebarNav').classList.add('active');
+    document.getElementById('sidebarOverlay').classList.add('active');
+}
+
+function closeSidebar() {
+    document.getElementById('sidebarNav').classList.remove('active');
+    document.getElementById('sidebarOverlay').classList.remove('active');
+}
+
+function buildNav() {
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    const hamburger = document.getElementById('hamburgerBtn');
+
+    let sidebarHtml = `<h2>Main Menu</h2>`;
+    let bottomHtml = ``;
+
+    const isAdmin = userPermissions.length > 0;
+
+    if (isAdmin) {
+        // Admin View: Use Sidebar Hamburger
+        hamburger.style.display = 'block';
+        bottomNav.style.display = 'none';
+
+        sidebarHtml += `<button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
+        if (userPermissions.includes('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
+        if (userPermissions.includes('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
+        if (userPermissions.includes('access_events')) sidebarHtml += `<button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Planner</button>`;
+        if (userPermissions.includes('access_attendance')) sidebarHtml += `<button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
+        if (userPermissions.includes('access_activity')) sidebarHtml += `<button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
+        if (userPermissions.includes('access_permissions')) sidebarHtml += `<button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔐 Permissions</button>`;
+        sidebarHtml += `<button class="nav-btn text-danger" onclick="handleLogout()">🚪 Logout (${currentUser})</button>`;
+
+        sidebar.innerHTML = sidebarHtml;
+        bottomNav.innerHTML = '';
+    } else {
+        // Regular Member View: Use Bottom Nav
+        hamburger.style.display = 'none';
+        bottomNav.style.display = 'flex';
+
+        bottomHtml += `<button class="bottom-nav-btn active" data-target="profileTab" onclick="switchTab('profileTab')"><div class="icon">👤</div>Profile</button>`;
+        bottomHtml += `<button class="bottom-nav-btn" onclick="handleLogout()"><div class="icon">🚪</div>Logout</button>`;
+
+        sidebar.innerHTML = '';
+        bottomNav.innerHTML = bottomHtml;
+    }
+}
+
 function switchTab(tabId) {
+    // Hide all tabs
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+    
+    // Manage Sidebar active states
+    document.querySelectorAll('.sidebar .nav-btn').forEach(el => el.classList.remove('active'));
+    const sidebarTarget = document.querySelector(`.sidebar .nav-btn[data-target="${tabId}"]`);
+    if(sidebarTarget) sidebarTarget.classList.add('active');
+
+    // Manage Bottom Nav active states
+    document.querySelectorAll('.bottom-nav-btn').forEach(el => el.classList.remove('active'));
+    const bottomTarget = document.querySelector(`.bottom-nav-btn[data-target="${tabId}"]`);
+    if(bottomTarget) bottomTarget.classList.add('active');
+
+    // Close sidebar immediately on click (mobile friendly)
+    closeSidebar();
+
     const targetTab = document.getElementById(tabId);
     if (targetTab) targetTab.classList.add('active');
+    
     if (tabId !== 'checkinTab' && qrScanner) { qrScanner.clear().catch(e => console.log(e)); qrScanner = null; }
     if (tabId === 'checkinTab') { switchCheckinMode('scanner'); updateActiveEventBanner(); }
     if (tabId === 'directoryTab') loadDirectory();
@@ -102,17 +170,12 @@ function switchTab(tabId) {
         document.getElementById('adminBackupCard').style.display = 'block';
         loadBackups();
     } else {
-        document.getElementById('adminBackupCard').style.display = 'none';
+        const backupCard = document.getElementById('adminBackupCard');
+        if(backupCard) backupCard.style.display = 'none';
     }
 }
 
-function switchEventSubTab(tab) {
-    document.getElementById('subTabEventList').classList.toggle('active', tab === 'list');
-    document.getElementById('subTabEventCreate').classList.toggle('active', tab === 'create');
-    document.getElementById('btnSubEventList').classList.toggle('active', tab === 'list');
-    document.getElementById('btnSubEventCreate').classList.toggle('active', tab === 'create');
-    if (tab === 'list') loadEvents();
-}
+// ==========================================
 
 async function loadBackups() {
     const res = await fetch('/api/backups');
@@ -184,24 +247,15 @@ async function handleLogin(e) {
     } else alert('Invalid credentials!');
 }
 
-function buildNav() {
-    const nav = document.getElementById('mainNav');
-    let html = `<button class="nav-btn" onclick="switchTab('profileTab')">My Profile</button>`;
-    if (userPermissions.includes('access_checkin')) html += `<button class="nav-btn" onclick="switchTab('checkinTab')">Check-In</button>`;
-    if (userPermissions.includes('access_directory')) html += `<button class="nav-btn" onclick="switchTab('directoryTab')">Directory</button>`;
-    if (userPermissions.includes('access_events')) html += `<button class="nav-btn" onclick="switchTab('eventsTab')">Events</button>`;
-    if (userPermissions.includes('access_attendance')) html += `<button class="nav-btn" onclick="switchTab('attendanceTab')">Attendance Logs</button>`;
-    if (userPermissions.includes('access_activity')) html += `<button class="nav-btn" onclick="switchTab('activityLogsTab')">Activity Logs</button>`;
-    if (userPermissions.includes('access_permissions')) html += `<button class="nav-btn" onclick="switchTab('permissionsTab')">Add Permissions</button>`;
-    html += `<button class="nav-btn" onclick="handleLogout()">Logout (${currentUser})</button>`;
-    nav.innerHTML = html;
-}
-
 async function handleLogout() {
     if (currentUser) await fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser }) });
     localStorage.removeItem('fog_user'); currentUser = null; currentMember = null; userPermissions = [];
-    document.getElementById('mainNav').innerHTML = `<button class="nav-btn active" onclick="switchTab('loginTab')">Login</button>`;
-    switchTab('publicReg');
+    document.getElementById('hamburgerBtn').style.display = 'none';
+    document.getElementById('sidebarNav').innerHTML = '';
+    document.getElementById('bottomNav').style.display = 'none';
+    
+    // Fix: Route cleanly to the login tab on logout
+    switchTab('loginTab'); 
 }
 
 function populateProfileTab(member) {
@@ -371,7 +425,7 @@ async function filterManualCheckin() {
                 <div><strong>${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code} | Age: ${y.age || 'N/A'}</small></div>
             </div>
             <div style="display: flex; gap: 6px;">
-                <button type="button" class="btn btn-outline btn-sm" onclick="openFastEditProfileModal(${y.id})">Edit Profile</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="openFastEditProfileModal(${y.id})">Edit</button>
                 ${btnHtml}
             </div>
         </div>`;
@@ -462,10 +516,10 @@ function filterDirectory() {
     let matches = youthData.filter(y => y.age !== null && y.age !== '' && !isNaN(y.age));
     if (q) matches = matches.filter(y => y.name.toLowerCase().includes(q) || (y.qr_code && y.qr_code.toLowerCase().includes(q)));
 
-    let labelText = "Total Registered All Ages";
-    if (ageCat === 'minis') { matches = matches.filter(y => y.age <= 12); labelText = "Total Registered Minis"; }
-    if (ageCat === 'youth') { matches = matches.filter(y => y.age >= 13 && y.age <= 21); labelText = "Total Registered Youth"; }
-    if (ageCat === 'adult') { matches = matches.filter(y => y.age >= 22); labelText = "Total Registered Adults"; }
+    let labelText = "Total Registered";
+    if (ageCat === 'minis') { matches = matches.filter(y => y.age <= 12); labelText = "Minis"; }
+    if (ageCat === 'youth') { matches = matches.filter(y => y.age >= 13 && y.age <= 21); labelText = "Youth"; }
+    if (ageCat === 'adult') { matches = matches.filter(y => y.age >= 22); labelText = "Adults"; }
 
     document.getElementById('directoryTotalCount').innerText = `${labelText}: ${matches.length}`;
     if (sort === 'name_asc') matches.sort((a,b) => a.name.localeCompare(b.name));
@@ -481,15 +535,15 @@ function filterDirectory() {
             <td>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     ${avatarHtml}
-                    <div><strong>${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code}</small></div>
+                    <div><strong style="color:var(--text-main);">${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code}</small></div>
                 </div>
             </td>
-            <td>${y.age || 'N/A'}</td>
-            <td>${y.birthday || 'N/A'}</td>
+            <td style="color:var(--text-muted);">${y.age || 'N/A'}</td>
+            <td style="color:var(--text-muted);">${y.birthday || 'N/A'}</td>
             <td>
-                <button type="button" class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">Profile</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">View</button>
                 <button type="button" class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>
-                <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Delete</button>
+                <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Del</button>
             </td>
         </tr>`}).join('');
     html += `</tbody></table>`;
@@ -539,7 +593,6 @@ async function openViewProfileModal(youthId) {
     document.getElementById('modalProfileName').innerText = member.name;
     document.getElementById('modalProfileCode').innerText = `Unique Pass ID: ${member.qr_code}`;
     document.getElementById('modalBioSummary').innerHTML = `
-        <strong>Unique Pass ID:</strong> ${member.qr_code}<br>
         <strong>Email Address:</strong> ${member.email || 'N/A'}<br>
         <strong>Age / Birthday:</strong> ${member.age || 'N/A'} (${member.birthday || 'N/A'})<br>
         <strong>Social Media:</strong> ${member.social_media || 'N/A'}<br>
@@ -562,7 +615,7 @@ async function openViewProfileModal(youthId) {
         const history = await res.json();
         const historyContainer = document.getElementById('modalAttendanceHistory');
         if (!history || history.length === 0) historyContainer.innerHTML = `<p style="color: var(--text-muted);">No attendance history recorded yet.</p>`;
-        else historyContainer.innerHTML = history.map(h => `<div style="border-bottom: 1px solid var(--border-color); padding: 6px 0;"><strong>${h.event_name}</strong> (${h.event_date}) - <small>${h.checked_in_at}</small></div>`).join('');
+        else historyContainer.innerHTML = history.map(h => `<div style="border-bottom: 1px solid var(--border-color); padding: 8px 0;"><strong>${h.event_name}</strong> (${h.event_date}) - <small style="color:var(--text-muted);">${h.checked_in_at}</small></div>`).join('');
     } catch(e) { console.error(e); }
     document.getElementById('viewProfileModal').classList.add('active');
 }
@@ -628,12 +681,12 @@ async function launchPublicPrereg(eventId) {
         document.getElementById('preregPublicInfo').innerText = e.prereg_info || `Date: ${e.event_date} | Venue: ${e.venue || 'TBA'}`;
 
         const banner = document.getElementById('preregPublicBanner');
-        if (e.prereg_banner) { banner.src = e.prereg_banner; banner.style.display = 'block'; } 
-        else if (e.poster) { banner.src = e.poster; banner.style.display = 'block'; } 
+        if (e.prereg_banner) { banner.src = e.prereg_banner; banner.style.display = 'block'; }
+        else if (e.poster) { banner.src = e.poster; banner.style.display = 'block'; }
         else { banner.style.display = 'none'; }
 
         const bottomBanner = document.getElementById('preregPublicBottomBanner');
-        if (e.prereg_bottom_banner) { bottomBanner.src = e.prereg_bottom_banner; bottomBanner.style.display = 'block'; } 
+        if (e.prereg_bottom_banner) { bottomBanner.src = e.prereg_bottom_banner; bottomBanner.style.display = 'block'; }
         else { bottomBanner.style.display = 'none'; }
     }
 
@@ -673,15 +726,15 @@ function filterPreregSearch() {
     if (matches.length > 0) {
         container.innerHTML = matches.map(y => {
             const isRegistered = currentPreRegYouthIds.has(y.id);
-            const btnHtml = isRegistered ? `<button type="button" class="btn btn-secondary btn-sm" disabled style="background: #94A3B8; color: #FFF; cursor: not-allowed; border: none; font-size: 0.75rem;">Already registered</button>` : `<button type="button" class="btn btn-primary btn-sm" style="font-size: 0.75rem;" onclick="executePreregister(${y.id}, '${y.qr_code}')">Click here to register</button>`;
+            const btnHtml = isRegistered ? `<button type="button" class="btn btn-secondary btn-sm" disabled style="border: none; font-size: 0.75rem;">Already registered</button>` : `<button type="button" class="btn btn-primary btn-sm" style="font-size: 0.75rem;" onclick="executePreregister(${y.id}, '${y.qr_code}')">Register</button>`;
             return `
-            <div style="padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
-                <div style="flex: 1; word-break: break-word;"><strong>${y.name}</strong></div>
+            <div style="padding: 12px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                <div style="flex: 1; word-break: break-word; color: var(--text-main); font-weight:600;">${y.name}</div>
                 <div>${btnHtml}</div>
             </div>`}).join('');
         container.style.display = 'block';
     } else {
-        container.innerHTML = `<div style="padding: 10px; color: var(--text-muted); text-align: center;">No matches found.</div>`;
+        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No matches found.</div>`;
         container.style.display = 'block';
     }
 }
@@ -833,7 +886,7 @@ function filterAddAttendeeSearch() {
                <button class="btn btn-outline btn-sm" onclick="submitAddAttendee(${y.id}, 1, '${y.name.replace(/'/g, "\\'")}')">Add Walk-in</button>`;
         return `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border-color);">
-            <div><strong>${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code}</small></div>
+            <div><strong style="color:var(--text-main);">${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code}</small></div>
             <div style="display: flex; gap: 5px;">${buttons}</div>
         </div>`;
     }).join('');
@@ -859,7 +912,7 @@ async function openAnalyticsModal(eventId) {
         currentAnalyticsData = data;
         const posterContainer = document.getElementById('analyticsModalPoster');
         if (data.event.poster) posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
-        else posterContainer.innerHTML = `<span style="font-size: 0.7rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
+        else posterContainer.innerHTML = `<span style="font-size: 0.75rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
 
         document.getElementById('analyticsEventTitle').innerText = data.event.name;
         document.getElementById('analyticsEventMeta').innerText = `📅 Date: ${data.event.event_date} | 📍 Venue: ${data.event.venue || 'N/A'}`;
@@ -913,37 +966,37 @@ function filterAnalyticsRoster() {
 
 function renderAnalyticsRoster(list) {
     const rosterContainer = document.getElementById('analyticsRosterContainer');
-    if (list.length === 0) { rosterContainer.innerHTML = `<p style="text-align:center; color:#7f8c8d; margin:15px 0; font-size: 14px;">No attendees found.</p>`; return; }
-    
+    if (list.length === 0) { rosterContainer.innerHTML = `<p style="text-align:center; color:var(--text-muted); margin:15px 0; font-size: 0.9rem;">No attendees found.</p>`; return; }
+
     rosterContainer.innerHTML = list.map(r => {
-        const avatarHtml = r.profile_picture ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 30px; height: 30px; font-size: 0.85rem;">${r.name.charAt(0).toUpperCase()}</div>`;
+        const avatarHtml = r.profile_picture ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.85rem;">${r.name.charAt(0).toUpperCase()}</div>`;
         let statusBadge = '', actionButtons = '', timeText = '';
 
         if (currentRosterFilter === 'prereg') {
             const arrived = (currentAnalyticsData.roster || []).find(a => a.youth_id === r.youth_id);
             if (arrived) {
-                statusBadge = `<span style="font-size:11px; color:#27ae60; background: rgba(39,174,96,0.1); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Arrived</span>`;
-                timeText = `<span style="color: #27ae60; font-size: 12px; font-weight: 600;">${new Date(arrived.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
+                statusBadge = `<span style="font-size:11px; color:var(--success); background: rgba(16,185,129,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">Arrived</span>`;
+                timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(arrived.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
             } else {
-                statusBadge = `<span style="font-size:11px; color:#f39c12; background: rgba(243,156,18,0.1); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Expected</span>`;
-                timeText = `<span style="color: #f39c12; font-size: 12px; font-weight: 600;">Not Arrived</span>`;
+                statusBadge = `<span style="font-size:11px; color:#F59E0B; background: rgba(245,158,11,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">Expected</span>`;
+                timeText = `<span style="color: #F59E0B; font-size: 0.8rem; font-weight: 600;">Not Arrived</span>`;
             }
         } else {
-            statusBadge = `<span style="font-size:11px; color:#7f8c8d; background: #f0f2f5; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>`;
-            timeText = `<span style="color: #27ae60; font-size: 12px; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
+            statusBadge = `<span style="font-size:11px; color:var(--text-muted); background: var(--bg-light); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>`;
+            timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
             if (userPermissions.includes('edit_attendance')) {
-                actionButtons = `<div style="display: flex; gap: 5px; margin-top: 4px; justify-content: flex-end;">
-                    <button class="btn btn-outline btn-sm" style="font-size: 10px; padding: 2px 6px;" onclick="openEditAttendanceModal(${r.log_id}, '${r.checked_in_at}', ${r.is_walkin})">✏️ Edit</button>
-                    <button class="btn btn-danger btn-sm" style="font-size: 10px; padding: 2px 6px;" onclick="triggerDeleteAttendance(${r.log_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️ Del</button>
+                actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
+                    <button class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="openEditAttendanceModal(${r.log_id}, '${r.checked_in_at}', ${r.is_walkin})">✏️ Edit</button>
+                    <button class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️</button>
                 </div>`;
             }
         }
         return `
-        <div style="padding: 10px 8px; border-bottom: 1px solid #f1f2f6; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; gap: 8px; align-items: center;">
+        <div style="padding: 12px 10px; border-bottom: 1px solid var(--bg-light); display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; gap: 10px; align-items: center;">
                 ${avatarHtml}
                 <div>
-                    <strong style="color: #2c3e50; font-size: 14px;">${r.name}</strong>${statusBadge}<br>
+                    <strong style="color: var(--text-main); font-size: 0.95rem;">${r.name}</strong>${statusBadge}<br>
                     <small style="color: var(--text-muted);">${r.qr_code} ${r.age ? '| Age: '+r.age : ''}</small>
                 </div>
             </div>
@@ -991,8 +1044,8 @@ function filterPermUserList() {
 
     container.innerHTML = matches.map(u => `
         <div class="search-item">
-            <div><strong>${u.display_name}</strong></div>
-            <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${u.display_name.replace(/'/g, "\\'")}', '${JSON.stringify(u.permissions).replace(/'/g, "\\'")}')">Add Permission</button>
+            <div><strong style="color:var(--text-main); font-size:1.05rem;">${u.display_name}</strong></div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${u.display_name.replace(/'/g, "\\'")}', '${JSON.stringify(u.permissions).replace(/'/g, "\\'")}')">Edit Permissions</button>
         </div>
     `).join('');
 }
@@ -1027,7 +1080,7 @@ function handleCreateUserAccount(e) {
         const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser, username, password, permissions: ['access_checkin', 'access_directory'] }) });
         const data = await res.json();
         if (data.success) {
-            alert(`User account created! Click 'Add Permission' to customize access.`);
+            alert(`User account created! Click 'Edit Permissions' to customize access.`);
             document.getElementById('newUsername').value = ''; document.getElementById('newPassword').value = '';
             loadUserPermissionsList();
         } else alert(data.error || 'Failed to create user');
@@ -1051,17 +1104,17 @@ function setEventViewMode(mode) {
                 if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
                 if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
                 return `
-                <div style="border-bottom: 1px solid var(--border-color); padding: 12px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="border-bottom: 1px solid var(--border-color); padding: 15px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div>
-                        <strong style="cursor: pointer; color: var(--primary);" onclick="openAnalyticsModal(${e.id})">${e.name}</strong><br>
-                        <small style="color: var(--text-muted);">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
-                        ${linkBadges ? `<div style="margin-top: 6px;">${linkBadges}</div>` : ''}
+                        <strong style="cursor: pointer; color: var(--primary); font-size: 1.1rem;" onclick="openAnalyticsModal(${e.id})">${e.name}</strong><br>
+                        <small style="color: var(--text-muted); font-size: 0.85rem;">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
+                        ${linkBadges ? `<div style="margin-top: 8px;">${linkBadges}</div>` : ''}
                     </div>
                     <div style="display: flex; gap: 6px;">
                         <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
-                        <button type="button" class="btn btn-secondary btn-sm" style="background:#8e44ad; color:white; border:none;" onclick="openPreregSettings(${e.id})">Form</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>
                         <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
-                        <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Del</button>
                     </div>
                 </div>`}).join('');
         } else if (eventViewMode === 'grid') {
@@ -1072,18 +1125,18 @@ function setEventViewMode(mode) {
                 if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
                 return `
                 <div class="event-card">
-                    ${e.poster ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` : `<div class="event-card-img" style="background: #FFFFFF; border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`}
+                    ${e.poster ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` : `<div class="event-card-img" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`}
                     <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
-                            <h3 style="font-size: 1.05rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${e.name}</h3>
+                            <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${e.name}</h3>
                             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>📍 ${e.venue || 'No Location'}</p>
                             ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
                         </div>
-                        <div style="display: flex; gap: 6px; margin-top: 8px;">
+                        <div style="display: flex; gap: 6px; margin-top: 10px;">
                             <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
-                            <button type="button" class="btn btn-secondary btn-sm" style="background:#8e44ad; color:white; border:none;" onclick="openPreregSettings(${e.id})">Form</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>
                             <button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>
-                            <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Delete</button>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${e.name.replace(/'/g, "\\'")}')">Del</button>
                         </div>
                     </div>
                 </div>`}).join('');
@@ -1121,7 +1174,7 @@ function renderCalendarView(container) {
     for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const dayEvents = eventsData.filter(e => e.event_date === dateStr);
-        html += `<div class="calendar-day-cell"><strong>${day}</strong>`;
+        html += `<div class="calendar-day-cell"><strong style="color:var(--text-main);">${day}</strong>`;
         dayEvents.forEach(e => html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${e.name.replace(/"/g, '&quot;')}">${e.name}</div>`);
         html += `</div>`;
     }
@@ -1145,13 +1198,13 @@ function filterAttendanceLogs() {
     let html = `<table><thead><tr><th>Member</th><th>Event</th><th>Checked In At</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
     html += matches.map(l => `
         <tr>
-            <td><strong>${l.member_name}</strong></td>
-            <td>${l.event_name}</td>
-            <td>${l.checked_in_at}</td>
+            <td style="color:var(--text-main); font-weight:600;">${l.member_name}</td>
+            <td style="color:var(--text-muted);">${l.event_name}</td>
+            <td style="color:var(--text-muted);">${l.checked_in_at}</td>
             <td><span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
             <td>
-                ${userPermissions.includes('edit_attendance') ? `<button type="button" class="btn btn-primary btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
-                <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${l.member_name.replace(/'/g, "\\'")}')">Delete</button>
+                ${userPermissions.includes('edit_attendance') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
+                <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${l.member_name.replace(/'/g, "\\'")}')">Del</button>
             </td>
         </tr>`).join('');
     html += `</tbody></table>`;
@@ -1177,7 +1230,7 @@ function filterActivityLogs() {
     if(q) matches = matches.filter(l => l.username.toLowerCase().includes(q) || l.action.toLowerCase().includes(q) || l.details.toLowerCase().includes(q));
 
     let html = `<table><thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Details</th></tr></thead><tbody>`;
-    html += matches.map(l => `<tr><td><small>${l.created_at}</small></td><td><strong>${l.username}</strong></td><td><span class="badge badge-orange">${l.action}</span></td><td>${l.details}</td></tr>`).join('');
+    html += matches.map(l => `<tr><td style="color:var(--text-muted);"><small>${l.created_at}</small></td><td style="color:var(--text-main); font-weight:600;">${l.username}</td><td><span class="badge badge-orange">${l.action}</span></td><td style="color:var(--text-muted);">${l.details}</td></tr>`).join('');
     html += `</tbody></table>`;
     document.getElementById('activityLogsContainer').innerHTML = html;
 }
@@ -1265,7 +1318,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const btn = document.createElement('button');
             btn.id = 'csvBtn';
             btn.innerHTML = '📊 Export CSV';
-            btn.style.cssText = 'background: #27ae60; color: white; border: none; padding: 8px 15px; border-radius: 5px; margin-left: 15px; cursor: pointer; font-weight: bold; vertical-align: middle;';
+            btn.style.cssText = 'background: var(--success); color: white; border: none; padding: 6px 12px; border-radius: 6px; margin-left: 15px; cursor: pointer; font-weight: bold; font-size: 0.85rem; vertical-align: middle;';
             btn.onclick = () => window.location.href = '/api/directory/export';
             dirHeader.style.display = 'inline-block';
             dirHeader.parentNode.insertBefore(btn, dirHeader.nextSibling);
@@ -1282,19 +1335,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tbody && tbody.children.length > 0 && !document.getElementById('dirPagerControls')) {
             const pager = document.createElement('div');
             pager.id = 'dirPagerControls';
-            pager.style.cssText = 'display: flex; gap: 15px; align-items: center; margin: 15px 0; background: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;';
+            pager.style.cssText = 'display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem;';
             pager.innerHTML = `
                 <label>Entries per page:</label>
-                <select id="dirPerPage" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer;">
+                <select id="dirPerPage" style="padding: 5px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem;">
                     <option value="10">10</option>
                     <option value="25">25</option>
                     <option value="50">50</option>
                     <option value="999999">All</option>
                 </select>
                 <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
-                    <button id="dirPrev" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">◀ Prev</button>
-                    <span id="dirPageInd" style="color: #2c3e50;">Page 1</span>
-                    <button id="dirNext" style="padding: 5px 12px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: white;">Next ▶</button>
+                    <button id="dirPrev" class="btn btn-outline btn-sm">◀ Prev</button>
+                    <span id="dirPageInd" style="color: var(--text-main);">Page 1</span>
+                    <button id="dirNext" class="btn btn-outline btn-sm">Next ▶</button>
                 </div>
             `;
             tbody.parentNode.parentNode.insertBefore(pager, tbody.parentNode);
@@ -1351,21 +1404,3 @@ if ('serviceWorker' in navigator) {
         for(let registration of registrations) { registration.unregister(); }
     });
 }
-
-// Smart Auth Hide (Login form hidden when active)
-setInterval(function() {
-    var loginTab = document.getElementById('loginTab');
-    var activeTabs = document.querySelectorAll('.tab-content.active');
-    var userIsLoggedIn = false;
-
-    for (var i = 0; i < activeTabs.length; i++) {
-        var tabId = activeTabs[i].id;
-        if (tabId !== 'loginTab' && tabId !== 'publicReg' && tabId !== 'welcomeTab') {
-            userIsLoggedIn = true;
-        }
-    }
-
-    if (loginTab && userIsLoggedIn) {
-        loginTab.style.setProperty('display', 'none', 'important');
-    }
-}, 100);
