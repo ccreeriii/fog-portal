@@ -16,7 +16,7 @@ let currentPreregEventId = null;
 let currentRosterFilter = 'all';
 let currentPreRegYouthIds = new Set();
 
-async function getBase64(file, maxWidth = 600) {
+window.getBase64 = async function(file, maxWidth = 600) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -35,16 +35,16 @@ async function getBase64(file, maxWidth = 600) {
         };
         reader.onerror = error => reject(error);
     });
-}
+};
 
-function openImageViewer(src) {
+window.openImageViewer = function(src) {
     if (!src || src.length < 50) return;
     document.getElementById('enlargedImage').src = src;
     document.getElementById('imageViewerModal').classList.add('active');
-}
-function closeImageViewer() { document.getElementById('imageViewerModal').classList.remove('active'); }
+};
+window.closeImageViewer = function() { document.getElementById('imageViewerModal').classList.remove('active'); };
 
-function downloadCSV(rows, filename) {
+window.downloadCSV = function(rows, filename) {
     const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -53,10 +53,10 @@ function downloadCSV(rows, filename) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-}
+};
 
 // ARMORED: Global Permission Helper that bypasses bad caching
-function hasPerm(perm) {
+window.hasPerm = function(perm) {
     if (currentUser === 'celsocreeriii@gmail.com') return true;
     if (!userPermissions || !Array.isArray(userPermissions)) return false;
     
@@ -65,14 +65,14 @@ function hasPerm(perm) {
         if (userPermissions.includes('access_directory') || userPermissions.includes('access_events')) return true;
     }
     return userPermissions.includes(perm);
-}
+};
 
 window.onload = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const eventIdParam = urlParams.get('event');
 
     if (eventIdParam) {
-        launchPublicPrereg(eventIdParam);
+        window.launchPublicPrereg(eventIdParam);
         return;
     }
 
@@ -86,19 +86,20 @@ window.onload = () => {
         currentMember = s.member;
         userPermissions = Array.isArray(s.permissions) ? s.permissions : [];
         
-        buildNav();
-        applyGranularPermissions();
+        window.buildNav();
+        window.applyGranularPermissions();
         
-        if (currentMember) populateProfileTab(currentMember);
-        else populateAdminProfile(currentUser);
+        if (currentMember) window.populateProfileTab(currentMember);
+        else window.populateAdminProfile(currentUser);
         
-        if (currentMember) switchTab('profileTab');
-        else if (hasPerm('access_checkin') && !hasPerm('access_directory')) switchTab('checkinTab');
-        else switchTab('profileTab');
+        if (currentMember) window.switchTab('profileTab');
+        else if (window.hasPerm('access_checkin') && !window.hasPerm('access_directory')) window.switchTab('checkinTab');
+        else window.switchTab('profileTab');
         
-        loadEvents(); loadDirectory();
+        window.loadEvents(); 
+        window.loadDirectory();
     } else {
-        switchTab('loginTab'); 
+        window.switchTab('loginTab'); 
     }
 };
 
@@ -110,17 +111,46 @@ window.onclick = function(event) {
     }
 };
 
-function openSidebar() {
+// ARMORED: Secure binding for the Execute Action button to prevent silent fails
+function bindExecuteAction() {
+    const execBtn = document.getElementById('executeConfirmBtn');
+    if (execBtn) {
+        execBtn.onclick = async (e) => {
+            e.preventDefault();
+            if (pendingAction) {
+                try {
+                    await pendingAction();
+                } catch (err) {
+                    console.error("Action Execution Error:", err);
+                    alert("A network error occurred while saving. Please check your connection.");
+                }
+            }
+            window.closeConfirmModal();
+        };
+    }
+}
+bindExecuteAction();
+
+window.triggerActionConfirmation = function(summaryText, actionFn) {
+    document.getElementById('confirmSummary').innerText = summaryText;
+    pendingAction = actionFn;
+    document.getElementById('confirmModal').classList.add('active');
+};
+window.closeConfirmModal = function() { 
+    document.getElementById('confirmModal').classList.remove('active'); 
+    pendingAction = null; 
+};
+
+window.openSidebar = function() {
     document.getElementById('sidebarNav').classList.add('active');
     document.getElementById('sidebarOverlay').classList.add('active');
-}
-
-function closeSidebar() {
+};
+window.closeSidebar = function() {
     document.getElementById('sidebarNav').classList.remove('active');
     document.getElementById('sidebarOverlay').classList.remove('active');
-}
+};
 
-function buildNav() {
+window.buildNav = function() {
     const sidebar = document.getElementById('sidebarNav');
     const bottomNav = document.getElementById('bottomNav');
     const hamburger = document.getElementById('hamburgerBtn');
@@ -135,12 +165,12 @@ function buildNav() {
         bottomNav.style.display = 'none';
 
         sidebarHtml += `<button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
-        if (hasPerm('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
-        if (hasPerm('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
-        if (hasPerm('access_events')) sidebarHtml += `<button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Planner</button>`;
-        if (hasPerm('access_attendance')) sidebarHtml += `<button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
-        if (hasPerm('access_activity')) sidebarHtml += `<button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
-        if (hasPerm('access_permissions')) sidebarHtml += `<button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔐 Permissions</button>`;
+        if (window.hasPerm('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
+        if (window.hasPerm('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
+        if (window.hasPerm('access_events')) sidebarHtml += `<button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Planner</button>`;
+        if (window.hasPerm('access_attendance')) sidebarHtml += `<button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
+        if (window.hasPerm('access_activity')) sidebarHtml += `<button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
+        if (window.hasPerm('access_permissions')) sidebarHtml += `<button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔐 Permissions</button>`;
         sidebarHtml += `<button class="nav-btn text-danger" onclick="handleLogout()">🚪 Logout (${currentUser})</button>`;
 
         sidebar.innerHTML = sidebarHtml;
@@ -155,11 +185,10 @@ function buildNav() {
         sidebar.innerHTML = '';
         bottomNav.innerHTML = bottomHtml;
     }
-}
+};
 
-// ARMORED: Global permissions dynamically hide/show buttons safely
-function applyGranularPermissions() {
-    const canAdd = hasPerm('add_entries');
+window.applyGranularPermissions = function() {
+    const canAdd = window.hasPerm('add_entries');
     
     const btnSubEventCreate = document.getElementById('btnSubEventCreate');
     if(btnSubEventCreate) btnSubEventCreate.style.display = canAdd ? 'inline-block' : 'none';
@@ -169,16 +198,16 @@ function applyGranularPermissions() {
 
     const addEntryAnalyticsBtn = document.getElementById('addEntryAnalyticsBtn');
     if(addEntryAnalyticsBtn) addEntryAnalyticsBtn.style.display = canAdd ? 'flex' : 'none';
-}
+};
 
-function resetPermUserList() {
+window.resetPermUserList = function() {
     const searchInput = document.getElementById('permUserSearchInput');
     const container = document.getElementById('permUserListContainer');
     if(searchInput) searchInput.value = '';
     if(container) container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>`;
-}
+};
 
-function switchTab(tabId) {
+window.switchTab = function(tabId) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     
     document.querySelectorAll('.sidebar .nav-btn').forEach(el => el.classList.remove('active'));
@@ -189,37 +218,37 @@ function switchTab(tabId) {
     const bottomTarget = document.querySelector(`.bottom-nav-btn[data-target="${tabId}"]`);
     if(bottomTarget) bottomTarget.classList.add('active');
 
-    closeSidebar();
+    window.closeSidebar();
 
     const targetTab = document.getElementById(tabId);
     if (targetTab) targetTab.classList.add('active');
     
     if (tabId !== 'checkinTab' && qrScanner) { qrScanner.clear().catch(e => console.log(e)); qrScanner = null; }
-    if (tabId === 'checkinTab') { switchCheckinMode('scanner'); updateActiveEventBanner(); }
-    if (tabId === 'directoryTab') loadDirectory();
-    if (tabId === 'eventsTab') { loadEvents(); }
-    if (tabId === 'attendanceTab') loadAttendanceLogs();
-    if (tabId === 'activityLogsTab') loadActivityLogs();
-    if (tabId === 'permissionsTab') resetPermUserList();
+    if (tabId === 'checkinTab') { window.switchCheckinMode('scanner'); window.updateActiveEventBanner(); }
+    if (tabId === 'directoryTab') window.loadDirectory();
+    if (tabId === 'eventsTab') { window.loadEvents(); }
+    if (tabId === 'attendanceTab') window.loadAttendanceLogs();
+    if (tabId === 'activityLogsTab') window.loadActivityLogs();
+    if (tabId === 'permissionsTab') window.resetPermUserList();
 
     if (tabId === 'profileTab' && currentUser === 'celsocreeriii@gmail.com') {
         document.getElementById('adminBackupCard').style.display = 'block';
-        loadBackups();
+        window.loadBackups();
     } else {
         const backupCard = document.getElementById('adminBackupCard');
         if(backupCard) backupCard.style.display = 'none';
     }
-}
+};
 
-function switchEventSubTab(tab) {
+window.switchEventSubTab = function(tab) {
     document.getElementById('subTabEventList').classList.toggle('active', tab === 'list');
     document.getElementById('subTabEventCreate').classList.toggle('active', tab === 'create');
     document.getElementById('btnSubEventList').classList.toggle('active', tab === 'list');
     document.getElementById('btnSubEventCreate').classList.toggle('active', tab === 'create');
-    if (tab === 'list') loadEvents();
-}
+    if (tab === 'list') window.loadEvents();
+};
 
-async function loadBackups() {
+window.loadBackups = async function() {
     const res = await fetch('/api/backups');
     const backups = await res.json();
     const container = document.getElementById('backupListContainer');
@@ -252,10 +281,10 @@ async function loadBackups() {
         </tr>`).join('');
     html += `</tbody></table>`;
     container.innerHTML = html;
-}
+};
 
-function triggerRestore(filename) {
-    triggerActionConfirmation(`Are you sure you want to revert the system to '${filename}'? The CURRENT state will be auto-backed up first so you don't lose anything.`, async () => {
+window.triggerRestore = function(filename) {
+    window.triggerActionConfirmation(`Are you sure you want to revert the system to '${filename}'? The CURRENT state will be auto-backed up first so you don't lose anything.`, async () => {
         const res = await fetch('/api/backups/restore', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename, actor: currentUser })
@@ -265,9 +294,9 @@ function triggerRestore(filename) {
             window.location.reload();
         } else alert('Restore failed. Check server logs.');
     });
-}
+};
 
-function switchCheckinMode(mode) {
+window.switchCheckinMode = function(mode) {
     document.getElementById('checkinModeScanner').style.display = mode === 'scanner' ? 'block' : 'none';
     document.getElementById('checkinModeManual').style.display = mode === 'manual' ? 'block' : 'none';
     document.getElementById('checkinModeWalkin').style.display = mode === 'walkin' ? 'block' : 'none';
@@ -275,12 +304,12 @@ function switchCheckinMode(mode) {
     document.getElementById('btnCheckinManual').classList.toggle('active', mode === 'manual');
     document.getElementById('btnCheckinWalkin').classList.toggle('active', mode === 'walkin');
 
-    if (mode === 'scanner') initScanner();
+    if (mode === 'scanner') window.initScanner();
     else if (qrScanner) { qrScanner.clear().catch(e => console.log(e)); qrScanner = null; }
-    if (mode === 'manual') filterManualCheckin();
-}
+    if (mode === 'manual') window.filterManualCheckin();
+};
 
-async function handleLogin(e) {
+window.handleLogin = async function(e) {
     e.preventDefault();
     const username = document.getElementById('loginUser').value;
     const password = document.getElementById('loginPass').value;
@@ -291,30 +320,32 @@ async function handleLogin(e) {
     const data = await res.json();
 
     if (data.success) {
-        currentUser = data.username; userPermissions = data.permissions || []; currentMember = data.member;
+        currentUser = data.username; 
+        userPermissions = Array.isArray(data.permissions) ? data.permissions : []; 
+        currentMember = data.member;
         localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
-        buildNav();
-        applyGranularPermissions();
-        if (currentMember) { populateProfileTab(currentMember); switchTab('profileTab'); }
+        window.buildNav();
+        window.applyGranularPermissions();
+        if (currentMember) { window.populateProfileTab(currentMember); window.switchTab('profileTab'); }
         else {
-            populateAdminProfile(currentUser);
-            if (hasPerm('access_checkin')) switchTab('checkinTab');
-            else switchTab('profileTab');
+            window.populateAdminProfile(currentUser);
+            if (window.hasPerm('access_checkin')) window.switchTab('checkinTab');
+            else window.switchTab('profileTab');
         }
-        loadEvents(); loadDirectory();
+        window.loadEvents(); window.loadDirectory();
     } else alert('Invalid credentials!');
-}
+};
 
-async function handleLogout() {
+window.handleLogout = async function() {
     if (currentUser) await fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser }) });
     localStorage.removeItem('fog_user'); currentUser = null; currentMember = null; userPermissions = [];
     document.getElementById('hamburgerBtn').style.display = 'none';
     document.getElementById('sidebarNav').innerHTML = '';
     document.getElementById('bottomNav').style.display = 'none';
-    switchTab('loginTab'); 
-}
+    window.switchTab('loginTab'); 
+};
 
-function populateProfileTab(member) {
+window.populateProfileTab = function(member) {
     document.getElementById('myMemberId').value = member.id;
     document.getElementById('myProfileName').innerText = member.name || 'Member';
     document.getElementById('myProfileCode').innerText = `Unique Pass ID: ${member.qr_code || 'N/A'}`;
@@ -340,25 +371,25 @@ function populateProfileTab(member) {
             }
         });
     }
-}
+};
 
-function populateAdminProfile(username) {
+window.populateAdminProfile = function(username) {
     document.getElementById('myProfileName').innerText = username + " (Administrator)";
     document.getElementById('myProfileCode').innerText = "LEADER ACCOUNT";
     document.getElementById('myEditName').value = username;
     document.getElementById('myEditEmail').value = username;
     document.getElementById('myProfileAvatar').innerHTML = "A";
     document.getElementById('myQrContainer').innerHTML = `<span class="badge badge-orange" style="font-size: 1.1rem; padding: 12px 20px;">AUTHORIZED LEADER</span>`;
-}
+};
 
-async function handleSelfProfileUpdate(e) {
+window.handleSelfProfileUpdate = async function(e) {
     e.preventDefault();
     const id = document.getElementById('myMemberId').value;
     if (!id) return alert('Admin accounts are updated directly in Add Permissions.');
 
     const fileInput = document.getElementById('myEditProfilePic');
     let picBase64 = undefined;
-    if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0], 400);
+    if (fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
 
     const payload = {
         name: document.getElementById('myEditName').value, email: document.getElementById('myEditEmail').value,
@@ -367,23 +398,23 @@ async function handleSelfProfileUpdate(e) {
         password: document.getElementById('myEditPassword').value, profile_picture: picBase64, actor: currentUser
     };
 
-    triggerActionConfirmation(`Save changes to your personal profile?`, async () => {
+    window.triggerActionConfirmation(`Save changes to your personal profile?`, async () => {
         const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await res.json();
         if (data.success) {
             alert('Profile updated successfully!');
             currentMember = data.member;
             localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
-            populateProfileTab(data.member);
+            window.populateProfileTab(data.member);
         }
     });
-}
+};
 
-async function handlePublicRegistration(e) {
+window.handlePublicRegistration = async function(e) {
     e.preventDefault();
     const fileInput = document.getElementById('regProfilePic');
     let picBase64 = null;
-    if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0], 400);
+    if (fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
 
     const payload = {
         name: document.getElementById('regName').value, age: document.getElementById('regAge').value,
@@ -408,9 +439,9 @@ async function handlePublicRegistration(e) {
         document.getElementById('regForm').reset();
         youthData = [];
     }
-}
+};
 
-function initScanner() {
+window.initScanner = function() {
     if (qrScanner) return;
     qrScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 250, height: 250 } });
     qrScanner.render((decodedText) => {
@@ -422,13 +453,13 @@ function initScanner() {
         }).then(r => r.json()).then(data => {
             if (data.success) {
                 alert(`Success! Checked in ${data.member_name}`);
-                updateActiveEventBanner();
+                window.updateActiveEventBanner();
             } else alert(data.error || 'Check-in failed');
         });
     }, (err) => {});
-}
+};
 
-async function updateActiveEventBanner() {
+window.updateActiveEventBanner = async function() {
     const dropdown = document.getElementById('activeEventDropdown');
     if(!dropdown) return;
     const eventId = dropdown.value;
@@ -455,10 +486,10 @@ async function updateActiveEventBanner() {
     } else {
         document.getElementById('checkinCounters').style.display = 'none';
     }
-    filterManualCheckin();
-}
+    window.filterManualCheckin();
+};
 
-async function filterManualCheckin() {
+window.filterManualCheckin = async function() {
     const query = document.getElementById('manualSearchInput').value.toLowerCase().trim();
     const container = document.getElementById('manualCheckinResults');
 
@@ -489,14 +520,14 @@ async function filterManualCheckin() {
                 <div><strong>${safeName}</strong><br><small style="color: var(--text-muted);">${y.qr_code || ''} | Age: ${y.age || 'N/A'}</small></div>
             </div>
             <div style="display: flex; gap: 6px;">
-                ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openFastEditProfileModal(${y.id})">Edit</button>` : ''}
+                ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openFastEditProfileModal(${y.id})">Edit</button>` : ''}
                 ${btnHtml}
             </div>
         </div>`;
     }).join('');
-}
+};
 
-function openFastEditProfileModal(id) {
+window.openFastEditProfileModal = function(id) {
     const m = youthData.find(y => y.id == id);
     if (!m) return;
     document.getElementById('fastEditMemberId').value = m.id;
@@ -508,17 +539,17 @@ function openFastEditProfileModal(id) {
     document.getElementById('fastEditParents').value = m.parents_name || '';
     document.getElementById('fastEditProfilePic').value = '';
     document.getElementById('fastEditProfileModal').classList.add('active');
-}
-function closeFastEditProfileModal() { document.getElementById('fastEditProfileModal').classList.remove('active'); }
+};
+window.closeFastEditProfileModal = function() { document.getElementById('fastEditProfileModal').classList.remove('active'); };
 
-async function submitFastEditProfile(doCheckIn) {
+window.submitFastEditProfile = async function(doCheckIn) {
     const form = document.getElementById('fastEditProfileForm');
     if(!form.checkValidity()) { form.reportValidity(); return; }
 
     const id = document.getElementById('fastEditMemberId').value;
     const fileInput = document.getElementById('fastEditProfilePic');
     let picBase64 = undefined;
-    if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0], 400);
+    if (fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
 
     const payload = {
         name: document.getElementById('fastEditName').value, email: document.getElementById('fastEditEmail').value,
@@ -527,31 +558,31 @@ async function submitFastEditProfile(doCheckIn) {
         profile_picture: picBase64, password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, actor: currentUser
     };
 
-    triggerActionConfirmation(`Confirm updating profile for ${payload.name}?`, async () => {
+    window.triggerActionConfirmation(`Confirm updating profile for ${payload.name}?`, async () => {
         const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
         const data = await res.json();
         if(data.success) {
-            closeFastEditProfileModal(); youthData = []; await loadDirectory();
-            if(doCheckIn) quickCheckin(id, payload.name);
+            window.closeFastEditProfileModal(); youthData = []; await window.loadDirectory();
+            if(doCheckIn) window.quickCheckin(id, payload.name);
             else { 
                 alert("Profile updated successfully!"); 
-                updateActiveEventBanner();
-                if(currentAnalyticsData) openAnalyticsModal(currentAnalyticsData.event.id);
+                window.updateActiveEventBanner();
+                if(currentAnalyticsData) window.openAnalyticsModal(currentAnalyticsData.event.id);
             }
         }
     });
-}
+};
 
-async function quickCheckin(youthId, memberName) {
+window.quickCheckin = async function(youthId, memberName) {
     const eventId = document.getElementById('activeEventDropdown').value;
     if (!eventId) return alert('Please select an active event first!');
     const res = await fetch('/api/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youth_id: youthId, event_id: eventId, is_walkin: 0, actor: currentUser }) });
     const data = await res.json();
-    if (data.success) { alert(`Successfully checked in ${memberName || 'member'}!`); updateActiveEventBanner(); }
+    if (data.success) { alert(`Successfully checked in ${memberName || 'member'}!`); window.updateActiveEventBanner(); }
     else alert(data.error || 'Check-in failed');
-}
+};
 
-async function handleWalkin(e) {
+window.handleWalkin = async function(e) {
     e.preventDefault();
     const eventId = document.getElementById('activeEventDropdown').value;
     if (!eventId) return alert('Please select an active event first!');
@@ -566,22 +597,21 @@ async function handleWalkin(e) {
     if (regData.id) {
         const checkinRes = await fetch('/api/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youth_id: regData.id, event_id: eventId, is_walkin: 1, actor: currentUser }) });
         const checkinData = await checkinRes.json();
-        if (checkinData.success) { alert(`Successfully registered and checked in walk-in: ${payload.name}`); e.target.reset(); youthData = []; updateActiveEventBanner(); }
+        if (checkinData.success) { alert(`Successfully registered and checked in walk-in: ${payload.name}`); e.target.reset(); youthData = []; window.updateActiveEventBanner(); }
         else alert(checkinData.error || 'Registration succeeded, but check-in failed.');
     } else alert(regData.error || 'Failed to register walk-in.');
-}
+};
 
-async function loadDirectory() {
+window.loadDirectory = async function() {
     if (youthData.length === 0) { const res = await fetch('/api/youth'); youthData = await res.json(); }
-    filterDirectory();
-}
+    window.filterDirectory();
+};
 
-function filterDirectory() {
+window.filterDirectory = function() {
     const q = document.getElementById('directorySearchInput').value.toLowerCase().trim();
     const sort = document.getElementById('sortDirectorySelect').value;
     const ageCat = document.getElementById('filterAgeCategory').value;
 
-    // ARMORED: Safe fetching that does not instantly delete entries without ages
     let matches = youthData || [];
     if (q) {
         matches = matches.filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
@@ -624,16 +654,16 @@ function filterDirectory() {
             <td class="hide-mobile" style="color:var(--text-muted);">${y.birthday || 'N/A'}</td>
             <td class="actions-cell">
                 <button type="button" class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">View</button>
-                ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>` : ''}
-                ${hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
+                ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>` : ''}
+                ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
             </td>
         </tr>`}).join('');
         
     html += `</tbody></table>`;
     document.getElementById('directoryTableContainer').innerHTML = html;
-}
+};
 
-function openEditMemberModal(youthId) {
+window.openEditMemberModal = function(youthId) {
     const m = youthData.find(y => y.id == youthId);
     if (!m) return;
     document.getElementById('editMemberId').value = m.id;
@@ -645,17 +675,17 @@ function openEditMemberModal(youthId) {
     document.getElementById('editMemberParents').value = m.parents_name || '';
     document.getElementById('editMemberProfilePic').value = '';
     document.getElementById('editMemberModal').classList.add('active');
-}
-function closeEditMemberModal() { document.getElementById('editMemberModal').classList.remove('active'); }
+};
+window.closeEditMemberModal = function() { document.getElementById('editMemberModal').classList.remove('active'); };
 
-async function saveMemberEditWithConfirm() {
+window.saveMemberEditWithConfirm = async function() {
     const form = document.getElementById('editMemberModal').querySelector('form');
     if(!form.checkValidity()) { form.reportValidity(); return; }
 
     const id = document.getElementById('editMemberId').value;
     const fileInput = document.getElementById('editMemberProfilePic');
     let picBase64 = undefined;
-    if (fileInput.files.length > 0) picBase64 = await getBase64(fileInput.files[0], 400);
+    if (fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
 
     const payload = {
         name: document.getElementById('editMemberName').value, email: document.getElementById('editMemberEmail').value,
@@ -664,13 +694,13 @@ async function saveMemberEditWithConfirm() {
         password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, profile_picture: picBase64, actor: currentUser
     };
 
-    triggerActionConfirmation(`Confirm updating member profile for '${payload.name}'?`, async () => {
+    window.triggerActionConfirmation(`Confirm updating member profile for '${payload.name}'?`, async () => {
         await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        closeEditMemberModal(); youthData = []; loadDirectory();
+        window.closeEditMemberModal(); youthData = []; window.loadDirectory();
     });
-}
+};
 
-async function openViewProfileModal(youthId) {
+window.openViewProfileModal = async function(youthId) {
     const member = youthData.find(y => y.id == youthId);
     if (!member) return;
     const safeName = member.name || 'Unknown';
@@ -706,10 +736,10 @@ async function openViewProfileModal(youthId) {
         else historyContainer.innerHTML = history.map(h => `<div style="border-bottom: 1px solid var(--border-color); padding: 8px 0;"><strong>${h.event_name}</strong> (${h.event_date}) - <small style="color:var(--text-muted);">${h.checked_in_at}</small></div>`).join('');
     } catch(e) { console.error(e); }
     document.getElementById('viewProfileModal').classList.add('active');
-}
-function closeViewProfileModal() { document.getElementById('viewProfileModal').classList.remove('active'); }
+};
+window.closeViewProfileModal = function() { document.getElementById('viewProfileModal').classList.remove('active'); };
 
-function openPreregSettings(eventId) {
+window.openPreregSettings = function(eventId) {
     const e = eventsData.find(ev => ev.id == eventId);
     if (!e) return;
     document.getElementById('preregSetEventId').value = e.id;
@@ -718,10 +748,10 @@ function openPreregSettings(eventId) {
     document.getElementById('preregSetBanner').value = '';
     document.getElementById('preregSetBottomBanner').value = '';
     document.getElementById('preregSettingsModal').classList.add('active');
-}
-function closePreregSettingsModal() { document.getElementById('preregSettingsModal').classList.remove('active'); }
+};
+window.closePreregSettingsModal = function() { document.getElementById('preregSettingsModal').classList.remove('active'); };
 
-async function savePreregSettings(e) {
+window.savePreregSettings = async function(e) {
     e.preventDefault();
     const id = document.getElementById('preregSetEventId').value;
     const title = document.getElementById('preregSetTitle').value;
@@ -730,26 +760,26 @@ async function savePreregSettings(e) {
     const fileInputBottom = document.getElementById('preregSetBottomBanner');
 
     let bannerBase64 = null;
-    if (fileInput.files.length > 0) bannerBase64 = await getBase64(fileInput.files[0], 1200);
+    if (fileInput.files.length > 0) bannerBase64 = await window.getBase64(fileInput.files[0], 1200);
 
     let bottomBannerBase64 = null;
-    if (fileInputBottom.files.length > 0) bottomBannerBase64 = await getBase64(fileInputBottom.files[0], 1200);
+    if (fileInputBottom.files.length > 0) bottomBannerBase64 = await window.getBase64(fileInputBottom.files[0], 1200);
 
-    triggerActionConfirmation('Save Pre-Registration Page Settings?', async () => {
+    window.triggerActionConfirmation('Save Pre-Registration Page Settings?', async () => {
         const res = await fetch(`/api/events/${id}/prereg-settings`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ banner: bannerBase64, bottom_banner: bottomBannerBase64, title, info, actor: currentUser })
         });
-        if(res.ok) { alert('Settings saved successfully!'); closePreregSettingsModal(); loadEvents(); }
+        if(res.ok) { alert('Settings saved successfully!'); window.closePreregSettingsModal(); window.loadEvents(); }
     });
-}
+};
 
-async function openPublicPreregFromSettings() {
+window.openPublicPreregFromSettings = async function() {
     const id = document.getElementById('preregSetEventId').value;
-    closePreregSettingsModal(); launchPublicPrereg(id);
-}
+    window.closePreregSettingsModal(); window.launchPublicPrereg(id);
+};
 
-async function launchPublicPrereg(eventId) {
+window.launchPublicPrereg = async function(eventId) {
     currentPreregEventId = eventId;
     document.getElementById('mainContainer').style.display = 'block';
     const urlParams = new URLSearchParams(window.location.search);
@@ -779,17 +809,17 @@ async function launchPublicPrereg(eventId) {
     }
 
     if(youthData.length === 0) { const yRes = await fetch('/api/youth'); youthData = await yRes.json(); }
-    switchTab('preregPublicTab'); showPreregStep(1);
-}
+    window.switchTab('preregPublicTab'); window.showPreregStep(1);
+};
 
-function closePublicPrereg() {
+window.closePublicPrereg = function() {
     currentPreregEventId = null;
     document.getElementById('mainHeader').style.display = 'block';
     window.history.pushState(null, '', window.location.pathname);
     window.location.reload();
-}
+};
 
-function showPreregStep(step) {
+window.showPreregStep = function(step) {
     document.getElementById('preregStep1').style.display = step === 1 ? 'block' : 'none';
     document.getElementById('preregStep2').style.display = step === 2 ? 'block' : 'none';
     document.getElementById('preregStep3').style.display = step === 3 ? 'block' : 'none';
@@ -803,9 +833,9 @@ function showPreregStep(step) {
         document.getElementById('preregNewName').value = ''; document.getElementById('preregNewAge').value = '';
         document.getElementById('preregNewEmail').value = ''; document.getElementById('preregNewMobile').value = '';
     }
-}
+};
 
-function filterPreregSearch() {
+window.filterPreregSearch = function() {
     const q = document.getElementById('preregSearchInput').value.toLowerCase().trim();
     const container = document.getElementById('preregSearchResults');
     if (q.length < 2) { container.style.display = 'none'; return; }
@@ -825,9 +855,9 @@ function filterPreregSearch() {
         container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No matches found.</div>`;
         container.style.display = 'block';
     }
-}
+};
 
-async function executePreregister(youthId, qrCode) {
+window.executePreregister = async function(youthId, qrCode) {
     if(!currentPreregEventId) return;
     try {
         const res = await fetch('/api/preregister', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event_id: currentPreregEventId, youth_id: youthId }) });
@@ -843,12 +873,12 @@ async function executePreregister(youthId, qrCode) {
                     }
                 });
             }
-            showPreregStep(4);
+            window.showPreregStep(4);
         } else alert("An error occurred during pre-registration.");
     } catch(e) { alert("Connection error during pre-registration."); }
-}
+};
 
-async function submitNewPrereg(e) {
+window.submitNewPrereg = async function(e) {
     e.preventDefault();
     if(!currentPreregEventId) return;
     const payload = {
@@ -859,12 +889,12 @@ async function submitNewPrereg(e) {
     try {
         const regRes = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const regData = await regRes.json();
-        if (regData.id) executePreregister(regData.id, regData.qr_code);
+        if (regData.id) window.executePreregister(regData.id, regData.qr_code);
         else alert(regData.error || 'Failed to create registration.');
     } catch(err) { alert("Network error."); }
-}
+};
 
-function dataURItoFile(dataURI, fileName) {
+window.dataURItoFile = function(dataURI, fileName) {
     const arr = dataURI.split(',');
     const mime = arr[0].match(/:(.*?);/)[1];
     const bstr = atob(arr[1]);
@@ -872,9 +902,9 @@ function dataURItoFile(dataURI, fileName) {
     const u8arr = new Uint8Array(n);
     while(n--) { u8arr[n] = bstr.charCodeAt(n); }
     return new File([u8arr], fileName, { type: mime });
-}
+};
 
-async function sharePreRegLink() {
+window.sharePreRegLink = async function() {
     const shareTitle = document.getElementById('preregPublicTitle').innerText || 'Community Event';
     const shareText = `Join me at ${shareTitle}, click the link to pre-register.`;
     const shareUrl = window.location.href;
@@ -891,7 +921,7 @@ async function sharePreRegLink() {
     }
     if (targetBase64Image) {
         try {
-            const posterFile = dataURItoFile(targetBase64Image, 'event-poster.jpg');
+            const posterFile = window.dataURItoFile(targetBase64Image, 'event-poster.jpg');
             if (navigator.canShare && navigator.canShare({ files: [posterFile] })) shareData.files = [posterFile];
         } catch (err) { console.error('Image attachment failed:', err); }
     }
@@ -901,34 +931,47 @@ async function sharePreRegLink() {
     } else {
         navigator.clipboard.writeText(`${shareText} ${shareUrl}`).then(() => alert(`Link copied to clipboard!\n\n${shareText}`));
     }
-}
+};
 
-// ARMORED: Safe Edit Event modal that won't fail
-function openEditEventModal(eventId) {
-    const e = eventsData.find(ev => ev.id == eventId);
-    if (!e) return;
-    document.getElementById('editEvtId').value = e.id;
-    document.getElementById('editEvtName').value = e.name || '';
-    document.getElementById('editEvtDate').value = e.event_date || '';
-    document.getElementById('editEvtTime').value = e.time_start || '';
-    document.getElementById('editEvtVenue').value = e.venue || '';
-    document.getElementById('editEvtPhotosUrl').value = e.photos_url || '';
-    document.getElementById('editEvtMaterialsUrl').value = e.materials_url || '';
-    document.getElementById('editEvtPoster').value = '';
-    closeAnalyticsModal(); 
-    document.getElementById('editEventModal').classList.add('active');
-}
-function closeEditEventModal() { document.getElementById('editEventModal').classList.remove('active'); }
+// ARMORED: Safe Edit Event modal execution guaranteed globally
+window.openEditEventModal = function(eventId) {
+    try {
+        const e = eventsData.find(ev => ev.id == eventId);
+        if (!e) return alert("Event data could not be found locally. Please refresh.");
+        
+        const elId = document.getElementById('editEvtId'); if(elId) elId.value = e.id;
+        const elName = document.getElementById('editEvtName'); if(elName) elName.value = e.name || '';
+        const elDate = document.getElementById('editEvtDate'); if(elDate) elDate.value = e.event_date || '';
+        const elTime = document.getElementById('editEvtTime'); if(elTime) elTime.value = e.time_start || '';
+        const elVen = document.getElementById('editEvtVenue'); if(elVen) elVen.value = e.venue || '';
+        const elPh = document.getElementById('editEvtPhotosUrl'); if(elPh) elPh.value = e.photos_url || '';
+        const elMat = document.getElementById('editEvtMaterialsUrl'); if(elMat) elMat.value = e.materials_url || '';
+        const elPos = document.getElementById('editEvtPoster'); if(elPos) elPos.value = '';
+        
+        window.closeAnalyticsModal(); 
+        
+        const modal = document.getElementById('editEventModal');
+        if (modal) modal.classList.add('active');
+        
+    } catch (err) {
+        console.error("Edit Event Error:", err);
+        alert("An error occurred opening the Event Editor.");
+    }
+};
+window.closeEditEventModal = function() { 
+    const modal = document.getElementById('editEventModal');
+    if (modal) modal.classList.remove('active'); 
+};
 
-async function submitEditEvent() {
+window.submitEditEvent = async function() {
     const form = document.getElementById('editEventForm');
     if(!form.checkValidity()) { form.reportValidity(); return; }
     const id = document.getElementById('editEvtId').value;
     const fileInput = document.getElementById('editEvtPoster');
 
-    triggerActionConfirmation(`Confirm saving changes to event?`, async () => {
+    window.triggerActionConfirmation(`Confirm saving changes to event?`, async () => {
         let posterBase64 = null;
-        if (fileInput.files.length > 0) posterBase64 = await getBase64(fileInput.files[0], 1200);
+        if (fileInput && fileInput.files.length > 0) posterBase64 = await window.getBase64(fileInput.files[0], 1200);
         const payload = {
             name: document.getElementById('editEvtName').value, event_date: document.getElementById('editEvtDate').value,
             time_start: document.getElementById('editEvtTime').value, venue: document.getElementById('editEvtVenue').value,
@@ -937,14 +980,17 @@ async function submitEditEvent() {
         };
         try {
             const res = await fetch(`/api/events/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-            if(res.ok) { closeEditEventModal(); alert("Event updated successfully!"); loadEvents(); }
+            if(res.ok) { window.closeEditEventModal(); alert("Event updated successfully!"); window.loadEvents(); }
         } catch(e) { alert("Error connecting to server."); }
     });
-}
+};
 
-function filterPermUserList() {
-    const q = document.getElementById('permUserSearchInput').value.toLowerCase().trim();
+window.filterPermUserList = async function() {
+    const qElem = document.getElementById('permUserSearchInput');
     const container = document.getElementById('permUserListContainer');
+    if(!qElem || !container) return;
+    
+    const q = qElem.value.toLowerCase().trim();
     
     if (q.length < 3) { 
         container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>`; 
@@ -952,11 +998,16 @@ function filterPermUserList() {
     }
 
     if (!youthData || youthData.length === 0) {
-        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Directory is empty or still loading...</div>`;
-        return;
+        try {
+            const res = await fetch('/api/youth');
+            youthData = await res.json();
+        } catch (e) {
+            container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Error fetching directory data.</div>`;
+            return;
+        }
     }
 
-    const matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
+    const matches = (youthData || []).filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
 
     if (matches.length === 0) { 
         container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No accounts found matching '${q}'</div>`; 
@@ -969,61 +1020,106 @@ function filterPermUserList() {
             <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${(u.name || '').replace(/'/g, "\\'")}')">Select</button>
         </div>
     `).join('');
-}
+};
 
-async function loadUserPermissionsList() {
-    if (youthData.length === 0) {
+window.loadUserPermissionsList = async function() {
+    if (!youthData || youthData.length === 0) {
         try {
             const res = await fetch('/api/youth');
             youthData = await res.json();
         } catch (e) { console.error("Failed to load youth data for permissions"); }
     }
-    filterPermUserList(); 
-}
+    window.filterPermUserList(); 
+};
 
-async function openAssignPermissionModal(id, displayName) {
+window.openAssignPermissionModal = async function(id, displayName) {
     try {
         const res = await fetch('/api/youth');
         const dbYouth = await res.json();
         const targetYouth = dbYouth.find(y => y.id === id);
         const perms = JSON.parse(targetYouth.permissions || '[]');
 
-        document.getElementById('modalPermUserId').value = id;
-        document.getElementById('permModalUserBanner').innerText = `Assign Permissions for: ${displayName}`;
+        const idElem = document.getElementById('modalPermUserId');
+        if(idElem) idElem.value = id;
+        
+        const bannerElem = document.getElementById('permModalUserBanner');
+        if(bannerElem) bannerElem.innerText = `Assign Permissions for: ${displayName}`;
+        
         document.querySelectorAll('.permCheckModal').forEach(chk => { chk.checked = perms.includes(chk.value); });
-        document.getElementById('assignPermissionModal').classList.add('active');
+        
+        const modal = document.getElementById('assignPermissionModal');
+        if(modal) modal.classList.add('active');
     } catch(e) {
+        console.error(e);
         alert("Failed to load user permissions from server.");
     }
-}
-function closeAssignPermissionModal() { document.getElementById('assignPermissionModal').classList.remove('active'); }
+};
 
-function handleSavePermissionsFromModal() {
-    const userId = document.getElementById('modalPermUserId').value;
+window.closeAssignPermissionModal = function() { 
+    const modal = document.getElementById('assignPermissionModal');
+    if(modal) modal.classList.remove('active'); 
+};
+
+window.handleSavePermissionsFromModal = function() {
+    const idElem = document.getElementById('modalPermUserId');
+    if(!idElem) return;
+    const userId = idElem.value;
+    
     const selectedPerms = [];
     document.querySelectorAll('.permCheckModal:checked').forEach(chk => { selectedPerms.push(chk.value); });
 
-    triggerActionConfirmation(`Confirm updating permission set?`, async () => {
-        const res = await fetch(`/api/youth/${userId}/permissions`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permissions: selectedPerms, actor: currentUser }) });
-        const data = await res.json();
-        if (data.success) { 
-            alert('Permissions updated successfully!'); 
-            closeAssignPermissionModal(); 
-            resetPermUserList(); 
-            youthData = []; await loadDirectory(); 
+    window.triggerActionConfirmation(`Confirm updating permission set?`, async () => {
+        try {
+            const res = await fetch(`/api/youth/${userId}/permissions`, { 
+                method: 'PUT', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ permissions: selectedPerms, actor: currentUser }) 
+            });
+            
+            if(!res.ok) throw new Error("HTTP error " + res.status);
+            
+            const data = await res.json();
+            if (data.success) { 
+                alert('Permissions updated successfully!'); 
+                window.closeAssignPermissionModal(); 
+                window.resetPermUserList(); 
+                youthData = []; await window.loadDirectory(); 
+            } else {
+                alert('Failed to update permissions. Details: ' + JSON.stringify(data));
+            }
+        } catch(e) {
+            console.error("Save Permissions Error:", e);
+            alert("Network error updating permissions. Check server logs.");
         }
     });
-}
+};
 
-function setEventViewMode(mode) {
+window.handleCreateUserAccount = function(e) {
+    e.preventDefault();
+    const username = document.getElementById('newUsername').value;
+    const password = document.getElementById('newPassword').value;
+
+    window.triggerActionConfirmation(`Create new leader account '${username}'?`, async () => {
+        const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser, username, password, permissions: ['access_checkin', 'access_directory'] }) });
+        const data = await res.json();
+        if (data.success) {
+            alert(`User account created! Click 'Edit Permissions' to customize access.`);
+            document.getElementById('newUsername').value = ''; document.getElementById('newPassword').value = '';
+            window.loadUserPermissionsList();
+        } else alert(data.error || 'Failed to create user');
+    });
+};
+
+window.setEventViewMode = function(mode) {
     eventViewMode = mode;
     document.getElementById('viewBtnList').classList.toggle('active', mode === 'list');
     document.getElementById('viewBtnGrid').classList.toggle('active', mode === 'grid');
     document.getElementById('viewBtnCal').classList.toggle('active', mode === 'calendar');
     document.getElementById('calendarControls').style.display = mode === 'calendar' ? 'flex' : 'none';
 
-    if(eventsData.length === 0) loadEvents();
-    else {
+    if(eventsData.length === 0) {
+        window.loadEvents();
+    } else {
         const container = document.getElementById('eventsListContainer');
         if (eventViewMode === 'list') {
             container.className = 'events-list-view';
@@ -1041,9 +1137,9 @@ function setEventViewMode(mode) {
                     </div>
                     <div style="display: flex; gap: 6px;">
                         <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
-                        ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
-                        ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
-                        ${hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
+                        ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
+                        ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
+                        ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
                     </div>
                 </div>`}).join('');
         } else if (eventViewMode === 'grid') {
@@ -1064,30 +1160,30 @@ function setEventViewMode(mode) {
                         </div>
                         <div style="display: flex; gap: 6px; margin-top: 10px;">
                             <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
-                            ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
-                            ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
-                            ${hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
+                            ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
+                            ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
+                            ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
                         </div>
                     </div>
                 </div>`}).join('');
-        } else if (eventViewMode === 'calendar') renderCalendarView(container);
+        } else if (eventViewMode === 'calendar') window.renderCalendarView(container);
     }
-}
+};
 
-async function loadEvents() {
+window.loadEvents = async function() {
     try {
         const res = await fetch('/api/events');
         eventsData = await res.json();
         const dropdown = document.getElementById('activeEventDropdown');
         if (dropdown) {
             dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name || 'Event'} (${e.event_date || ''})</option>`).join('');
-            if (eventsData.length > 0) updateActiveEventBanner();
+            if (eventsData.length > 0) window.updateActiveEventBanner();
         }
-        setEventViewMode(eventViewMode);
-    } catch(e) { console.error("Failed loading events."); }
-}
+        window.setEventViewMode(eventViewMode);
+    } catch(e) { console.error("Failed loading events.", e); }
+};
 
-function renderCalendarView(container) {
+window.renderCalendarView = function(container) {
     const year = calCurrentDate.getFullYear();
     const month = calCurrentDate.getMonth();
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -1110,21 +1206,17 @@ function renderCalendarView(container) {
     }
     html += `</div>`;
     container.className = ''; container.innerHTML = html;
-}
+};
 
-function changeCalendarMonth(delta) { calCurrentDate.setMonth(calCurrentDate.getMonth() + delta); loadEvents(); }
+window.changeCalendarMonth = function(delta) { calCurrentDate.setMonth(calCurrentDate.getMonth() + delta); window.loadEvents(); };
 
-// ------------------------------------------
-// RESPONSIVE TABLES: ATTENDANCE LOGS
-// ------------------------------------------
-
-async function loadAttendanceLogs() {
+window.loadAttendanceLogs = async function() {
     const res = await fetch('/api/attendance/logs');
     cachedAttendanceLogs = await res.json();
-    filterAttendanceLogs();
-}
+    window.filterAttendanceLogs();
+};
 
-function filterAttendanceLogs() {
+window.filterAttendanceLogs = function() {
     const q = document.getElementById('attendanceSearchInput').value.toLowerCase().trim();
     let matches = cachedAttendanceLogs;
     if(q) matches = matches.filter(l => (l.member_name || '').toLowerCase().includes(q) || (l.event_name || '').toLowerCase().includes(q));
@@ -1150,33 +1242,29 @@ function filterAttendanceLogs() {
             <td class="hide-mobile" style="color:var(--text-muted);">${l.checked_in_at || ''}</td>
             <td><span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
             <td class="actions-cell">
-                ${hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
-                ${hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${(l.member_name || '').replace(/'/g, "\\'")}')">Del</button>` : ''}
+                ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
+                ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${(l.member_name || '').replace(/'/g, "\\'")}')">Del</button>` : ''}
             </td>
         </tr>`).join('');
         
     html += `</tbody></table>`;
     document.getElementById('attendanceLogsContainer').innerHTML = html;
-}
+};
 
-function exportAttendanceLogsCSV() {
+window.exportAttendanceLogsCSV = function() {
     if(!cachedAttendanceLogs || cachedAttendanceLogs.length === 0) return alert('No attendance logs to export.');
     const rows = [['Log ID', 'Member Name', 'Event', 'Checked In At', 'Status']];
     cachedAttendanceLogs.forEach(l => rows.push([l.id, `"${l.member_name || ''}"`, `"${l.event_name || ''}"`, `"${l.checked_in_at || ''}"`, `"${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}"`]));
-    downloadCSV(rows, 'All_Attendance_Logs.csv');
-}
+    window.downloadCSV(rows, 'All_Attendance_Logs.csv');
+};
 
-// ------------------------------------------
-// RESPONSIVE TABLES: ACTIVITY LOGS
-// ------------------------------------------
-
-async function loadActivityLogs() {
+window.loadActivityLogs = async function() {
     const res = await fetch('/api/activity-logs');
     cachedActivityLogs = await res.json();
-    filterActivityLogs();
-}
+    window.filterActivityLogs();
+};
 
-function filterActivityLogs() {
+window.filterActivityLogs = function() {
     const q = document.getElementById('activitySearchInput').value.toLowerCase().trim();
     let matches = cachedActivityLogs;
     if(q) matches = matches.filter(l => (l.username || '').toLowerCase().includes(q) || (l.action || '').toLowerCase().includes(q) || (l.details || '').toLowerCase().includes(q));
@@ -1205,21 +1293,21 @@ function filterActivityLogs() {
         
     html += `</tbody></table>`;
     document.getElementById('activityLogsContainer').innerHTML = html;
-}
+};
 
-function exportActivityLogsCSV() {
+window.exportActivityLogsCSV = function() {
     if(!cachedActivityLogs || cachedActivityLogs.length === 0) return alert('No activity logs to export.');
     const rows = [['Log ID', 'Timestamp', 'User', 'Action', 'Details']];
     cachedActivityLogs.forEach(l => rows.push([l.id, `"${l.created_at || ''}"`, `"${l.username || ''}"`, `"${l.action || ''}"`, `"${l.details || ''}"`]));
-    downloadCSV(rows, 'All_Activity_Logs.csv');
-}
+    window.downloadCSV(rows, 'All_Activity_Logs.csv');
+};
 
-function handleCreateEvent(e) {
+window.handleCreateEvent = function(e) {
     e.preventDefault();
     const fileInput = document.getElementById('evtPoster');
-    triggerActionConfirmation(`Publish new event?`, async () => {
+    window.triggerActionConfirmation(`Publish new event?`, async () => {
         let posterBase64 = null;
-        if (fileInput.files.length > 0) posterBase64 = await getBase64(fileInput.files[0], 1200);
+        if (fileInput.files.length > 0) posterBase64 = await window.getBase64(fileInput.files[0], 1200);
         const payload = {
             name: document.getElementById('evtName').value, event_date: document.getElementById('evtDate').value,
             time_start: document.getElementById('evtTime').value, venue: document.getElementById('evtVenue').value,
@@ -1228,61 +1316,281 @@ function handleCreateEvent(e) {
         };
         try {
             const res = await fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (res.ok) { document.getElementById('createEventForm').reset(); alert('Event published successfully!'); switchEventSubTab('list'); }
+            if (res.ok) { document.getElementById('createEventForm').reset(); alert('Event published successfully!'); window.switchEventSubTab('list'); }
         } catch(e) { alert("Failed to connect to the server."); }
     });
-}
-
-function triggerActionConfirmation(summaryText, actionFn) {
-    document.getElementById('confirmSummary').innerText = summaryText;
-    pendingAction = actionFn;
-    document.getElementById('confirmModal').classList.add('active');
-}
-document.getElementById('executeConfirmBtn').onclick = async () => { 
-    if (pendingAction) await pendingAction(); 
-    document.getElementById('confirmModal').classList.remove('active'); 
-    pendingAction = null; 
 };
-function closeConfirmModal() { document.getElementById('confirmModal').classList.remove('active'); pendingAction = null; }
 
-function openEditAttendanceModal(id, time, isWalkin) {
+window.openEditAttendanceModal = function(id, time, isWalkin) {
     document.getElementById('editAttId').value = id; document.getElementById('editAttTime').value = time;
     document.getElementById('editAttWalkin').value = isWalkin ? "1" : "0"; document.getElementById('editAttendanceModal').classList.add('active');
-}
-function closeEditAttendanceModal() { document.getElementById('editAttendanceModal').classList.remove('active'); }
+};
+window.closeEditAttendanceModal = function() { document.getElementById('editAttendanceModal').classList.remove('active'); };
 
-function saveAttendanceEditWithConfirm() {
+window.saveAttendanceEditWithConfirm = function() {
     const id = document.getElementById('editAttId').value;
     const checked_in_at = document.getElementById('editAttTime').value;
     const is_walkin = parseInt(document.getElementById('editAttWalkin').value);
-    triggerActionConfirmation(`Update Attendance Log ID #${id}?`, async () => {
+    window.triggerActionConfirmation(`Update Attendance Log ID #${id}?`, async () => {
         await fetch(`/api/attendance/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checked_in_at, is_walkin, actor: currentUser }) });
-        closeEditAttendanceModal(); loadAttendanceLogs();
-        if (currentAnalyticsData) openAnalyticsModal(currentAnalyticsData.event.id);
+        window.closeEditAttendanceModal(); window.loadAttendanceLogs();
+        if (currentAnalyticsData) window.openAnalyticsModal(currentAnalyticsData.event.id);
     });
-}
+};
 
-function triggerDeleteMember(id, name) {
-    triggerActionConfirmation(`Permanently DELETE member profile for '${name}'?`, async () => {
+window.triggerDeleteMember = function(id, name) {
+    window.triggerActionConfirmation(`Permanently DELETE member profile for '${name}'?`, async () => {
         await fetch(`/api/youth/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
-        youthData = []; loadDirectory(); filterManualCheckin();
+        youthData = []; window.loadDirectory(); window.filterManualCheckin();
     });
-}
+};
 
-function triggerDeleteEvent(id, name) {
-    triggerActionConfirmation(`Permanently DELETE event '${name}' and associated logs?`, async () => {
+window.triggerDeleteEvent = function(id, name) {
+    window.triggerActionConfirmation(`Permanently DELETE event '${name}' and associated logs?`, async () => {
         await fetch(`/api/events/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
-        loadEvents();
+        window.loadEvents();
     });
-}
+};
 
-function triggerDeleteAttendance(id, memberName) {
-    triggerActionConfirmation(`DELETE attendance record for '${memberName}'?`, async () => {
+window.triggerDeleteAttendance = function(id, memberName) {
+    window.triggerActionConfirmation(`DELETE attendance record for '${memberName}'?`, async () => {
         await fetch(`/api/attendance/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
-        loadAttendanceLogs(); updateActiveEventBanner();
-        if (currentAnalyticsData) openAnalyticsModal(currentAnalyticsData.event.id);
+        window.loadAttendanceLogs(); window.updateActiveEventBanner();
+        if (currentAnalyticsData) window.openAnalyticsModal(currentAnalyticsData.event.id);
     });
-}
+};
+
+// ARMORED: Safe fetching for Async Analytics Modal
+window.openAnalyticsModal = async function(eventId) {
+    try {
+        const res = await fetch(`/api/events/${eventId}/analytics`);
+        if (!res.ok) throw new Error("Server returned " + res.status);
+        const data = await res.json();
+        if (!data || data.error) return alert(data?.error || 'Failed to load event analytics');
+
+        currentAnalyticsData = data;
+        
+        const posterContainer = document.getElementById('analyticsModalPoster');
+        if (posterContainer) {
+            if (data.event.poster) posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
+            else posterContainer.innerHTML = `<span style="font-size: 0.75rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
+        }
+
+        if(document.getElementById('analyticsEventTitle')) document.getElementById('analyticsEventTitle').innerText = data.event.name || 'Event';
+        if(document.getElementById('analyticsEventMeta')) document.getElementById('analyticsEventMeta').innerText = `📅 Date: ${data.event.event_date || ''} | 📍 Venue: ${data.event.venue || 'N/A'}`;
+
+        let linksHtml = '';
+        if(data.event.photos_url) linksHtml += `<a href="${data.event.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration: none;">📷 Photos</a>`;
+        if(data.event.materials_url) linksHtml += `<a href="${data.event.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration: none;">📁 Materials</a>`;
+        if(document.getElementById('analyticsEventLinks')) document.getElementById('analyticsEventLinks').innerHTML = linksHtml;
+
+        if(document.getElementById('statTotalTurnout')) document.getElementById('statTotalTurnout').innerText = data.totalTurnout || 0;
+        if(document.getElementById('statTotalPreReg')) document.getElementById('statTotalPreReg').innerText = data.totalPreRegistered || 0;
+        if(document.getElementById('statWalkins')) document.getElementById('statWalkins').innerText = data.walkins || 0;
+        if(document.getElementById('statTurnoutPercent')) document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage || '0.0'}%`;
+        
+        const editBtn = document.getElementById('analyticsEditEventBtn');
+        if(editBtn) {
+            editBtn.onclick = () => window.openEditEventModal(eventId);
+            editBtn.style.display = window.hasPerm('edit_entries') ? 'block' : 'none';
+        }
+
+        if(document.getElementById('attSearchNative')) document.getElementById('attSearchNative').value = '';
+        if(document.getElementById('attAgeNative')) document.getElementById('attAgeNative').value = 'all';
+        currentRosterFilter = 'all';
+        
+        if(document.getElementById('cardTurnout')) document.getElementById('cardTurnout').style.opacity = '1';
+        if(document.getElementById('cardPreReg')) document.getElementById('cardPreReg').style.opacity = '0.5';
+        if(document.getElementById('cardWalkin')) document.getElementById('cardWalkin').style.opacity = '0.5';
+        
+        window.filterAnalyticsRoster();
+        
+        const modal = document.getElementById('eventAnalyticsModal');
+        if(modal) modal.classList.add('active');
+        
+    } catch (error) { 
+        console.error("Analytics Modal Error:", error);
+        alert("Could not connect to the server to load analytics."); 
+    }
+};
+
+window.closeAnalyticsModal = function() { 
+    if(document.getElementById('eventAnalyticsModal')) document.getElementById('eventAnalyticsModal').classList.remove('active'); 
+    currentAnalyticsData = null; 
+};
+
+window.setAnalyticsCardFilter = function(type) {
+    currentRosterFilter = type;
+    if(document.getElementById('cardTurnout')) document.getElementById('cardTurnout').style.opacity = type === 'all' ? '1' : '0.5';
+    if(document.getElementById('cardPreReg')) document.getElementById('cardPreReg').style.opacity = type === 'prereg' ? '1' : '0.5';
+    if(document.getElementById('cardWalkin')) document.getElementById('cardWalkin').style.opacity = type === 'walkin' ? '1' : '0.5';
+    window.filterAnalyticsRoster();
+};
+
+window.filterAnalyticsRoster = function() {
+    const qInput = document.getElementById('attSearchNative');
+    const ageFilterInput = document.getElementById('attAgeNative');
+    if(!qInput || !ageFilterInput || !currentAnalyticsData) return;
+    
+    const q = qInput.value.toLowerCase();
+    const ageFilter = ageFilterInput.value;
+
+    let sourceList = [];
+    if (currentRosterFilter === 'prereg') sourceList = currentAnalyticsData.preRegList || [];
+    else if (currentRosterFilter === 'walkin') sourceList = (currentAnalyticsData.roster || []).filter(r => r.is_walkin === 1);
+    else sourceList = currentAnalyticsData.roster || [];
+
+    const filtered = sourceList.filter(r => {
+        const nameMatch = (r.name || '').toLowerCase().includes(q) || ((r.qr_code || '').toLowerCase().includes(q));
+        let ageMatch = true;
+        const age = parseInt(r.age);
+        if (ageFilter !== 'all' && !isNaN(age)) {
+            if (ageFilter === 'mini' && (age < 7 || age > 12)) ageMatch = false;
+            if (ageFilter === 'youth' && (age < 13 || age > 21)) ageMatch = false;
+            if (ageFilter === 'adult' && age < 22) ageMatch = false;
+        } else if (ageFilter !== 'all' && isNaN(age)) ageMatch = false;
+        return nameMatch && ageMatch;
+    });
+
+    if(document.getElementById('attRosterCount')) document.getElementById('attRosterCount').innerText = `Total: ${filtered.length}`;
+    window.renderAnalyticsRoster(filtered);
+};
+
+window.renderAnalyticsRoster = function(list) {
+    const rosterContainer = document.getElementById('analyticsRosterContainer');
+    if (!rosterContainer) return;
+    
+    if (list.length === 0) { rosterContainer.innerHTML = `<p style="text-align:center; color:var(--text-muted); margin:15px 0; font-size: 0.9rem;">No attendees found.</p>`; return; }
+
+    rosterContainer.innerHTML = list.map(r => {
+        const safeName = r.name || 'Unknown';
+        const avatarHtml = r.profile_picture ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.85rem;">${safeName.charAt(0).toUpperCase()}</div>`;
+        let statusBadge = '', actionButtons = '', timeText = '';
+
+        if (currentRosterFilter === 'prereg') {
+            const arrived = (currentAnalyticsData.roster || []).find(a => a.youth_id === r.youth_id);
+            if (arrived) {
+                statusBadge = `<span style="font-size:11px; color:var(--success); background: rgba(16,185,129,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">Arrived</span>`;
+                timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(arrived.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
+            } else {
+                statusBadge = `<span style="font-size:11px; color:#F59E0B; background: rgba(245,158,11,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">Expected</span>`;
+                timeText = `<span style="color: #F59E0B; font-size: 0.8rem; font-weight: 600;">Not Arrived</span>`;
+                
+                if (window.hasPerm('delete_entries')) {
+                    actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
+                        <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeletePreReg(${currentAnalyticsData.event.id}, ${r.youth_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>
+                    </div>`;
+                }
+            }
+        } else {
+            statusBadge = `<span style="font-size:11px; color:var(--text-muted); background: var(--bg-light); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>`;
+            timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
+            
+            if (window.hasPerm('delete_entries')) {
+                actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>
+                </div>`;
+            }
+        }
+        return `
+        <div style="padding: 12px 10px; border-bottom: 1px solid var(--bg-light); display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+                ${avatarHtml}
+                <div>
+                    <strong style="color: var(--text-main); font-size: 0.95rem;">${safeName}</strong>${statusBadge}<br>
+                    <small style="color: var(--text-muted);">${r.qr_code || ''} ${r.age ? '| Age: '+r.age : ''}</small>
+                </div>
+            </div>
+            <div style="text-align: right;">${timeText}${actionButtons}</div>
+        </div>`;
+    }).join('');
+};
+
+window.openAddAttendeeModal = function() {
+    if(!currentAnalyticsData) return;
+    if(document.getElementById('addAttendeeSearch')) document.getElementById('addAttendeeSearch').value = '';
+    if(document.getElementById('addAttendeeResults')) document.getElementById('addAttendeeResults').innerHTML = '';
+    
+    const modal = document.getElementById('addAttendeeModal');
+    if(modal) modal.classList.add('active');
+    
+    if(youthData.length === 0) window.loadDirectory();
+};
+window.closeAddAttendeeModal = function() { 
+    if(document.getElementById('addAttendeeModal')) document.getElementById('addAttendeeModal').classList.remove('active'); 
+};
+
+window.filterAddAttendeeSearch = function() {
+    const searchInput = document.getElementById('addAttendeeSearch');
+    const container = document.getElementById('addAttendeeResults');
+    if (!searchInput || !container) return;
+    
+    const q = searchInput.value.toLowerCase().trim();
+    if (q.length < 2) { container.innerHTML = ''; return; }
+
+    const matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q));
+    const existingIds = currentAnalyticsData.roster.map(r => r.youth_id);
+
+    container.innerHTML = matches.map(y => {
+        const safeName = y.name || 'Unknown';
+        const isExisting = existingIds.includes(y.id);
+        const buttons = isExisting
+            ? `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold;">Already In Roster</span>`
+            : `<button type="button" class="btn btn-primary btn-sm" onclick="submitAddAttendee(${y.id}, 0, '${safeName.replace(/'/g, "\\'")}')">Add Pre-Reg</button>
+               <button type="button" class="btn btn-outline btn-sm" onclick="submitAddAttendee(${y.id}, 1, '${safeName.replace(/'/g, "\\'")}')">Add Walk-in</button>`;
+        return `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border-color);">
+            <div><strong style="color:var(--text-main);">${safeName}</strong><br><small style="color: var(--text-muted);">${y.qr_code || ''}</small></div>
+            <div style="display: flex; gap: 5px;">${buttons}</div>
+        </div>`;
+    }).join('');
+};
+
+window.submitAddAttendee = async function(youthId, isWalkin, name) {
+    const eventId = currentAnalyticsData.event.id;
+    try {
+        const res = await fetch('/api/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youth_id: youthId, event_id: eventId, is_walkin: isWalkin, actor: currentUser }) });
+        const data = await res.json();
+        if (data.success) { alert(`Added ${name} to the event!`); window.closeAddAttendeeModal(); window.openAnalyticsModal(eventId); }
+        else alert(data.error || 'Failed to add attendee.');
+    } catch(e) { alert('Connection error.'); }
+};
+
+window.triggerDeletePreReg = function(eventId, youthId, memberName) {
+    window.triggerActionConfirmation(`Remove pre-registration for '${memberName}'?`, async () => {
+        try {
+            const res = await fetch(`/api/events/${eventId}/preregs/${youthId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
+            const data = await res.json();
+            if (data.success) {
+                if (currentAnalyticsData) window.openAnalyticsModal(eventId);
+            } else {
+                alert(data.error || 'Failed to remove entry');
+            }
+        } catch(e) { alert('Network error. Failed to remove.'); }
+    });
+};
+
+window.exportAnalyticsCSV = function() {
+    if (!currentAnalyticsData) return alert('No data available to export.');
+    let sourceList = [];
+    let isExpectedView = (currentRosterFilter === 'prereg');
+
+    if (isExpectedView) sourceList = currentAnalyticsData.preRegList || [];
+    else if (currentRosterFilter === 'walkin') sourceList = (currentAnalyticsData.roster || []).filter(r => r.is_walkin === 1);
+    else sourceList = currentAnalyticsData.roster || [];
+
+    const rows = [['Member Name', 'Unique Pass ID / Email', 'Status / Timestamp']];
+    sourceList.forEach(r => {
+        const identifier = r.email ? r.email : r.qr_code;
+        let status = '';
+        if (isExpectedView) {
+            const arrived = (currentAnalyticsData.roster || []).find(a => a.youth_id === r.youth_id);
+            status = arrived ? `Arrived at ${arrived.checked_in_at}` : 'Expected (Not Arrived)';
+        } else { status = r.is_walkin ? `Walk-in (${r.checked_in_at})` : `Pre-Reg (${r.checked_in_at})`; }
+        rows.push([`"${r.name || 'Unknown'}"`, `"${identifier}"`, `"${status}"`]);
+    });
+    window.downloadCSV(rows, `Roster_${(currentAnalyticsData.event.name || 'Event').replace(/\s+/g, '_')}.csv`);
+};
 
 // ---------------- BACKGROUND AUTOMATION LOOPS ----------------
 
