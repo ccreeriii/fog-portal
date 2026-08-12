@@ -5,3 +5,7 @@ fog_community.db-journal
 .DS_Store
 backups/
 *.db
+fog_community.db
+fog_community_PRE_MIGRATION_backup.db
+backups/
+node_modules/
