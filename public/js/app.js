@@ -84,6 +84,19 @@ window.onload = () => {
     }
 };
 
+// ==========================================
+// PHASE 3 - GLOBAL MODAL CLICK-TO-CLOSE
+// ==========================================
+window.onclick = function(event) {
+    // If the user clicks on the dark overlay (the .modal background) itself, close the modal
+    if (event.target.classList.contains('modal')) {
+        event.target.classList.remove('active');
+        if(event.target.id === 'eventAnalyticsModal') currentAnalyticsData = null;
+        if(event.target.id === 'confirmModal') pendingAction = null;
+    }
+};
+// ==========================================
+
 function openSidebar() {
     document.getElementById('sidebarNav').classList.add('active');
     document.getElementById('sidebarOverlay').classList.add('active');
@@ -163,10 +176,6 @@ function switchTab(tabId) {
         if(backupCard) backupCard.style.display = 'none';
     }
 }
-
-// ==========================================
-// PHASE 2 - MOBILE DATA CARDS RENDERING
-// ==========================================
 
 async function loadBackups() {
     const res = await fetch('/api/backups');
@@ -505,9 +514,6 @@ async function loadDirectory() {
     filterDirectory();
 }
 
-// ------------------------------------------
-// PHASE 2 - MOBILE CARDS: DIRECTORY LIST
-// ------------------------------------------
 function filterDirectory() {
     const q = document.getElementById('directorySearchInput').value.toLowerCase().trim();
     const sort = document.getElementById('sortDirectorySelect').value;
@@ -884,8 +890,8 @@ function filterAddAttendeeSearch() {
         const isExisting = existingIds.includes(y.id);
         const buttons = isExisting
             ? `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold;">Already In Roster</span>`
-            : `<button class="btn btn-primary btn-sm" onclick="submitAddAttendee(${y.id}, 0, '${y.name.replace(/'/g, "\\'")}')">Add Pre-Reg</button>
-               <button class="btn btn-outline btn-sm" onclick="submitAddAttendee(${y.id}, 1, '${y.name.replace(/'/g, "\\'")}')">Add Walk-in</button>`;
+            : `<button type="button" class="btn btn-primary btn-sm" onclick="submitAddAttendee(${y.id}, 0, '${y.name.replace(/'/g, "\\'")}')">Add Pre-Reg</button>
+               <button type="button" class="btn btn-outline btn-sm" onclick="submitAddAttendee(${y.id}, 1, '${y.name.replace(/'/g, "\\'")}')">Add Walk-in</button>`;
         return `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border-color);">
             <div><strong style="color:var(--text-main);">${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code}</small></div>
@@ -988,8 +994,8 @@ function renderAnalyticsRoster(list) {
             timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
             if (userPermissions.includes('edit_attendance')) {
                 actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
-                    <button class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="openEditAttendanceModal(${r.log_id}, '${r.checked_in_at}', ${r.is_walkin})">✏️ Edit</button>
-                    <button class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️</button>
+                    <button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="openEditAttendanceModal(${r.log_id}, '${r.checked_in_at}', ${r.is_walkin})">✏️ Edit</button>
+                    <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️</button>
                 </div>`;
             }
         }

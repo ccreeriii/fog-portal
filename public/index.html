@@ -38,8 +38,8 @@
                 <div id="preregStep1">
                     <h3 style="margin-bottom: 15px;">Have you attended our activities before?</h3>
                     <div style="display: flex; gap: 15px; justify-content: center;">
-                        <button class="btn btn-primary" style="flex: 1; padding: 15px;" onclick="showPreregStep(2)">Yes, I have</button>
-                        <button class="btn btn-secondary" style="flex: 1; padding: 15px;" onclick="showPreregStep(3)">No, I'm new</button>
+                        <button class="btn btn-primary" style="flex: 1;" onclick="showPreregStep(2)">Yes, I have</button>
+                        <button class="btn btn-secondary" style="flex: 1;" onclick="showPreregStep(3)">No, I'm new</button>
                     </div>
                 </div>
 
@@ -49,7 +49,7 @@
                     <input type="text" id="preregSearchInput" class="form-control" placeholder="Type your name..." onkeyup="filterPreregSearch()">
                     <div id="preregSearchResults" style="max-height: 200px; overflow-y: auto; margin-top: 15px; border: 1px solid var(--border-color); border-radius: 8px; display: none;"></div>
                     <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 15px;">Cannot find your name? <a href="#" style="color: var(--primary); text-decoration: none; font-weight: bold;" onclick="showPreregStep(3)">Click here</a></p>
-                    <button class="btn btn-outline" style="margin-top: 15px;" onclick="showPreregStep(1)">Back</button>
+                    <button class="btn btn-outline" style="margin-top: 15px; width: 100%;" onclick="showPreregStep(1)">Back</button>
                 </div>
 
                 <div id="preregStep3" style="display:none; text-align: left;">
@@ -64,7 +64,7 @@
                         <div class="form-group"><label>Email Address</label><input type="email" id="preregNewEmail" class="form-control"></div>
                         <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Click here to register</button>
                     </form>
-                    <button class="btn btn-outline" style="margin-top: 15px;" onclick="showPreregStep(1)">Back</button>
+                    <button class="btn btn-outline" style="margin-top: 15px; width: 100%;" onclick="showPreregStep(1)">Back</button>
                 </div>
 
                 <div id="preregStepSuccess" style="display:none; text-align: center;">
@@ -440,6 +440,7 @@
 
 <div id="addAttendeeModal" class="modal" style="z-index: 1001;">
     <div class="modal-content">
+        <div class="modal-drag-handle"></div>
         <span class="close-modal" onclick="closeAddAttendeeModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
         <h2>Add Entry to Event</h2>
         <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Search the directory to manually add an attendance or pre-reg record to this event.</p>
@@ -450,6 +451,7 @@
 
 <div id="preregSettingsModal" class="modal">
     <div class="modal-content">
+        <div class="modal-drag-handle"></div>
         <span class="close-modal" onclick="closePreregSettingsModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
         <h2>Pre-Registration Page Setup</h2>
         <form id="preregSettingsForm" onsubmit="savePreregSettings(event)">
@@ -470,7 +472,7 @@
                 <label>Bottom Banner / Document Image (Optional)</label>
                 <input type="file" id="preregSetBottomBanner" class="form-control" accept="image/*">
             </div>
-            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 25px;">
+            <div class="modal-footer" style="flex-direction: column;">
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Save Settings</button>
                 <button type="button" class="btn btn-secondary" style="width: 100%;" onclick="openPublicPreregFromSettings()">👁️ View Public Form</button>
             </div>
@@ -484,6 +486,7 @@
 
 <div id="fastEditProfileModal" class="modal">
     <div class="modal-content">
+        <div class="modal-drag-handle"></div>
         <span class="close-modal" onclick="closeFastEditProfileModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
         <h2>Edit Profile</h2>
         <form id="fastEditProfileForm" onsubmit="event.preventDefault();">
@@ -518,10 +521,10 @@
                 <label>Parents / Guardian Name</label>
                 <input type="text" id="fastEditParents" class="form-control">
             </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px;">
-                <button type="button" class="btn btn-secondary" onclick="closeFastEditProfileModal()">Cancel</button>
-                <button type="button" class="btn btn-outline" onclick="submitFastEditProfile(false)">Save Only</button>
-                <button type="button" class="btn btn-primary" onclick="submitFastEditProfile(true)">Save & Check In</button>
+            <div class="modal-footer" style="flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary" onclick="closeFastEditProfileModal()" style="flex:1;">Cancel</button>
+                <button type="button" class="btn btn-outline" onclick="submitFastEditProfile(false)" style="flex:1;">Save</button>
+                <button type="button" class="btn btn-primary" onclick="submitFastEditProfile(true)" style="flex:1; min-width: 150px;">Save & Check In</button>
             </div>
         </form>
     </div>
@@ -529,6 +532,7 @@
 
 <div id="editEventModal" class="modal">
     <div class="modal-content">
+        <div class="modal-drag-handle"></div>
         <span class="close-modal" onclick="closeEditEventModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
         <h2>Edit Event</h2>
         <form id="editEventForm" onsubmit="event.preventDefault();">
@@ -563,7 +567,7 @@
                 <label>Google Drive Folder URL</label>
                 <input type="url" id="editEvtMaterialsUrl" class="form-control">
             </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px;">
+            <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeEditEventModal()">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="submitEditEvent()">Save Changes</button>
             </div>
@@ -573,6 +577,7 @@
 
 <div id="assignPermissionModal" class="modal">
     <div class="modal-content">
+        <div class="modal-drag-handle"></div>
         <span class="close-modal" onclick="closeAssignPermissionModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
         <h2>Assign User Permissions</h2>
         <div id="permModalUserBanner" style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 15px; border-radius: 8px; font-weight: 700; color: var(--primary); margin-bottom: 20px;"></div>
@@ -582,16 +587,16 @@
             <div class="form-group">
                 <label style="font-size: 1rem; color: var(--text-main); margin-bottom: 12px;">Select Permissions to Assign:</label>
                 <div style="display: flex; flex-direction: column; gap: 14px; background: var(--bg-light); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_checkin" style="width:18px;height:18px;"> Access "Check-In"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_directory" style="width:18px;height:18px;"> Access "Directory"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_events" style="width:18px;height:18px;"> Access "Events"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_attendance" style="width:18px;height:18px;"> Access "Attendance Logs"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="edit_attendance" style="width:18px;height:18px;"> EDIT Attendance Records</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_activity" style="width:18px;height:18px;"> Access "Activity Logs"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_permissions" style="width:18px;height:18px;"> Access "Add Permissions"</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_checkin" style="width:20px;height:20px;"> Access "Check-In"</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_directory" style="width:20px;height:20px;"> Access "Directory"</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_events" style="width:20px;height:20px;"> Access "Events"</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_attendance" style="width:20px;height:20px;"> Access "Attendance Logs"</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="edit_attendance" style="width:20px;height:20px;"> EDIT Attendance Records</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_activity" style="width:20px;height:20px;"> Access "Activity Logs"</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_permissions" style="width:20px;height:20px;"> Access "Add Permissions"</label>
                 </div>
             </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px;">
+            <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeAssignPermissionModal()">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="handleSavePermissionsFromModal()">Save Permissions</button>
             </div>
@@ -601,6 +606,7 @@
 
 <div id="editMemberModal" class="modal">
     <div class="modal-content">
+        <div class="modal-drag-handle"></div>
         <span class="close-modal" onclick="closeEditMemberModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
         <h2>Edit Member Profile</h2>
         <form onsubmit="event.preventDefault();">
@@ -635,7 +641,7 @@
                 <label>Parents / Guardian Name</label>
                 <input type="text" id="editMemberParents" class="form-control">
             </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px;">
+            <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeEditMemberModal()">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="saveMemberEditWithConfirm()">Save Changes</button>
             </div>
@@ -645,6 +651,7 @@
 
 <div id="eventAnalyticsModal" class="modal">
     <div class="modal-content">
+        <div class="modal-drag-handle"></div>
         <span class="close-modal" onclick="closeAnalyticsModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
         <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 25px;">
             <div id="analyticsModalPoster" style="width: 85px; height: 85px; background: var(--bg-light); border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); flex-shrink: 0; display:flex; align-items:center; justify-content:center;"></div>
@@ -673,19 +680,19 @@
         <h3 style="font-size: 1.1rem; margin-top: 25px; margin-bottom: 12px; color: var(--text-main);">Checked-In Roster</h3>
 
         <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
-            <input type="text" id="attSearchNative" placeholder="🔍 Search roster by name or ID..." class="form-control" style="flex: 1; min-width:200px;" oninput="filterAnalyticsRoster()">
+            <input type="text" id="attSearchNative" placeholder="🔍 Search roster..." class="form-control" style="flex: 1; min-width:180px;" oninput="filterAnalyticsRoster()">
             <select id="attAgeNative" class="form-control" style="width: auto;" onchange="filterAnalyticsRoster()">
                 <option value="all">All Ages</option>
-                <option value="mini">Minis (7-12)</option>
-                <option value="youth">Youth (13-21)</option>
-                <option value="adult">Adults (22+)</option>
+                <option value="mini">Minis</option>
+                <option value="youth">Youth</option>
+                <option value="adult">Adults</option>
             </select>
             <div id="attRosterCount" class="badge badge-blue" style="font-size: 0.9rem; padding: 10px 14px; white-space: nowrap;">Total: 0</div>
         </div>
 
         <div id="analyticsRosterContainer" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px;"></div>
 
-        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 25px;">
+        <div class="modal-footer" style="flex-direction: column;">
             <div style="display: flex; gap: 10px;">
                 <button type="button" class="btn btn-primary" style="flex:1;" onclick="openAddAttendeeModal()">➕ Add Entry</button>
                 <button type="button" class="btn btn-outline" style="flex:1;" id="analyticsEditEventBtn">Edit Event</button>
@@ -697,6 +704,7 @@
 
 <div id="viewProfileModal" class="modal">
     <div class="modal-content">
+        <div class="modal-drag-handle"></div>
         <span class="close-modal" onclick="closeViewProfileModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
         <h2>Member Profile</h2>
         <div style="text-align: center; margin-bottom: 20px;">
@@ -711,7 +719,7 @@
         <div class="modal-summary" id="modalBioSummary"></div>
         <h3 style="font-size: 1.1rem; margin-bottom: 12px; color: var(--text-main);">Attendance History</h3>
         <div id="modalAttendanceHistory" style="max-height: 200px; overflow-y: auto; font-size: 0.95rem; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;"></div>
-        <div style="display: flex; justify-content: flex-end; margin-top: 25px;">
+        <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeViewProfileModal()">Close</button>
         </div>
     </div>
@@ -719,6 +727,7 @@
 
 <div id="confirmModal" class="modal" style="z-index: 3000;">
     <div class="modal-content" style="max-width: 400px; text-align: center;">
+        <div class="modal-drag-handle"></div>
         <h2 style="border:none; margin-bottom:10px;">Are you sure?</h2>
         <div id="confirmSummary" style="color: var(--text-muted); margin-bottom: 25px; font-size: 1.05rem;">Summary of action...</div>
         <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -730,6 +739,7 @@
 
 <div id="editAttendanceModal" class="modal">
     <div class="modal-content">
+        <div class="modal-drag-handle"></div>
         <span class="close-modal" onclick="closeEditAttendanceModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
         <h2>Edit Attendance Record</h2>
         <form onsubmit="event.preventDefault();">
@@ -745,7 +755,7 @@
                     <option value="1">Walk-in</option>
                 </select>
             </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px;">
+            <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeEditAttendanceModal()">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="saveAttendanceEditWithConfirm()">Save Changes</button>
             </div>
