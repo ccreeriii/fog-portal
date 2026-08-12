@@ -55,7 +55,7 @@ function downloadCSV(rows, filename) {
     document.body.removeChild(link);
 }
 
-// WINDOW ONLOAD LOGIC (Handles smooth routing)
+// WINDOW ONLOAD LOGIC
 window.onload = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const eventIdParam = urlParams.get('event');
@@ -80,14 +80,9 @@ window.onload = () => {
         else switchTab('profileTab');
         loadEvents(); loadDirectory();
     } else {
-        // Fix: Properly route to the native login tab if no session exists
         switchTab('loginTab'); 
     }
 };
-
-// ==========================================
-// NEW: NAVIGATION / SIDEBAR LOGIC (PHASE 1)
-// ==========================================
 
 function openSidebar() {
     document.getElementById('sidebarNav').classList.add('active');
@@ -110,7 +105,6 @@ function buildNav() {
     const isAdmin = userPermissions.length > 0;
 
     if (isAdmin) {
-        // Admin View: Use Sidebar Hamburger
         hamburger.style.display = 'block';
         bottomNav.style.display = 'none';
 
@@ -126,7 +120,6 @@ function buildNav() {
         sidebar.innerHTML = sidebarHtml;
         bottomNav.innerHTML = '';
     } else {
-        // Regular Member View: Use Bottom Nav
         hamburger.style.display = 'none';
         bottomNav.style.display = 'flex';
 
@@ -139,20 +132,16 @@ function buildNav() {
 }
 
 function switchTab(tabId) {
-    // Hide all tabs
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     
-    // Manage Sidebar active states
     document.querySelectorAll('.sidebar .nav-btn').forEach(el => el.classList.remove('active'));
     const sidebarTarget = document.querySelector(`.sidebar .nav-btn[data-target="${tabId}"]`);
     if(sidebarTarget) sidebarTarget.classList.add('active');
 
-    // Manage Bottom Nav active states
     document.querySelectorAll('.bottom-nav-btn').forEach(el => el.classList.remove('active'));
     const bottomTarget = document.querySelector(`.bottom-nav-btn[data-target="${tabId}"]`);
     if(bottomTarget) bottomTarget.classList.add('active');
 
-    // Close sidebar immediately on click (mobile friendly)
     closeSidebar();
 
     const targetTab = document.getElementById(tabId);
@@ -176,6 +165,8 @@ function switchTab(tabId) {
 }
 
 // ==========================================
+// PHASE 2 - MOBILE DATA CARDS RENDERING
+// ==========================================
 
 async function loadBackups() {
     const res = await fetch('/api/backups');
@@ -185,15 +176,23 @@ async function loadBackups() {
         container.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem;">No automated backups found yet.</p>`;
         return;
     }
-    let html = `<table><thead><tr><th>Backup Date / File</th><th>Size</th><th>Action</th></tr></thead><tbody>`;
-    backups.forEach(b => {
-        html += `<tr>
-            <td><strong>${b.name}</strong><br><small style="color: var(--text-muted);">${b.time}</small></td>
-            <td>${b.size}</td>
-            <td><button type="button" class="btn btn-danger btn-sm" onclick="triggerRestore('${b.name}')">Restore</button></td>
-        </tr>`;
-    });
-    html += `</tbody></table>`;
+    
+    let html = backups.map(b => `
+        <div class="data-row">
+            <div class="data-row-main">
+                <div style="background: var(--bg-light); width: 45px; height: 45px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">💾</div>
+                <div>
+                    <strong style="color:var(--text-main); font-size:1.05rem;">${b.name}</strong><br>
+                    <small style="color: var(--text-muted);">${b.time}</small>
+                </div>
+            </div>
+            <div class="data-row-meta">
+                <span class="badge badge-blue">${b.size}</span>
+            </div>
+            <div class="data-row-actions">
+                <button type="button" class="btn btn-danger btn-sm" onclick="triggerRestore('${b.name}')">Restore</button>
+            </div>
+        </div>`).join('');
     container.innerHTML = html;
 }
 
@@ -253,8 +252,6 @@ async function handleLogout() {
     document.getElementById('hamburgerBtn').style.display = 'none';
     document.getElementById('sidebarNav').innerHTML = '';
     document.getElementById('bottomNav').style.display = 'none';
-    
-    // Fix: Route cleanly to the login tab on logout
     switchTab('loginTab'); 
 }
 
@@ -508,6 +505,9 @@ async function loadDirectory() {
     filterDirectory();
 }
 
+// ------------------------------------------
+// PHASE 2 - MOBILE CARDS: DIRECTORY LIST
+// ------------------------------------------
 function filterDirectory() {
     const q = document.getElementById('directorySearchInput').value.toLowerCase().trim();
     const sort = document.getElementById('sortDirectorySelect').value;
@@ -527,26 +527,28 @@ function filterDirectory() {
     if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
     if (sort === 'age_desc') matches.sort((a,b) => (b.age || 0) - (a.age || 0));
 
-    let html = `<table><thead><tr><th>Member</th><th>Age</th><th>Birthday</th><th>Actions</th></tr></thead><tbody>`;
-    html += matches.map(y => {
-        const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 35px; height: 35px; font-size: 1rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 35px; height: 35px; font-size: 1rem;">${y.name.charAt(0).toUpperCase()}</div>`;
+    let html = matches.map(y => {
+        const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem;">${y.name.charAt(0).toUpperCase()}</div>`;
         return `
-        <tr>
-            <td>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    ${avatarHtml}
-                    <div><strong style="color:var(--text-main);">${y.name}</strong><br><small style="color: var(--text-muted);">${y.qr_code}</small></div>
+        <div class="data-row">
+            <div class="data-row-main">
+                ${avatarHtml}
+                <div>
+                    <strong style="color:var(--text-main); font-size:1.05rem;">${y.name}</strong><br>
+                    <small style="color: var(--text-muted);">${y.qr_code}</small>
                 </div>
-            </td>
-            <td style="color:var(--text-muted);">${y.age || 'N/A'}</td>
-            <td style="color:var(--text-muted);">${y.birthday || 'N/A'}</td>
-            <td>
+            </div>
+            <div class="data-row-meta">
+                <span><strong>Age:</strong> ${y.age || 'N/A'}</span>
+                <span><strong>B-Day:</strong> ${y.birthday || 'N/A'}</span>
+            </div>
+            <div class="data-row-actions">
                 <button type="button" class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">View</button>
                 <button type="button" class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>
                 <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${y.name.replace(/'/g, "\\'")}')">Del</button>
-            </td>
-        </tr>`}).join('');
-    html += `</tbody></table>`;
+            </div>
+        </div>`}).join('');
+    
     document.getElementById('directoryTableContainer').innerHTML = html;
 }
 
@@ -1184,6 +1186,10 @@ function renderCalendarView(container) {
 
 function changeCalendarMonth(delta) { calCurrentDate.setMonth(calCurrentDate.getMonth() + delta); loadEvents(); }
 
+// ------------------------------------------
+// PHASE 2 - MOBILE CARDS: ATTENDANCE LOGS
+// ------------------------------------------
+
 async function loadAttendanceLogs() {
     const res = await fetch('/api/attendance/logs');
     cachedAttendanceLogs = await res.json();
@@ -1195,19 +1201,25 @@ function filterAttendanceLogs() {
     let matches = cachedAttendanceLogs;
     if(q) matches = matches.filter(l => l.member_name.toLowerCase().includes(q) || l.event_name.toLowerCase().includes(q));
 
-    let html = `<table><thead><tr><th>Member</th><th>Event</th><th>Checked In At</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
-    html += matches.map(l => `
-        <tr>
-            <td style="color:var(--text-main); font-weight:600;">${l.member_name}</td>
-            <td style="color:var(--text-muted);">${l.event_name}</td>
-            <td style="color:var(--text-muted);">${l.checked_in_at}</td>
-            <td><span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
-            <td>
+    let html = matches.map(l => `
+        <div class="data-row">
+            <div class="data-row-main">
+                <div style="background: rgba(16,185,129,0.1); width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">✅</div>
+                <div>
+                    <strong style="color:var(--text-main); font-size:1.05rem;">${l.member_name}</strong><br>
+                    <small style="color: var(--text-muted);">${l.event_name}</small>
+                </div>
+            </div>
+            <div class="data-row-meta">
+                <span><strong>Time:</strong> ${l.checked_in_at}</span>
+                <span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}" style="width: fit-content;">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>
+            </div>
+            <div class="data-row-actions">
                 ${userPermissions.includes('edit_attendance') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
                 <button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${l.member_name.replace(/'/g, "\\'")}')">Del</button>
-            </td>
-        </tr>`).join('');
-    html += `</tbody></table>`;
+            </div>
+        </div>`).join('');
+    
     document.getElementById('attendanceLogsContainer').innerHTML = html;
 }
 
@@ -1217,6 +1229,10 @@ function exportAttendanceLogsCSV() {
     cachedAttendanceLogs.forEach(l => rows.push([l.id, `"${l.member_name}"`, `"${l.event_name}"`, `"${l.checked_in_at}"`, `"${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}"`]));
     downloadCSV(rows, 'All_Attendance_Logs.csv');
 }
+
+// ------------------------------------------
+// PHASE 2 - MOBILE CARDS: ACTIVITY LOGS
+// ------------------------------------------
 
 async function loadActivityLogs() {
     const res = await fetch('/api/activity-logs');
@@ -1229,9 +1245,21 @@ function filterActivityLogs() {
     let matches = cachedActivityLogs;
     if(q) matches = matches.filter(l => l.username.toLowerCase().includes(q) || l.action.toLowerCase().includes(q) || l.details.toLowerCase().includes(q));
 
-    let html = `<table><thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Details</th></tr></thead><tbody>`;
-    html += matches.map(l => `<tr><td style="color:var(--text-muted);"><small>${l.created_at}</small></td><td style="color:var(--text-main); font-weight:600;">${l.username}</td><td><span class="badge badge-orange">${l.action}</span></td><td style="color:var(--text-muted);">${l.details}</td></tr>`).join('');
-    html += `</tbody></table>`;
+    let html = matches.map(l => `
+        <div class="data-row">
+            <div class="data-row-main">
+                <div style="background: rgba(59,130,246,0.1); width: 45px; height: 45px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">📝</div>
+                <div>
+                    <strong style="color:var(--text-main); font-size:1.05rem;">${l.username}</strong><br>
+                    <span class="badge badge-orange" style="margin-top: 4px;">${l.action}</span>
+                </div>
+            </div>
+            <div class="data-row-meta" style="flex: 2; min-width: 200px;">
+                <span style="color:var(--text-main);">${l.details}</span>
+                <span>${l.created_at}</span>
+            </div>
+        </div>`).join('');
+        
     document.getElementById('activityLogsContainer').innerHTML = html;
 }
 
@@ -1313,7 +1341,7 @@ function triggerDeleteAttendance(id, memberName) {
 document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
         const headers = document.querySelectorAll('h2');
-        let dirHeader = Array.from(headers).find(h => h.innerText.includes('Directory') || h.innerText.includes('Members'));
+        let dirHeader = Array.from(headers).find(h => h.innerText.includes('Community Directory') || h.innerText.includes('Members'));
         if (dirHeader && !document.getElementById('csvBtn')) {
             const btn = document.createElement('button');
             btn.id = 'csvBtn';
@@ -1326,37 +1354,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 1000);
 });
 
+// PHASE 2 - UPDATED PAGINATION ENGINE FOR DATA CARDS
 document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
-        const csvBtn = document.getElementById('csvBtn');
-        const dirTab = document.querySelector('#directory') || document.querySelector('#directoryTab') || (csvBtn ? csvBtn.closest('section, div') : null);
-        const tbody = dirTab ? (dirTab.querySelector('table tbody') || dirTab.querySelector('.list')) : null;
+        const dataContainer = document.getElementById('directoryTableContainer');
 
-        if (tbody && tbody.children.length > 0 && !document.getElementById('dirPagerControls')) {
+        if (dataContainer && dataContainer.children.length > 0 && !document.getElementById('dirPagerControls')) {
             const pager = document.createElement('div');
             pager.id = 'dirPagerControls';
-            pager.style.cssText = 'display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem;';
+            pager.style.cssText = 'display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; flex-wrap: wrap;';
             pager.innerHTML = `
-                <label>Entries per page:</label>
-                <select id="dirPerPage" style="padding: 5px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem;">
-                    <option value="10">10</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="999999">All</option>
-                </select>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label>Entries per page:</label>
+                    <select id="dirPerPage" style="padding: 5px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem;">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="999999">All</option>
+                    </select>
+                </div>
                 <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
                     <button id="dirPrev" class="btn btn-outline btn-sm">◀ Prev</button>
                     <span id="dirPageInd" style="color: var(--text-main);">Page 1</span>
                     <button id="dirNext" class="btn btn-outline btn-sm">Next ▶</button>
                 </div>
             `;
-            tbody.parentNode.parentNode.insertBefore(pager, tbody.parentNode);
+            dataContainer.parentNode.insertBefore(pager, dataContainer);
 
             let currentPage = 1;
             let perPage = 10;
 
             const updateTable = () => {
-                const rows = Array.from(tbody.children);
+                const rows = Array.from(dataContainer.children).filter(el => el.classList.contains('data-row'));
+                if(rows.length === 0) return;
+                
                 const totalPages = Math.ceil(rows.length / perPage) || 1;
                 if (currentPage > totalPages) currentPage = totalPages;
                 if (currentPage < 1) currentPage = 1;
@@ -1365,20 +1396,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('dirNext').disabled = (currentPage === totalPages);
 
                 rows.forEach((row, index) => {
-                    if (perPage >= 999999) row.style.display = '';
+                    if (perPage >= 999999) row.style.display = 'flex';
                     else {
                         const start = (currentPage - 1) * perPage;
                         const end = start + perPage;
-                        row.style.display = (index >= start && index < end) ? '' : 'none';
+                        row.style.display = (index >= start && index < end) ? 'flex' : 'none';
                     }
                 });
             };
 
             document.getElementById('dirPerPage').onchange = (e) => { perPage = parseInt(e.target.value); currentPage = 1; updateTable(); };
             document.getElementById('dirPrev').onclick = () => { if (currentPage > 1) { currentPage--; updateTable(); } };
-            document.getElementById('dirNext').onclick = () => { const rows = Array.from(tbody.children); if (currentPage < Math.ceil(rows.length / perPage)) { currentPage++; updateTable(); } };
+            document.getElementById('dirNext').onclick = () => { 
+                const rows = Array.from(dataContainer.children).filter(el => el.classList.contains('data-row'));
+                if (currentPage < Math.ceil(rows.length / perPage)) { currentPage++; updateTable(); } 
+            };
             updateTable();
-            new MutationObserver(() => updateTable()).observe(tbody, { childList: true });
+            new MutationObserver(() => updateTable()).observe(dataContainer, { childList: true });
         }
     }, 1000);
 });

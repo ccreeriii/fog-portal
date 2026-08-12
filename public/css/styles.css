@@ -2,10 +2,10 @@
     /* Modern Slate Palette */
     --primary: #FF6B00;
     --primary-hover: #E05D00;
-    --bg-light: #F8FAFC; /* Softer, native app background */
+    --bg-light: #F8FAFC;
     --card-bg: #FFFFFF;
-    --text-main: #0F172A; /* Deep slate, less eye-strain than pure black */
-    --text-muted: #64748B; /* Modern muted slate */
+    --text-main: #0F172A;
+    --text-muted: #64748B;
     --border-color: #E2E8F0;
     --danger: #EF4444;
     --success: #10B981;
@@ -21,7 +21,7 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
 header h1 { font-size: 1.4rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; line-height: 1.1; }
 header h1 span { color: var(--primary); }
 header p { color: var(--text-muted); font-size: 0.8rem; font-weight: 500; margin-top: 2px; }
-.header-spacer { width: 35px; } /* Balances the hamburger for center alignment */
+.header-spacer { width: 35px; }
 
 /* ADMIN SIDEBAR (HAMBURGER MENU) */
 .sidebar-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 1999; opacity: 0; visibility: hidden; transition: 0.3s; }
@@ -35,7 +35,7 @@ header p { color: var(--text-muted); font-size: 0.8rem; font-weight: 500; margin
 .sidebar .text-danger { color: var(--danger); margin-top: 20px; }
 
 /* MEMBER BOTTOM NAV */
-.bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: #FFFFFF; display: none; justify-content: space-around; align-items: center; box-shadow: 0 -2px 15px rgba(0,0,0,0.08); z-index: 1500; padding-bottom: env(safe-area-inset-bottom); /* iOS support */ }
+.bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: #FFFFFF; display: none; justify-content: space-around; align-items: center; box-shadow: 0 -2px 15px rgba(0,0,0,0.08); z-index: 1500; padding-bottom: env(safe-area-inset-bottom); }
 .bottom-nav-btn { background: transparent; border: none; padding: 12px 0; width: 100%; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: 0.2s; }
 .bottom-nav-btn .icon { font-size: 1.4rem; margin-bottom: 2px; }
 .bottom-nav-btn.active { color: var(--primary); }
@@ -70,9 +70,13 @@ header p { color: var(--text-muted); font-size: 0.8rem; font-weight: 500; margin
 .btn-sm { padding: 8px 14px; font-size: 0.85rem; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
 
-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-th, td { padding: 14px 12px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; vertical-align: middle; }
-th { background: var(--bg-light); color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px; }
+/* MOBILE DATA CARDS (PHASE 2) */
+.data-row { background: #FFF; border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: 0.2s; }
+.data-row:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.06); }
+.data-row-main { display: flex; gap: 12px; align-items: center; flex: 1; min-width: 200px; }
+.data-row-meta { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; color: var(--text-muted); min-width: 120px; }
+.data-row-meta strong { color: var(--text-main); font-weight: 600; }
+.data-row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
 .badge { display: inline-block; padding: 6px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
 .badge-orange { background: rgba(255,107,0,0.15); color: var(--primary); }

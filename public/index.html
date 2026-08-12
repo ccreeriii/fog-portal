@@ -176,7 +176,7 @@
         <div id="adminBackupCard" class="card" style="display: none; border-color: var(--danger);">
             <h2 style="color: var(--danger);">System Backups & Restore</h2>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Latest 10 daily/hourly database backups. Restoring will auto-backup your current live state first.</p>
-            <div id="backupListContainer" style="overflow-x: auto;"></div>
+            <div id="backupListContainer"></div>
         </div>
 
         <div class="card">
@@ -317,7 +317,7 @@
                 <input type="text" id="directorySearchInput" class="form-control" placeholder="Search directory by name or ID..." oninput="filterDirectory()">
             </div>
 
-            <div id="directoryTableContainer" style="overflow-x: auto;"></div>
+            <div id="directoryTableContainer"></div>
         </div>
     </div>
 
@@ -395,7 +395,7 @@
                 <input type="text" id="attendanceSearchInput" class="form-control" placeholder="Search by name or event..." style="max-width: 300px;" oninput="filterAttendanceLogs()">
                 <button class="btn btn-outline" onclick="exportAttendanceLogsCSV()">📥 Export CSV</button>
             </div>
-            <div id="attendanceLogsContainer" style="overflow-x: auto;"></div>
+            <div id="attendanceLogsContainer"></div>
         </div>
     </div>
 
@@ -406,7 +406,7 @@
                 <input type="text" id="activitySearchInput" class="form-control" placeholder="Search by user or action..." style="max-width: 300px;" oninput="filterActivityLogs()">
                 <button class="btn btn-outline" onclick="exportActivityLogsCSV()">📥 Export CSV</button>
             </div>
-            <div id="activityLogsContainer" style="overflow-x: auto;"></div>
+            <div id="activityLogsContainer"></div>
         </div>
     </div>
 
