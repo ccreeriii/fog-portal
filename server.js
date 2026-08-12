@@ -110,10 +110,10 @@ db.serialize(() => {
     // Force update the superadmin to ensure they always have all checkboxes
     db.run(`UPDATE users SET permissions = ? WHERE username = 'celsocreeriii@gmail.com'`, [superadminPermissions]);
 
-    // ARMORED: Background Auto-Sync Engine
+    // ARMORED: Background Auto-Sync Engine (Now uses INSERT OR IGNORE to prevent crashing)
     db.all(`SELECT id, qr_code FROM youth WHERE id NOT IN (SELECT youth_id FROM users WHERE youth_id IS NOT NULL)`, [], (err, rows) => {
         if (rows && rows.length > 0) {
-            const stmt = db.prepare(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`);
+            const stmt = db.prepare(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`);
             let addedCount = 0;
             rows.forEach(r => { 
                 if(r.qr_code) { 
@@ -278,6 +278,38 @@ app.put('/api/youth/profile/:id', (req, res) => {
     });
 });
 
+// ARMORED PERMISSIONS ENGINE: Safely scans for duplicates and binds by youth_id
+app.put('/api/youth/:id/permissions', (req, res) => {
+    const { permissions, actor } = req.body;
+    const permString = JSON.stringify(permissions || []);
+    const youthId = req.params.id;
+
+    db.get('SELECT * FROM youth WHERE id = ?', [youthId], (err, youth) => {
+        if (err || !youth) return res.status(404).json({ error: 'Member not found in directory.' });
+
+        db.get(`SELECT id FROM users WHERE youth_id = ? OR username = ?`, [youthId, youth.qr_code], (err2, existingUser) => {
+            if (err2) return res.status(500).json({ error: err2.message });
+
+            if (existingUser) {
+                db.run(`UPDATE users SET permissions = ?, youth_id = ? WHERE id = ?`, [permString, youthId, existingUser.id], function(err3) {
+                    if (err3) return res.status(500).json({ error: err3.message });
+                    logActivity(actor, 'UPDATE_PERMISSIONS', `Updated permissions for Member ID ${youthId}`);
+                    res.json({ success: true });
+                });
+            } else {
+                const qr = youth.qr_code || `FOG-MEMBER-${String(youthId).padStart(3, '0')}`;
+                db.run(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, ?, ?, ?)`,
+                    [qr, qr, permString, youthId, getManilaTime()], function(err4) {
+                        if (err4) return res.status(500).json({ error: err4.message });
+                        logActivity(actor, 'UPDATE_PERMISSIONS', `Created user & assigned permissions for Member ID ${youthId}`);
+                        res.json({ success: true });
+                    }
+                );
+            }
+        });
+    });
+});
+
 app.get('/api/activity-logs', (req, res) => {
     db.all(`SELECT * FROM activity_logs ORDER BY id DESC`, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -285,7 +317,7 @@ app.get('/api/activity-logs', (req, res) => {
     });
 });
 
-// DIRECTORY API
+// RESTORED DIRECTORY API: Pure SELECT to prevent DB crashes and ensure full directory rendering
 app.get('/api/youth', (req, res) => {
     db.all(`SELECT * FROM youth ORDER BY name ASC`, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -454,7 +486,6 @@ app.delete('/api/events/:id', (req, res) => {
     });
 });
 
-// PRE-REGISTRATION ENDPOINTS
 app.post('/api/events/:id/prereg-settings', (req, res) => {
     const { banner, bottom_banner, title, info, actor } = req.body;
     db.run(`UPDATE events SET prereg_banner = ?, prereg_bottom_banner = ?, prereg_title = ?, prereg_info = ? WHERE id = ?`,
@@ -481,7 +512,6 @@ app.post('/api/preregister', (req, res) => {
     });
 });
 
-// Delete a Pre-Registration
 app.delete('/api/events/:event_id/preregs/:youth_id', (req, res) => {
     const { actor } = req.body;
     db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`,
@@ -492,7 +522,6 @@ app.delete('/api/events/:event_id/preregs/:youth_id', (req, res) => {
     });
 });
 
-// CHECK-IN API
 app.post('/api/checkin', (req, res) => {
     const { youth_id, event_id, is_walkin, actor, qr_code } = req.body;
     const processCheckin = (targetYouthId) => {
@@ -550,15 +579,7 @@ app.delete('/api/attendance/:id', (req, res) => {
     });
 });
 
-app.get('/api/directory/export', (req, res) => {
-    db.all("SELECT * FROM members ORDER BY full_name ASC", [], (err, rows) => {
-        if (err || !rows || rows.length === 0) {
-            db.all("SELECT * FROM youth ORDER BY name ASC", [], (e, r) => sendCSV(res, r || []));
-        } else { sendCSV(res, rows); }
-    });
-});
-
-// USER & PERMISSION MANAGEMENT ENDPOINTS RESTORED
+// RESTORED USERS LIST API: Ensures the frontend permission search has valid data
 app.get('/api/users/list', (req, res) => {
     const sql = `SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`;
     db.all(sql, [], (err, rows) => {
@@ -566,19 +587,19 @@ app.get('/api/users/list', (req, res) => {
         res.json(rows.map(r => ({
             id: r.id, 
             username: r.username, 
-            display_name: r.member_name ? `${r.member_name} (${r.member_code || r.username})` : r.username, 
+            display_name: r.member_name ? `${r.member_name}` : r.username, 
+            qr_code: r.member_code || r.username,
+            youth_id: r.youth_id,
             permissions: r.permissions || '[]'
         })));
     });
 });
 
-app.put('/api/users/:id/permissions', (req, res) => {
-    const { permissions, actor } = req.body;
-    const permString = JSON.stringify(permissions || []);
-    db.run(`UPDATE users SET permissions = ? WHERE id = ?`, [permString, req.params.id], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        logActivity(actor, 'UPDATE_PERMISSIONS', `Updated permissions for User ID ${req.params.id}`);
-        res.json({ success: true, updated: this.changes });
+app.get('/api/directory/export', (req, res) => {
+    db.all("SELECT * FROM members ORDER BY full_name ASC", [], (err, rows) => {
+        if (err || !rows || rows.length === 0) {
+            db.all("SELECT * FROM youth ORDER BY name ASC", [], (e, r) => sendCSV(res, r || []));
+        } else { sendCSV(res, rows); }
     });
 });
 
