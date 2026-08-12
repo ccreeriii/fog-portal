@@ -179,9 +179,6 @@ function switchEventSubTab(tab) {
     if (tab === 'list') loadEvents();
 }
 
-// ------------------------------------------
-// RESPONSIVE TABLES REBUILD (Directory/Logs/Backups)
-// ------------------------------------------
 async function loadBackups() {
     const res = await fetch('/api/backups');
     const backups = await res.json();
@@ -487,7 +484,11 @@ async function submitFastEditProfile(doCheckIn) {
         if(data.success) {
             closeFastEditProfileModal(); youthData = []; await loadDirectory();
             if(doCheckIn) quickCheckin(id, payload.name);
-            else { alert("Profile updated successfully!"); updateActiveEventBanner(); }
+            else { 
+                alert("Profile updated successfully!"); 
+                updateActiveEventBanner();
+                if(currentAnalyticsData) openAnalyticsModal(currentAnalyticsData.event.id);
+            }
         }
     });
 }
@@ -992,7 +993,8 @@ function filterAnalyticsRoster() {
     renderAnalyticsRoster(filtered);
 }
 
-// RESTORED & UPGRADED: Delete and Edit buttons added to the Event Analytics Roster
+// RESTORED: Edited to exclusively render the 'Remove' button. 
+// Inline 'Edit' buttons removed to keep UI clean, as requested.
 function renderAnalyticsRoster(list) {
     const rosterContainer = document.getElementById('analyticsRosterContainer');
     if (list.length === 0) { rosterContainer.innerHTML = `<p style="text-align:center; color:var(--text-muted); margin:15px 0; font-size: 0.9rem;">No attendees found.</p>`; return; }
@@ -1011,7 +1013,6 @@ function renderAnalyticsRoster(list) {
                 timeText = `<span style="color: #F59E0B; font-size: 0.8rem; font-weight: 600;">Not Arrived</span>`;
                 
                 actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
-                    <button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="openFastEditProfileModal(${r.youth_id})">✏️ Edit</button>
                     <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeletePreReg(${currentAnalyticsData.event.id}, ${r.youth_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️ Remove</button>
                 </div>`;
             }
@@ -1019,10 +1020,11 @@ function renderAnalyticsRoster(list) {
             statusBadge = `<span style="font-size:11px; color:var(--text-muted); background: var(--bg-light); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>`;
             timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
             
-            actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
-                <button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="openEditAttendanceModal(${r.log_id}, '${r.checked_in_at}', ${r.is_walkin})">✏️ Edit</button>
-                <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️ Remove</button>
-            </div>`;
+            if (userPermissions.includes('edit_attendance')) {
+                actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${r.name.replace(/'/g, "\\'")}')">🗑️ Remove</button>
+                </div>`;
+            }
         }
         return `
         <div style="padding: 12px 10px; border-bottom: 1px solid var(--bg-light); display: flex; justify-content: space-between; align-items: center;">
@@ -1038,7 +1040,6 @@ function renderAnalyticsRoster(list) {
     }).join('');
 }
 
-// NEW: API Call to perfectly delete a pre-registration and reload UI
 function triggerDeletePreReg(eventId, youthId, memberName) {
     triggerActionConfirmation(`Remove pre-registration for '${memberName}'?`, async () => {
         try {
@@ -1231,10 +1232,6 @@ function renderCalendarView(container) {
 
 function changeCalendarMonth(delta) { calCurrentDate.setMonth(calCurrentDate.getMonth() + delta); loadEvents(); }
 
-// ------------------------------------------
-// RESPONSIVE TABLES: ATTENDANCE LOGS
-// ------------------------------------------
-
 async function loadAttendanceLogs() {
     const res = await fetch('/api/attendance/logs');
     cachedAttendanceLogs = await res.json();
@@ -1282,10 +1279,6 @@ function exportAttendanceLogsCSV() {
     cachedAttendanceLogs.forEach(l => rows.push([l.id, `"${l.member_name}"`, `"${l.event_name}"`, `"${l.checked_in_at}"`, `"${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}"`]));
     downloadCSV(rows, 'All_Attendance_Logs.csv');
 }
-
-// ------------------------------------------
-// RESPONSIVE TABLES: ACTIVITY LOGS
-// ------------------------------------------
 
 async function loadActivityLogs() {
     const res = await fetch('/api/activity-logs');
@@ -1422,7 +1415,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // RESPONSIVE TABLE PAGINATION ENGINE
 document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
-        const dataContainer = document.getElementById('directoryTableContainer');
+        const dataContainer = document.getElementById('directoryTableContainer') || document.getElementById('attendanceLogsContainer') || document.getElementById('activityLogsContainer');
         const tbody = dataContainer ? dataContainer.querySelector('tbody') : null;
 
         if (tbody && tbody.children.length > 0 && !document.getElementById('dirPagerControls')) {
