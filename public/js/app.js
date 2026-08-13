@@ -16,6 +16,139 @@ let currentPreregEventId = null;
 let currentRosterFilter = 'all';
 let currentPreRegYouthIds = new Set();
 
+// ==============================================================================
+// ARMORED OFFLINE SYNC ENGINE
+// ==============================================================================
+const _originalFetch = window.fetch;
+
+const OfflineManager = {
+    init: function() {
+        window.addEventListener('online', this.handleOnline.bind(this));
+        window.addEventListener('offline', this.handleOffline.bind(this));
+        this.updateUI();
+        this.overrideFetch();
+        // Delay initial sync slightly to ensure app is fully booted
+        setTimeout(() => { if (navigator.onLine) this.syncQueue(); }, 2000);
+    },
+    updateUI: function() {
+        const banner = document.getElementById('offlineBanner');
+        if (!banner) return;
+        if (navigator.onLine) {
+            banner.style.display = 'none';
+            document.body.classList.remove('is-offline');
+        } else {
+            banner.style.display = 'block';
+            document.body.classList.add('is-offline');
+        }
+    },
+    handleOnline: function() {
+        this.updateUI();
+        this.syncQueue();
+    },
+    handleOffline: function() {
+        this.updateUI();
+    },
+    overrideFetch: function() {
+        window.fetch = async function(resource, options) {
+            // Only intercept mutative requests (POST, PUT, DELETE) when offline
+            if (!navigator.onLine && options && ['POST', 'PUT', 'DELETE'].includes(options.method.toUpperCase())) {
+                const url = typeof resource === 'string' ? resource : resource.url;
+                
+                // Block sensitive security actions that require backend validation
+                if (url.includes('/api/login') || url.includes('/api/logout') || url.includes('/api/backups')) {
+                    return Promise.resolve(new Response(JSON.stringify({ success: false, error: 'This action requires an active internet connection.' }), { status: 400 }));
+                }
+
+                const mockId = Date.now(); // Generate a safe timestamp fake ID
+                const queue = JSON.parse(localStorage.getItem('fog_offline_queue') || '[]');
+                
+                queue.push({
+                    url: url,
+                    method: options.method,
+                    headers: options.headers,
+                    body: options.body,
+                    mockId: mockId
+                });
+                localStorage.setItem('fog_offline_queue', JSON.stringify(queue));
+
+                // Generate a mock response to keep the UI optimistic
+                let mockRes = { success: true, offline_queued: true, updated: 1, deleted: 1 };
+                if (url.includes('/api/youth') && options.method.toUpperCase() === 'POST') mockRes = { id: mockId, qr_code: 'OFFLINE-' + mockId, success: true };
+                if (url.includes('/api/checkin')) mockRes = { success: true, member_name: 'Offline Attendee (Queued)', log_id: mockId };
+                if (url.includes('/api/events') && options.method.toUpperCase() === 'POST') mockRes = { id: mockId };
+
+                return Promise.resolve(new Response(JSON.stringify(mockRes), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' }
+                }));
+            }
+            return _originalFetch.apply(this, arguments);
+        };
+    },
+    syncQueue: async function() {
+        const queue = JSON.parse(localStorage.getItem('fog_offline_queue') || '[]');
+        if (queue.length === 0) return;
+
+        console.log(`[Offline Sync Engine] Processing ${queue.length} pending actions...`);
+        let failed = [];
+        let idMap = {}; // Maps Fake IDs to Real Server IDs
+
+        for (let req of queue) {
+            try {
+                let bodyStr = req.body;
+                if (bodyStr && typeof bodyStr === 'string') {
+                    try {
+                        let bodyObj = JSON.parse(bodyStr);
+                        // Dependency Resolution: Hot-swap mock IDs with real IDs if chained
+                        if (bodyObj.youth_id && idMap[bodyObj.youth_id]) bodyObj.youth_id = idMap[bodyObj.youth_id];
+                        if (bodyObj.event_id && idMap[bodyObj.event_id]) bodyObj.event_id = idMap[bodyObj.event_id];
+                        bodyStr = JSON.stringify(bodyObj);
+                    } catch (err) {} 
+                }
+
+                // Fix dynamic URL paths that might contain mock IDs (e.g. PUT /api/youth/171092301...)
+                let targetUrl = req.url;
+                for (let fakeId in idMap) {
+                    if (targetUrl.includes(`/${fakeId}`)) targetUrl = targetUrl.replace(`/${fakeId}`, `/${idMap[fakeId]}`);
+                }
+
+                // Execute against real server
+                const res = await _originalFetch(targetUrl, {
+                    method: req.method,
+                    headers: req.headers,
+                    body: bodyStr
+                });
+
+                if (!res.ok) throw new Error(`Network response was not ok for ${targetUrl}`);
+                const data = await res.json();
+
+                // If we created a new record while offline, capture the real ID from the server for the next requests
+                if (req.mockId && data.id) {
+                    idMap[req.mockId] = data.id;
+                }
+            } catch (e) {
+                console.error('[Offline Sync Engine] Failed item:', req.url, e);
+                failed.push(req);
+            }
+        }
+
+        // Save failed items back to queue, clear successes
+        localStorage.setItem('fog_offline_queue', JSON.stringify(failed));
+        if (failed.length === 0) {
+            console.log('[Offline Sync Engine] All offline actions synchronized successfully to Raspberry Pi!');
+            // Silently refresh UI datasets
+            if(document.getElementById('eventsTab') && document.getElementById('eventsTab').classList.contains('active')) window.loadEvents();
+            if(document.getElementById('directoryTab') && document.getElementById('directoryTab').classList.contains('active')) window.loadDirectory();
+            if(document.getElementById('checkinTab') && document.getElementById('checkinTab').classList.contains('active')) window.updateActiveEventBanner();
+        }
+    }
+};
+
+// Initialize the Sync Engine instantly
+OfflineManager.init();
+// ==============================================================================
+
+
 window.getBase64 = async function(file, maxWidth = 600) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -61,7 +194,7 @@ function bindExecuteAction() {
     if (execBtn) {
         execBtn.onclick = async (e) => {
             e.preventDefault();
-            
+
             if (execBtn.disabled) return; // Prevent multiple clicks from firing simultaneously
             execBtn.disabled = true;
             const originalText = execBtn.innerText;
@@ -76,7 +209,7 @@ function bindExecuteAction() {
                 }
             }
             window.closeConfirmModal();
-            
+
             execBtn.disabled = false;
             execBtn.innerText = originalText;
         };
@@ -942,7 +1075,6 @@ window.sharePreRegLink = async function() {
     }
 };
 
-// ARMORED: Safe Edit Event modal execution guaranteed globally
 window.openEditEventModal = function(eventId) {
     try {
         const e = eventsData.find(ev => ev.id == eventId);
@@ -1698,9 +1830,3 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 1000);
 });
-
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-        for(let registration of registrations) { registration.unregister(); }
-    });
-}

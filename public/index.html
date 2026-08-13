@@ -3,12 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#FF6B00">
+    <link rel="manifest" href="/manifest.json">
     <title>FIRE OF GOD MINISTRIES - Community Portal</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
     <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
+
+<div id="offlineBanner">⚠️ You are currently offline. Changes are saved locally and will sync when reconnected.</div>
 
 <header id="mainHeader" style="display: none;">
     <div class="header-inner">
@@ -753,6 +757,15 @@
     </div>
 </div>
 
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(err => {
+                console.log('PWA Service Worker Registration Failed:', err);
+            });
+        });
+    }
+</script>
 <script src="/js/app.js"></script>
 </body>
 </html>
