@@ -55,11 +55,40 @@ window.downloadCSV = function(rows, filename) {
     document.body.removeChild(link);
 };
 
+// ARMORED: Secure binding for the Execute Action button to prevent Double-Click Race Conditions
+function bindExecuteAction() {
+    const execBtn = document.getElementById('executeConfirmBtn');
+    if (execBtn) {
+        execBtn.onclick = async (e) => {
+            e.preventDefault();
+            
+            if (execBtn.disabled) return; // Prevent multiple clicks from firing simultaneously
+            execBtn.disabled = true;
+            const originalText = execBtn.innerText;
+            execBtn.innerText = 'Processing...';
+
+            if (pendingAction) {
+                try {
+                    await pendingAction();
+                } catch (err) {
+                    console.error("Action Execution Error:", err);
+                    alert("A network error occurred while saving. Please check your connection.");
+                }
+            }
+            window.closeConfirmModal();
+            
+            execBtn.disabled = false;
+            execBtn.innerText = originalText;
+        };
+    }
+}
+bindExecuteAction();
+
 // ARMORED: Global Permission Helper that bypasses bad caching
 window.hasPerm = function(perm) {
     if (currentUser === 'celsocreeriii@gmail.com') return true;
     if (!userPermissions || !Array.isArray(userPermissions)) return false;
-    
+
     // Legacy mapping: If they had old access, grant them CRUD so they aren't locked out
     if (['add_entries', 'edit_entries', 'delete_entries'].includes(perm)) {
         if (userPermissions.includes('access_directory') || userPermissions.includes('access_events')) return true;
@@ -82,24 +111,24 @@ window.onload = () => {
     const savedSession = localStorage.getItem('fog_user');
     if (savedSession) {
         const s = JSON.parse(savedSession);
-        currentUser = s.username; 
+        currentUser = s.username;
         currentMember = s.member;
         userPermissions = Array.isArray(s.permissions) ? s.permissions : [];
-        
+
         window.buildNav();
         window.applyGranularPermissions();
-        
+
         if (currentMember) window.populateProfileTab(currentMember);
         else window.populateAdminProfile(currentUser);
-        
+
         if (currentMember) window.switchTab('profileTab');
         else if (window.hasPerm('access_checkin') && !window.hasPerm('access_directory')) window.switchTab('checkinTab');
         else window.switchTab('profileTab');
-        
-        window.loadEvents(); 
+
+        window.loadEvents();
         window.loadDirectory();
     } else {
-        window.switchTab('loginTab'); 
+        window.switchTab('loginTab');
     }
 };
 
@@ -111,34 +140,14 @@ window.onclick = function(event) {
     }
 };
 
-// ARMORED: Secure binding for the Execute Action button to prevent silent fails
-function bindExecuteAction() {
-    const execBtn = document.getElementById('executeConfirmBtn');
-    if (execBtn) {
-        execBtn.onclick = async (e) => {
-            e.preventDefault();
-            if (pendingAction) {
-                try {
-                    await pendingAction();
-                } catch (err) {
-                    console.error("Action Execution Error:", err);
-                    alert("A network error occurred while saving. Please check your connection.");
-                }
-            }
-            window.closeConfirmModal();
-        };
-    }
-}
-bindExecuteAction();
-
 window.triggerActionConfirmation = function(summaryText, actionFn) {
     document.getElementById('confirmSummary').innerText = summaryText;
     pendingAction = actionFn;
     document.getElementById('confirmModal').classList.add('active');
 };
-window.closeConfirmModal = function() { 
-    document.getElementById('confirmModal').classList.remove('active'); 
-    pendingAction = null; 
+window.closeConfirmModal = function() {
+    document.getElementById('confirmModal').classList.remove('active');
+    pendingAction = null;
 };
 
 window.openSidebar = function() {
@@ -189,7 +198,7 @@ window.buildNav = function() {
 
 window.applyGranularPermissions = function() {
     const canAdd = window.hasPerm('add_entries');
-    
+
     const btnSubEventCreate = document.getElementById('btnSubEventCreate');
     if(btnSubEventCreate) btnSubEventCreate.style.display = canAdd ? 'inline-block' : 'none';
 
@@ -209,7 +218,7 @@ window.resetPermUserList = function() {
 
 window.switchTab = function(tabId) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    
+
     document.querySelectorAll('.sidebar .nav-btn').forEach(el => el.classList.remove('active'));
     const sidebarTarget = document.querySelector(`.sidebar .nav-btn[data-target="${tabId}"]`);
     if(sidebarTarget) sidebarTarget.classList.add('active');
@@ -222,7 +231,7 @@ window.switchTab = function(tabId) {
 
     const targetTab = document.getElementById(tabId);
     if (targetTab) targetTab.classList.add('active');
-    
+
     if (tabId !== 'checkinTab' && qrScanner) { qrScanner.clear().catch(e => console.log(e)); qrScanner = null; }
     if (tabId === 'checkinTab') { window.switchCheckinMode('scanner'); window.updateActiveEventBanner(); }
     if (tabId === 'directoryTab') window.loadDirectory();
@@ -256,7 +265,7 @@ window.loadBackups = async function() {
         container.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem;">No automated backups found yet.</p>`;
         return;
     }
-    
+
     let html = `<table class="responsive-table">
         <thead>
             <tr><th>Backup File</th><th class="hide-mobile">Date / Time</th><th>Size</th><th>Action</th></tr>
@@ -320,8 +329,8 @@ window.handleLogin = async function(e) {
     const data = await res.json();
 
     if (data.success) {
-        currentUser = data.username; 
-        userPermissions = Array.isArray(data.permissions) ? data.permissions : []; 
+        currentUser = data.username;
+        userPermissions = Array.isArray(data.permissions) ? data.permissions : [];
         currentMember = data.member;
         localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
         window.buildNav();
@@ -342,7 +351,7 @@ window.handleLogout = async function() {
     document.getElementById('hamburgerBtn').style.display = 'none';
     document.getElementById('sidebarNav').innerHTML = '';
     document.getElementById('bottomNav').style.display = 'none';
-    window.switchTab('loginTab'); 
+    window.switchTab('loginTab');
 };
 
 window.populateProfileTab = function(member) {
@@ -540,8 +549,8 @@ window.openFastEditProfileModal = function(id) {
     document.getElementById('fastEditProfilePic').value = '';
     document.getElementById('fastEditProfileModal').classList.add('active');
 };
-window.closeFastEditProfileModal = function() { document.getElementById('fastEditProfileModal').classList.remove('active'); };
 
+window.closeFastEditProfileModal = function() { document.getElementById('fastEditProfileModal').classList.remove('active'); };
 window.submitFastEditProfile = async function(doCheckIn) {
     const form = document.getElementById('fastEditProfileForm');
     if(!form.checkValidity()) { form.reportValidity(); return; }
@@ -564,8 +573,8 @@ window.submitFastEditProfile = async function(doCheckIn) {
         if(data.success) {
             window.closeFastEditProfileModal(); youthData = []; await window.loadDirectory();
             if(doCheckIn) window.quickCheckin(id, payload.name);
-            else { 
-                alert("Profile updated successfully!"); 
+            else {
+                alert("Profile updated successfully!");
                 window.updateActiveEventBanner();
                 if(currentAnalyticsData) window.openAnalyticsModal(currentAnalyticsData.event.id);
             }
@@ -623,7 +632,7 @@ window.filterDirectory = function() {
     else if (ageCat === 'adult') { matches = matches.filter(y => y.age && y.age >= 22); labelText = "Adults"; }
 
     document.getElementById('directoryTotalCount').innerText = `${labelText}: ${matches.length}`;
-    
+
     if (sort === 'name_asc') matches.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
     if (sort === 'name_desc') matches.sort((a,b) => (b.name || '').localeCompare(a.name || ''));
     if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
@@ -634,7 +643,7 @@ window.filterDirectory = function() {
             <tr><th>Member</th><th class="hide-mobile">Age</th><th class="hide-mobile">Birthday</th><th>Actions</th></tr>
         </thead>
         <tbody>`;
-        
+
     html += matches.map(y => {
         const safeName = y.name || 'Unknown';
         const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem;">${safeName.charAt(0).toUpperCase()}</div>`;
@@ -658,7 +667,7 @@ window.filterDirectory = function() {
                 ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
             </td>
         </tr>`}).join('');
-        
+
     html += `</tbody></table>`;
     document.getElementById('directoryTableContainer').innerHTML = html;
 };
@@ -938,7 +947,7 @@ window.openEditEventModal = function(eventId) {
     try {
         const e = eventsData.find(ev => ev.id == eventId);
         if (!e) return alert("Event data could not be found locally. Please refresh.");
-        
+
         const elId = document.getElementById('editEvtId'); if(elId) elId.value = e.id;
         const elName = document.getElementById('editEvtName'); if(elName) elName.value = e.name || '';
         const elDate = document.getElementById('editEvtDate'); if(elDate) elDate.value = e.event_date || '';
@@ -947,20 +956,20 @@ window.openEditEventModal = function(eventId) {
         const elPh = document.getElementById('editEvtPhotosUrl'); if(elPh) elPh.value = e.photos_url || '';
         const elMat = document.getElementById('editEvtMaterialsUrl'); if(elMat) elMat.value = e.materials_url || '';
         const elPos = document.getElementById('editEvtPoster'); if(elPos) elPos.value = '';
-        
-        window.closeAnalyticsModal(); 
-        
+
+        window.closeAnalyticsModal();
+
         const modal = document.getElementById('editEventModal');
         if (modal) modal.classList.add('active');
-        
+
     } catch (err) {
         console.error("Edit Event Error:", err);
         alert("An error occurred opening the Event Editor.");
     }
 };
-window.closeEditEventModal = function() { 
+window.closeEditEventModal = function() {
     const modal = document.getElementById('editEventModal');
-    if (modal) modal.classList.remove('active'); 
+    if (modal) modal.classList.remove('active');
 };
 
 window.submitEditEvent = async function() {
@@ -989,12 +998,12 @@ window.filterPermUserList = async function() {
     const qElem = document.getElementById('permUserSearchInput');
     const container = document.getElementById('permUserListContainer');
     if(!qElem || !container) return;
-    
+
     const q = qElem.value.toLowerCase().trim();
-    
-    if (q.length < 3) { 
-        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>`; 
-        return; 
+
+    if (q.length < 3) {
+        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>`;
+        return;
     }
 
     if (!youthData || youthData.length === 0) {
@@ -1009,9 +1018,9 @@ window.filterPermUserList = async function() {
 
     const matches = (youthData || []).filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
 
-    if (matches.length === 0) { 
-        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No accounts found matching '${q}'</div>`; 
-        return; 
+    if (matches.length === 0) {
+        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No accounts found matching '${q}'</div>`;
+        return;
     }
 
     container.innerHTML = matches.map(u => `
@@ -1029,7 +1038,7 @@ window.loadUserPermissionsList = async function() {
             youthData = await res.json();
         } catch (e) { console.error("Failed to load youth data for permissions"); }
     }
-    window.filterPermUserList(); 
+    window.filterPermUserList();
 };
 
 window.openAssignPermissionModal = async function(id, displayName) {
@@ -1041,12 +1050,12 @@ window.openAssignPermissionModal = async function(id, displayName) {
 
         const idElem = document.getElementById('modalPermUserId');
         if(idElem) idElem.value = id;
-        
+
         const bannerElem = document.getElementById('permModalUserBanner');
         if(bannerElem) bannerElem.innerText = `Assign Permissions for: ${displayName}`;
-        
+
         document.querySelectorAll('.permCheckModal').forEach(chk => { chk.checked = perms.includes(chk.value); });
-        
+
         const modal = document.getElementById('assignPermissionModal');
         if(modal) modal.classList.add('active');
     } catch(e) {
@@ -1055,35 +1064,35 @@ window.openAssignPermissionModal = async function(id, displayName) {
     }
 };
 
-window.closeAssignPermissionModal = function() { 
+window.closeAssignPermissionModal = function() {
     const modal = document.getElementById('assignPermissionModal');
-    if(modal) modal.classList.remove('active'); 
+    if(modal) modal.classList.remove('active');
 };
 
 window.handleSavePermissionsFromModal = function() {
     const idElem = document.getElementById('modalPermUserId');
     if(!idElem) return;
     const userId = idElem.value;
-    
+
     const selectedPerms = [];
     document.querySelectorAll('.permCheckModal:checked').forEach(chk => { selectedPerms.push(chk.value); });
 
     window.triggerActionConfirmation(`Confirm updating permission set?`, async () => {
         try {
-            const res = await fetch(`/api/youth/${userId}/permissions`, { 
-                method: 'PUT', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ permissions: selectedPerms, actor: currentUser }) 
+            const res = await fetch(`/api/youth/${userId}/permissions`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ permissions: selectedPerms, actor: currentUser })
             });
-            
+
             if(!res.ok) throw new Error("HTTP error " + res.status);
-            
+
             const data = await res.json();
-            if (data.success) { 
-                alert('Permissions updated successfully!'); 
-                window.closeAssignPermissionModal(); 
-                window.resetPermUserList(); 
-                youthData = []; await window.loadDirectory(); 
+            if (data.success) {
+                alert('Permissions updated successfully!');
+                window.closeAssignPermissionModal();
+                window.resetPermUserList();
+                youthData = []; await window.loadDirectory();
             } else {
                 alert('Failed to update permissions. Details: ' + JSON.stringify(data));
             }
@@ -1226,7 +1235,7 @@ window.filterAttendanceLogs = function() {
             <tr><th>Member</th><th class="hide-mobile">Event</th><th class="hide-mobile">Time</th><th>Status</th><th>Actions</th></tr>
         </thead>
         <tbody>`;
-        
+
     html += matches.map(l => `
         <tr>
             <td>
@@ -1246,7 +1255,7 @@ window.filterAttendanceLogs = function() {
                 ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${(l.member_name || '').replace(/'/g, "\\'")}')">Del</button>` : ''}
             </td>
         </tr>`).join('');
-        
+
     html += `</tbody></table>`;
     document.getElementById('attendanceLogsContainer').innerHTML = html;
 };
@@ -1274,7 +1283,7 @@ window.filterActivityLogs = function() {
             <tr><th>User</th><th class="hide-mobile">Action</th><th>Details</th><th class="hide-mobile">Timestamp</th></tr>
         </thead>
         <tbody>`;
-        
+
     html += matches.map(l => `
         <tr>
             <td>
@@ -1290,7 +1299,7 @@ window.filterActivityLogs = function() {
             <td style="color:var(--text-main);">${l.details || ''}</td>
             <td class="hide-mobile" style="color:var(--text-muted);"><small>${l.created_at || ''}</small></td>
         </tr>`).join('');
-        
+
     html += `</tbody></table>`;
     document.getElementById('activityLogsContainer').innerHTML = html;
 };
@@ -1369,7 +1378,7 @@ window.openAnalyticsModal = async function(eventId) {
         if (!data || data.error) return alert(data?.error || 'Failed to load event analytics');
 
         currentAnalyticsData = data;
-        
+
         const posterContainer = document.getElementById('analyticsModalPoster');
         if (posterContainer) {
             if (data.event.poster) posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
@@ -1388,7 +1397,7 @@ window.openAnalyticsModal = async function(eventId) {
         if(document.getElementById('statTotalPreReg')) document.getElementById('statTotalPreReg').innerText = data.totalPreRegistered || 0;
         if(document.getElementById('statWalkins')) document.getElementById('statWalkins').innerText = data.walkins || 0;
         if(document.getElementById('statTurnoutPercent')) document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage || '0.0'}%`;
-        
+
         const editBtn = document.getElementById('analyticsEditEventBtn');
         if(editBtn) {
             editBtn.onclick = () => window.openEditEventModal(eventId);
@@ -1398,25 +1407,25 @@ window.openAnalyticsModal = async function(eventId) {
         if(document.getElementById('attSearchNative')) document.getElementById('attSearchNative').value = '';
         if(document.getElementById('attAgeNative')) document.getElementById('attAgeNative').value = 'all';
         currentRosterFilter = 'all';
-        
+
         if(document.getElementById('cardTurnout')) document.getElementById('cardTurnout').style.opacity = '1';
         if(document.getElementById('cardPreReg')) document.getElementById('cardPreReg').style.opacity = '0.5';
         if(document.getElementById('cardWalkin')) document.getElementById('cardWalkin').style.opacity = '0.5';
-        
+
         window.filterAnalyticsRoster();
-        
+
         const modal = document.getElementById('eventAnalyticsModal');
         if(modal) modal.classList.add('active');
-        
-    } catch (error) { 
+
+    } catch (error) {
         console.error("Analytics Modal Error:", error);
-        alert("Could not connect to the server to load analytics."); 
+        alert("Could not connect to the server to load analytics.");
     }
 };
 
-window.closeAnalyticsModal = function() { 
-    if(document.getElementById('eventAnalyticsModal')) document.getElementById('eventAnalyticsModal').classList.remove('active'); 
-    currentAnalyticsData = null; 
+window.closeAnalyticsModal = function() {
+    if(document.getElementById('eventAnalyticsModal')) document.getElementById('eventAnalyticsModal').classList.remove('active');
+    currentAnalyticsData = null;
 };
 
 window.setAnalyticsCardFilter = function(type) {
@@ -1431,7 +1440,7 @@ window.filterAnalyticsRoster = function() {
     const qInput = document.getElementById('attSearchNative');
     const ageFilterInput = document.getElementById('attAgeNative');
     if(!qInput || !ageFilterInput || !currentAnalyticsData) return;
-    
+
     const q = qInput.value.toLowerCase();
     const ageFilter = ageFilterInput.value;
 
@@ -1459,7 +1468,7 @@ window.filterAnalyticsRoster = function() {
 window.renderAnalyticsRoster = function(list) {
     const rosterContainer = document.getElementById('analyticsRosterContainer');
     if (!rosterContainer) return;
-    
+
     if (list.length === 0) { rosterContainer.innerHTML = `<p style="text-align:center; color:var(--text-muted); margin:15px 0; font-size: 0.9rem;">No attendees found.</p>`; return; }
 
     rosterContainer.innerHTML = list.map(r => {
@@ -1475,7 +1484,7 @@ window.renderAnalyticsRoster = function(list) {
             } else {
                 statusBadge = `<span style="font-size:11px; color:#F59E0B; background: rgba(245,158,11,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">Expected</span>`;
                 timeText = `<span style="color: #F59E0B; font-size: 0.8rem; font-weight: 600;">Not Arrived</span>`;
-                
+
                 if (window.hasPerm('delete_entries')) {
                     actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
                         <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeletePreReg(${currentAnalyticsData.event.id}, ${r.youth_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>
@@ -1485,7 +1494,7 @@ window.renderAnalyticsRoster = function(list) {
         } else {
             statusBadge = `<span style="font-size:11px; color:var(--text-muted); background: var(--bg-light); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>`;
             timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
-            
+
             if (window.hasPerm('delete_entries')) {
                 actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
                     <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>
@@ -1510,21 +1519,21 @@ window.openAddAttendeeModal = function() {
     if(!currentAnalyticsData) return;
     if(document.getElementById('addAttendeeSearch')) document.getElementById('addAttendeeSearch').value = '';
     if(document.getElementById('addAttendeeResults')) document.getElementById('addAttendeeResults').innerHTML = '';
-    
+
     const modal = document.getElementById('addAttendeeModal');
     if(modal) modal.classList.add('active');
-    
+
     if(youthData.length === 0) window.loadDirectory();
 };
-window.closeAddAttendeeModal = function() { 
-    if(document.getElementById('addAttendeeModal')) document.getElementById('addAttendeeModal').classList.remove('active'); 
+window.closeAddAttendeeModal = function() {
+    if(document.getElementById('addAttendeeModal')) document.getElementById('addAttendeeModal').classList.remove('active');
 };
 
 window.filterAddAttendeeSearch = function() {
     const searchInput = document.getElementById('addAttendeeSearch');
     const container = document.getElementById('addAttendeeResults');
     if (!searchInput || !container) return;
-    
+
     const q = searchInput.value.toLowerCase().trim();
     if (q.length < 2) { container.innerHTML = ''; return; }
 
@@ -1644,7 +1653,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const updateTable = () => {
                 const rows = Array.from(tbody.children);
                 if(rows.length === 0) return;
-                
+
                 const totalPages = Math.ceil(rows.length / perPage) || 1;
                 if (currentPage > totalPages) currentPage = totalPages;
                 if (currentPage < 1) currentPage = 1;
@@ -1664,9 +1673,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             document.getElementById('dirPerPage').onchange = (e) => { perPage = parseInt(e.target.value); currentPage = 1; updateTable(); };
             document.getElementById('dirPrev').onclick = () => { if (currentPage > 1) { currentPage--; updateTable(); } };
-            document.getElementById('dirNext').onclick = () => { 
+            document.getElementById('dirNext').onclick = () => {
                 const rows = Array.from(tbody.children);
-                if (currentPage < Math.ceil(rows.length / perPage)) { currentPage++; updateTable(); } 
+                if (currentPage < Math.ceil(rows.length / perPage)) { currentPage++; updateTable(); }
             };
             updateTable();
             new MutationObserver(() => updateTable()).observe(tbody, { childList: true });
