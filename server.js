@@ -89,14 +89,15 @@ db.serialize(() => {
         UNIQUE(youth_id, event_id)
     )`);
 
+    // SCHEMA AUTO-HEALING: Safely add missing columns to existing databases
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN materials_url TEXT`, () => {});
-
     db.run(`ALTER TABLE events ADD COLUMN prereg_banner TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_bottom_banner TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_title TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_info TEXT`, () => {});
+    db.run(`ALTER TABLE users ADD COLUMN youth_id INTEGER`, () => {}); // <--- The Critical Schema Fix
 
     const superadminPermissions = JSON.stringify([
         'access_checkin', 'access_directory', 'access_events',
@@ -110,14 +111,14 @@ db.serialize(() => {
     // Force update the superadmin to ensure they always have all checkboxes
     db.run(`UPDATE users SET permissions = ? WHERE username = 'celsocreeriii@gmail.com'`, [superadminPermissions]);
 
-    // ARMORED: Background Auto-Sync Engine (Now uses INSERT OR IGNORE to prevent crashing)
+    // ARMORED: Background Auto-Sync Engine
     db.all(`SELECT id, qr_code FROM youth WHERE id NOT IN (SELECT youth_id FROM users WHERE youth_id IS NOT NULL)`, [], (err, rows) => {
         if (rows && rows.length > 0) {
             const stmt = db.prepare(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`);
             let addedCount = 0;
-            rows.forEach(r => { 
-                if(r.qr_code) { 
-                    stmt.run([r.qr_code, r.qr_code, r.id, getManilaTime()]); 
+            rows.forEach(r => {
+                if(r.qr_code) {
+                    stmt.run([r.qr_code, r.qr_code, r.id, getManilaTime()]);
                     addedCount++;
                 }
             });
@@ -278,31 +279,54 @@ app.put('/api/youth/profile/:id', (req, res) => {
     });
 });
 
-// ARMORED PERMISSIONS ENGINE: Safely scans for duplicates and binds by youth_id
+// ARMORED PERMISSIONS ENGINE: Schema-Patched and Collision-Proof
 app.put('/api/youth/:id/permissions', (req, res) => {
-    const { permissions, actor } = req.body;
-    const permString = JSON.stringify(permissions || []);
-    const youthId = req.params.id;
+    const youthId = parseInt(req.params.id, 10);
+    const permissions = req.body.permissions || [];
+    const permString = JSON.stringify(permissions);
+    const actor = req.body.actor || 'System';
 
     db.get('SELECT * FROM youth WHERE id = ?', [youthId], (err, youth) => {
-        if (err || !youth) return res.status(404).json({ error: 'Member not found in directory.' });
+        if (err) return res.json({ success: false, error: 'DB select error: ' + err.message });
+        if (!youth) return res.json({ success: false, error: 'Member not found in directory.' });
 
-        db.get(`SELECT id FROM users WHERE youth_id = ? OR username = ?`, [youthId, youth.qr_code], (err2, existingUser) => {
-            if (err2) return res.status(500).json({ error: err2.message });
+        const targetQr = youth.qr_code || `FOG-MEMBER-${String(youthId).padStart(3, '0')}`;
+
+        // STEP 1: Verify if the user already has a login account
+        db.get(`SELECT id FROM users WHERE youth_id = ? OR username = ?`, [youthId, targetQr], (err2, existingUser) => {
+            if (err2) return res.json({ success: false, error: 'DB user check error: ' + err2.message });
 
             if (existingUser) {
+                // User exists: Safely update their permissions AND ensure youth_id is bound
                 db.run(`UPDATE users SET permissions = ?, youth_id = ? WHERE id = ?`, [permString, youthId, existingUser.id], function(err3) {
-                    if (err3) return res.status(500).json({ error: err3.message });
+                    if (err3) return res.json({ success: false, error: 'Permissions update failed: ' + err3.message });
                     logActivity(actor, 'UPDATE_PERMISSIONS', `Updated permissions for Member ID ${youthId}`);
-                    res.json({ success: true });
+                    return res.json({ success: true });
                 });
             } else {
-                const qr = youth.qr_code || `FOG-MEMBER-${String(youthId).padStart(3, '0')}`;
+                // User doesn't exist: Create them safely
                 db.run(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, ?, ?, ?)`,
-                    [qr, qr, permString, youthId, getManilaTime()], function(err4) {
-                        if (err4) return res.status(500).json({ error: err4.message });
-                        logActivity(actor, 'UPDATE_PERMISSIONS', `Created user & assigned permissions for Member ID ${youthId}`);
-                        res.json({ success: true });
+                    [targetQr, targetQr, permString, youthId, getManilaTime()],
+                    function(err4) {
+                        if (err4) {
+                            // If username collision occurs, generate an ultra-safe timestamped fallback
+                            const safeQr = `FOG-MEMBER-${youthId}-${Date.now()}`;
+                            db.run(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, ?, ?, ?)`,
+                                [safeQr, safeQr, permString, youthId, getManilaTime()],
+                                function(err5) {
+                                    if (err5) return res.json({ success: false, error: 'Insert account failed: ' + err5.message });
+                                    db.run(`UPDATE youth SET qr_code = ?, password = ? WHERE id = ?`, [safeQr, safeQr, youthId]);
+                                    logActivity(actor, 'UPDATE_PERMISSIONS', `Created user & assigned permissions for Member ID ${youthId}`);
+                                    return res.json({ success: true });
+                                }
+                            );
+                        } else {
+                            if (!youth.qr_code) {
+                                db.run(`UPDATE youth SET qr_code = ?, password = ? WHERE id = ?`, [targetQr, targetQr, youthId]);
+                            }
+                            logActivity(actor, 'UPDATE_PERMISSIONS', `Created user & assigned permissions for Member ID ${youthId}`);
+                            return res.json({ success: true });
+                        }
                     }
                 );
             }
@@ -585,9 +609,9 @@ app.get('/api/users/list', (req, res) => {
     db.all(sql, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows.map(r => ({
-            id: r.id, 
-            username: r.username, 
-            display_name: r.member_name ? `${r.member_name}` : r.username, 
+            id: r.id,
+            username: r.username,
+            display_name: r.member_name ? `${r.member_name}` : r.username,
             qr_code: r.member_code || r.username,
             youth_id: r.youth_id,
             permissions: r.permissions || '[]'
