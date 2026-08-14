@@ -752,7 +752,7 @@ window.filterManualCheckin = async function() {
         <div class="search-item">
             <div style="display: flex; gap: 10px; align-items: center;">
                 ${avatarHtml}
-                <div><strong>${safeName}</strong><br><small style="color: var(--text-muted);">${y.qr_code || ''} | Age: ${y.age || 'N/A'}</small></div>
+                <div><strong>${safeName}</strong><br><small style="color: var(--text-muted);">Age: ${y.age || 'N/A'}</small></div>
             </div>
             <div style="display: flex; gap: 6px;">
                 ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openFastEditProfileModal(${y.id})">Edit</button>` : ''}
@@ -836,9 +836,6 @@ window.handleWalkin = async function(e) {
     } else alert(regData.error || 'Failed to register walk-in.');
 };
 
-// ==============================================================================
-// DIRECTORY MODULE
-// ==============================================================================
 window.loadDirectory = async function() {
     if (youthData.length === 0) { const res = await fetch('/api/youth'); youthData = await res.json(); }
     window.filterDirectory();
@@ -868,7 +865,6 @@ window.filterDirectory = function() {
     window.renderDirectoryTable();
 };
 
-// SAFE JAVASCRIPT PAGINATION ENGINE
 window.renderDirectoryTable = function() {
     const total = filteredDir.length;
     let totalPages = 1;
@@ -899,8 +895,7 @@ window.renderDirectoryTable = function() {
                     ${avatarHtml}
                     <div>
                         <strong style="color:var(--text-main); font-size:1.05rem;">${safeName}</strong>
-                        <div class="desktop-meta"><small style="color: var(--text-muted);">${y.qr_code || ''}</small></div>
-                        <div class="mobile-meta">${y.qr_code || ''} | Age: ${y.age || 'N/A'} | B-Day: ${y.birthday || 'N/A'}</div>
+                        <div class="mobile-meta">Age: ${y.age || 'N/A'} | B-Day: ${y.birthday || 'N/A'}</div>
                     </div>
                 </div>
             </td>
@@ -1079,13 +1074,6 @@ window.openViewProfileModal = async function(youthId) {
 };
 
 window.closeViewProfileModal = function() { document.getElementById('viewProfileModal').classList.remove('active'); };
-// --- END OF PART 1 ---
-
-// --- START OF PART 2 ---
-
-// ==============================================================================
-// MINISTRIES MODULE (CRM EXPANSION)
-// ==============================================================================
 
 window.loadMinistries = async function() {
     try {
@@ -1276,8 +1264,7 @@ window.loadMinistryRoster = async function(id) {
                     ${avatarHtml}
                     <div>
                         <strong style="color: var(--text-main); font-size: 0.95rem;">${safeName}</strong>
-                        <span style="font-size:11px; color:var(--primary); background: rgba(255,107,0,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${combinedRole}</span><br>
-                        <small style="color: var(--text-muted);">${r.qr_code || ''}</small>
+                        <span style="font-size:11px; color:var(--primary); background: rgba(255,107,0,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${combinedRole}</span>
                     </div>
                 </div>
                 <div style="text-align: right;">${editBtn}${delBtn}</div>
@@ -1296,7 +1283,7 @@ window.filterMinistrySearch = async function() {
     if (matches.length > 0) {
         dropdown.innerHTML = matches.map(y => `
             <div style="padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer;" onclick="selectMinistryUser(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')">
-                <strong style="color:var(--text-main);">${y.name || 'Unknown'}</strong><br><small style="color:var(--text-muted);">${y.qr_code}</small>
+                <strong style="color:var(--text-main);">${y.name || 'Unknown'}</strong>
             </div>
         `).join('');
         dropdown.style.display = 'block';
@@ -1368,10 +1355,6 @@ window.removeMinistryRole = function(mappingId, name) {
         } catch(err) { alert("Network Error"); }
     });
 };
-
-// ==============================================================================
-// PUBLIC PREREGISTRATION & EVENTS SETTINGS
-// ==============================================================================
 
 window.openPreregSettings = function(eventId) {
     const e = eventsData.find(ev => ev.id == eventId);
@@ -1566,10 +1549,6 @@ window.sharePreRegLink = async function() {
     }
 };
 
-// ==============================================================================
-// EVENTS MODULE
-// ==============================================================================
-
 window.openEditEventModal = function(eventId) {
     try {
         const e = eventsData.find(ev => ev.id == eventId);
@@ -1749,9 +1728,6 @@ window.renderCalendarView = function(container) {
 
 window.changeCalendarMonth = function(delta) { calCurrentDate.setMonth(calCurrentDate.getMonth() + delta); window.loadEvents(); };
 
-// ==============================================================================
-// LOGS MODULE (ATTENDANCE & AUDIT) - SAFE PAGINATION
-// ==============================================================================
 window.loadAttendanceLogs = async function() {
     const res = await fetch('/api/attendance/logs');
     cachedAttendanceLogs = await res.json();
@@ -1916,19 +1892,13 @@ window.renderActivityTable = function() {
 
 window.changeActPage = function(delta) { currentActPage += delta; window.renderActivityTable(); };
 window.changeActPerPage = function(val) { actPerPage = val === 'all' ? 'all' : parseInt(val); currentActPage = 1; window.renderActivityTable(); };
-// --- END OF PART 1 ---
 
-// --- START OF PART 2 ---
 window.exportActivityLogsCSV = function() {
     if(!cachedActivityLogs || cachedActivityLogs.length === 0) return alert('No activity logs to export.');
     const rows = [['Log ID', 'Timestamp', 'User', 'Action', 'Details']];
     cachedActivityLogs.forEach(l => rows.push([l.id, `"${l.created_at || ''}"`, `"${l.username || ''}"`, `"${l.action || ''}"`, `"${l.details || ''}"`]));
     window.downloadCSV(rows, 'All_Activity_Logs.csv');
 };
-
-// ==============================================================================
-// DELETE ACTIONS & MODALS
-// ==============================================================================
 
 window.openEditAttendanceModal = function(id, time, isWalkin) {
     document.getElementById('editAttId').value = id;
@@ -1969,10 +1939,6 @@ window.triggerDeleteAttendance = function(id, memberName) {
         if (currentAnalyticsData) window.openAnalyticsModal(currentAnalyticsData.event.id);
     });
 };
-
-// ==============================================================================
-// EVENT ANALYTICS MODAL & EVENT ROLES ENGINE
-// ==============================================================================
 
 window.openAnalyticsModal = async function(eventId) {
     try {
@@ -2016,10 +1982,8 @@ window.openAnalyticsModal = async function(eventId) {
         if(document.getElementById('cardPreReg')) document.getElementById('cardPreReg').style.opacity = '0.5';
         if(document.getElementById('cardWalkin')) document.getElementById('cardWalkin').style.opacity = '0.5';
 
-        // Set Tab UI state to Overview
         window.switchAnalyticsSubTab('overview');
         
-        // Roles Tab Access
         const eventRoleAssignControls = document.getElementById('eventRoleAssignControls');
         if(eventRoleAssignControls) eventRoleAssignControls.style.display = window.hasPerm('add_entries') ? 'block' : 'none';
         document.getElementById('evtRoleSearchInput').value = '';
@@ -2027,7 +1991,6 @@ window.openAnalyticsModal = async function(eventId) {
         document.getElementById('evtRoleSubRoleInput').value = '';
         document.getElementById('evtRoleSelectedUserId').value = '';
 
-        // Permission Gated Event Roles Notes
         const eventRolesNotesSection = document.getElementById('eventRolesRestrictedSection');
         if (eventRolesNotesSection) {
             if (window.hasPerm('edit_entries')) {
@@ -2068,7 +2031,7 @@ window.saveEventRolesNotes = async function() {
             if (res.ok) {
                 currentAnalyticsData.event.roles_restricted_notes = notes;
                 alert('Event notes saved successfully!');
-                window.loadEvents(); // Silent update to main dataset
+                window.loadEvents(); 
             } else {
                 alert('Failed to save notes.');
             }
@@ -2152,7 +2115,7 @@ window.renderAnalyticsRoster = function(list) {
                 ${avatarHtml}
                 <div>
                     <strong style="color: var(--text-main); font-size: 0.95rem;">${safeName}</strong>${statusBadge}<br>
-                    <small style="color: var(--text-muted);">${r.qr_code || ''} ${r.age ? '| Age: '+r.age : ''}</small>
+                    <small style="color: var(--text-muted);">${r.age ? 'Age: '+r.age : ''}</small>
                 </div>
             </div>
             <div style="text-align: right;">${timeText}${actionButtons}</div>
@@ -2182,8 +2145,7 @@ window.loadEventRoles = async function(eventId) {
                     ${avatarHtml}
                     <div>
                         <strong style="color: var(--text-main); font-size: 0.95rem;">${safeName}</strong>
-                        <span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${combinedRole}</span><br>
-                        <small style="color: var(--text-muted);">${r.qr_code || ''}</small>
+                        <span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${combinedRole}</span>
                     </div>
                 </div>
                 <div style="text-align: right;">${editBtn}${delBtn}</div>
@@ -2202,7 +2164,7 @@ window.filterEventRoleSearch = async function() {
     if (matches.length > 0) {
         dropdown.innerHTML = matches.map(y => `
             <div style="padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer;" onclick="selectEventRoleUser(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')">
-                <strong style="color:var(--text-main);">${y.name || 'Unknown'}</strong><br><small style="color:var(--text-muted);">${y.qr_code}</small>
+                <strong style="color:var(--text-main);">${y.name || 'Unknown'}</strong>
             </div>
         `).join('');
         dropdown.style.display = 'block';
@@ -2308,7 +2270,7 @@ window.filterAddAttendeeSearch = function() {
                <button type="button" class="btn btn-outline btn-sm" onclick="submitAddAttendee(${y.id}, 1, '${safeName.replace(/'/g, "\\'")}')">Add Walk-in</button>`;
         return `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border-color);">
-            <div><strong style="color:var(--text-main);">${safeName}</strong><br><small style="color: var(--text-muted);">${y.qr_code || ''}</small></div>
+            <div><strong style="color:var(--text-main);">${safeName}</strong></div>
             <div style="display: flex; gap: 5px;">${buttons}</div>
         </div>`;
     }).join('');
@@ -2388,7 +2350,7 @@ window.filterPermUserList = async function() {
 
     container.innerHTML = matches.map(u => `
         <div class="search-item">
-            <div><strong style="color:var(--text-main); font-size:1.05rem;">${u.name || 'Unknown'}</strong><br><small style="color: var(--text-muted);">${u.qr_code || ''}</small></div>
+            <div><strong style="color:var(--text-main); font-size:1.05rem;">${u.name || 'Unknown'}</strong></div>
             <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${(u.name || '').replace(/'/g, "\\'")}')">Select</button>
         </div>
     `).join('');
@@ -2494,4 +2456,3 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 1000);
 });
-// --- END OF PART 2 ---
