@@ -93,6 +93,60 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
 .desktop-meta { display: block; }
 
 /* =========================================
+   DIRECTORY UI STREAMLINING
+   ========================================= */
+.directory-header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    border-bottom: 2px solid var(--bg-light);
+    padding-bottom: 10px;
+}
+.directory-header-flex h2 {
+    margin: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.directory-actions {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+.icon-action-btn {
+    background: transparent;
+    border: none;
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 4px;
+    transition: transform 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.icon-action-btn:hover {
+    transform: scale(1.15);
+}
+.directory-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.directory-list-info {
+    flex-grow: 1;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+.directory-list-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* =========================================
    PROFILE LAYOUT OVERHAUL (DASHBOARD STYLE)
    ========================================= */
 .profile-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
@@ -140,7 +194,7 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
     }
 
     .profile-header-left {
-        display: contents !important; 
+        display: contents !important;
     }
 
     /* 🔥 INCREASED AVATAR SIZE FOR MOBILE */
@@ -150,7 +204,7 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
         width: 140px !important;
         height: 140px !important;
         font-size: 3.5rem !important;
-        justify-self: center; 
+        justify-self: center;
         margin: 0 !important;
     }
 
@@ -159,13 +213,13 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
         grid-row: 1 / 2;
         width: 130px !important;
         padding: 10px !important;
-        justify-self: center; 
+        justify-self: center;
         margin: 0 !important;
         box-sizing: border-box;
     }
 
     .profile-header-left > div {
-        grid-column: 1 / 3; 
+        grid-column: 1 / 3;
         grid-row: 2 / 3;
         text-align: center !important;
         width: 100%;
@@ -273,7 +327,7 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
     min-height: 250px !important;
     max-height: 400px;
     overflow-y: auto;
-    padding-right: 8px; /* Prevents scrollbar from clipping text */
+    padding-right: 8px;
 }
 
 /* =========================================

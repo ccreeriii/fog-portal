@@ -341,7 +341,7 @@ window.applyGranularPermissions = function() {
     if(btnCheckinWalkin) btnCheckinWalkin.style.display = canAdd ? 'inline-block' : 'none';
     const addEntryAnalyticsBtn = document.getElementById('addEntryAnalyticsBtn');
     if(addEntryAnalyticsBtn) addEntryAnalyticsBtn.style.display = canAdd ? 'flex' : 'none';
-    
+
     const btnDirectoryAddMember = document.getElementById('btnDirectoryAddMember');
     if(btnDirectoryAddMember) btnDirectoryAddMember.style.display = canAdd ? 'inline-block' : 'none';
 };
@@ -855,17 +855,31 @@ window.filterDirectory = function() {
     else if (ageCat === 'youth') { matches = matches.filter(y => y.age && y.age >= 13 && y.age <= 21); labelText = "Youth"; }
     else if (ageCat === 'adult') { matches = matches.filter(y => y.age && y.age >= 22); labelText = "Adults"; }
 
-    document.getElementById('directoryTotalCount').innerText = `${labelText}: ${matches.length}`;
+    /* --- INJECTED INLINE ICONS DIRECTLY BESIDE TOTAL REGISTERED --- */
+    const exportBtnHTML = `<button type="button" class="icon-action-btn" onclick="exportDirectoryCSV()" title="Export CSV">📤</button>`;
+    const addBtnHTML = window.hasPerm('add_entries') ? `<button type="button" class="icon-action-btn" onclick="openAddMemberModal()" title="Add Entry">➕</button>` : '';
+    
+    document.getElementById('directoryTotalCount').innerHTML = `
+        <div class="directory-header-flex">
+            <h2>${labelText}: ${matches.length}</h2>
+            <div class="directory-actions">
+                ${exportBtnHTML}
+                ${addBtnHTML}
+            </div>
+        </div>
+    `;
+    
     if (sort === 'name_asc') matches.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
     if (sort === 'name_desc') matches.sort((a,b) => (b.name || '').localeCompare(a.name || ''));
     if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
     if (sort === 'age_desc') matches.sort((a,b) => (b.age || 0) - (a.age || 0));
-    
+
     filteredDir = matches;
-    window.renderDirectoryTable();
+    window.renderDirectoryList();
 };
 
-window.renderDirectoryTable = function() {
+/* --- REPLACED DIRECTORY TABLE WITH NEW STREAMLINED UI --- */
+window.renderDirectoryList = function() {
     const total = filteredDir.length;
     let totalPages = 1;
     let pagedData = filteredDir;
@@ -880,34 +894,28 @@ window.renderDirectoryTable = function() {
         currentDirPage = 1;
     }
 
-    let html = `<table class="responsive-table">
-        <thead>
-            <tr><th>Member</th><th class="hide-mobile">Age</th><th class="hide-mobile">Birthday</th><th>Actions</th></tr>
-        </thead>
-        <tbody>`;
+    let html = `<div>`;
     html += pagedData.map(y => {
         const safeName = y.name || 'Unknown';
         const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem;">${safeName.charAt(0).toUpperCase()}</div>`;
         return `
-        <tr>
-            <td>
-                <div style="display: flex; gap: 12px; align-items: center;">
-                    ${avatarHtml}
-                    <div>
-                        <strong style="color:var(--text-main); font-size:1.05rem;">${safeName}</strong>
-                        <div class="mobile-meta">Age: ${y.age || 'N/A'} | B-Day: ${y.birthday || 'N/A'}</div>
-                    </div>
+        <div class="directory-list-item">
+            <div class="directory-list-info">
+                ${avatarHtml}
+                <div>
+                    <strong style="color:var(--text-main); font-size:1.05rem;">${safeName}</strong>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">Age: ${y.age || 'N/A'} | B-Day: ${y.birthday || 'N/A'}</div>
                 </div>
-            </td>
-            <td class="hide-mobile" style="color:var(--text-muted);">${y.age || 'N/A'}</td>
-            <td class="hide-mobile" style="color:var(--text-muted);">${y.birthday || 'N/A'}</td>
-            <td class="actions-cell">
+            </div>
+            
+            <div class="directory-list-actions">
                 <button type="button" class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">View</button>
-                ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditMemberModal(${y.id})">Edit</button>` : ''}
-                ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
-            </td>
-        </tr>`}).join('');
-    html += `</tbody></table>`;
+                ${window.hasPerm('edit_entries') ? `<button type="button" class="icon-action-btn" onclick="openEditMemberModal(${y.id})" title="Edit">✏️</button>` : ''}
+                ${window.hasPerm('delete_entries') ? `<button type="button" class="icon-action-btn" style="color: var(--danger);" onclick="triggerDeleteMember(${y.id}, '${safeName.replace(/'/g, "\\'")}')" title="Delete">🗑️</button>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+    html += `</div>`;
 
     if (total > 0) {
         html += `
@@ -931,8 +939,16 @@ window.renderDirectoryTable = function() {
     document.getElementById('directoryTableContainer').innerHTML = html;
 };
 
-window.changeDirPage = function(delta) { currentDirPage += delta; window.renderDirectoryTable(); };
-window.changeDirPerPage = function(val) { dirPerPage = val === 'all' ? 'all' : parseInt(val); currentDirPage = 1; window.renderDirectoryTable(); };
+window.changeDirPage = function(delta) { currentDirPage += delta; window.renderDirectoryList(); };
+window.changeDirPerPage = function(val) { dirPerPage = val === 'all' ? 'all' : parseInt(val); currentDirPage = 1; window.renderDirectoryList(); };
+
+/* --- FIX FOR EXPORT CSV DIRECTORY FUNCTIONALITY --- */
+window.exportDirectoryCSV = function() {
+    if(!filteredDir || filteredDir.length === 0) return alert('No directory entries to export based on current filter.');
+    const rows = [['Member ID', 'Name', 'Email', 'Age', 'Birthday', 'Mobile', 'Parents', 'Unique Pass ID']];
+    filteredDir.forEach(m => rows.push([m.id, `"${m.name || ''}"`, `"${m.email || ''}"`, m.age || '', `"${m.birthday || ''}"`, `"${m.mobile || ''}"`, `"${m.parents_name || ''}"`, `"${m.qr_code || ''}"`]));
+    window.downloadCSV(rows, 'Community_Directory.csv');
+};
 
 window.openAddMemberModal = function() {
     document.getElementById('addMemberForm').reset();
@@ -1179,7 +1195,7 @@ window.openMinistryDetailsModal = async function(id) {
     currentMinistryId = id;
     const m = ministriesData.find(x => x.id === id);
     if (!m) return;
-    
+
     document.getElementById('ministryDetailTitle').innerText = m.name;
     document.getElementById('ministryDetailDesc').innerText = m.description || '';
 
@@ -1206,7 +1222,7 @@ window.openMinistryDetailsModal = async function(id) {
     assignControls.style.display = window.hasPerm('add_entries') ? 'block' : 'none';
     document.getElementById('minSearchInput').value = '';
     document.getElementById('minSelectedUserId').value = '';
-    document.getElementById('minSubRoleInput').value = ''; 
+    document.getElementById('minSubRoleInput').value = '';
 
     await window.loadMinistryRoster(id);
     document.getElementById('ministryDetailsModal').classList.add('active');
@@ -1222,11 +1238,11 @@ window.saveMinistryNotes = async function() {
     const m = ministriesData.find(x => x.id === currentMinistryId);
     const notes = document.getElementById('ministryDetailNotes').value;
     const payload = { name: m.name, description: m.description, restricted_notes: notes, actor: currentUser };
-    
+
     window.triggerActionConfirmation('Save restricted notes for this ministry?', async () => {
         const res = await fetch(`/api/ministries/${currentMinistryId}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
         if (res.ok) {
-            m.restricted_notes = notes; 
+            m.restricted_notes = notes;
             alert('Notes saved successfully!');
         }
     });
@@ -1257,7 +1273,7 @@ window.loadMinistryRoster = async function(id) {
             const editBtn = window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px; margin-right: 5px;" onclick="openEditMinistryRoleModal(${r.mapping_id}, '${r.role}', '${(r.sub_role||'').replace(/'/g, "\\'")}')">✏️ Edit</button>` : '';
             const delBtn = window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="removeMinistryRole(${r.mapping_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>` : '';
             const combinedRole = `${r.role}${r.sub_role ? ' | ' + r.sub_role : ''}`;
-            
+
             return `
             <div style="padding: 12px 10px; border-bottom: 1px solid var(--bg-light); display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; gap: 10px; align-items: center;">
@@ -1314,7 +1330,7 @@ window.assignMinistryRole = async function() {
             document.getElementById('minSelectedUserId').value = '';
             document.getElementById('minSubRoleInput').value = '';
             window.loadMinistryRoster(currentMinistryId);
-            window.loadMinistries(); 
+            window.loadMinistries();
         } else alert(data.error || 'Failed to assign role. (They may already be in this ministry)');
     } catch(e) { alert('Connection error.'); }
 };
@@ -1606,10 +1622,10 @@ window.setEventViewMode = function(mode) {
     if (btnGrid) btnGrid.classList.toggle('active', mode === 'grid');
     const btnCal = document.getElementById('viewBtnCal');
     if (btnCal) btnCal.classList.toggle('active', mode === 'calendar');
-    
+
     const calControls = document.getElementById('calendarControls');
     if (calControls) calControls.style.display = mode === 'calendar' ? 'flex' : 'none';
-    
+
     const container = document.getElementById('eventsListContainer');
     if (!container) return;
 
@@ -1826,7 +1842,7 @@ window.filterActivityLogs = function() {
     const q = document.getElementById('activitySearchInput').value.toLowerCase().trim();
     let matches = cachedActivityLogs;
     if(q) matches = matches.filter(l => (l.username || '').toLowerCase().includes(q) || (l.action || '').toLowerCase().includes(q) || (l.details || '').toLowerCase().includes(q));
-    
+
     filteredAct = matches;
     window.renderActivityTable();
 };
@@ -1967,7 +1983,7 @@ window.openAnalyticsModal = async function(eventId) {
         if(document.getElementById('statTotalPreReg')) document.getElementById('statTotalPreReg').innerText = data.totalPreRegistered || 0;
         if(document.getElementById('statWalkins')) document.getElementById('statWalkins').innerText = data.walkins || 0;
         if(document.getElementById('statTurnoutPercent')) document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage || '0.0'}%`;
-        
+
         const editBtn = document.getElementById('analyticsEditEventBtn');
         if(editBtn) {
             editBtn.onclick = () => window.openEditEventModal(eventId);
@@ -1983,7 +1999,7 @@ window.openAnalyticsModal = async function(eventId) {
         if(document.getElementById('cardWalkin')) document.getElementById('cardWalkin').style.opacity = '0.5';
 
         window.switchAnalyticsSubTab('overview');
-        
+
         const eventRoleAssignControls = document.getElementById('eventRoleAssignControls');
         if(eventRoleAssignControls) eventRoleAssignControls.style.display = window.hasPerm('add_entries') ? 'block' : 'none';
         document.getElementById('evtRoleSearchInput').value = '';
@@ -2031,7 +2047,7 @@ window.saveEventRolesNotes = async function() {
             if (res.ok) {
                 currentAnalyticsData.event.roles_restricted_notes = notes;
                 alert('Event notes saved successfully!');
-                window.loadEvents(); 
+                window.loadEvents();
             } else {
                 alert('Failed to save notes.');
             }
@@ -2425,21 +2441,7 @@ window.handleSavePermissionsFromModal = function() {
     });
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    setInterval(() => {
-        const headers = document.querySelectorAll('h2');
-        let dirHeader = Array.from(headers).find(h => h.innerText.includes('Community Directory') || h.innerText.includes('Members'));
-        if (dirHeader && !document.getElementById('csvBtn')) {
-            const btn = document.createElement('button');
-            btn.id = 'csvBtn';
-            btn.innerHTML = '📊 Export CSV';
-            btn.style.cssText = 'background: var(--success); color: white; border: none; padding: 6px 12px; border-radius: 6px; margin-left: 15px; cursor: pointer; font-weight: bold; font-size: 0.85rem; vertical-align: middle;';
-            btn.onclick = () => window.location.href = '/api/directory/export';
-            dirHeader.style.display = 'inline-block';
-            dirHeader.parentNode.insertBefore(btn, dirHeader.nextSibling);
-        }
-    }, 1000);
-});
+/* --- CLEANED UP: REMOVED THE DUPLICATE DOM LISTENER HACK FOR CSV EXPORT, AS IT IS NOW BUILT DIRECTLY INTO THE UI --- */
 
 document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
