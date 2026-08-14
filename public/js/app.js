@@ -855,16 +855,14 @@ window.filterDirectory = function() {
     else if (ageCat === 'youth') { matches = matches.filter(y => y.age && y.age >= 13 && y.age <= 21); labelText = "Youth"; }
     else if (ageCat === 'adult') { matches = matches.filter(y => y.age && y.age >= 22); labelText = "Adults"; }
 
-    /* --- INJECTED INLINE ICONS DIRECTLY BESIDE TOTAL REGISTERED --- */
-    const exportBtnHTML = `<button type="button" class="icon-action-btn" onclick="exportDirectoryCSV()" title="Export CSV">📤</button>`;
-    const addBtnHTML = window.hasPerm('add_entries') ? `<button type="button" class="icon-action-btn" onclick="openAddMemberModal()" title="Add Entry">➕</button>` : '';
+    /* --- INJECTED EXPORT BUTTON AND DENSE HEADER --- */
+    const exportBtnHTML = `<button type="button" class="btn btn-outline btn-sm" onclick="exportDirectoryCSV()" style="font-weight: 600;">📤 Export CSV</button>`;
     
     document.getElementById('directoryTotalCount').innerHTML = `
         <div class="directory-header-flex">
-            <h2>${labelText}: ${matches.length}</h2>
+            <h3 style="margin: 0; font-size: 1rem; color: var(--text-main); font-weight: 600;">${labelText}: ${matches.length}</h3>
             <div class="directory-actions">
                 ${exportBtnHTML}
-                ${addBtnHTML}
             </div>
         </div>
     `;
@@ -878,7 +876,7 @@ window.filterDirectory = function() {
     window.renderDirectoryList();
 };
 
-/* --- REPLACED DIRECTORY TABLE WITH NEW STREAMLINED UI --- */
+/* --- FULLY DENSE, HORIZONTAL SINGLE-LINE DIRECTORY LIST --- */
 window.renderDirectoryList = function() {
     const total = filteredDir.length;
     let totalPages = 1;
@@ -897,19 +895,18 @@ window.renderDirectoryList = function() {
     let html = `<div>`;
     html += pagedData.map(y => {
         const safeName = y.name || 'Unknown';
-        const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem;">${safeName.charAt(0).toUpperCase()}</div>`;
+        const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 32px; height: 32px; font-size: 0.9rem; cursor:pointer; flex-shrink: 0;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 32px; height: 32px; font-size: 0.9rem; flex-shrink: 0;">${safeName.charAt(0).toUpperCase()}</div>`;
+        
         return `
         <div class="directory-list-item">
             <div class="directory-list-info">
                 ${avatarHtml}
-                <div>
-                    <strong style="color:var(--text-main); font-size:1.05rem;">${safeName}</strong>
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">Age: ${y.age || 'N/A'} | B-Day: ${y.birthday || 'N/A'}</div>
-                </div>
+                <strong style="color:var(--text-main); font-size:0.9rem; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${safeName}</strong>
+                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: auto; margin-right: 5px;">Age: ${y.age || 'N/A'} | ${y.birthday || 'N/A'}</span>
             </div>
             
             <div class="directory-list-actions">
-                <button type="button" class="btn btn-primary btn-sm" onclick="openViewProfileModal(${y.id})">View</button>
+                <button type="button" class="btn btn-primary btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="openViewProfileModal(${y.id})">View</button>
                 ${window.hasPerm('edit_entries') ? `<button type="button" class="icon-action-btn" onclick="openEditMemberModal(${y.id})" title="Edit">✏️</button>` : ''}
                 ${window.hasPerm('delete_entries') ? `<button type="button" class="icon-action-btn" style="color: var(--danger);" onclick="triggerDeleteMember(${y.id}, '${safeName.replace(/'/g, "\\'")}')" title="Delete">🗑️</button>` : ''}
             </div>
@@ -942,7 +939,6 @@ window.renderDirectoryList = function() {
 window.changeDirPage = function(delta) { currentDirPage += delta; window.renderDirectoryList(); };
 window.changeDirPerPage = function(val) { dirPerPage = val === 'all' ? 'all' : parseInt(val); currentDirPage = 1; window.renderDirectoryList(); };
 
-/* --- FIX FOR EXPORT CSV DIRECTORY FUNCTIONALITY --- */
 window.exportDirectoryCSV = function() {
     if(!filteredDir || filteredDir.length === 0) return alert('No directory entries to export based on current filter.');
     const rows = [['Member ID', 'Name', 'Email', 'Age', 'Birthday', 'Mobile', 'Parents', 'Unique Pass ID']];
@@ -2440,8 +2436,6 @@ window.handleSavePermissionsFromModal = function() {
         }
     });
 };
-
-/* --- CLEANED UP: REMOVED THE DUPLICATE DOM LISTENER HACK FOR CSV EXPORT, AS IT IS NOW BUILT DIRECTLY INTO THE UI --- */
 
 document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {

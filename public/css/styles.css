@@ -103,11 +103,6 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
     border-bottom: 2px solid var(--bg-light);
     padding-bottom: 10px;
 }
-.directory-header-flex h2 {
-    margin: 0;
-    border-bottom: none;
-    padding-bottom: 0;
-}
 .directory-actions {
     display: flex;
     gap: 15px;
@@ -116,7 +111,7 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
 .icon-action-btn {
     background: transparent;
     border: none;
-    font-size: 1.4rem;
+    font-size: 1.1rem;
     cursor: pointer;
     padding: 4px;
     transition: transform 0.2s ease;
@@ -131,19 +126,26 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 0;
+    padding: 10px 0;
     border-bottom: 1px solid var(--border-color);
+    flex-wrap: nowrap; /* Forces one line constraint */
+    overflow-x: auto; /* Allows gentle scroll on tiny screens instead of structural breaks */
+}
+.directory-list-item::-webkit-scrollbar {
+    display: none;
 }
 .directory-list-info {
     flex-grow: 1;
     display: flex;
-    gap: 12px;
+    gap: 10px;
     align-items: center;
+    white-space: nowrap; /* Prevent wrapping */
 }
 .directory-list-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    flex-shrink: 0; /* Prevent squeezing the action buttons */
 }
 
 /* =========================================
