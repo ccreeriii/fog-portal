@@ -26,6 +26,10 @@ const getManilaTime = () => {
 const backupDir = path.join(__dirname, 'backups');
 if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir);
 
+// Auto-Create Image Directory for Uploads
+const imgDir = path.join(__dirname, 'public', 'img');
+if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
+
 function runDatabaseBackup() {
     const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
     const pad = (n) => String(n).padStart(2, '0');
@@ -89,7 +93,24 @@ db.serialize(() => {
         UNIQUE(youth_id, event_id)
     )`);
 
-    // SCHEMA AUTO-HEALING: Safely add missing columns to existing databases
+    db.run(`CREATE TABLE IF NOT EXISTS ministries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT, description TEXT, restricted_notes TEXT, created_at DATETIME
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS ministry_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ministry_id INTEGER, youth_id INTEGER, role TEXT, assigned_at DATETIME,
+        UNIQUE(ministry_id, youth_id)
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS event_roles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER, youth_id INTEGER, role_name TEXT, assigned_at DATETIME,
+        UNIQUE(event_id, youth_id, role_name)
+    )`);
+
+    // SCHEMA AUTO-HEALING
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN materials_url TEXT`, () => {});
@@ -97,11 +118,19 @@ db.serialize(() => {
     db.run(`ALTER TABLE events ADD COLUMN prereg_bottom_banner TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_title TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_info TEXT`, () => {});
-    db.run(`ALTER TABLE users ADD COLUMN youth_id INTEGER`, () => {}); // <--- The Critical Schema Fix
+    db.run(`ALTER TABLE users ADD COLUMN youth_id INTEGER`, () => {});
+    db.run(`ALTER TABLE ministry_members ADD COLUMN sub_role TEXT`, () => {});
+    db.run(`ALTER TABLE event_roles ADD COLUMN sub_role TEXT`, () => {});
+    db.run(`ALTER TABLE events ADD COLUMN roles_restricted_notes TEXT`, () => {});
+    
+    // NEW: MINISTRY LOGO HEALING
+    db.run(`ALTER TABLE ministries ADD COLUMN logo TEXT`, () => {});
 
+    // Ensure access_ministries is granted automatically to the Superadmin
     const superadminPermissions = JSON.stringify([
         'access_checkin', 'access_directory', 'access_events',
         'access_attendance', 'access_activity', 'access_permissions',
+        'access_ministries', 
         'add_entries', 'edit_entries', 'delete_entries'
     ]);
 
@@ -173,6 +202,78 @@ app.get('/', (req, res, next) => {
             res.send(modifiedHtml);
         });
     });
+});
+
+// ==============================================================================
+// DYNAMIC PWA MANIFEST & ICON ROUTER (ENVIRONMENT AWARE)
+// ==============================================================================
+app.get('/manifest.json', (req, res) => {
+    const isStaging = __dirname.includes('staging');
+
+    res.json({
+        "name": isStaging ? "FOG MINISTRIES (STAGING)" : "FIRE OF GOD MINISTRIES",
+        "short_name": isStaging ? "FOG Staging" : "FOG Portal",
+        "description": "Community Portal, CRM, and Event Check-In",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#F8FAFC",
+        "theme_color": isStaging ? "#10B981" : "#FF6B00",
+        "icons": [
+            {
+                "src": isStaging ? "/img/icon-staging.png" : "/img/icon-prod.png",
+                "sizes": "192x192",
+                "type": "image/png"
+            },
+            {
+                "src": isStaging ? "/img/icon-staging.png" : "/img/icon-prod.png",
+                "sizes": "512x512",
+                "type": "image/png"
+            }
+        ]
+    });
+});
+
+app.get('/apple-touch-icon.png', (req, res) => {
+    const isStaging = __dirname.includes('staging');
+    const iconPath = isStaging ? '/img/icon-staging.png' : '/img/icon-prod.png';
+    const absolutePath = path.join(__dirname, 'public', iconPath);
+
+    if (fs.existsSync(absolutePath)) {
+        res.sendFile(absolutePath);
+    } else {
+        res.status(404).send('Icon not uploaded yet.');
+    }
+});
+
+// ==============================================================================
+// SUPERADMIN BRAND UPLOADER API
+// ==============================================================================
+app.post('/api/settings/images', (req, res) => {
+    const { logo, prodIcon, stagingIcon, actor } = req.body;
+
+    if (actor !== 'celsocreeriii@gmail.com') {
+        return res.status(403).json({ error: 'Unauthorized: Only Superadmin can modify system images.' });
+    }
+
+    try {
+        const saveImageToDisk = (base64Str, filename) => {
+            if (!base64Str) return;
+            const base64Data = base64Str.replace(/^data:image\/\w+;base64,/, "");
+            const buffer = Buffer.from(base64Data, 'base64');
+            const targetPath = path.join(__dirname, 'public', 'img', filename);
+            fs.writeFileSync(targetPath, buffer);
+        };
+
+        saveImageToDisk(logo, 'logo.png');
+        saveImageToDisk(prodIcon, 'icon-prod.png');
+        saveImageToDisk(stagingIcon, 'icon-staging.png');
+
+        logActivity(actor, 'UPDATE_BRANDING', 'Updated global site logo and PWA app icons');
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Image Upload Error:", err);
+        res.status(500).json({ error: 'Failed to write files to disk: ' + err.message });
+    }
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -257,7 +358,6 @@ app.post('/api/logout', (req, res) => {
     logActivity(username, 'LOGOUT', 'User logged out');
     res.json({ success: true });
 });
-
 // PROFILE EDIT API
 app.put('/api/youth/profile/:id', (req, res) => {
     const { name, age, birthday, social_media, parents_name, password, email, profile_picture, actor } = req.body;
@@ -279,7 +379,6 @@ app.put('/api/youth/profile/:id', (req, res) => {
     });
 });
 
-// ARMORED PERMISSIONS ENGINE: Schema-Patched and Collision-Proof
 app.put('/api/youth/:id/permissions', (req, res) => {
     const youthId = parseInt(req.params.id, 10);
     const permissions = req.body.permissions || [];
@@ -292,24 +391,20 @@ app.put('/api/youth/:id/permissions', (req, res) => {
 
         const targetQr = youth.qr_code || `FOG-MEMBER-${String(youthId).padStart(3, '0')}`;
 
-        // STEP 1: Verify if the user already has a login account
         db.get(`SELECT id FROM users WHERE youth_id = ? OR username = ?`, [youthId, targetQr], (err2, existingUser) => {
             if (err2) return res.json({ success: false, error: 'DB user check error: ' + err2.message });
 
             if (existingUser) {
-                // User exists: Safely update their permissions AND ensure youth_id is bound
                 db.run(`UPDATE users SET permissions = ?, youth_id = ? WHERE id = ?`, [permString, youthId, existingUser.id], function(err3) {
                     if (err3) return res.json({ success: false, error: 'Permissions update failed: ' + err3.message });
                     logActivity(actor, 'UPDATE_PERMISSIONS', `Updated permissions for Member ID ${youthId}`);
                     return res.json({ success: true });
                 });
             } else {
-                // User doesn't exist: Create them safely
                 db.run(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, ?, ?, ?)`,
                     [targetQr, targetQr, permString, youthId, getManilaTime()],
                     function(err4) {
                         if (err4) {
-                            // If username collision occurs, generate an ultra-safe timestamped fallback
                             const safeQr = `FOG-MEMBER-${youthId}-${Date.now()}`;
                             db.run(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, ?, ?, ?)`,
                                 [safeQr, safeQr, permString, youthId, getManilaTime()],
@@ -341,7 +436,6 @@ app.get('/api/activity-logs', (req, res) => {
     });
 });
 
-// RESTORED DIRECTORY API: Pure SELECT to prevent DB crashes and ensure full directory rendering
 app.get('/api/youth', (req, res) => {
     db.all(`SELECT * FROM youth ORDER BY name ASC`, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -603,7 +697,6 @@ app.delete('/api/attendance/:id', (req, res) => {
     });
 });
 
-// RESTORED USERS LIST API: Ensures the frontend permission search has valid data
 app.get('/api/users/list', (req, res) => {
     const sql = `SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`;
     db.all(sql, [], (err, rows) => {
@@ -634,6 +727,168 @@ function sendCSV(res, rows) {
     res.setHeader('Content-Disposition', 'attachment; filename=Community_Directory.csv');
     res.status(200).send(csv);
 }
+
+// ==============================================================================
+// CRM EXPANSION API ENDPOINTS - MINISTRIES
+// ==============================================================================
+
+app.get('/api/ministries', (req, res) => {
+    db.all(`SELECT m.*, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = m.id) as member_count FROM ministries m ORDER BY m.name ASC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/ministries', (req, res) => {
+    const { name, description, logo, actor } = req.body;
+    db.run(`INSERT INTO ministries (name, description, logo, created_at) VALUES (?, ?, ?, ?)`,
+        [name, description, logo, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'CREATE_MINISTRY', `Created ministry '${name}'`);
+            res.json({ success: true, id: this.lastID });
+    });
+});
+
+app.put('/api/ministries/:id', (req, res) => {
+    const { name, description, restricted_notes, logo, actor } = req.body;
+    let sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ? WHERE id = ?`;
+    let params = [name, description, restricted_notes, req.params.id];
+
+    if (logo !== undefined) {
+        sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ?, logo = ? WHERE id = ?`;
+        params = [name, description, restricted_notes, logo, req.params.id];
+    }
+
+    db.run(sql, params, function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'UPDATE_MINISTRY', `Updated details for ministry ID ${req.params.id}`);
+            res.json({ success: true });
+    });
+});
+
+app.delete('/api/ministries/:id', (req, res) => {
+    const { actor } = req.body;
+    db.run(`DELETE FROM ministries WHERE id = ?`, [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        db.run(`DELETE FROM ministry_members WHERE ministry_id = ?`, [req.params.id]);
+        logActivity(actor, 'DELETE_MINISTRY', `Deleted ministry ID ${req.params.id}`);
+        res.json({ success: true });
+    });
+});
+
+app.get('/api/ministries/:id/members', (req, res) => {
+    const sql = `SELECT mm.id as mapping_id, mm.role, mm.sub_role, mm.assigned_at, y.id, y.name, y.qr_code, y.profile_picture
+                 FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id
+                 WHERE mm.ministry_id = ? ORDER BY mm.assigned_at DESC`;
+    db.all(sql, [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/ministries/:id/members', (req, res) => {
+    const { youth_id, role, sub_role, actor } = req.body;
+    db.run(`INSERT INTO ministry_members (ministry_id, youth_id, role, sub_role, assigned_at) VALUES (?, ?, ?, ?, ?)`,
+        [req.params.id, youth_id, role, sub_role, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'ASSIGN_MINISTRY_ROLE', `Assigned youth ID ${youth_id} as ${role} to ministry ID ${req.params.id}`);
+            res.json({ success: true });
+    });
+});
+
+// Update Ministry Member Role & Sub-role
+app.put('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => {
+    const { role, sub_role, actor } = req.body;
+    db.run(`UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?`,
+        [role, sub_role, req.params.mapping_id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'UPDATE_MINISTRY_ROLE', `Updated role mapping ID ${req.params.mapping_id}`);
+            res.json({ success: true });
+    });
+});
+
+app.delete('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => {
+    const { actor } = req.body;
+    db.run(`DELETE FROM ministry_members WHERE id = ?`, [req.params.mapping_id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'REMOVE_MINISTRY_ROLE', `Removed ministry member mapping ID ${req.params.mapping_id}`);
+            res.json({ success: true });
+    });
+});
+
+app.get('/api/youth/:id/ministries', (req, res) => {
+    const sql = `SELECT m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at
+                 FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id
+                 WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`;
+    db.all(sql, [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// ==============================================================================
+// CRM EXPANSION API ENDPOINTS - EVENT ROLES
+// ==============================================================================
+
+app.get('/api/events/:id/roles', (req, res) => {
+    const sql = `SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, y.id, y.name, y.qr_code, y.profile_picture
+                 FROM event_roles er JOIN youth y ON er.youth_id = y.id
+                 WHERE er.event_id = ? ORDER BY er.assigned_at DESC`;
+    db.all(sql, [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/events/:id/roles', (req, res) => {
+    const { youth_id, role_name, sub_role, actor } = req.body;
+    db.run(`INSERT INTO event_roles (event_id, youth_id, role_name, sub_role, assigned_at) VALUES (?, ?, ?, ?, ?)`,
+        [req.params.id, youth_id, role_name, sub_role, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'ASSIGN_EVENT_ROLE', `Assigned youth ID ${youth_id} as ${role_name} to event ID ${req.params.id}`);
+            res.json({ success: true });
+    });
+});
+
+app.post('/api/events/:id/roles-notes', (req, res) => {
+    const { roles_restricted_notes, actor } = req.body;
+    db.run(`UPDATE events SET roles_restricted_notes = ? WHERE id = ?`,
+        [roles_restricted_notes, req.params.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor || 'System', 'UPDATE_EVENT_ROLES_NOTES', `Updated restricted roles notes for Event ID ${req.params.id}`);
+            res.json({ success: true });
+    });
+});
+
+// Update Event Member Role & Sub-role
+app.put('/api/events/:event_id/roles/:mapping_id', (req, res) => {
+    const { role_name, sub_role, actor } = req.body;
+    db.run(`UPDATE event_roles SET role_name = ?, sub_role = ? WHERE id = ?`,
+        [role_name, sub_role, req.params.mapping_id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'UPDATE_EVENT_ROLE', `Updated event role mapping ID ${req.params.mapping_id}`);
+            res.json({ success: true });
+    });
+});
+
+app.delete('/api/events/:event_id/roles/:mapping_id', (req, res) => {
+    const { actor } = req.body;
+    db.run(`DELETE FROM event_roles WHERE id = ?`, [req.params.mapping_id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'REMOVE_EVENT_ROLE', `Removed event role mapping ID ${req.params.mapping_id}`);
+            res.json({ success: true });
+    });
+});
+
+app.get('/api/youth/:id/event_roles', (req, res) => {
+    const sql = `SELECT e.name as event_name, er.role_name, er.sub_role, er.assigned_at, e.event_date
+                 FROM event_roles er JOIN events e ON er.event_id = e.id
+                 WHERE er.youth_id = ? ORDER BY e.event_date DESC`;
+    db.all(sql, [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
 
 app.listen(PORT, () => {
     console.log(`Server running safely on Port ${PORT}`);

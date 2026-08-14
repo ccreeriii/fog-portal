@@ -6,6 +6,7 @@ let youthData = [];
 let allUsersList = [];
 let cachedAttendanceLogs = [];
 let cachedActivityLogs = [];
+let ministriesData = [];
 let pendingAction = null;
 let eventViewMode = 'list';
 let calCurrentDate = new Date();
@@ -15,19 +16,23 @@ let checkedInYouthIds = new Set();
 let currentPreregEventId = null;
 let currentRosterFilter = 'all';
 let currentPreRegYouthIds = new Set();
+let currentMinistryId = null;
+
+// Pagination States
+let currentDirPage = 1; let dirPerPage = 10; let filteredDir = [];
+let currentAttPage = 1; let attPerPage = 10; let filteredAtt = [];
+let currentActPage = 1; let actPerPage = 10; let filteredAct = [];
 
 // ==============================================================================
 // ARMORED OFFLINE SYNC ENGINE
 // ==============================================================================
 const _originalFetch = window.fetch;
-
 const OfflineManager = {
     init: function() {
         window.addEventListener('online', this.handleOnline.bind(this));
         window.addEventListener('offline', this.handleOffline.bind(this));
         this.updateUI();
         this.overrideFetch();
-        // Delay initial sync slightly to ensure app is fully booted
         setTimeout(() => { if (navigator.onLine) this.syncQueue(); }, 2000);
     },
     updateUI: function() {
@@ -50,18 +55,15 @@ const OfflineManager = {
     },
     overrideFetch: function() {
         window.fetch = async function(resource, options) {
-            // Only intercept mutative requests (POST, PUT, DELETE) when offline
             if (!navigator.onLine && options && ['POST', 'PUT', 'DELETE'].includes(options.method.toUpperCase())) {
                 const url = typeof resource === 'string' ? resource : resource.url;
-                
-                // Block sensitive security actions that require backend validation
+
                 if (url.includes('/api/login') || url.includes('/api/logout') || url.includes('/api/backups')) {
                     return Promise.resolve(new Response(JSON.stringify({ success: false, error: 'This action requires an active internet connection.' }), { status: 400 }));
                 }
 
-                const mockId = Date.now(); // Generate a safe timestamp fake ID
+                const mockId = Date.now();
                 const queue = JSON.parse(localStorage.getItem('fog_offline_queue') || '[]');
-                
                 queue.push({
                     url: url,
                     method: options.method,
@@ -71,11 +73,11 @@ const OfflineManager = {
                 });
                 localStorage.setItem('fog_offline_queue', JSON.stringify(queue));
 
-                // Generate a mock response to keep the UI optimistic
                 let mockRes = { success: true, offline_queued: true, updated: 1, deleted: 1 };
                 if (url.includes('/api/youth') && options.method.toUpperCase() === 'POST') mockRes = { id: mockId, qr_code: 'OFFLINE-' + mockId, success: true };
                 if (url.includes('/api/checkin')) mockRes = { success: true, member_name: 'Offline Attendee (Queued)', log_id: mockId };
                 if (url.includes('/api/events') && options.method.toUpperCase() === 'POST') mockRes = { id: mockId };
+                if (url.includes('/api/ministries') && options.method.toUpperCase() === 'POST') mockRes = { success: true, id: mockId };
 
                 return Promise.resolve(new Response(JSON.stringify(mockRes), {
                     status: 200,
@@ -91,7 +93,7 @@ const OfflineManager = {
 
         console.log(`[Offline Sync Engine] Processing ${queue.length} pending actions...`);
         let failed = [];
-        let idMap = {}; // Maps Fake IDs to Real Server IDs
+        let idMap = {};
 
         for (let req of queue) {
             try {
@@ -99,20 +101,17 @@ const OfflineManager = {
                 if (bodyStr && typeof bodyStr === 'string') {
                     try {
                         let bodyObj = JSON.parse(bodyStr);
-                        // Dependency Resolution: Hot-swap mock IDs with real IDs if chained
                         if (bodyObj.youth_id && idMap[bodyObj.youth_id]) bodyObj.youth_id = idMap[bodyObj.youth_id];
                         if (bodyObj.event_id && idMap[bodyObj.event_id]) bodyObj.event_id = idMap[bodyObj.event_id];
                         bodyStr = JSON.stringify(bodyObj);
-                    } catch (err) {} 
+                    } catch (err) {}
                 }
 
-                // Fix dynamic URL paths that might contain mock IDs (e.g. PUT /api/youth/171092301...)
                 let targetUrl = req.url;
                 for (let fakeId in idMap) {
                     if (targetUrl.includes(`/${fakeId}`)) targetUrl = targetUrl.replace(`/${fakeId}`, `/${idMap[fakeId]}`);
                 }
 
-                // Execute against real server
                 const res = await _originalFetch(targetUrl, {
                     method: req.method,
                     headers: req.headers,
@@ -122,7 +121,6 @@ const OfflineManager = {
                 if (!res.ok) throw new Error(`Network response was not ok for ${targetUrl}`);
                 const data = await res.json();
 
-                // If we created a new record while offline, capture the real ID from the server for the next requests
                 if (req.mockId && data.id) {
                     idMap[req.mockId] = data.id;
                 }
@@ -132,22 +130,18 @@ const OfflineManager = {
             }
         }
 
-        // Save failed items back to queue, clear successes
         localStorage.setItem('fog_offline_queue', JSON.stringify(failed));
         if (failed.length === 0) {
             console.log('[Offline Sync Engine] All offline actions synchronized successfully to Raspberry Pi!');
-            // Silently refresh UI datasets
             if(document.getElementById('eventsTab') && document.getElementById('eventsTab').classList.contains('active')) window.loadEvents();
             if(document.getElementById('directoryTab') && document.getElementById('directoryTab').classList.contains('active')) window.loadDirectory();
             if(document.getElementById('checkinTab') && document.getElementById('checkinTab').classList.contains('active')) window.updateActiveEventBanner();
+            if(document.getElementById('ministriesTab') && document.getElementById('ministriesTab').classList.contains('active')) window.loadMinistries();
         }
     }
 };
 
-// Initialize the Sync Engine instantly
 OfflineManager.init();
-// ==============================================================================
-
 
 window.getBase64 = async function(file, maxWidth = 600) {
     return new Promise((resolve, reject) => {
@@ -188,14 +182,23 @@ window.downloadCSV = function(rows, filename) {
     document.body.removeChild(link);
 };
 
-// ARMORED: Secure binding for the Execute Action button to prevent Double-Click Race Conditions
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#minSearchInput') && !e.target.closest('#minSearchDropdown')) {
+        const drop = document.getElementById('minSearchDropdown');
+        if(drop) drop.style.display = 'none';
+    }
+    if (!e.target.closest('#evtRoleSearchInput') && !e.target.closest('#evtRoleSearchDropdown')) {
+        const drop2 = document.getElementById('evtRoleSearchDropdown');
+        if(drop2) drop2.style.display = 'none';
+    }
+});
+
 function bindExecuteAction() {
     const execBtn = document.getElementById('executeConfirmBtn');
     if (execBtn) {
         execBtn.onclick = async (e) => {
             e.preventDefault();
-
-            if (execBtn.disabled) return; // Prevent multiple clicks from firing simultaneously
+            if (execBtn.disabled) return;
             execBtn.disabled = true;
             const originalText = execBtn.innerText;
             execBtn.innerText = 'Processing...';
@@ -209,7 +212,6 @@ function bindExecuteAction() {
                 }
             }
             window.closeConfirmModal();
-
             execBtn.disabled = false;
             execBtn.innerText = originalText;
         };
@@ -217,12 +219,9 @@ function bindExecuteAction() {
 }
 bindExecuteAction();
 
-// ARMORED: Global Permission Helper that bypasses bad caching
 window.hasPerm = function(perm) {
     if (currentUser === 'celsocreeriii@gmail.com') return true;
     if (!userPermissions || !Array.isArray(userPermissions)) return false;
-
-    // Legacy mapping: If they had old access, grant them CRUD so they aren't locked out
     if (['add_entries', 'edit_entries', 'delete_entries'].includes(perm)) {
         if (userPermissions.includes('access_directory') || userPermissions.includes('access_events')) return true;
     }
@@ -269,6 +268,7 @@ window.onclick = function(event) {
     if (event.target.classList.contains('modal')) {
         event.target.classList.remove('active');
         if(event.target.id === 'eventAnalyticsModal') currentAnalyticsData = null;
+        if(event.target.id === 'ministryDetailsModal') currentMinistryId = null;
         if(event.target.id === 'confirmModal') pendingAction = null;
     }
 };
@@ -278,6 +278,7 @@ window.triggerActionConfirmation = function(summaryText, actionFn) {
     pendingAction = actionFn;
     document.getElementById('confirmModal').classList.add('active');
 };
+
 window.closeConfirmModal = function() {
     document.getElementById('confirmModal').classList.remove('active');
     pendingAction = null;
@@ -296,7 +297,6 @@ window.buildNav = function() {
     const sidebar = document.getElementById('sidebarNav');
     const bottomNav = document.getElementById('bottomNav');
     const hamburger = document.getElementById('hamburgerBtn');
-
     const isAdmin = currentUser === 'celsocreeriii@gmail.com' || (userPermissions && userPermissions.length > 0);
 
     let sidebarHtml = `<h2>Main Menu</h2>`;
@@ -305,10 +305,10 @@ window.buildNav = function() {
     if (isAdmin) {
         hamburger.style.display = 'block';
         bottomNav.style.display = 'none';
-
         sidebarHtml += `<button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
         if (window.hasPerm('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
         if (window.hasPerm('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
+        if (window.hasPerm('access_ministries')) sidebarHtml += `<button class="nav-btn" data-target="ministriesTab" onclick="switchTab('ministriesTab')">🏛️ Ministries</button>`;
         if (window.hasPerm('access_events')) sidebarHtml += `<button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Planner</button>`;
         if (window.hasPerm('access_attendance')) sidebarHtml += `<button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
         if (window.hasPerm('access_activity')) sidebarHtml += `<button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
@@ -320,7 +320,6 @@ window.buildNav = function() {
     } else {
         hamburger.style.display = 'none';
         bottomNav.style.display = 'flex';
-
         bottomHtml += `<button class="bottom-nav-btn active" data-target="profileTab" onclick="switchTab('profileTab')"><div class="icon">👤</div>Profile</button>`;
         bottomHtml += `<button class="bottom-nav-btn" onclick="handleLogout()"><div class="icon">🚪</div>Logout</button>`;
 
@@ -335,11 +334,16 @@ window.applyGranularPermissions = function() {
     const btnSubEventCreate = document.getElementById('btnSubEventCreate');
     if(btnSubEventCreate) btnSubEventCreate.style.display = canAdd ? 'inline-block' : 'none';
 
+    const btnSubMinistryCreate = document.getElementById('btnSubMinistryCreate');
+    if(btnSubMinistryCreate) btnSubMinistryCreate.style.display = canAdd ? 'inline-block' : 'none';
+
     const btnCheckinWalkin = document.getElementById('btnCheckinWalkin');
     if(btnCheckinWalkin) btnCheckinWalkin.style.display = canAdd ? 'inline-block' : 'none';
-
     const addEntryAnalyticsBtn = document.getElementById('addEntryAnalyticsBtn');
     if(addEntryAnalyticsBtn) addEntryAnalyticsBtn.style.display = canAdd ? 'flex' : 'none';
+    
+    const btnDirectoryAddMember = document.getElementById('btnDirectoryAddMember');
+    if(btnDirectoryAddMember) btnDirectoryAddMember.style.display = canAdd ? 'inline-block' : 'none';
 };
 
 window.resetPermUserList = function() {
@@ -364,11 +368,11 @@ window.switchTab = function(tabId) {
 
     const targetTab = document.getElementById(tabId);
     if (targetTab) targetTab.classList.add('active');
-
     if (tabId !== 'checkinTab' && qrScanner) { qrScanner.clear().catch(e => console.log(e)); qrScanner = null; }
     if (tabId === 'checkinTab') { window.switchCheckinMode('scanner'); window.updateActiveEventBanner(); }
     if (tabId === 'directoryTab') window.loadDirectory();
-    if (tabId === 'eventsTab') { window.loadEvents(); }
+    if (tabId === 'eventsTab') window.loadEvents();
+    if (tabId === 'ministriesTab') window.loadMinistries();
     if (tabId === 'attendanceTab') window.loadAttendanceLogs();
     if (tabId === 'activityLogsTab') window.loadActivityLogs();
     if (tabId === 'permissionsTab') window.resetPermUserList();
@@ -388,6 +392,21 @@ window.switchEventSubTab = function(tab) {
     document.getElementById('btnSubEventList').classList.toggle('active', tab === 'list');
     document.getElementById('btnSubEventCreate').classList.toggle('active', tab === 'create');
     if (tab === 'list') window.loadEvents();
+};
+
+window.switchMinistrySubTab = function(tab) {
+    document.getElementById('subTabMinistryList').classList.toggle('active', tab === 'list');
+    document.getElementById('subTabMinistryCreate').classList.toggle('active', tab === 'create');
+    document.getElementById('btnSubMinistryList').classList.toggle('active', tab === 'list');
+    document.getElementById('btnSubMinistryCreate').classList.toggle('active', tab === 'create');
+    if (tab === 'list') window.loadMinistries();
+};
+
+window.switchAnalyticsSubTab = function(tab) {
+    document.getElementById('analyticsTabOverview').classList.toggle('active', tab === 'overview');
+    document.getElementById('analyticsTabRoles').classList.toggle('active', tab === 'roles');
+    document.getElementById('btnAnalyticsTabOverview').classList.toggle('active', tab === 'overview');
+    document.getElementById('btnAnalyticsTabRoles').classList.toggle('active', tab === 'roles');
 };
 
 window.loadBackups = async function() {
@@ -455,7 +474,6 @@ window.handleLogin = async function(e) {
     e.preventDefault();
     const username = document.getElementById('loginUser').value;
     const password = document.getElementById('loginPass').value;
-
     const res = await fetch('/api/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password })
     });
@@ -487,7 +505,52 @@ window.handleLogout = async function() {
     window.switchTab('loginTab');
 };
 
-window.populateProfileTab = function(member) {
+window.loadMinistriesAndEventRolesForProfile = async function(youthId, containerId) {
+    const container = document.getElementById(containerId);
+    if(!container) return;
+
+    try {
+        const [minRes, evtRes] = await Promise.all([
+            fetch(`/api/youth/${youthId}/ministries`),
+            fetch(`/api/youth/${youthId}/event_roles`)
+        ]);
+        const ministries = await minRes.json();
+        const eventRoles = await evtRes.json();
+
+        let html = '';
+        if(ministries.length > 0) {
+            html += `<div style="margin-bottom: 10px;">`;
+            ministries.forEach(m => {
+                const combinedRole = `${m.role}${m.sub_role ? ' | ' + m.sub_role : ''}`;
+                html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="color:var(--text-main); font-size: 0.95rem;">🏛️ ${m.ministry_name}</strong>
+                    <span style="font-size:11px; color:var(--primary); background: rgba(255,107,0,0.1); padding: 3px 8px; border-radius: 6px; text-align:right;">${combinedRole}</span>
+                </div>`;
+            });
+            html += `</div>`;
+        }
+
+        if(eventRoles.length > 0) {
+            html += `<div style="margin-top: 10px;">`;
+            eventRoles.forEach(er => {
+                const combinedRole = `${er.role_name}${er.sub_role ? ' | ' + er.sub_role : ''}`;
+                html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                    <div><strong style="color:var(--text-main); font-size: 0.95rem;">📅 ${er.event_name}</strong><br><small style="color:var(--text-muted);">${er.event_date}</small></div>
+                    <div style="text-align: right;"><span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px;">${combinedRole}</span></div>
+                </div>`;
+            });
+            html += `</div>`;
+        }
+
+        if(html === '') {
+            container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No ministry or event roles assigned yet.</p>`;
+        } else {
+            container.innerHTML = html;
+        }
+    } catch(e) { console.error('Failed to load profile roles', e); }
+};
+
+window.populateProfileTab = async function(member) {
     document.getElementById('myMemberId').value = member.id;
     document.getElementById('myProfileName').innerText = member.name || 'Member';
     document.getElementById('myProfileCode').innerText = `Unique Pass ID: ${member.qr_code || 'N/A'}`;
@@ -501,7 +564,9 @@ window.populateProfileTab = function(member) {
     const avatar = document.getElementById('myProfileAvatar');
     if (member.profile_picture) {
         avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
-    } else avatar.innerHTML = (member.name || 'U').charAt(0).toUpperCase();
+    } else {
+        avatar.innerHTML = (member.name || 'U').charAt(0).toUpperCase();
+    }
 
     document.getElementById('myQrContainer').innerHTML = '';
     if(member.qr_code) {
@@ -509,10 +574,38 @@ window.populateProfileTab = function(member) {
             if(!err) {
                 const img = document.createElement('img'); img.src = url;
                 document.getElementById('myQrContainer').appendChild(img);
-                document.getElementById('myDownloadQrBtn').href = url;
+                const dlBtn = document.getElementById('myDownloadQrBtn');
+                if(dlBtn) dlBtn.href = url;
             }
         });
     }
+
+    window.loadMinistriesAndEventRolesForProfile(member.id, 'myMinistriesHistory');
+
+    try {
+        const safeFetch = window.fetch.bind(window);
+        const res = await safeFetch(`/api/youth/${member.id}/history`);
+        const history = await res.json();
+        const historyContainer = document.getElementById('myAttendanceHistory');
+
+        if (historyContainer) {
+            if (!history || history.length === 0) {
+                historyContainer.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No attendance history recorded yet.</p>`;
+            } else {
+                historyContainer.innerHTML = history.map(h => `
+                    <div style="border-bottom: 1px solid var(--border-color); padding: 10px 5px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong style="color: var(--text-main);">${h.event_name}</strong><br>
+                            <small style="color: var(--text-muted);">📅 ${h.event_date}</small>
+                        </div>
+                        <div style="text-align: right;">
+                            <span class="badge ${h.is_walkin ? 'badge-orange' : 'badge-blue'}" style="font-size: 0.7rem;">${h.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span><br>
+                            <small style="color: var(--success); font-weight: bold;">${new Date(h.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                        </div>
+                    </div>`).join('');
+            }
+        }
+    } catch(e) { console.error('Failed to load personal history:', e); }
 };
 
 window.populateAdminProfile = function(username) {
@@ -522,6 +615,8 @@ window.populateAdminProfile = function(username) {
     document.getElementById('myEditEmail').value = username;
     document.getElementById('myProfileAvatar').innerHTML = "A";
     document.getElementById('myQrContainer').innerHTML = `<span class="badge badge-orange" style="font-size: 1.1rem; padding: 12px 20px;">AUTHORIZED LEADER</span>`;
+    document.getElementById('myMinistriesHistory').innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">Admin System Account. No roles mapped.</p>`;
+    document.getElementById('myAttendanceHistory').innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">Admin System Account. No check-ins mapped.</p>`;
 };
 
 window.handleSelfProfileUpdate = async function(e) {
@@ -539,7 +634,6 @@ window.handleSelfProfileUpdate = async function(e) {
         social_media: document.getElementById('myEditSocial').value, parents_name: document.getElementById('myEditParents').value,
         password: document.getElementById('myEditPassword').value, profile_picture: picBase64, actor: currentUser
     };
-
     window.triggerActionConfirmation(`Save changes to your personal profile?`, async () => {
         const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await res.json();
@@ -606,7 +700,6 @@ window.updateActiveEventBanner = async function() {
     if(!dropdown) return;
     const eventId = dropdown.value;
     checkedInYouthIds.clear();
-
     if(eventId) {
         document.getElementById('checkinCounters').style.display = 'grid';
         try {
@@ -682,8 +775,8 @@ window.openFastEditProfileModal = function(id) {
     document.getElementById('fastEditProfilePic').value = '';
     document.getElementById('fastEditProfileModal').classList.add('active');
 };
-
 window.closeFastEditProfileModal = function() { document.getElementById('fastEditProfileModal').classList.remove('active'); };
+
 window.submitFastEditProfile = async function(doCheckIn) {
     const form = document.getElementById('fastEditProfileForm');
     if(!form.checkValidity()) { form.reportValidity(); return; }
@@ -699,7 +792,6 @@ window.submitFastEditProfile = async function(doCheckIn) {
         social_media: document.getElementById('fastEditSocial').value, parents_name: document.getElementById('fastEditParents').value,
         profile_picture: picBase64, password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, actor: currentUser
     };
-
     window.triggerActionConfirmation(`Confirm updating profile for ${payload.name}?`, async () => {
         const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
         const data = await res.json();
@@ -744,6 +836,9 @@ window.handleWalkin = async function(e) {
     } else alert(regData.error || 'Failed to register walk-in.');
 };
 
+// ==============================================================================
+// DIRECTORY MODULE
+// ==============================================================================
 window.loadDirectory = async function() {
     if (youthData.length === 0) { const res = await fetch('/api/youth'); youthData = await res.json(); }
     window.filterDirectory();
@@ -753,7 +848,6 @@ window.filterDirectory = function() {
     const q = document.getElementById('directorySearchInput').value.toLowerCase().trim();
     const sort = document.getElementById('sortDirectorySelect').value;
     const ageCat = document.getElementById('filterAgeCategory').value;
-
     let matches = youthData || [];
     if (q) {
         matches = matches.filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
@@ -765,19 +859,37 @@ window.filterDirectory = function() {
     else if (ageCat === 'adult') { matches = matches.filter(y => y.age && y.age >= 22); labelText = "Adults"; }
 
     document.getElementById('directoryTotalCount').innerText = `${labelText}: ${matches.length}`;
-
     if (sort === 'name_asc') matches.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
     if (sort === 'name_desc') matches.sort((a,b) => (b.name || '').localeCompare(a.name || ''));
     if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
     if (sort === 'age_desc') matches.sort((a,b) => (b.age || 0) - (a.age || 0));
+    
+    filteredDir = matches;
+    window.renderDirectoryTable();
+};
+
+// SAFE JAVASCRIPT PAGINATION ENGINE
+window.renderDirectoryTable = function() {
+    const total = filteredDir.length;
+    let totalPages = 1;
+    let pagedData = filteredDir;
+
+    if (dirPerPage !== 'all') {
+        totalPages = Math.ceil(total / dirPerPage) || 1;
+        if (currentDirPage > totalPages) currentDirPage = totalPages;
+        if (currentDirPage < 1) currentDirPage = 1;
+        const start = (currentDirPage - 1) * dirPerPage;
+        pagedData = filteredDir.slice(start, start + dirPerPage);
+    } else {
+        currentDirPage = 1;
+    }
 
     let html = `<table class="responsive-table">
         <thead>
             <tr><th>Member</th><th class="hide-mobile">Age</th><th class="hide-mobile">Birthday</th><th>Actions</th></tr>
         </thead>
         <tbody>`;
-
-    html += matches.map(y => {
+    html += pagedData.map(y => {
         const safeName = y.name || 'Unknown';
         const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 45px; height: 45px; font-size: 1.2rem;">${safeName.charAt(0).toUpperCase()}</div>`;
         return `
@@ -800,9 +912,68 @@ window.filterDirectory = function() {
                 ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteMember(${y.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
             </td>
         </tr>`}).join('');
-
     html += `</tbody></table>`;
+
+    if (total > 0) {
+        html += `
+        <div style="display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label>Entries per page:</label>
+                <select onchange="changeDirPerPage(this.value)" style="padding: 5px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem;">
+                    <option value="10" ${dirPerPage === 10 ? 'selected' : ''}>10</option>
+                    <option value="25" ${dirPerPage === 25 ? 'selected' : ''}>25</option>
+                    <option value="50" ${dirPerPage === 50 ? 'selected' : ''}>50</option>
+                    <option value="all" ${dirPerPage === 'all' ? 'selected' : ''}>All</option>
+                </select>
+            </div>
+            <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
+                <button class="btn btn-outline btn-sm" onclick="changeDirPage(-1)" ${currentDirPage === 1 ? 'disabled' : ''}>◀ Prev</button>
+                <span style="color: var(--text-main);">Page ${currentDirPage} of ${totalPages}</span>
+                <button class="btn btn-outline btn-sm" onclick="changeDirPage(1)" ${currentDirPage === totalPages || totalPages === 0 ? 'disabled' : ''}>Next ▶</button>
+            </div>
+        </div>`;
+    }
     document.getElementById('directoryTableContainer').innerHTML = html;
+};
+
+window.changeDirPage = function(delta) { currentDirPage += delta; window.renderDirectoryTable(); };
+window.changeDirPerPage = function(val) { dirPerPage = val === 'all' ? 'all' : parseInt(val); currentDirPage = 1; window.renderDirectoryTable(); };
+
+window.openAddMemberModal = function() {
+    document.getElementById('addMemberForm').reset();
+    document.getElementById('addMemberModal').classList.add('active');
+};
+
+window.closeAddMemberModal = function() {
+    document.getElementById('addMemberModal').classList.remove('active');
+};
+
+window.submitNewMember = async function(e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('addMemberProfilePic');
+    let picBase64 = null;
+    if (fileInput && fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
+
+    const payload = {
+        name: document.getElementById('addMemberName').value, age: document.getElementById('addMemberAge').value,
+        birthday: document.getElementById('addMemberBirthday').value, email: document.getElementById('addMemberEmail').value,
+        mobile: document.getElementById('addMemberMobile').value, social_media: document.getElementById('addMemberSocial').value,
+        parents_name: document.getElementById('addMemberParents').value, profile_picture: picBase64, actor: currentUser
+    };
+
+    window.triggerActionConfirmation(`Register ${payload.name} into the directory?`, async () => {
+        try {
+            const res = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await res.json();
+            if (data.id) {
+                alert(`Successfully registered ${payload.name}!\nUnique Pass ID: ${data.qr_code}`);
+                window.closeAddMemberModal();
+                youthData = []; window.loadDirectory();
+            } else {
+                alert(data.error || 'Failed to create member.');
+            }
+        } catch (err) { alert("Network error."); }
+    });
 };
 
 window.openEditMemberModal = function(youthId) {
@@ -818,6 +989,7 @@ window.openEditMemberModal = function(youthId) {
     document.getElementById('editMemberProfilePic').value = '';
     document.getElementById('editMemberModal').classList.add('active');
 };
+
 window.closeEditMemberModal = function() { document.getElementById('editMemberModal').classList.remove('active'); };
 
 window.saveMemberEditWithConfirm = async function() {
@@ -835,7 +1007,6 @@ window.saveMemberEditWithConfirm = async function() {
         social_media: document.getElementById('editMemberSocial').value, parents_name: document.getElementById('editMemberParents').value,
         password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, profile_picture: picBase64, actor: currentUser
     };
-
     window.triggerActionConfirmation(`Confirm updating member profile for '${payload.name}'?`, async () => {
         await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         window.closeEditMemberModal(); youthData = []; window.loadDirectory();
@@ -845,9 +1016,11 @@ window.saveMemberEditWithConfirm = async function() {
 window.openViewProfileModal = async function(youthId) {
     const member = youthData.find(y => y.id == youthId);
     if (!member) return;
+
     const safeName = member.name || 'Unknown';
     document.getElementById('modalProfileName').innerText = safeName;
     document.getElementById('modalProfileCode').innerText = `Unique Pass ID: ${member.qr_code || ''}`;
+
     document.getElementById('modalBioSummary').innerHTML = `
         <strong>Email Address:</strong> ${member.email || 'N/A'}<br>
         <strong>Age / Birthday:</strong> ${member.age || 'N/A'} (${member.birthday || 'N/A'})<br>
@@ -856,8 +1029,11 @@ window.openViewProfileModal = async function(youthId) {
     `;
 
     const avatar = document.getElementById('viewModalProfileAvatar');
-    if (member.profile_picture) avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
-    else avatar.innerHTML = safeName.charAt(0).toUpperCase();
+    if (member.profile_picture) {
+        avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
+    } else {
+        avatar.innerHTML = safeName.charAt(0).toUpperCase();
+    }
 
     document.getElementById('modalQrContainer').innerHTML = '';
     if(member.qr_code) {
@@ -865,21 +1041,337 @@ window.openViewProfileModal = async function(youthId) {
             if(!err) {
                 const img = document.createElement('img'); img.src = url;
                 document.getElementById('modalQrContainer').appendChild(img);
-                document.getElementById('modalDownloadQrBtn').href = url;
+                const dlBtn = document.getElementById('modalDownloadQrBtn');
+                if(dlBtn) dlBtn.href = url;
             }
         });
     }
 
+    window.loadMinistriesAndEventRolesForProfile(member.id, 'modalMinistriesHistory');
+
     try {
-        const res = await fetch(`/api/youth/${youthId}/history`);
+        const safeFetch = window.fetch.bind(window);
+        const res = await safeFetch(`/api/youth/${youthId}/history`);
         const history = await res.json();
         const historyContainer = document.getElementById('modalAttendanceHistory');
-        if (!history || history.length === 0) historyContainer.innerHTML = `<p style="color: var(--text-muted);">No attendance history recorded yet.</p>`;
-        else historyContainer.innerHTML = history.map(h => `<div style="border-bottom: 1px solid var(--border-color); padding: 8px 0;"><strong>${h.event_name}</strong> (${h.event_date}) - <small style="color:var(--text-muted);">${h.checked_in_at}</small></div>`).join('');
-    } catch(e) { console.error(e); }
-    document.getElementById('viewProfileModal').classList.add('active');
+
+        if (historyContainer) {
+            if (!history || history.length === 0) {
+                historyContainer.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No attendance history recorded yet.</p>`;
+            } else {
+                historyContainer.innerHTML = history.map(h => `
+                    <div style="border-bottom: 1px solid var(--border-color); padding: 10px 5px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong style="color: var(--text-main);">${h.event_name}</strong><br>
+                            <small style="color: var(--text-muted);">📅 ${h.event_date}</small>
+                        </div>
+                        <div style="text-align: right;">
+                            <span class="badge ${h.is_walkin ? 'badge-orange' : 'badge-blue'}" style="font-size: 0.7rem;">${h.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span><br>
+                            <small style="color: var(--success); font-weight: bold;">${new Date(h.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                        </div>
+                    </div>`).join('');
+            }
+        }
+    } catch(e) { console.error('Failed to load modal history:', e); }
+
+    const modal = document.getElementById('viewProfileModal');
+    if(modal) modal.classList.add('active');
 };
+
 window.closeViewProfileModal = function() { document.getElementById('viewProfileModal').classList.remove('active'); };
+// --- END OF PART 1 ---
+
+// --- START OF PART 2 ---
+
+// ==============================================================================
+// MINISTRIES MODULE (CRM EXPANSION)
+// ==============================================================================
+
+window.loadMinistries = async function() {
+    try {
+        const res = await fetch('/api/ministries');
+        ministriesData = await res.json();
+        const container = document.getElementById('ministryListContainer');
+        if (ministriesData.length === 0) {
+            container.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding: 20px;">No ministries created yet.</p>`;
+            return;
+        }
+        container.innerHTML = ministriesData.map(m => {
+            const logoHtml = m.logo ? `<img src="${m.logo}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">` : `<div style="background: var(--bg-light); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 1.5rem;">🏛️</div>`;
+            return `
+            <div class="ministry-card" onclick="openMinistryDetailsModal(${m.id})">
+                <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                    <div style="width: 50px; height: 50px; flex-shrink: 0; border: 1px solid var(--border-color); border-radius: 8px;">${logoHtml}</div>
+                    <div>
+                        <h3 style="color: var(--primary); font-size: 1.2rem; margin-bottom: 2px;">${m.name}</h3>
+                        <p style="color: var(--text-muted); font-size: 0.85rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${m.description || 'No description provided'}</p>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 10px;">
+                    <span class="badge badge-blue">👥 ${m.member_count || 0} Members</span>
+                    <span style="font-size: 0.8rem; color: var(--primary); font-weight: bold;">View Team →</span>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) { console.error("Failed to load ministries", e); }
+};
+
+window.handleCreateMinistry = async function(e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('minCreateLogo');
+    let logoBase64 = null;
+    if (fileInput && fileInput.files.length > 0) logoBase64 = await window.getBase64(fileInput.files[0], 400);
+
+    const payload = {
+        name: document.getElementById('minCreateName').value,
+        description: document.getElementById('minCreateDesc').value,
+        logo: logoBase64,
+        actor: currentUser
+    };
+    window.triggerActionConfirmation(`Create new ministry '${payload.name}'?`, async () => {
+        try {
+            const res = await fetch('/api/ministries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (res.ok) {
+                document.getElementById('minCreateName').value = '';
+                document.getElementById('minCreateDesc').value = '';
+                if(fileInput) fileInput.value = '';
+                alert('Ministry created successfully!');
+                window.switchMinistrySubTab('list');
+            }
+        } catch(err) { alert("Network Error"); }
+    });
+};
+
+window.openEditMinistryModal = function() {
+    if (!currentMinistryId) return;
+    const m = ministriesData.find(x => x.id === currentMinistryId);
+    if (!m) return;
+    document.getElementById('editMinName').value = m.name || '';
+    document.getElementById('editMinDesc').value = m.description || '';
+    document.getElementById('editMinLogo').value = '';
+    document.getElementById('editMinistryModal').classList.add('active');
+};
+window.closeEditMinistryModal = function() { document.getElementById('editMinistryModal').classList.remove('active'); };
+
+window.saveMinistryEdit = async function() {
+    if (!currentMinistryId) return;
+    const fileInput = document.getElementById('editMinLogo');
+    let logoBase64 = undefined;
+    if (fileInput && fileInput.files.length > 0) logoBase64 = await window.getBase64(fileInput.files[0], 400);
+
+    const payload = {
+        name: document.getElementById('editMinName').value,
+        description: document.getElementById('editMinDesc').value,
+        restricted_notes: document.getElementById('ministryDetailNotes').value,
+        actor: currentUser
+    };
+    if (logoBase64 !== undefined) payload.logo = logoBase64;
+
+    window.triggerActionConfirmation('Save changes to this ministry?', async () => {
+        try {
+            const res = await fetch(`/api/ministries/${currentMinistryId}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+            if(res.ok) {
+                window.closeEditMinistryModal();
+                alert('Ministry updated successfully!');
+                await window.loadMinistries();
+                const m = ministriesData.find(x => x.id === currentMinistryId);
+                document.getElementById('ministryDetailTitle').innerText = m.name;
+                document.getElementById('ministryDetailDesc').innerText = m.description;
+                const logoCont = document.getElementById('ministryDetailLogoContainer');
+                if (m.logo) {
+                    logoCont.innerHTML = `<img src="${m.logo}" style="width: 100%; height: 100%; object-fit: cover;">`;
+                    logoCont.style.display = 'block';
+                }
+            }
+        } catch(err) { alert("Network Error"); }
+    });
+};
+
+window.openMinistryDetailsModal = async function(id) {
+    currentMinistryId = id;
+    const m = ministriesData.find(x => x.id === id);
+    if (!m) return;
+    
+    document.getElementById('ministryDetailTitle').innerText = m.name;
+    document.getElementById('ministryDetailDesc').innerText = m.description || '';
+
+    const logoCont = document.getElementById('ministryDetailLogoContainer');
+    if (m.logo) {
+        logoCont.innerHTML = `<img src="${m.logo}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
+        logoCont.style.display = 'block';
+    } else {
+        logoCont.style.display = 'none';
+    }
+
+    const btnEditMin = document.getElementById('btnEditMinistryConfig');
+    if (btnEditMin) btnEditMin.style.display = window.hasPerm('edit_entries') ? 'inline-block' : 'none';
+
+    const notesSection = document.getElementById('ministryRestrictedSection');
+    if (window.hasPerm('edit_entries')) {
+        notesSection.style.display = 'block';
+        document.getElementById('ministryDetailNotes').value = m.restricted_notes || '';
+    } else {
+        notesSection.style.display = 'none';
+    }
+
+    const assignControls = document.getElementById('ministryAssignControls');
+    assignControls.style.display = window.hasPerm('add_entries') ? 'block' : 'none';
+    document.getElementById('minSearchInput').value = '';
+    document.getElementById('minSelectedUserId').value = '';
+    document.getElementById('minSubRoleInput').value = ''; 
+
+    await window.loadMinistryRoster(id);
+    document.getElementById('ministryDetailsModal').classList.add('active');
+};
+
+window.closeMinistryDetailsModal = function() {
+    document.getElementById('ministryDetailsModal').classList.remove('active');
+    currentMinistryId = null;
+};
+
+window.saveMinistryNotes = async function() {
+    if (!currentMinistryId) return;
+    const m = ministriesData.find(x => x.id === currentMinistryId);
+    const notes = document.getElementById('ministryDetailNotes').value;
+    const payload = { name: m.name, description: m.description, restricted_notes: notes, actor: currentUser };
+    
+    window.triggerActionConfirmation('Save restricted notes for this ministry?', async () => {
+        const res = await fetch(`/api/ministries/${currentMinistryId}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        if (res.ok) {
+            m.restricted_notes = notes; 
+            alert('Notes saved successfully!');
+        }
+    });
+};
+
+window.loadMinistryRoster = async function(id) {
+    try {
+        const res = await fetch(`/api/ministries/${id}/members`);
+        const roster = await res.json();
+        const container = document.getElementById('ministryRosterContainer');
+        if (roster.length === 0) {
+            container.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:15px;">No members assigned to this ministry yet.</p>`;
+            return;
+        }
+
+        const hierarchy = ["Ministry Head", "Assistant Ministry Head", "Youth Ministry Head", "Core Member", "Member", "Integration Period"];
+        roster.sort((a, b) => {
+            let idxA = hierarchy.indexOf(a.role);
+            let idxB = hierarchy.indexOf(b.role);
+            if (idxA === -1) idxA = 99;
+            if (idxB === -1) idxB = 99;
+            return idxA - idxB;
+        });
+
+        container.innerHTML = roster.map(r => {
+            const safeName = r.name || 'Unknown';
+            const avatarHtml = r.profile_picture ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.85rem;">${safeName.charAt(0).toUpperCase()}</div>`;
+            const editBtn = window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px; margin-right: 5px;" onclick="openEditMinistryRoleModal(${r.mapping_id}, '${r.role}', '${(r.sub_role||'').replace(/'/g, "\\'")}')">✏️ Edit</button>` : '';
+            const delBtn = window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="removeMinistryRole(${r.mapping_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>` : '';
+            const combinedRole = `${r.role}${r.sub_role ? ' | ' + r.sub_role : ''}`;
+            
+            return `
+            <div style="padding: 12px 10px; border-bottom: 1px solid var(--bg-light); display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    ${avatarHtml}
+                    <div>
+                        <strong style="color: var(--text-main); font-size: 0.95rem;">${safeName}</strong>
+                        <span style="font-size:11px; color:var(--primary); background: rgba(255,107,0,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${combinedRole}</span><br>
+                        <small style="color: var(--text-muted);">${r.qr_code || ''}</small>
+                    </div>
+                </div>
+                <div style="text-align: right;">${editBtn}${delBtn}</div>
+            </div>`;
+        }).join('');
+    } catch(e) { console.error("Roster load error", e); }
+};
+
+window.filterMinistrySearch = async function() {
+    const q = document.getElementById('minSearchInput').value.toLowerCase().trim();
+    const dropdown = document.getElementById('minSearchDropdown');
+    if (q.length < 2) { dropdown.style.display = 'none'; return; }
+    if (youthData.length === 0) { const res = await fetch('/api/youth'); youthData = await res.json(); }
+
+    const matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
+    if (matches.length > 0) {
+        dropdown.innerHTML = matches.map(y => `
+            <div style="padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer;" onclick="selectMinistryUser(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')">
+                <strong style="color:var(--text-main);">${y.name || 'Unknown'}</strong><br><small style="color:var(--text-muted);">${y.qr_code}</small>
+            </div>
+        `).join('');
+        dropdown.style.display = 'block';
+    } else {
+        dropdown.innerHTML = `<div style="padding:10px; color:var(--text-muted);">No matches</div>`;
+        dropdown.style.display = 'block';
+    }
+};
+
+window.selectMinistryUser = function(id, name) {
+    document.getElementById('minSelectedUserId').value = id;
+    document.getElementById('minSearchInput').value = name;
+    document.getElementById('minSearchDropdown').style.display = 'none';
+};
+
+window.assignMinistryRole = async function() {
+    const youthId = document.getElementById('minSelectedUserId').value;
+    const role = document.getElementById('minRoleSelect').value;
+    const subRole = document.getElementById('minSubRoleInput').value.trim();
+    if (!youthId || !currentMinistryId) return alert('Please search and select a member first.');
+
+    try {
+        const payload = { youth_id: youthId, role: role, sub_role: subRole, actor: currentUser };
+        const res = await fetch(`/api/ministries/${currentMinistryId}/members`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.success) {
+            document.getElementById('minSearchInput').value = '';
+            document.getElementById('minSelectedUserId').value = '';
+            document.getElementById('minSubRoleInput').value = '';
+            window.loadMinistryRoster(currentMinistryId);
+            window.loadMinistries(); 
+        } else alert(data.error || 'Failed to assign role. (They may already be in this ministry)');
+    } catch(e) { alert('Connection error.'); }
+};
+
+window.openEditMinistryRoleModal = function(mappingId, role, subRole) {
+    document.getElementById('editMinRoleMappingId').value = mappingId;
+    document.getElementById('editMinRoleSelect').value = role;
+    document.getElementById('editMinSubRoleInput').value = subRole;
+    document.getElementById('editMinistryRoleModal').classList.add('active');
+};
+window.closeEditMinistryRoleModal = function() { document.getElementById('editMinistryRoleModal').classList.remove('active'); };
+
+window.saveMinistryRoleEdit = async function() {
+    const mappingId = document.getElementById('editMinRoleMappingId').value;
+    const payload = {
+        role: document.getElementById('editMinRoleSelect').value,
+        sub_role: document.getElementById('editMinSubRoleInput').value,
+        actor: currentUser
+    };
+    try {
+        const res = await fetch(`/api/ministries/${currentMinistryId}/members/${mappingId}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        if(res.ok) {
+            window.closeEditMinistryRoleModal();
+            window.loadMinistryRoster(currentMinistryId);
+            window.loadMinistries();
+        }
+    } catch(e) { alert("Error saving role changes."); }
+};
+
+window.removeMinistryRole = function(mappingId, name) {
+    window.triggerActionConfirmation(`Remove ${name} from this ministry?`, async () => {
+        try {
+            const res = await fetch(`/api/ministries/${currentMinistryId}/members/${mappingId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
+            if (res.ok) {
+                window.loadMinistryRoster(currentMinistryId);
+                window.loadMinistries();
+            }
+        } catch(err) { alert("Network Error"); }
+    });
+};
+
+// ==============================================================================
+// PUBLIC PREREGISTRATION & EVENTS SETTINGS
+// ==============================================================================
 
 window.openPreregSettings = function(eventId) {
     const e = eventsData.find(ev => ev.id == eventId);
@@ -900,7 +1392,6 @@ window.savePreregSettings = async function(e) {
     const info = document.getElementById('preregSetInfo').value;
     const fileInput = document.getElementById('preregSetBanner');
     const fileInputBottom = document.getElementById('preregSetBottomBanner');
-
     let bannerBase64 = null;
     if (fileInput.files.length > 0) bannerBase64 = await window.getBase64(fileInput.files[0], 1200);
 
@@ -935,7 +1426,6 @@ window.launchPublicPrereg = async function(eventId) {
 
     if(eventsData.length === 0) { const res = await fetch('/api/events'); eventsData = await res.json(); }
     const e = eventsData.find(ev => ev.id == eventId);
-
     if (e) {
         document.getElementById('preregPublicTitle').innerText = e.prereg_title || e.name;
         document.getElementById('preregPublicInfo').innerText = e.prereg_info || `Date: ${e.event_date} | Venue: ${e.venue || 'TBA'}`;
@@ -972,7 +1462,8 @@ window.showPreregStep = function(step) {
         document.getElementById('preregSearchResults').style.display = 'none';
     }
     if(step === 3) {
-        document.getElementById('preregNewName').value = ''; document.getElementById('preregNewAge').value = '';
+        document.getElementById('preregNewName').value = '';
+        document.getElementById('preregNewAge').value = '';
         document.getElementById('preregNewEmail').value = ''; document.getElementById('preregNewMobile').value = '';
     }
 };
@@ -1075,6 +1566,10 @@ window.sharePreRegLink = async function() {
     }
 };
 
+// ==============================================================================
+// EVENTS MODULE
+// ==============================================================================
+
 window.openEditEventModal = function(eventId) {
     try {
         const e = eventsData.find(ev => ev.id == eventId);
@@ -1093,7 +1588,6 @@ window.openEditEventModal = function(eventId) {
 
         const modal = document.getElementById('editEventModal');
         if (modal) modal.classList.add('active');
-
     } catch (err) {
         console.error("Edit Event Error:", err);
         alert("An error occurred opening the Event Editor.");
@@ -1109,7 +1603,6 @@ window.submitEditEvent = async function() {
     if(!form.checkValidity()) { form.reportValidity(); return; }
     const id = document.getElementById('editEvtId').value;
     const fileInput = document.getElementById('editEvtPoster');
-
     window.triggerActionConfirmation(`Confirm saving changes to event?`, async () => {
         let posterBase64 = null;
         if (fileInput && fileInput.files.length > 0) posterBase64 = await window.getBase64(fileInput.files[0], 1200);
@@ -1126,189 +1619,72 @@ window.submitEditEvent = async function() {
     });
 };
 
-window.filterPermUserList = async function() {
-    const qElem = document.getElementById('permUserSearchInput');
-    const container = document.getElementById('permUserListContainer');
-    if(!qElem || !container) return;
-
-    const q = qElem.value.toLowerCase().trim();
-
-    if (q.length < 3) {
-        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>`;
-        return;
-    }
-
-    if (!youthData || youthData.length === 0) {
-        try {
-            const res = await fetch('/api/youth');
-            youthData = await res.json();
-        } catch (e) {
-            container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Error fetching directory data.</div>`;
-            return;
-        }
-    }
-
-    const matches = (youthData || []).filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
-
-    if (matches.length === 0) {
-        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No accounts found matching '${q}'</div>`;
-        return;
-    }
-
-    container.innerHTML = matches.map(u => `
-        <div class="search-item">
-            <div><strong style="color:var(--text-main); font-size:1.05rem;">${u.name || 'Unknown'}</strong><br><small style="color: var(--text-muted);">${u.qr_code || ''}</small></div>
-            <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${(u.name || '').replace(/'/g, "\\'")}')">Select</button>
-        </div>
-    `).join('');
-};
-
-window.loadUserPermissionsList = async function() {
-    if (!youthData || youthData.length === 0) {
-        try {
-            const res = await fetch('/api/youth');
-            youthData = await res.json();
-        } catch (e) { console.error("Failed to load youth data for permissions"); }
-    }
-    window.filterPermUserList();
-};
-
-window.openAssignPermissionModal = async function(id, displayName) {
-    try {
-        const res = await fetch('/api/youth');
-        const dbYouth = await res.json();
-        const targetYouth = dbYouth.find(y => y.id === id);
-        const perms = JSON.parse(targetYouth.permissions || '[]');
-
-        const idElem = document.getElementById('modalPermUserId');
-        if(idElem) idElem.value = id;
-
-        const bannerElem = document.getElementById('permModalUserBanner');
-        if(bannerElem) bannerElem.innerText = `Assign Permissions for: ${displayName}`;
-
-        document.querySelectorAll('.permCheckModal').forEach(chk => { chk.checked = perms.includes(chk.value); });
-
-        const modal = document.getElementById('assignPermissionModal');
-        if(modal) modal.classList.add('active');
-    } catch(e) {
-        console.error(e);
-        alert("Failed to load user permissions from server.");
-    }
-};
-
-window.closeAssignPermissionModal = function() {
-    const modal = document.getElementById('assignPermissionModal');
-    if(modal) modal.classList.remove('active');
-};
-
-window.handleSavePermissionsFromModal = function() {
-    const idElem = document.getElementById('modalPermUserId');
-    if(!idElem) return;
-    const userId = idElem.value;
-
-    const selectedPerms = [];
-    document.querySelectorAll('.permCheckModal:checked').forEach(chk => { selectedPerms.push(chk.value); });
-
-    window.triggerActionConfirmation(`Confirm updating permission set?`, async () => {
-        try {
-            const res = await fetch(`/api/youth/${userId}/permissions`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ permissions: selectedPerms, actor: currentUser })
-            });
-
-            if(!res.ok) throw new Error("HTTP error " + res.status);
-
-            const data = await res.json();
-            if (data.success) {
-                alert('Permissions updated successfully!');
-                window.closeAssignPermissionModal();
-                window.resetPermUserList();
-                youthData = []; await window.loadDirectory();
-            } else {
-                alert('Failed to update permissions. Details: ' + JSON.stringify(data));
-            }
-        } catch(e) {
-            console.error("Save Permissions Error:", e);
-            alert("Network error updating permissions. Check server logs.");
-        }
-    });
-};
-
-window.handleCreateUserAccount = function(e) {
-    e.preventDefault();
-    const username = document.getElementById('newUsername').value;
-    const password = document.getElementById('newPassword').value;
-
-    window.triggerActionConfirmation(`Create new leader account '${username}'?`, async () => {
-        const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser, username, password, permissions: ['access_checkin', 'access_directory'] }) });
-        const data = await res.json();
-        if (data.success) {
-            alert(`User account created! Click 'Edit Permissions' to customize access.`);
-            document.getElementById('newUsername').value = ''; document.getElementById('newPassword').value = '';
-            window.loadUserPermissionsList();
-        } else alert(data.error || 'Failed to create user');
-    });
-};
-
 window.setEventViewMode = function(mode) {
     eventViewMode = mode;
-    document.getElementById('viewBtnList').classList.toggle('active', mode === 'list');
-    document.getElementById('viewBtnGrid').classList.toggle('active', mode === 'grid');
-    document.getElementById('viewBtnCal').classList.toggle('active', mode === 'calendar');
-    document.getElementById('calendarControls').style.display = mode === 'calendar' ? 'flex' : 'none';
+    const btnList = document.getElementById('viewBtnList');
+    if (btnList) btnList.classList.toggle('active', mode === 'list');
+    const btnGrid = document.getElementById('viewBtnGrid');
+    if (btnGrid) btnGrid.classList.toggle('active', mode === 'grid');
+    const btnCal = document.getElementById('viewBtnCal');
+    if (btnCal) btnCal.classList.toggle('active', mode === 'calendar');
+    
+    const calControls = document.getElementById('calendarControls');
+    if (calControls) calControls.style.display = mode === 'calendar' ? 'flex' : 'none';
+    
+    const container = document.getElementById('eventsListContainer');
+    if (!container) return;
 
-    if(eventsData.length === 0) {
-        window.loadEvents();
-    } else {
-        const container = document.getElementById('eventsListContainer');
-        if (eventViewMode === 'list') {
-            container.className = 'events-list-view';
-            container.innerHTML = eventsData.map(e => {
-                const safeName = e.name || 'Event';
-                let linkBadges = '';
-                if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
-                if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
-                return `
-                <div style="border-bottom: 1px solid var(--border-color); padding: 15px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    if (eventsData.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding: 20px;">No events published yet.</p>';
+        return;
+    }
+
+    if (eventViewMode === 'list') {
+        container.className = 'events-list-view';
+        container.innerHTML = eventsData.map(e => {
+            const safeName = e.name || 'Event';
+            let linkBadges = '';
+            if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
+            if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
+            return `
+            <div style="border-bottom: 1px solid var(--border-color); padding: 15px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div>
+                    <strong style="cursor: pointer; color: var(--primary); font-size: 1.1rem;" onclick="openAnalyticsModal(${e.id})">${safeName}</strong><br>
+                    <small style="color: var(--text-muted); font-size: 0.85rem;">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
+                    ${linkBadges ? `<div style="margin-top: 8px;">${linkBadges}</div>` : ''}
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
+                    ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
+                    ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
+                    ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
+                </div>
+            </div>`}).join('');
+    } else if (eventViewMode === 'grid') {
+        container.className = 'events-grid-view';
+        container.innerHTML = eventsData.map(e => {
+            const safeName = e.name || 'Event';
+            let linkBadges = '';
+            if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
+            if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
+            return `
+            <div class="event-card">
+                ${e.poster ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` : `<div class="event-card-img" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`}
+                <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
-                        <strong style="cursor: pointer; color: var(--primary); font-size: 1.1rem;" onclick="openAnalyticsModal(${e.id})">${safeName}</strong><br>
-                        <small style="color: var(--text-muted); font-size: 0.85rem;">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
-                        ${linkBadges ? `<div style="margin-top: 8px;">${linkBadges}</div>` : ''}
+                        <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${safeName}</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>📍 ${e.venue || 'No Location'}</p>
+                        ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
                     </div>
-                    <div style="display: flex; gap: 6px;">
-                        <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
+                    <div style="display: flex; gap: 6px; margin-top: 10px;">
+                        <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
                         ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
                         ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
                         ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
                     </div>
-                </div>`}).join('');
-        } else if (eventViewMode === 'grid') {
-            container.className = 'events-grid-view';
-            container.innerHTML = eventsData.map(e => {
-                const safeName = e.name || 'Event';
-                let linkBadges = '';
-                if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
-                if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
-                return `
-                <div class="event-card">
-                    ${e.poster ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` : `<div class="event-card-img" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`}
-                    <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
-                        <div>
-                            <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${safeName}</h3>
-                            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>📍 ${e.venue || 'No Location'}</p>
-                            ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
-                        </div>
-                        <div style="display: flex; gap: 6px; margin-top: 10px;">
-                            <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
-                            ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
-                            ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
-                            ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
-                        </div>
-                    </div>
-                </div>`}).join('');
-        } else if (eventViewMode === 'calendar') window.renderCalendarView(container);
-    }
+                </div>
+            </div>`}).join('');
+    } else if (eventViewMode === 'calendar') window.renderCalendarView(container);
 };
 
 window.loadEvents = async function() {
@@ -1318,129 +1694,15 @@ window.loadEvents = async function() {
         const dropdown = document.getElementById('activeEventDropdown');
         if (dropdown) {
             dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name || 'Event'} (${e.event_date || ''})</option>`).join('');
-            if (eventsData.length > 0) window.updateActiveEventBanner();
+            if (eventsData.length > 0) {
+                window.updateActiveEventBanner();
+            } else {
+                const counters = document.getElementById('checkinCounters');
+                if (counters) counters.style.display = 'none';
+            }
         }
         window.setEventViewMode(eventViewMode);
     } catch(e) { console.error("Failed loading events.", e); }
-};
-
-window.renderCalendarView = function(container) {
-    const year = calCurrentDate.getFullYear();
-    const month = calCurrentDate.getMonth();
-    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    document.getElementById('calendarMonthTitle').innerText = `${monthNames[month]} ${year}`;
-
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    let html = `<div class="calendar-grid">`;
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    days.forEach(d => html += `<div class="calendar-day-header">${d}</div>`);
-    for (let i = 0; i < firstDay; i++) html += `<div class="calendar-day-cell other-month"></div>`;
-
-    for (let day = 1; day <= daysInMonth; day++) {
-        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const dayEvents = eventsData.filter(e => e.event_date === dateStr);
-        html += `<div class="calendar-day-cell"><strong style="color:var(--text-main);">${day}</strong>`;
-        dayEvents.forEach(e => html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${(e.name || '').replace(/"/g, '&quot;')}">${e.name || 'Event'}</div>`);
-        html += `</div>`;
-    }
-    html += `</div>`;
-    container.className = ''; container.innerHTML = html;
-};
-
-window.changeCalendarMonth = function(delta) { calCurrentDate.setMonth(calCurrentDate.getMonth() + delta); window.loadEvents(); };
-
-window.loadAttendanceLogs = async function() {
-    const res = await fetch('/api/attendance/logs');
-    cachedAttendanceLogs = await res.json();
-    window.filterAttendanceLogs();
-};
-
-window.filterAttendanceLogs = function() {
-    const q = document.getElementById('attendanceSearchInput').value.toLowerCase().trim();
-    let matches = cachedAttendanceLogs;
-    if(q) matches = matches.filter(l => (l.member_name || '').toLowerCase().includes(q) || (l.event_name || '').toLowerCase().includes(q));
-
-    let html = `<table class="responsive-table">
-        <thead>
-            <tr><th>Member</th><th class="hide-mobile">Event</th><th class="hide-mobile">Time</th><th>Status</th><th>Actions</th></tr>
-        </thead>
-        <tbody>`;
-
-    html += matches.map(l => `
-        <tr>
-            <td>
-                <div style="display: flex; gap: 12px; align-items: center;">
-                    <div style="background: rgba(16,185,129,0.1); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">✅</div>
-                    <div>
-                        <strong style="color:var(--text-main); font-size:1.05rem;">${l.member_name || 'Unknown'}</strong>
-                        <div class="mobile-meta">${l.event_name || ''} | ${l.checked_in_at || ''}</div>
-                    </div>
-                </div>
-            </td>
-            <td class="hide-mobile" style="color:var(--text-muted);">${l.event_name || ''}</td>
-            <td class="hide-mobile" style="color:var(--text-muted);">${l.checked_in_at || ''}</td>
-            <td><span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
-            <td class="actions-cell">
-                ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
-                ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${(l.member_name || '').replace(/'/g, "\\'")}')">Del</button>` : ''}
-            </td>
-        </tr>`).join('');
-
-    html += `</tbody></table>`;
-    document.getElementById('attendanceLogsContainer').innerHTML = html;
-};
-
-window.exportAttendanceLogsCSV = function() {
-    if(!cachedAttendanceLogs || cachedAttendanceLogs.length === 0) return alert('No attendance logs to export.');
-    const rows = [['Log ID', 'Member Name', 'Event', 'Checked In At', 'Status']];
-    cachedAttendanceLogs.forEach(l => rows.push([l.id, `"${l.member_name || ''}"`, `"${l.event_name || ''}"`, `"${l.checked_in_at || ''}"`, `"${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}"`]));
-    window.downloadCSV(rows, 'All_Attendance_Logs.csv');
-};
-
-window.loadActivityLogs = async function() {
-    const res = await fetch('/api/activity-logs');
-    cachedActivityLogs = await res.json();
-    window.filterActivityLogs();
-};
-
-window.filterActivityLogs = function() {
-    const q = document.getElementById('activitySearchInput').value.toLowerCase().trim();
-    let matches = cachedActivityLogs;
-    if(q) matches = matches.filter(l => (l.username || '').toLowerCase().includes(q) || (l.action || '').toLowerCase().includes(q) || (l.details || '').toLowerCase().includes(q));
-
-    let html = `<table class="responsive-table">
-        <thead>
-            <tr><th>User</th><th class="hide-mobile">Action</th><th>Details</th><th class="hide-mobile">Timestamp</th></tr>
-        </thead>
-        <tbody>`;
-
-    html += matches.map(l => `
-        <tr>
-            <td>
-                <div style="display: flex; gap: 12px; align-items: center;">
-                    <div style="background: rgba(59,130,246,0.1); width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">📝</div>
-                    <div>
-                        <strong style="color:var(--text-main); font-size:1.05rem;">${l.username || 'System'}</strong>
-                        <div class="mobile-meta"><span class="badge badge-orange">${l.action || ''}</span> | ${l.created_at || ''}</div>
-                    </div>
-                </div>
-            </td>
-            <td class="hide-mobile"><span class="badge badge-orange">${l.action || ''}</span></td>
-            <td style="color:var(--text-main);">${l.details || ''}</td>
-            <td class="hide-mobile" style="color:var(--text-muted);"><small>${l.created_at || ''}</small></td>
-        </tr>`).join('');
-
-    html += `</tbody></table>`;
-    document.getElementById('activityLogsContainer').innerHTML = html;
-};
-
-window.exportActivityLogsCSV = function() {
-    if(!cachedActivityLogs || cachedActivityLogs.length === 0) return alert('No activity logs to export.');
-    const rows = [['Log ID', 'Timestamp', 'User', 'Action', 'Details']];
-    cachedActivityLogs.forEach(l => rows.push([l.id, `"${l.created_at || ''}"`, `"${l.username || ''}"`, `"${l.action || ''}"`, `"${l.details || ''}"`]));
-    window.downloadCSV(rows, 'All_Activity_Logs.csv');
 };
 
 window.handleCreateEvent = function(e) {
@@ -1462,8 +1724,215 @@ window.handleCreateEvent = function(e) {
     });
 };
 
+window.renderCalendarView = function(container) {
+    const year = calCurrentDate.getFullYear();
+    const month = calCurrentDate.getMonth();
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    document.getElementById('calendarMonthTitle').innerText = `${monthNames[month]} ${year}`;
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let html = `<div class="calendar-grid">`;
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    days.forEach(d => html += `<div class="calendar-day-header">${d}</div>`);
+    for (let i = 0; i < firstDay; i++) html += `<div class="calendar-day-cell other-month"></div>`;
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayEvents = eventsData.filter(e => e.event_date === dateStr);
+        html += `<div class="calendar-day-cell"><strong style="color:var(--text-main);">${day}</strong>`;
+        dayEvents.forEach(e => html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${(e.name || '').replace(/"/g, '&quot;')}">${e.name || 'Event'}</div>`);
+        html += `</div>`;
+    }
+    html += `</div>`;
+    container.className = ''; container.innerHTML = html;
+};
+
+window.changeCalendarMonth = function(delta) { calCurrentDate.setMonth(calCurrentDate.getMonth() + delta); window.loadEvents(); };
+
+// ==============================================================================
+// LOGS MODULE (ATTENDANCE & AUDIT) - SAFE PAGINATION
+// ==============================================================================
+window.loadAttendanceLogs = async function() {
+    const res = await fetch('/api/attendance/logs');
+    cachedAttendanceLogs = await res.json();
+    window.filterAttendanceLogs();
+};
+
+window.filterAttendanceLogs = function() {
+    const q = document.getElementById('attendanceSearchInput').value.toLowerCase().trim();
+    let matches = cachedAttendanceLogs;
+    if(q) matches = matches.filter(l => (l.member_name || '').toLowerCase().includes(q) || (l.event_name || '').toLowerCase().includes(q));
+
+    filteredAtt = matches;
+    window.renderAttendanceTable();
+};
+
+window.renderAttendanceTable = function() {
+    const total = filteredAtt.length;
+    let totalPages = 1;
+    let pagedData = filteredAtt;
+
+    if (attPerPage !== 'all') {
+        totalPages = Math.ceil(total / attPerPage) || 1;
+        if (currentAttPage > totalPages) currentAttPage = totalPages;
+        if (currentAttPage < 1) currentAttPage = 1;
+        const start = (currentAttPage - 1) * attPerPage;
+        pagedData = filteredAtt.slice(start, start + attPerPage);
+    } else {
+        currentAttPage = 1;
+    }
+
+    let html = `<table class="responsive-table">
+        <thead>
+            <tr><th>Member</th><th class="hide-mobile">Event</th><th class="hide-mobile">Time</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody>`;
+    html += pagedData.map(l => `
+        <tr>
+            <td>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <div style="background: rgba(16,185,129,0.1); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">✅</div>
+                    <div>
+                        <strong style="color:var(--text-main); font-size:1.05rem;">${l.member_name || 'Unknown'}</strong>
+                        <div class="mobile-meta">${l.event_name || ''} | ${l.checked_in_at || ''}</div>
+                    </div>
+                </div>
+            </td>
+            <td class="hide-mobile" style="color:var(--text-muted);">${l.event_name || ''}</td>
+            <td class="hide-mobile" style="color:var(--text-muted);">${l.checked_in_at || ''}</td>
+            <td><span class="badge ${l.is_walkin ? 'badge-orange' : 'badge-green'}">${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span></td>
+            <td class="actions-cell">
+                ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditAttendanceModal(${l.id}, '${l.checked_in_at}', ${l.is_walkin})">Edit</button>` : ''}
+                ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteAttendance(${l.id}, '${(l.member_name || '').replace(/'/g, "\\'")}')">Del</button>` : ''}
+            </td>
+        </tr>`).join('');
+    html += `</tbody></table>`;
+
+    if (total > 0) {
+        html += `
+        <div style="display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label>Entries per page:</label>
+                <select onchange="changeAttPerPage(this.value)" style="padding: 5px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem;">
+                    <option value="10" ${attPerPage === 10 ? 'selected' : ''}>10</option>
+                    <option value="25" ${attPerPage === 25 ? 'selected' : ''}>25</option>
+                    <option value="50" ${attPerPage === 50 ? 'selected' : ''}>50</option>
+                    <option value="all" ${attPerPage === 'all' ? 'selected' : ''}>All</option>
+                </select>
+            </div>
+            <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
+                <button class="btn btn-outline btn-sm" onclick="changeAttPage(-1)" ${currentAttPage === 1 ? 'disabled' : ''}>◀ Prev</button>
+                <span style="color: var(--text-main);">Page ${currentAttPage} of ${totalPages}</span>
+                <button class="btn btn-outline btn-sm" onclick="changeAttPage(1)" ${currentAttPage === totalPages || totalPages === 0 ? 'disabled' : ''}>Next ▶</button>
+            </div>
+        </div>`;
+    }
+    document.getElementById('attendanceLogsContainer').innerHTML = html;
+};
+
+window.changeAttPage = function(delta) { currentAttPage += delta; window.renderAttendanceTable(); };
+window.changeAttPerPage = function(val) { attPerPage = val === 'all' ? 'all' : parseInt(val); currentAttPage = 1; window.renderAttendanceTable(); };
+
+window.exportAttendanceLogsCSV = function() {
+    if(!cachedAttendanceLogs || cachedAttendanceLogs.length === 0) return alert('No attendance logs to export.');
+    const rows = [['Log ID', 'Member Name', 'Event', 'Checked In At', 'Status']];
+    cachedAttendanceLogs.forEach(l => rows.push([l.id, `"${l.member_name || ''}"`, `"${l.event_name || ''}"`, `"${l.checked_in_at || ''}"`, `"${l.is_walkin ? 'Walk-in' : 'Pre-Reg'}"`]));
+    window.downloadCSV(rows, 'All_Attendance_Logs.csv');
+};
+
+window.loadActivityLogs = async function() {
+    const res = await fetch('/api/activity-logs');
+    cachedActivityLogs = await res.json();
+    window.filterActivityLogs();
+};
+
+window.filterActivityLogs = function() {
+    const q = document.getElementById('activitySearchInput').value.toLowerCase().trim();
+    let matches = cachedActivityLogs;
+    if(q) matches = matches.filter(l => (l.username || '').toLowerCase().includes(q) || (l.action || '').toLowerCase().includes(q) || (l.details || '').toLowerCase().includes(q));
+    
+    filteredAct = matches;
+    window.renderActivityTable();
+};
+
+window.renderActivityTable = function() {
+    const total = filteredAct.length;
+    let totalPages = 1;
+    let pagedData = filteredAct;
+
+    if (actPerPage !== 'all') {
+        totalPages = Math.ceil(total / actPerPage) || 1;
+        if (currentActPage > totalPages) currentActPage = totalPages;
+        if (currentActPage < 1) currentActPage = 1;
+        const start = (currentActPage - 1) * actPerPage;
+        pagedData = filteredAct.slice(start, start + actPerPage);
+    } else {
+        currentActPage = 1;
+    }
+
+    let html = `<table class="responsive-table">
+        <thead>
+            <tr><th>User</th><th class="hide-mobile">Action</th><th>Details</th><th class="hide-mobile">Timestamp</th></tr>
+        </thead>
+        <tbody>`;
+    html += pagedData.map(l => `
+        <tr>
+            <td>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <div style="background: rgba(59,130,246,0.1); width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">📝</div>
+                    <div>
+                        <strong style="color:var(--text-main); font-size:1.05rem;">${l.username || 'System'}</strong>
+                        <div class="mobile-meta"><span class="badge badge-orange">${l.action || ''}</span> | ${l.created_at || ''}</div>
+                    </div>
+                </div>
+            </td>
+            <td class="hide-mobile"><span class="badge badge-orange">${l.action || ''}</span></td>
+            <td style="color:var(--text-main);">${l.details || ''}</td>
+            <td class="hide-mobile" style="color:var(--text-muted);"><small>${l.created_at || ''}</small></td>
+        </tr>`).join('');
+    html += `</tbody></table>`;
+
+    if (total > 0) {
+        html += `
+        <div style="display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label>Entries per page:</label>
+                <select onchange="changeActPerPage(this.value)" style="padding: 5px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem;">
+                    <option value="10" ${actPerPage === 10 ? 'selected' : ''}>10</option>
+                    <option value="25" ${actPerPage === 25 ? 'selected' : ''}>25</option>
+                    <option value="50" ${actPerPage === 50 ? 'selected' : ''}>50</option>
+                    <option value="all" ${actPerPage === 'all' ? 'selected' : ''}>All</option>
+                </select>
+            </div>
+            <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
+                <button class="btn btn-outline btn-sm" onclick="changeActPage(-1)" ${currentActPage === 1 ? 'disabled' : ''}>◀ Prev</button>
+                <span style="color: var(--text-main);">Page ${currentActPage} of ${totalPages}</span>
+                <button class="btn btn-outline btn-sm" onclick="changeActPage(1)" ${currentActPage === totalPages || totalPages === 0 ? 'disabled' : ''}>Next ▶</button>
+            </div>
+        </div>`;
+    }
+    document.getElementById('activityLogsContainer').innerHTML = html;
+};
+
+window.changeActPage = function(delta) { currentActPage += delta; window.renderActivityTable(); };
+window.changeActPerPage = function(val) { actPerPage = val === 'all' ? 'all' : parseInt(val); currentActPage = 1; window.renderActivityTable(); };
+// --- END OF PART 1 ---
+
+// --- START OF PART 2 ---
+window.exportActivityLogsCSV = function() {
+    if(!cachedActivityLogs || cachedActivityLogs.length === 0) return alert('No activity logs to export.');
+    const rows = [['Log ID', 'Timestamp', 'User', 'Action', 'Details']];
+    cachedActivityLogs.forEach(l => rows.push([l.id, `"${l.created_at || ''}"`, `"${l.username || ''}"`, `"${l.action || ''}"`, `"${l.details || ''}"`]));
+    window.downloadCSV(rows, 'All_Activity_Logs.csv');
+};
+
+// ==============================================================================
+// DELETE ACTIONS & MODALS
+// ==============================================================================
+
 window.openEditAttendanceModal = function(id, time, isWalkin) {
-    document.getElementById('editAttId').value = id; document.getElementById('editAttTime').value = time;
+    document.getElementById('editAttId').value = id;
+    document.getElementById('editAttTime').value = time;
     document.getElementById('editAttWalkin').value = isWalkin ? "1" : "0"; document.getElementById('editAttendanceModal').classList.add('active');
 };
 window.closeEditAttendanceModal = function() { document.getElementById('editAttendanceModal').classList.remove('active'); };
@@ -1501,7 +1970,10 @@ window.triggerDeleteAttendance = function(id, memberName) {
     });
 };
 
-// ARMORED: Safe fetching for Async Analytics Modal
+// ==============================================================================
+// EVENT ANALYTICS MODAL & EVENT ROLES ENGINE
+// ==============================================================================
+
 window.openAnalyticsModal = async function(eventId) {
     try {
         const res = await fetch(`/api/events/${eventId}/analytics`);
@@ -1529,7 +2001,7 @@ window.openAnalyticsModal = async function(eventId) {
         if(document.getElementById('statTotalPreReg')) document.getElementById('statTotalPreReg').innerText = data.totalPreRegistered || 0;
         if(document.getElementById('statWalkins')) document.getElementById('statWalkins').innerText = data.walkins || 0;
         if(document.getElementById('statTurnoutPercent')) document.getElementById('statTurnoutPercent').innerText = `${data.turnoutPercentage || '0.0'}%`;
-
+        
         const editBtn = document.getElementById('analyticsEditEventBtn');
         if(editBtn) {
             editBtn.onclick = () => window.openEditEventModal(eventId);
@@ -1544,7 +2016,30 @@ window.openAnalyticsModal = async function(eventId) {
         if(document.getElementById('cardPreReg')) document.getElementById('cardPreReg').style.opacity = '0.5';
         if(document.getElementById('cardWalkin')) document.getElementById('cardWalkin').style.opacity = '0.5';
 
+        // Set Tab UI state to Overview
+        window.switchAnalyticsSubTab('overview');
+        
+        // Roles Tab Access
+        const eventRoleAssignControls = document.getElementById('eventRoleAssignControls');
+        if(eventRoleAssignControls) eventRoleAssignControls.style.display = window.hasPerm('add_entries') ? 'block' : 'none';
+        document.getElementById('evtRoleSearchInput').value = '';
+        document.getElementById('evtRoleNameInput').value = '';
+        document.getElementById('evtRoleSubRoleInput').value = '';
+        document.getElementById('evtRoleSelectedUserId').value = '';
+
+        // Permission Gated Event Roles Notes
+        const eventRolesNotesSection = document.getElementById('eventRolesRestrictedSection');
+        if (eventRolesNotesSection) {
+            if (window.hasPerm('edit_entries')) {
+                eventRolesNotesSection.style.display = 'block';
+                document.getElementById('eventRolesDetailNotes').value = data.event.roles_restricted_notes || '';
+            } else {
+                eventRolesNotesSection.style.display = 'none';
+            }
+        }
+
         window.filterAnalyticsRoster();
+        window.loadEventRoles(eventId);
 
         const modal = document.getElementById('eventAnalyticsModal');
         if(modal) modal.classList.add('active');
@@ -1558,6 +2053,27 @@ window.openAnalyticsModal = async function(eventId) {
 window.closeAnalyticsModal = function() {
     if(document.getElementById('eventAnalyticsModal')) document.getElementById('eventAnalyticsModal').classList.remove('active');
     currentAnalyticsData = null;
+};
+
+window.saveEventRolesNotes = async function() {
+    if (!currentAnalyticsData || !currentAnalyticsData.event) return;
+    const eventId = currentAnalyticsData.event.id;
+    const notes = document.getElementById('eventRolesDetailNotes').value;
+    window.triggerActionConfirmation('Save restricted roles & logistics notes for this event?', async () => {
+        try {
+            const res = await fetch(`/api/events/${eventId}/roles-notes`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ roles_restricted_notes: notes, actor: currentUser })
+            });
+            if (res.ok) {
+                currentAnalyticsData.event.roles_restricted_notes = notes;
+                alert('Event notes saved successfully!');
+                window.loadEvents(); // Silent update to main dataset
+            } else {
+                alert('Failed to save notes.');
+            }
+        } catch(e) { alert("Network Error"); }
+    });
 };
 
 window.setAnalyticsCardFilter = function(type) {
@@ -1586,13 +2102,12 @@ window.filterAnalyticsRoster = function() {
         let ageMatch = true;
         const age = parseInt(r.age);
         if (ageFilter !== 'all' && !isNaN(age)) {
-            if (ageFilter === 'mini' && (age < 7 || age > 12)) ageMatch = false;
+            if (ageFilter === 'mini' && age > 12) ageMatch = false;
             if (ageFilter === 'youth' && (age < 13 || age > 21)) ageMatch = false;
             if (ageFilter === 'adult' && age < 22) ageMatch = false;
         } else if (ageFilter !== 'all' && isNaN(age)) ageMatch = false;
         return nameMatch && ageMatch;
     });
-
     if(document.getElementById('attRosterCount')) document.getElementById('attRosterCount').innerText = `Total: ${filtered.length}`;
     window.renderAnalyticsRoster(filtered);
 };
@@ -1616,7 +2131,6 @@ window.renderAnalyticsRoster = function(list) {
             } else {
                 statusBadge = `<span style="font-size:11px; color:#F59E0B; background: rgba(245,158,11,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">Expected</span>`;
                 timeText = `<span style="color: #F59E0B; font-size: 0.8rem; font-weight: 600;">Not Arrived</span>`;
-
                 if (window.hasPerm('delete_entries')) {
                     actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
                         <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeletePreReg(${currentAnalyticsData.event.id}, ${r.youth_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>
@@ -1626,7 +2140,6 @@ window.renderAnalyticsRoster = function(list) {
         } else {
             statusBadge = `<span style="font-size:11px; color:var(--text-muted); background: var(--bg-light); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${r.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span>`;
             timeText = `<span style="color: var(--success); font-size: 0.8rem; font-weight: 600;">${new Date(r.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
-
             if (window.hasPerm('delete_entries')) {
                 actionButtons = `<div style="display: flex; gap: 5px; margin-top: 6px; justify-content: flex-end;">
                     <button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="triggerDeleteAttendance(${r.log_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>
@@ -1647,16 +2160,131 @@ window.renderAnalyticsRoster = function(list) {
     }).join('');
 };
 
+window.loadEventRoles = async function(eventId) {
+    try {
+        const res = await fetch(`/api/events/${eventId}/roles`);
+        const roles = await res.json();
+        const container = document.getElementById('eventRolesContainer');
+        if (roles.length === 0) {
+            container.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:15px;">No specific roles assigned for this event.</p>`;
+            return;
+        }
+        container.innerHTML = roles.map(r => {
+            const safeName = r.name || 'Unknown';
+            const avatarHtml = r.profile_picture ? `<img src="${r.profile_picture}" class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.85rem; cursor:pointer;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.85rem;">${safeName.charAt(0).toUpperCase()}</div>`;
+            const editBtn = window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px; margin-right: 5px;" onclick="openEditEventRoleModal(${r.mapping_id}, '${(r.role_name||'').replace(/'/g, "\\'")}', '${(r.sub_role||'').replace(/'/g, "\\'")}')">✏️ Edit</button>` : '';
+            const delBtn = window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="removeEventRole(${r.mapping_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>` : '';
+            const combinedRole = `${r.role_name}${r.sub_role ? ' | ' + r.sub_role : ''}`;
+
+            return `
+            <div style="padding: 12px 10px; border-bottom: 1px solid var(--bg-light); display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    ${avatarHtml}
+                    <div>
+                        <strong style="color: var(--text-main); font-size: 0.95rem;">${safeName}</strong>
+                        <span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${combinedRole}</span><br>
+                        <small style="color: var(--text-muted);">${r.qr_code || ''}</small>
+                    </div>
+                </div>
+                <div style="text-align: right;">${editBtn}${delBtn}</div>
+            </div>`;
+        }).join('');
+    } catch(e) { console.error("Event role load error", e); }
+};
+
+window.filterEventRoleSearch = async function() {
+    const q = document.getElementById('evtRoleSearchInput').value.toLowerCase().trim();
+    const dropdown = document.getElementById('evtRoleSearchDropdown');
+    if (q.length < 2) { dropdown.style.display = 'none'; return; }
+    if (youthData.length === 0) { const res = await fetch('/api/youth'); youthData = await res.json(); }
+
+    const matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
+    if (matches.length > 0) {
+        dropdown.innerHTML = matches.map(y => `
+            <div style="padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer;" onclick="selectEventRoleUser(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')">
+                <strong style="color:var(--text-main);">${y.name || 'Unknown'}</strong><br><small style="color:var(--text-muted);">${y.qr_code}</small>
+            </div>
+        `).join('');
+        dropdown.style.display = 'block';
+    } else {
+        dropdown.innerHTML = `<div style="padding:10px; color:var(--text-muted);">No matches</div>`;
+        dropdown.style.display = 'block';
+    }
+};
+
+window.selectEventRoleUser = function(id, name) {
+    document.getElementById('evtRoleSelectedUserId').value = id;
+    document.getElementById('evtRoleSearchInput').value = name;
+    document.getElementById('evtRoleSearchDropdown').style.display = 'none';
+};
+
+window.assignEventRole = async function() {
+    const youthId = document.getElementById('evtRoleSelectedUserId').value;
+    const roleName = document.getElementById('evtRoleNameInput').value.trim();
+    const subRole = document.getElementById('evtRoleSubRoleInput').value.trim();
+    if (!youthId || !currentAnalyticsData || !currentAnalyticsData.event) return alert('Please search and select a member.');
+    if (!roleName) return alert('Please enter a primary role name (e.g., Coordinator, Food).');
+
+    const eventId = currentAnalyticsData.event.id;
+    try {
+        const payload = { youth_id: youthId, role_name: roleName, sub_role: subRole, actor: currentUser };
+        const res = await fetch(`/api/events/${eventId}/roles`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.success) {
+            document.getElementById('evtRoleSearchInput').value = '';
+            document.getElementById('evtRoleSelectedUserId').value = '';
+            document.getElementById('evtRoleNameInput').value = '';
+            document.getElementById('evtRoleSubRoleInput').value = '';
+            window.loadEventRoles(eventId);
+        } else alert(data.error || 'Failed to assign role.');
+    } catch(e) { alert('Connection error.'); }
+};
+
+window.openEditEventRoleModal = function(mappingId, roleName, subRole) {
+    document.getElementById('editEvtRoleMappingId').value = mappingId;
+    document.getElementById('editEvtRoleNameInput').value = roleName;
+    document.getElementById('editEvtSubRoleInput').value = subRole;
+    document.getElementById('editEventRoleModal').classList.add('active');
+};
+window.closeEditEventRoleModal = function() { document.getElementById('editEventRoleModal').classList.remove('active'); };
+
+window.saveEventRoleEdit = async function() {
+    const mappingId = document.getElementById('editEvtRoleMappingId').value;
+    const eventId = currentAnalyticsData.event.id;
+    const payload = {
+        role_name: document.getElementById('editEvtRoleNameInput').value,
+        sub_role: document.getElementById('editEvtSubRoleInput').value,
+        actor: currentUser
+    };
+    try {
+        const res = await fetch(`/api/events/${eventId}/roles/${mappingId}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        if(res.ok) {
+            window.closeEditEventRoleModal();
+            window.loadEventRoles(eventId);
+        }
+    } catch(e) { alert("Error saving role"); }
+};
+
+window.removeEventRole = function(mappingId, name) {
+    window.triggerActionConfirmation(`Remove ${name}'s role from this event?`, async () => {
+        try {
+            const eventId = currentAnalyticsData.event.id;
+            const res = await fetch(`/api/events/${eventId}/roles/${mappingId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) });
+            if (res.ok) window.loadEventRoles(eventId);
+        } catch(err) { alert("Network Error"); }
+    });
+};
+
 window.openAddAttendeeModal = function() {
     if(!currentAnalyticsData) return;
     if(document.getElementById('addAttendeeSearch')) document.getElementById('addAttendeeSearch').value = '';
     if(document.getElementById('addAttendeeResults')) document.getElementById('addAttendeeResults').innerHTML = '';
-
     const modal = document.getElementById('addAttendeeModal');
     if(modal) modal.classList.add('active');
 
     if(youthData.length === 0) window.loadDirectory();
 };
+
 window.closeAddAttendeeModal = function() {
     if(document.getElementById('addAttendeeModal')) document.getElementById('addAttendeeModal').classList.remove('active');
 };
@@ -1671,7 +2299,6 @@ window.filterAddAttendeeSearch = function() {
 
     const matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q));
     const existingIds = currentAnalyticsData.roster.map(r => r.youth_id);
-
     container.innerHTML = matches.map(y => {
         const safeName = y.name || 'Unknown';
         const isExisting = existingIds.includes(y.id);
@@ -1719,7 +2346,6 @@ window.exportAnalyticsCSV = function() {
     if (isExpectedView) sourceList = currentAnalyticsData.preRegList || [];
     else if (currentRosterFilter === 'walkin') sourceList = (currentAnalyticsData.roster || []).filter(r => r.is_walkin === 1);
     else sourceList = currentAnalyticsData.roster || [];
-
     const rows = [['Member Name', 'Unique Pass ID / Email', 'Status / Timestamp']];
     sourceList.forEach(r => {
         const identifier = r.email ? r.email : r.qr_code;
@@ -1733,7 +2359,109 @@ window.exportAnalyticsCSV = function() {
     window.downloadCSV(rows, `Roster_${(currentAnalyticsData.event.name || 'Event').replace(/\s+/g, '_')}.csv`);
 };
 
-// ---------------- BACKGROUND AUTOMATION LOOPS ----------------
+window.filterPermUserList = async function() {
+    const qElem = document.getElementById('permUserSearchInput');
+    const container = document.getElementById('permUserListContainer');
+    if(!qElem || !container) return;
+
+    const q = qElem.value.toLowerCase().trim();
+    if (q.length < 3) {
+        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>`;
+        return;
+    }
+
+    if (!youthData || youthData.length === 0) {
+        try {
+            const res = await fetch('/api/youth');
+            youthData = await res.json();
+        } catch (e) {
+            container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Error fetching directory data.</div>`;
+            return;
+        }
+    }
+
+    const matches = (youthData || []).filter(y => (y.name || '').toLowerCase().includes(q) || ((y.qr_code || '').toLowerCase().includes(q)));
+    if (matches.length === 0) {
+        container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">No accounts found matching '${q}'</div>`;
+        return;
+    }
+
+    container.innerHTML = matches.map(u => `
+        <div class="search-item">
+            <div><strong style="color:var(--text-main); font-size:1.05rem;">${u.name || 'Unknown'}</strong><br><small style="color: var(--text-muted);">${u.qr_code || ''}</small></div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${(u.name || '').replace(/'/g, "\\'")}')">Select</button>
+        </div>
+    `).join('');
+};
+
+window.loadUserPermissionsList = async function() {
+    if (!youthData || youthData.length === 0) {
+        try {
+            const res = await fetch('/api/youth');
+            youthData = await res.json();
+        } catch (e) { console.error("Failed to load youth data for permissions"); }
+    }
+    window.filterPermUserList();
+};
+
+window.openAssignPermissionModal = async function(id, displayName) {
+    try {
+        const res = await fetch('/api/youth');
+        const dbYouth = await res.json();
+        const targetYouth = dbYouth.find(y => y.id === id);
+        const perms = JSON.parse(targetYouth.permissions || '[]');
+        const idElem = document.getElementById('modalPermUserId');
+        if(idElem) idElem.value = id;
+
+        const bannerElem = document.getElementById('permModalUserBanner');
+        if(bannerElem) bannerElem.innerText = `Assign Permissions for: ${displayName}`;
+        document.querySelectorAll('.permCheckModal').forEach(chk => { chk.checked = perms.includes(chk.value); });
+
+        const modal = document.getElementById('assignPermissionModal');
+        if(modal) modal.classList.add('active');
+    } catch(e) {
+        console.error(e);
+        alert("Failed to load user permissions from server.");
+    }
+};
+
+window.closeAssignPermissionModal = function() {
+    const modal = document.getElementById('assignPermissionModal');
+    if(modal) modal.classList.remove('active');
+};
+
+window.handleSavePermissionsFromModal = function() {
+    const idElem = document.getElementById('modalPermUserId');
+    if(!idElem) return;
+    const userId = idElem.value;
+    const selectedPerms = [];
+    document.querySelectorAll('.permCheckModal:checked').forEach(chk => { selectedPerms.push(chk.value); });
+
+    window.triggerActionConfirmation(`Confirm updating permission set?`, async () => {
+        try {
+            const res = await fetch(`/api/youth/${userId}/permissions`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ permissions: selectedPerms, actor: currentUser })
+            });
+
+            if(!res.ok) throw new Error("HTTP error " + res.status);
+
+            const data = await res.json();
+            if (data.success) {
+                alert('Permissions updated successfully!');
+                window.closeAssignPermissionModal();
+                window.resetPermUserList();
+                youthData = []; await window.loadDirectory();
+            } else {
+                alert('Failed to update permissions. Details: ' + JSON.stringify(data));
+            }
+        } catch(e) {
+            console.error("Save Permissions Error:", e);
+            alert("Network error updating permissions. Check server logs.");
+        }
+    });
+};
 
 document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
@@ -1747,70 +2475,6 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.onclick = () => window.location.href = '/api/directory/export';
             dirHeader.style.display = 'inline-block';
             dirHeader.parentNode.insertBefore(btn, dirHeader.nextSibling);
-        }
-    }, 1000);
-});
-
-// RESPONSIVE TABLE PAGINATION ENGINE
-document.addEventListener('DOMContentLoaded', () => {
-    setInterval(() => {
-        const dataContainer = document.getElementById('directoryTableContainer') || document.getElementById('attendanceLogsContainer') || document.getElementById('activityLogsContainer');
-        const tbody = dataContainer ? dataContainer.querySelector('tbody') : null;
-
-        if (tbody && tbody.children.length > 0 && !document.getElementById('dirPagerControls')) {
-            const pager = document.createElement('div');
-            pager.id = 'dirPagerControls';
-            pager.style.cssText = 'display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; flex-wrap: wrap;';
-            pager.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label>Entries per page:</label>
-                    <select id="dirPerPage" style="padding: 5px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem;">
-                        <option value="10">10</option>
-                        <option value="25">25</option>
-                        <option value="50">50</option>
-                        <option value="999999">All</option>
-                    </select>
-                </div>
-                <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
-                    <button id="dirPrev" class="btn btn-outline btn-sm">◀ Prev</button>
-                    <span id="dirPageInd" style="color: var(--text-main);">Page 1</span>
-                    <button id="dirNext" class="btn btn-outline btn-sm">Next ▶</button>
-                </div>
-            `;
-            dataContainer.parentNode.insertBefore(pager, dataContainer);
-
-            let currentPage = 1;
-            let perPage = 10;
-
-            const updateTable = () => {
-                const rows = Array.from(tbody.children);
-                if(rows.length === 0) return;
-
-                const totalPages = Math.ceil(rows.length / perPage) || 1;
-                if (currentPage > totalPages) currentPage = totalPages;
-                if (currentPage < 1) currentPage = 1;
-                document.getElementById('dirPageInd').innerText = 'Page ' + currentPage + ' of ' + totalPages;
-                document.getElementById('dirPrev').disabled = (currentPage === 1);
-                document.getElementById('dirNext').disabled = (currentPage === totalPages);
-
-                rows.forEach((row, index) => {
-                    if (perPage >= 999999) row.style.display = '';
-                    else {
-                        const start = (currentPage - 1) * perPage;
-                        const end = start + perPage;
-                        row.style.display = (index >= start && index < end) ? '' : 'none';
-                    }
-                });
-            };
-
-            document.getElementById('dirPerPage').onchange = (e) => { perPage = parseInt(e.target.value); currentPage = 1; updateTable(); };
-            document.getElementById('dirPrev').onclick = () => { if (currentPage > 1) { currentPage--; updateTable(); } };
-            document.getElementById('dirNext').onclick = () => {
-                const rows = Array.from(tbody.children);
-                if (currentPage < Math.ceil(rows.length / perPage)) { currentPage++; updateTable(); }
-            };
-            updateTable();
-            new MutationObserver(() => updateTable()).observe(tbody, { childList: true });
         }
     }, 1000);
 });
@@ -1830,3 +2494,4 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 1000);
 });
+// --- END OF PART 2 ---

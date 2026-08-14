@@ -92,6 +92,13 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
 .mobile-meta { display: none; }
 .desktop-meta { display: block; }
 
+/* =========================================
+   PROFILE LAYOUT OVERHAUL (DASHBOARD STYLE)
+   ========================================= */
+.profile-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+.profile-edit-grid .form-group { margin-bottom: 0; }
+.profile-history-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+
 @media (max-width: 768px) {
     .responsive-table thead { display: none; }
     .responsive-table tbody, .responsive-table tr, .responsive-table td { display: block; width: 100%; }
@@ -121,6 +128,11 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
         margin-top: 15px;
     }
     .actions-cell button { flex: 1; }
+
+    /* DASHBOARD MOBILE COLLAPSE */
+    .profile-header-card { flex-direction: column !important; text-align: center; }
+    .profile-header-left { flex-direction: column !important; text-align: center; }
+    .profile-header-right { width: 100%; }
 }
 
 .badge { display: inline-block; padding: 6px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
@@ -175,7 +187,7 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
    LIST CONTAINER STRICT HEIGHT FIXES (MOBILE SAFE)
    ========================================= */
 
-#myAttendanceHistory, 
+#myAttendanceHistory,
 #modalAttendanceHistory,
 #analyticsRosterContainer,
 #myMinistriesHistory,
