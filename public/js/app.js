@@ -855,18 +855,20 @@ window.filterDirectory = function() {
     else if (ageCat === 'youth') { matches = matches.filter(y => y.age && y.age >= 13 && y.age <= 21); labelText = "Youth"; }
     else if (ageCat === 'adult') { matches = matches.filter(y => y.age && y.age >= 22); labelText = "Adults"; }
 
-    /* --- INJECTED EXPORT BUTTON AND DENSE HEADER --- */
-    const exportBtnHTML = `<button type="button" class="btn btn-outline btn-sm" onclick="exportDirectoryCSV()" style="font-weight: 600;">📤 Export CSV</button>`;
+    const exportBtnHTML = `<button type="button" class="btn btn-outline btn-sm" onclick="exportDirectoryCSV()" style="font-weight: 600; margin-left: 10px;">📤 Export CSV</button>`;
+
+    const totalCountDiv = document.getElementById('directoryTotalCount');
+    totalCountDiv.className = ''; 
+    totalCountDiv.style.background = 'transparent';
+    totalCountDiv.style.color = 'var(--text-main)';
+    totalCountDiv.style.display = 'flex';
+    totalCountDiv.style.alignItems = 'center';
     
-    document.getElementById('directoryTotalCount').innerHTML = `
-        <div class="directory-header-flex">
-            <h3 style="margin: 0; font-size: 1rem; color: var(--text-main); font-weight: 600;">${labelText}: ${matches.length}</h3>
-            <div class="directory-actions">
-                ${exportBtnHTML}
-            </div>
-        </div>
+    totalCountDiv.innerHTML = `
+        <span class="badge badge-orange" style="font-size: 0.85rem; padding: 8px 12px;">${labelText}: ${matches.length}</span>
+        ${exportBtnHTML}
     `;
-    
+
     if (sort === 'name_asc') matches.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
     if (sort === 'name_desc') matches.sort((a,b) => (b.name || '').localeCompare(a.name || ''));
     if (sort === 'age_asc') matches.sort((a,b) => (a.age || 0) - (b.age || 0));
@@ -876,7 +878,6 @@ window.filterDirectory = function() {
     window.renderDirectoryList();
 };
 
-/* --- FULLY DENSE, HORIZONTAL SINGLE-LINE DIRECTORY LIST --- */
 window.renderDirectoryList = function() {
     const total = filteredDir.length;
     let totalPages = 1;
@@ -895,16 +896,18 @@ window.renderDirectoryList = function() {
     let html = `<div>`;
     html += pagedData.map(y => {
         const safeName = y.name || 'Unknown';
-        const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 32px; height: 32px; font-size: 0.9rem; cursor:pointer; flex-shrink: 0;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 32px; height: 32px; font-size: 0.9rem; flex-shrink: 0;">${safeName.charAt(0).toUpperCase()}</div>`;
-        
+        const avatarHtml = y.profile_picture ? `<img src="${y.profile_picture}" class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.9rem; cursor:pointer; flex-shrink: 0;" onclick="openImageViewer(this.src)">` : `<div class="avatar-circle" style="width: 36px; height: 36px; font-size: 0.9rem; flex-shrink: 0;">${safeName.charAt(0).toUpperCase()}</div>`;
+
         return `
         <div class="directory-list-item">
             <div class="directory-list-info">
                 ${avatarHtml}
-                <strong style="color:var(--text-main); font-size:0.9rem; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${safeName}</strong>
-                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: auto; margin-right: 5px;">Age: ${y.age || 'N/A'} | ${y.birthday || 'N/A'}</span>
+                <div class="directory-list-text">
+                    <strong class="directory-list-name">${safeName}</strong>
+                    <span class="directory-list-meta">Age: ${y.age || 'N/A'} | BDay: ${y.birthday || 'N/A'}</span>
+                </div>
             </div>
-            
+
             <div class="directory-list-actions">
                 <button type="button" class="btn btn-primary btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="openViewProfileModal(${y.id})">View</button>
                 ${window.hasPerm('edit_entries') ? `<button type="button" class="icon-action-btn" onclick="openEditMemberModal(${y.id})" title="Edit">✏️</button>` : ''}

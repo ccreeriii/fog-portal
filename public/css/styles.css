@@ -93,7 +93,7 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
 .desktop-meta { display: block; }
 
 /* =========================================
-   DIRECTORY UI STREAMLINING
+   DIRECTORY UI STREAMLINING (MOBILE RESPONSIVE GRID)
    ========================================= */
 .directory-header-flex {
     display: flex;
@@ -122,30 +122,47 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
 .icon-action-btn:hover {
     transform: scale(1.15);
 }
+
 .directory-list-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 0;
+    padding: 12px 0;
     border-bottom: 1px solid var(--border-color);
-    flex-wrap: nowrap; /* Forces one line constraint */
-    overflow-x: auto; /* Allows gentle scroll on tiny screens instead of structural breaks */
-}
-.directory-list-item::-webkit-scrollbar {
-    display: none;
+    gap: 10px;
 }
 .directory-list-info {
-    flex-grow: 1;
     display: flex;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
-    white-space: nowrap; /* Prevent wrapping */
+    flex: 1;
+    min-width: 0;
+}
+.directory-list-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.directory-list-name {
+    color: var(--text-main);
+    font-size: 0.95rem;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.directory-list-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .directory-list-actions {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-shrink: 0; /* Prevent squeezing the action buttons */
+    flex-shrink: 0;
 }
 
 /* =========================================
