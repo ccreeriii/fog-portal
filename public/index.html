@@ -134,7 +134,28 @@
             </div>
         </div>
 
-        <div class="card">
+        <!-- MOVED SECTION: Sub-nav and Profile History tabs now appear above Personal Details -->
+        <div class="sub-nav" style="margin-bottom: 15px;">
+            <button id="btnMyProfileTabRoles" class="sub-nav-btn active" onclick="switchMyProfileTab('roles')">🎭 Roles</button>
+            <button id="btnMyProfileTabAttendance" class="sub-nav-btn" onclick="switchMyProfileTab('attendance')">📋 Attendance History</button>
+        </div>
+
+        <div id="myProfileTabRoles" style="display: block; animation: fadeIn 0.3s ease-out;">
+            <div class="card" style="margin-bottom: 0;">
+                <div id="myMinistriesHistory" style="padding: 5px;"></div>
+                <div id="myRolesPagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
+            </div>
+        </div>
+
+        <div id="myProfileTabAttendance" style="display: none; animation: fadeIn 0.3s ease-out;">
+            <div class="card" style="margin-bottom: 0;">
+                <div id="myAttendanceHistory" style="padding: 5px;"></div>
+                <div id="myAttendancePagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
+            </div>
+        </div>
+
+        <!-- MOVED SECTION: Personal Profile Details Form now sits at the bottom -->
+        <div class="card" style="margin-top: 20px;">
             <h2 style="text-align: left; margin-bottom: 20px;">Personal Profile Details</h2>
             <form onsubmit="handleSelfProfileUpdate(event)">
                 <input type="hidden" id="myMemberId">
@@ -176,25 +197,6 @@
                     <button type="submit" class="btn btn-primary" style="min-width: 250px;">Save Profile Changes</button>
                 </div>
             </form>
-        </div>
-
-        <div class="sub-nav" style="margin-bottom: 15px; margin-top: 20px;">
-            <button id="btnMyProfileTabRoles" class="sub-nav-btn active" onclick="switchMyProfileTab('roles')">🎭 Roles</button>
-            <button id="btnMyProfileTabAttendance" class="sub-nav-btn" onclick="switchMyProfileTab('attendance')">📋 Attendance History</button>
-        </div>
-
-        <div id="myProfileTabRoles" style="display: block; animation: fadeIn 0.3s ease-out;">
-            <div class="card" style="margin-bottom: 0;">
-                <div id="myMinistriesHistory" style="padding: 5px;"></div>
-                <div id="myRolesPagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
-            </div>
-        </div>
-
-        <div id="myProfileTabAttendance" style="display: none; animation: fadeIn 0.3s ease-out;">
-            <div class="card" style="margin-bottom: 0;">
-                <div id="myAttendanceHistory" style="padding: 5px;"></div>
-                <div id="myAttendancePagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
-            </div>
         </div>
 
         <div id="adminSettingsCard" class="card" style="display: none; border-color: var(--primary); margin-top: 20px;">
