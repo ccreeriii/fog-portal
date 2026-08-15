@@ -218,12 +218,10 @@ function bindExecuteAction() {
 }
 bindExecuteAction();
 
+// STRICT GLOBAL PERMISSION EVALUATOR
 window.hasPerm = function(perm) {
     if (currentUser === 'celsocreeriii@gmail.com') return true;
     if (!userPermissions || !Array.isArray(userPermissions)) return false;
-    if (['add_entries', 'edit_entries', 'delete_entries'].includes(perm)) {
-        if (userPermissions.includes('access_directory') || userPermissions.includes('access_events')) return true;
-    }
     return userPermissions.includes(perm);
 };
 
@@ -451,11 +449,14 @@ window.renderModalRoles = function() {
     container.innerHTML = html;
 
     if (modalRolesData.length > 10) {
-        paginator.style.display = 'block';
+        paginator.style.display = 'flex';
+        paginator.style.justifyContent = 'center';
+        paginator.style.gap = '10px';
+        paginator.style.alignItems = 'center';
         paginator.innerHTML = `
-            <button class="btn btn-outline btn-sm" onclick="modalRolesPage--; renderModalRoles()" ${modalRolesPage === 1 ? 'disabled' : ''}>◀</button>
-            <span style="font-size: 0.85rem; margin: 0 10px; color: var(--text-main);">Page ${modalRolesPage} of ${totalPages}</span>
-            <button class="btn btn-outline btn-sm" onclick="modalRolesPage++; renderModalRoles()" ${modalRolesPage === totalPages ? 'disabled' : ''}>▶</button>
+            <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalRolesPage--; renderModalRoles()" ${modalRolesPage === 1 ? 'disabled' : ''}>◀ Prev</button>
+            <span style="font-size: 0.85rem; color: var(--text-main); white-space: nowrap;">${modalRolesPage} of ${totalPages}</span>
+            <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalRolesPage++; renderModalRoles()" ${modalRolesPage === totalPages ? 'disabled' : ''}>Next ▶</button>
         `;
     } else {
         paginator.style.display = 'none';
@@ -489,11 +490,14 @@ window.renderModalAttendance = function() {
         </div>`).join('');
 
     if (modalAttData.length > 10) {
-        paginator.style.display = 'block';
+        paginator.style.display = 'flex';
+        paginator.style.justifyContent = 'center';
+        paginator.style.gap = '10px';
+        paginator.style.alignItems = 'center';
         paginator.innerHTML = `
-            <button class="btn btn-outline btn-sm" onclick="modalAttPage--; renderModalAttendance()" ${modalAttPage === 1 ? 'disabled' : ''}>◀</button>
-            <span style="font-size: 0.85rem; margin: 0 10px; color: var(--text-main);">Page ${modalAttPage} of ${totalPages}</span>
-            <button class="btn btn-outline btn-sm" onclick="modalAttPage++; renderModalAttendance()" ${modalAttPage === totalPages ? 'disabled' : ''}>▶</button>
+            <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalAttPage--; renderModalAttendance()" ${modalAttPage === 1 ? 'disabled' : ''}>◀ Prev</button>
+            <span style="font-size: 0.85rem; color: var(--text-main); white-space: nowrap;">${modalAttPage} of ${totalPages}</span>
+            <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalAttPage++; renderModalAttendance()" ${modalAttPage === totalPages ? 'disabled' : ''}>Next ▶</button>
         `;
     } else {
         paginator.style.display = 'none';
@@ -671,7 +675,6 @@ window.populateProfileTab = async function(member) {
         });
     }
 
-    // Reset switch tabs
     window.switchMyProfileTab = function(tab) {
         document.getElementById('myProfileTabRoles').style.display = tab === 'roles' ? 'block' : 'none';
         document.getElementById('myProfileTabAttendance').style.display = tab === 'attendance' ? 'block' : 'none';
@@ -712,11 +715,14 @@ window.populateProfileTab = async function(member) {
         container.innerHTML = html;
 
         if (modalRolesData.length > 10) {
-            paginator.style.display = 'block';
+            paginator.style.display = 'flex';
+            paginator.style.justifyContent = 'center';
+            paginator.style.gap = '10px';
+            paginator.style.alignItems = 'center';
             paginator.innerHTML = `
-                <button type="button" class="btn btn-outline btn-sm" onclick="modalRolesPage--; renderMyProfileRoles()" ${modalRolesPage === 1 ? 'disabled' : ''}>◀</button>
-                <span style="font-size: 0.85rem; margin: 0 10px; color: var(--text-main);">Page ${modalRolesPage} of ${totalPages}</span>
-                <button type="button" class="btn btn-outline btn-sm" onclick="modalRolesPage++; renderMyProfileRoles()" ${modalRolesPage === totalPages ? 'disabled' : ''}>▶</button>
+                <button type="button" class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalRolesPage--; renderMyProfileRoles()" ${modalRolesPage === 1 ? 'disabled' : ''}>◀ Prev</button>
+                <span style="font-size: 0.85rem; color: var(--text-main); white-space: nowrap;">${modalRolesPage} of ${totalPages}</span>
+                <button type="button" class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalRolesPage++; renderMyProfileRoles()" ${modalRolesPage === totalPages ? 'disabled' : ''}>Next ▶</button>
             `;
         } else {
             paginator.style.display = 'none';
@@ -750,11 +756,14 @@ window.populateProfileTab = async function(member) {
             </div>`).join('');
 
         if (modalAttData.length > 10) {
-            paginator.style.display = 'block';
+            paginator.style.display = 'flex';
+            paginator.style.justifyContent = 'center';
+            paginator.style.gap = '10px';
+            paginator.style.alignItems = 'center';
             paginator.innerHTML = `
-                <button type="button" class="btn btn-outline btn-sm" onclick="modalAttPage--; renderMyProfileAttendance()" ${modalAttPage === 1 ? 'disabled' : ''}>◀</button>
-                <span style="font-size: 0.85rem; margin: 0 10px; color: var(--text-main);">Page ${modalAttPage} of ${totalPages}</span>
-                <button type="button" class="btn btn-outline btn-sm" onclick="modalAttPage++; renderMyProfileAttendance()" ${modalAttPage === totalPages ? 'disabled' : ''}>▶</button>
+                <button type="button" class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalAttPage--; renderMyProfileAttendance()" ${modalAttPage === 1 ? 'disabled' : ''}>◀ Prev</button>
+                <span style="font-size: 0.85rem; color: var(--text-main); white-space: nowrap;">${modalAttPage} of ${totalPages}</span>
+                <button type="button" class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalAttPage++; renderMyProfileAttendance()" ${modalAttPage === totalPages ? 'disabled' : ''}>Next ▶</button>
             `;
         } else {
             paginator.style.display = 'none';
@@ -1105,20 +1114,20 @@ window.renderDirectoryList = function() {
 
     if (total > 0) {
         html += `
-        <div style="display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <label>Entries per page:</label>
-                <select onchange="changeDirPerPage(this.value)" style="padding: 5px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.75rem; flex-wrap: nowrap; overflow-x: auto; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 5px; flex-shrink: 0;">
+                <label style="margin: 0; font-size: 0.75rem;">Show:</label>
+                <select onchange="changeDirPerPage(this.value)" style="padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.75rem;">
                     <option value="10" ${dirPerPage === 10 ? 'selected' : ''}>10</option>
                     <option value="25" ${dirPerPage === 25 ? 'selected' : ''}>25</option>
                     <option value="50" ${dirPerPage === 50 ? 'selected' : ''}>50</option>
                     <option value="all" ${dirPerPage === 'all' ? 'selected' : ''}>All</option>
                 </select>
             </div>
-            <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
-                <button class="btn btn-outline btn-sm" onclick="changeDirPage(-1)" ${currentDirPage === 1 ? 'disabled' : ''}>◀ Prev</button>
-                <span style="color: var(--text-main);">Page ${currentDirPage} of ${totalPages}</span>
-                <button class="btn btn-outline btn-sm" onclick="changeDirPage(1)" ${currentDirPage === totalPages || totalPages === 0 ? 'disabled' : ''}>Next ▶</button>
+            <div style="display: flex; gap: 5px; align-items: center; flex-shrink: 0; margin-left: auto;">
+                <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="changeDirPage(-1)" ${currentDirPage === 1 ? 'disabled' : ''}>◀ Prev</button>
+                <span style="color: var(--text-main); white-space: nowrap; font-size: 0.8rem; padding: 0 4px;">${currentDirPage} of ${totalPages}</span>
+                <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="changeDirPage(1)" ${currentDirPage === totalPages || totalPages === 0 ? 'disabled' : ''}>Next ▶</button>
             </div>
         </div>`;
     }
@@ -2006,20 +2015,20 @@ window.renderAttendanceTable = function() {
 
     if (total > 0) {
         html += `
-        <div style="display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <label>Entries per page:</label>
-                <select onchange="changeAttPerPage(this.value)" style="padding: 5px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.75rem; flex-wrap: nowrap; overflow-x: auto; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 5px; flex-shrink: 0;">
+                <label style="margin: 0; font-size: 0.75rem;">Show:</label>
+                <select onchange="changeAttPerPage(this.value)" style="padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.75rem;">
                     <option value="10" ${attPerPage === 10 ? 'selected' : ''}>10</option>
                     <option value="25" ${attPerPage === 25 ? 'selected' : ''}>25</option>
                     <option value="50" ${attPerPage === 50 ? 'selected' : ''}>50</option>
                     <option value="all" ${attPerPage === 'all' ? 'selected' : ''}>All</option>
                 </select>
             </div>
-            <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
-                <button class="btn btn-outline btn-sm" onclick="changeAttPage(-1)" ${currentAttPage === 1 ? 'disabled' : ''}>◀ Prev</button>
-                <span style="color: var(--text-main);">Page ${currentAttPage} of ${totalPages}</span>
-                <button class="btn btn-outline btn-sm" onclick="changeAttPage(1)" ${currentAttPage === totalPages || totalPages === 0 ? 'disabled' : ''}>Next ▶</button>
+            <div style="display: flex; gap: 5px; align-items: center; flex-shrink: 0; margin-left: auto;">
+                <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="changeAttPage(-1)" ${currentAttPage === 1 ? 'disabled' : ''}>◀ Prev</button>
+                <span style="color: var(--text-main); white-space: nowrap; font-size: 0.8rem; padding: 0 4px;">${currentAttPage} of ${totalPages}</span>
+                <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="changeAttPage(1)" ${currentAttPage === totalPages || totalPages === 0 ? 'disabled' : ''}>Next ▶</button>
             </div>
         </div>`;
     }
@@ -2090,20 +2099,20 @@ window.renderActivityTable = function() {
 
     if (total > 0) {
         html += `
-        <div style="display: flex; gap: 15px; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <label>Entries per page:</label>
-                <select onchange="changeActPerPage(this.value)" style="padding: 5px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.85rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 15px 0; background: var(--bg-light); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 600; font-size: 0.75rem; flex-wrap: nowrap; overflow-x: auto; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 5px; flex-shrink: 0;">
+                <label style="margin: 0; font-size: 0.75rem;">Show:</label>
+                <select onchange="changeActPerPage(this.value)" style="padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 0.75rem;">
                     <option value="10" ${actPerPage === 10 ? 'selected' : ''}>10</option>
                     <option value="25" ${actPerPage === 25 ? 'selected' : ''}>25</option>
                     <option value="50" ${actPerPage === 50 ? 'selected' : ''}>50</option>
                     <option value="all" ${actPerPage === 'all' ? 'selected' : ''}>All</option>
                 </select>
             </div>
-            <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
-                <button class="btn btn-outline btn-sm" onclick="changeActPage(-1)" ${currentActPage === 1 ? 'disabled' : ''}>◀ Prev</button>
-                <span style="color: var(--text-main);">Page ${currentActPage} of ${totalPages}</span>
-                <button class="btn btn-outline btn-sm" onclick="changeActPage(1)" ${currentActPage === totalPages || totalPages === 0 ? 'disabled' : ''}>Next ▶</button>
+            <div style="display: flex; gap: 5px; align-items: center; flex-shrink: 0; margin-left: auto;">
+                <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="changeActPage(-1)" ${currentActPage === 1 ? 'disabled' : ''}>◀ Prev</button>
+                <span style="color: var(--text-main); white-space: nowrap; font-size: 0.8rem; padding: 0 4px;">${currentActPage} of ${totalPages}</span>
+                <button class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="changeActPage(1)" ${currentActPage === totalPages || totalPages === 0 ? 'disabled' : ''}>Next ▶</button>
             </div>
         </div>`;
     }
@@ -2588,16 +2597,27 @@ window.loadUserPermissionsList = async function() {
 
 window.openAssignPermissionModal = async function(id, displayName) {
     try {
-        const res = await fetch('/api/youth');
-        const dbYouth = await res.json();
-        const targetYouth = dbYouth.find(y => y.id === id);
-        const perms = JSON.parse(targetYouth.permissions || '[]');
+        // Query the active users list to find their specific permissions rather than the youth list
+        const res = await fetch('/api/users/list');
+        const dbUsers = await res.json();
+        const targetUser = dbUsers.find(u => u.youth_id === id);
+        
+        let perms = [];
+        if (targetUser && targetUser.permissions) {
+            try {
+                perms = JSON.parse(targetUser.permissions);
+            } catch(e) { perms = []; }
+        }
+
         const idElem = document.getElementById('modalPermUserId');
         if(idElem) idElem.value = id;
 
         const bannerElem = document.getElementById('permModalUserBanner');
         if(bannerElem) bannerElem.innerText = `Assign Permissions for: ${displayName}`;
-        document.querySelectorAll('.permCheckModal').forEach(chk => { chk.checked = perms.includes(chk.value); });
+        
+        document.querySelectorAll('.permCheckModal').forEach(chk => { 
+            chk.checked = perms.includes(chk.value); 
+        });
 
         const modal = document.getElementById('assignPermissionModal');
         if(modal) modal.classList.add('active');
