@@ -543,20 +543,18 @@ app.delete('/api/youth/:id', (req, res) => {
 });
 
 // ==============================================================================
-// V2.0 DISCIPLESHIP ENGINE API ENDPOINTS
+// V2.0 DISCIPLESHIP ENGINE API ENDPOINTS (INCLUDING ADMIN EXPANSIONS)
 // ==============================================================================
 
 // 1. Next Step with God Engine ("What is my next step with God?")
 app.get('/api/discipleship/next-step/:youth_id', (req, res) => {
-    // BUG FIX: Was originally req.params.id, changed to req.params.youth_id
     const youthId = req.params.youth_id; 
     db.all(`SELECT p.*, m.status as member_status, m.completed_at FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [youthId], (err, steps) => {
         if (err) return res.status(500).json({ error: err.message });
 
-        // Find the first uncompleted or in-progress step
         let nextStep = steps.find(s => s.member_status !== 'Completed');
         if (!nextStep && steps.length > 0) {
-            nextStep = steps[steps.length - 1]; // All completed!
+            nextStep = steps[steps.length - 1]; 
         }
 
         res.json({ nextStep, allSteps: steps });
@@ -573,6 +571,59 @@ app.post('/api/discipleship/milestones', (req, res) => {
         }
     );
 });
+
+// ADMIN: Discipleship Pathways Management
+app.get('/api/discipleship/pathways', (req, res) => {
+    db.all(`SELECT * FROM discipleship_pathways ORDER BY step_order ASC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/discipleship/pathways', (req, res) => {
+    const { title, description, step_order, actor } = req.body;
+    db.run(`INSERT INTO discipleship_pathways (title, description, step_order, created_at) VALUES (?, ?, ?, ?)`,
+        [title, description, step_order, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'CREATE_PATHWAY', `Created discipleship step '${title}'`);
+            res.json({ success: true, id: this.lastID });
+        }
+    );
+});
+
+app.put('/api/discipleship/pathways/:id', (req, res) => {
+    const { title, description, step_order, actor } = req.body;
+    db.run(`UPDATE discipleship_pathways SET title=?, description=?, step_order=? WHERE id=?`,
+        [title, description, step_order, req.params.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'UPDATE_PATHWAY', `Updated discipleship step ID ${req.params.id}`);
+            res.json({ success: true });
+        }
+    );
+});
+
+app.delete('/api/discipleship/pathways/:id', (req, res) => {
+    const { actor } = req.body;
+    db.run(`DELETE FROM discipleship_pathways WHERE id=?`, [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        db.run(`DELETE FROM member_milestones WHERE pathway_id=?`, [req.params.id]); // Cascade delete
+        logActivity(actor, 'DELETE_PATHWAY', `Deleted discipleship step ID ${req.params.id}`);
+        res.json({ success: true });
+    });
+});
+
+// ADMIN: Pastoral Care Oversight (View Member's Full Pathway & Private Pastoral Notes)
+app.get('/api/discipleship/member-progress/:youth_id', (req, res) => {
+    const youthId = req.params.youth_id;
+    db.all(`SELECT p.id as pathway_id, p.title, m.status, m.completed_at, m.notes as pastoral_notes 
+            FROM discipleship_pathways p 
+            LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? 
+            ORDER BY p.step_order ASC`, [youthId], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
 
 // 2. Private Journals API
 app.get('/api/journals/:youth_id', (req, res) => {
@@ -599,6 +650,7 @@ app.delete('/api/journals/:id', (req, res) => {
         res.json({ success: true });
     });
 });
+
 
 // 3. Prayer Center API
 app.get('/api/prayers', (req, res) => {
@@ -630,7 +682,8 @@ app.post('/api/prayers/:id/intercede', (req, res) => {
     );
 });
 
-// 4. Small Groups API
+
+// 4. Small Groups API (Includes Admin Edit/Delete)
 app.get('/api/small-groups', (req, res) => {
     const sql = `SELECT g.*, y.name as leader_name, (SELECT COUNT(*) FROM small_group_members WHERE group_id = g.id) as member_count FROM small_groups g LEFT JOIN youth y ON g.leader_id = y.id ORDER BY g.name ASC`;
     db.all(sql, [], (err, rows) => {
@@ -642,12 +695,33 @@ app.get('/api/small-groups', (req, res) => {
 app.post('/api/small-groups', (req, res) => {
     const { name, leader_id, meeting_schedule, venue, actor } = req.body;
     db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, created_at) VALUES (?, ?, ?, ?, ?)`,
-        [name, leader_id, meeting_schedule, venue, getManilaTime()], function(err) {
+        [name, leader_id || null, meeting_schedule, venue, getManilaTime()], function(err) {
             if (err) return res.status(500).json({ error: err.message });
             logActivity(actor, 'CREATE_SMALL_GROUP', `Created small group '${name}'`);
             res.json({ success: true, id: this.lastID });
         }
     );
+});
+
+app.put('/api/small-groups/:id', (req, res) => {
+    const { name, leader_id, meeting_schedule, venue, actor } = req.body;
+    db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=? WHERE id=?`,
+        [name, leader_id || null, meeting_schedule, venue, req.params.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'UPDATE_SMALL_GROUP', `Updated small group '${name}'`);
+            res.json({ success: true });
+        }
+    );
+});
+
+app.delete('/api/small-groups/:id', (req, res) => {
+    const { actor } = req.body;
+    db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); // Cascade delete
+        logActivity(actor, 'DELETE_SMALL_GROUP', `Deleted small group ID ${req.params.id}`);
+        res.json({ success: true });
+    });
 });
 
 app.post('/api/small-groups/:id/join', (req, res) => {
@@ -1008,7 +1082,7 @@ app.post('/api/events/:id/roles', (req, res) => {
 app.post('/api/events/:id/roles-notes', (req, res) => {
     const { roles_restricted_notes, actor } = req.body;
     db.run(`UPDATE events SET roles_restricted_notes = ? WHERE id = ?`,
-        [roles_restricted_notes, req.params.id], function(err) {
+        [req.params.id, roles_restricted_notes], function(err) {
             if (err) return res.status(500).json({ error: err.message });
             logActivity(actor || 'System', 'UPDATE_EVENT_ROLES_NOTES', `Updated restricted roles notes for Event ID ${req.params.id}`);
             res.json({ success: true });
