@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
     <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/v2-styles.css">
 </head>
 <body>
 
@@ -21,7 +22,7 @@
             <img id="headerLogo" src="/img/logo.png" alt="Logo" class="fog-header-logo" onerror="this.style.display='none'">
             <div class="fog-header-titles">
                 <h1><span>FIRE OF GOD</span> MINISTRIES</h1>
-                <p>Community Portal</p>
+                <p>Community Portal & Discipleship Engine</p>
             </div>
         </div>
         <button id="hamburgerBtn" class="hamburger-btn" onclick="openSidebar()" style="display: none;">☰</button>
@@ -134,7 +135,6 @@
             </div>
         </div>
 
-        <!-- MOVED SECTION: Sub-nav and Profile History tabs now appear above Personal Details -->
         <div class="sub-nav" style="margin-bottom: 15px;">
             <button id="btnMyProfileTabRoles" class="sub-nav-btn active" onclick="switchMyProfileTab('roles')">🎭 Roles</button>
             <button id="btnMyProfileTabAttendance" class="sub-nav-btn" onclick="switchMyProfileTab('attendance')">📋 Attendance History</button>
@@ -154,7 +154,6 @@
             </div>
         </div>
 
-        <!-- MOVED SECTION: Personal Profile Details Form now sits at the bottom -->
         <div class="card" style="margin-top: 20px;">
             <h2 style="text-align: left; margin-bottom: 20px;">Personal Profile Details</h2>
             <form onsubmit="handleSelfProfileUpdate(event)">
@@ -225,6 +224,92 @@
             <div id="backupListContainer"></div>
         </div>
 
+    </div>
+
+    <div id="discipleshipTab" class="tab-content">
+        <div id="nextStepContainer"></div>
+
+        <div class="card">
+            <h2>Discipleship Pathways & Milestones</h2>
+            <div id="pathwaysListContainer"></div>
+        </div>
+
+        <div class="card">
+            <h2>Private Spiritual Journal</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Record your personal reflections, prayers, and walk with God securely.</p>
+            <form id="journalForm" onsubmit="V2Discipleship.saveJournal(event)">
+                <div class="form-group"><label>Title *</label><input type="text" id="journalTitle" class="form-control" placeholder="e.g. Morning Devotion on Grace" required></div>
+                <div style="display:flex; gap:15px;">
+                    <div class="form-group" style="flex:1;"><label>Mood / State</label><select id="journalMood" class="form-control"><option value="Blessed">Blessed & Grateful</option><option value="Seeking">Seeking Guidance</option><option value="Joyful">Joyful</option><option value="Reflective">Reflective</option></select></div>
+                </div>
+                <div class="form-group"><label>Journal Content *</label><textarea id="journalContent" class="form-control" rows="4" placeholder="Write your thoughts..." required></textarea></div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Save Journal Entry</button>
+            </form>
+            <div id="journalsContainer" style="margin-top: 25px;"></div>
+        </div>
+
+        <div class="card">
+            <h2>Community Prayer Center</h2>
+            <form id="prayerForm" onsubmit="V2Discipleship.submitPrayer(event)">
+                <div class="form-group"><label>Prayer Title *</label><input type="text" id="prayerTitle" class="form-control" required></div>
+                <div class="form-group"><label>Prayer Request / Praise Report *</label><textarea id="prayerContent" class="form-control" rows="3" required></textarea></div>
+                <div class="form-group" style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="prayerAnonymous" style="width:18px;height:18px;"><label for="prayerAnonymous" style="margin:0;">Post Anonymously</label></div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Submit Prayer Request</button>
+            </form>
+            <div id="prayerWallContainer" class="prayer-wall-grid"></div>
+        </div>
+
+        <div class="card">
+            <h2>Small Groups / Connect Groups</h2>
+            <div id="smallGroupsContainer"></div>
+        </div>
+    </div>
+
+    <div id="discipleshipAdminTab" class="tab-content">
+        <div class="sub-nav">
+            <button id="btnSubAdminPathways" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('pathways')">🗺️ Pathway Builder</button>
+            <button id="btnSubAdminGroups" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('groups')">👥 Small Groups Manager</button>
+        </div>
+
+        <div id="subTabAdminPathways" class="discipleship-admin-sub-tab active" style="animation: fadeIn 0.3s ease-out;">
+            <div class="card">
+                <h2>Create New Discipleship Milestone</h2>
+                <form id="createPathwayForm" onsubmit="V2Discipleship.createPathway(event)">
+                    <div class="form-group"><label>Milestone Title *</label><input type="text" id="pathCreateTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Description *</label><textarea id="pathCreateDesc" class="form-control" rows="2" required></textarea></div>
+                    <div class="form-group"><label>Step Order (Number) *</label><input type="number" id="pathCreateOrder" class="form-control" required></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Create Milestone</button>
+                </form>
+            </div>
+            <div class="card">
+                <h2>Active Discipleship Pathways</h2>
+                <div id="adminPathwaysList"></div>
+            </div>
+        </div>
+
+        <div id="subTabAdminGroups" class="discipleship-admin-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+            <div class="card">
+                <h2>Create New Small Group</h2>
+                <form id="createSmallGroupForm" onsubmit="V2Discipleship.createSmallGroup(event)">
+                    <div class="form-group"><label>Group Name *</label><input type="text" id="sgCreateName" class="form-control" required></div>
+                    <div class="form-group" style="position: relative;">
+                        <label>Leader (Search Directory)</label>
+                        <input type="text" id="sgLeaderSearch" class="form-control" placeholder="Search leader by name..." autocomplete="off" onkeyup="V2Discipleship.filterLeaderSearch()">
+                        <div id="sgLeaderDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid var(--border-color); border-radius:0 0 8px 8px; max-height:200px; overflow-y:auto; z-index:100; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
+                        <input type="hidden" id="sgCreateLeaderId">
+                    </div>
+                    <div style="display:flex; gap:15px;">
+                        <div class="form-group" style="flex:1;"><label>Schedule</label><input type="text" id="sgCreateSchedule" class="form-control" placeholder="e.g. Every Friday, 7PM"></div>
+                        <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="sgCreateVenue" class="form-control" placeholder="e.g. Main Hall"></div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Create Group</button>
+                </form>
+            </div>
+            <div class="card">
+                <h2>Active Small Groups</h2>
+                <div id="adminSmallGroupsList"></div>
+            </div>
+        </div>
     </div>
 
     <div id="ministriesTab" class="tab-content">
@@ -724,6 +809,7 @@
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_ministries" style="width:20px;height:20px;"> Access "Ministries"</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_activity" style="width:20px;height:20px;"> Access "Activity Logs"</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_permissions" style="width:20px;height:20px;"> Access "Add Permissions"</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_discipleship" style="width:20px;height:20px;"> Access "Discipleship Admin"</label>
                     <hr style="border:0; border-top:1px solid var(--border-color); margin: 5px 0;">
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: var(--primary);"><input type="checkbox" class="permCheckModal" value="add_entries" style="width:20px;height:20px;"> ➕ Add Entries (Forms, Roles, Walk-ins)</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: #8B5CF6;"><input type="checkbox" class="permCheckModal" value="edit_entries" style="width:20px;height:20px;"> ✏️ Edit Entries (Profiles, Events, Notes)</label>
@@ -871,7 +957,7 @@
 <div id="viewProfileModal" class="modal">
     <div class="modal-content" style="max-width: 750px;">
         <div class="modal-drag-handle"></div>
-        
+
         <h2 style="margin-bottom: 20px;">Member Profile</h2>
 
         <div class="profile-header-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; background: var(--bg-light); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 20px;">
@@ -893,6 +979,7 @@
         <div class="sub-nav" style="margin-bottom: 15px; margin-top: 15px;">
             <button id="btnProfileTabRoles" class="sub-nav-btn active" onclick="switchProfileModalTab('roles')">🎭 Roles</button>
             <button id="btnProfileTabAttendance" class="sub-nav-btn" onclick="switchProfileModalTab('attendance')">📋 Attendance History</button>
+            <button id="btnProfileTabPastoral" class="sub-nav-btn" onclick="switchProfileModalTab('pastoral')" style="display: none; color: #8B5CF6;">🕊️ Pastoral Care</button>
         </div>
 
         <div id="profileTabRoles" style="display: block; animation: fadeIn 0.3s ease-out;">
@@ -906,6 +993,13 @@
             <div style="background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px;">
                 <div id="modalAttendanceHistory" style="font-size: 0.95rem; padding-right: 5px;"></div>
                 <div id="modalAttendancePagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
+            </div>
+        </div>
+
+        <div id="profileTabPastoral" style="display: none; animation: fadeIn 0.3s ease-out;">
+            <div style="background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0; margin-bottom: 15px;">Highly secure pastoral oversight notes. These notes are completely hidden from the member.</p>
+                <div id="modalPastoralHistory"></div>
             </div>
         </div>
 
@@ -1042,5 +1136,6 @@
     }
 </script>
 <script src="/js/app.js"></script>
+<script src="/js/v2-discipleship.js"></script>
 </body>
 </html>
