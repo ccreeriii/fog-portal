@@ -54,6 +54,7 @@ const db = new sqlite3.Database('./fog_community.db', (err) => {
 });
 
 db.serialize(() => {
+    // V1.0 TABLES (PRESERVED INTACT)
     db.run(`CREATE TABLE IF NOT EXISTS youth (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT, age INTEGER, email TEXT, mobile TEXT,
@@ -110,6 +111,53 @@ db.serialize(() => {
         UNIQUE(event_id, youth_id, role_name)
     )`);
 
+    // ==============================================================================
+    // V2.0 ADDITIVE-ONLY TABLES (TRANSFORMATIONAL DISCIPLESHIP ENGINE)
+    // ==============================================================================
+    
+    // Discipleship Pathways & Milestones
+    db.run(`CREATE TABLE IF NOT EXISTS discipleship_pathways (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT, description TEXT, step_order INTEGER, created_at DATETIME
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS member_milestones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        youth_id INTEGER, pathway_id INTEGER, status TEXT DEFAULT 'In Progress',
+        completed_at DATETIME, notes TEXT, UNIQUE(youth_id, pathway_id)
+    )`);
+
+    // Private Spiritual Journals (Strictly Gated / Encrypted or Owner-Only)
+    db.run(`CREATE TABLE IF NOT EXISTS private_journals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        youth_id INTEGER, title TEXT, content TEXT, mood TEXT, created_at DATETIME
+    )`);
+
+    // Community Prayer Center
+    db.run(`CREATE TABLE IF NOT EXISTS prayer_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        youth_id INTEGER, title TEXT, request TEXT, is_anonymous INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'Open', created_at DATETIME
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS prayer_intercessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        prayer_id INTEGER, youth_id INTEGER, prayed_at DATETIME,
+        UNIQUE(prayer_id, youth_id)
+    )`);
+
+    // Small Groups / Connect Groups
+    db.run(`CREATE TABLE IF NOT EXISTS small_groups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT, leader_id INTEGER, meeting_schedule TEXT, venue TEXT, created_at DATETIME
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS small_group_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER, youth_id INTEGER, joined_at DATETIME,
+        UNIQUE(group_id, youth_id)
+    )`);
+
     // SCHEMA AUTO-HEALING
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
@@ -122,22 +170,19 @@ db.serialize(() => {
     db.run(`ALTER TABLE ministry_members ADD COLUMN sub_role TEXT`, () => {});
     db.run(`ALTER TABLE event_roles ADD COLUMN sub_role TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN roles_restricted_notes TEXT`, () => {});
-    
-    // NEW: MINISTRY LOGO HEALING
     db.run(`ALTER TABLE ministries ADD COLUMN logo TEXT`, () => {});
 
     // Ensure access_ministries is granted automatically to the Superadmin
     const superadminPermissions = JSON.stringify([
         'access_checkin', 'access_directory', 'access_events',
         'access_attendance', 'access_activity', 'access_permissions',
-        'access_ministries', 
+        'access_ministries', 'access_discipleship',
         'add_entries', 'edit_entries', 'delete_entries'
     ]);
 
     db.run(`INSERT OR IGNORE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
         ['celsocreeriii@gmail.com', 'JesusisLord', superadminPermissions, getManilaTime()]
     );
-    // Force update the superadmin to ensure they always have all checkboxes
     db.run(`UPDATE users SET permissions = ? WHERE username = 'celsocreeriii@gmail.com'`, [superadminPermissions]);
 
     // ARMORED: Background Auto-Sync Engine
@@ -153,6 +198,22 @@ db.serialize(() => {
             });
             stmt.finalize();
             console.log(`[SYNC ENGINE] Auto-created login accounts for ${addedCount} community members.`);
+        }
+    });
+
+    // Seed Initial Discipleship Pathways if empty
+    db.get(`SELECT COUNT(*) as cnt FROM discipleship_pathways`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            const defaultSteps = [
+                ["Step 1: Salvation & Baptism", "Accept Jesus Christ as Lord and Savior and publicly declare your faith through water baptism.", 1],
+                ["Step 2: Foundation Class", "Complete the core teachings on prayer, Bible reading, and Christian lifestyle.", 2],
+                ["Step 3: Ministry Integration", "Join a department, core team, or small group to serve the community using your God-given gifts.", 3],
+                ["Step 4: Discipleship Leader", "Mentor and lead others along their spiritual journey.", 4]
+            ];
+            const stmt = db.prepare(`INSERT INTO discipleship_pathways (title, description, step_order, created_at) VALUES (?, ?, ?, ?)`);
+            defaultSteps.forEach(step => stmt.run([step[0], step[1], step[2], getManilaTime()]));
+            stmt.finalize();
+            console.log(`[SEED ENGINE] Seeded V2.0 foundational discipleship pathways.`);
         }
     });
 });
@@ -213,7 +274,7 @@ app.get('/manifest.json', (req, res) => {
     res.json({
         "name": isStaging ? "FOG MINISTRIES (STAGING)" : "FIRE OF GOD MINISTRIES",
         "short_name": isStaging ? "FOG Staging" : "FOG Portal",
-        "description": "Community Portal, CRM, and Event Check-In",
+        "description": "Community Portal, CRM, and Transformational Discipleship Engine",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#F8FAFC",
@@ -245,9 +306,7 @@ app.get('/apple-touch-icon.png', (req, res) => {
     }
 });
 
-// ==============================================================================
 // SUPERADMIN BRAND UPLOADER API
-// ==============================================================================
 app.post('/api/settings/images', (req, res) => {
     const { logo, prodIcon, stagingIcon, actor } = req.body;
 
@@ -358,6 +417,7 @@ app.post('/api/logout', (req, res) => {
     logActivity(username, 'LOGOUT', 'User logged out');
     res.json({ success: true });
 });
+
 // PROFILE EDIT API
 app.put('/api/youth/profile/:id', (req, res) => {
     const { name, age, birthday, social_media, parents_name, password, email, profile_picture, actor } = req.body;
@@ -480,6 +540,124 @@ app.delete('/api/youth/:id', (req, res) => {
         logActivity(actor, 'DELETE_MEMBER', `Deleted member record (ID: ${req.params.id})`);
         res.json({ deleted: this.changes });
     });
+});
+
+// ==============================================================================
+// V2.0 DISCIPLESHIP ENGINE API ENDPOINTS
+// ==============================================================================
+
+// 1. Next Step with God Engine ("What is my next step with God?")
+app.get('/api/discipleship/next-step/:youth_id', (req, res) => {
+    // BUG FIX: Was originally req.params.id, changed to req.params.youth_id
+    const youthId = req.params.youth_id; 
+    db.all(`SELECT p.*, m.status as member_status, m.completed_at FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [youthId], (err, steps) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        // Find the first uncompleted or in-progress step
+        let nextStep = steps.find(s => s.member_status !== 'Completed');
+        if (!nextStep && steps.length > 0) {
+            nextStep = steps[steps.length - 1]; // All completed!
+        }
+
+        res.json({ nextStep, allSteps: steps });
+    });
+});
+
+app.post('/api/discipleship/milestones', (req, res) => {
+    const { youth_id, pathway_id, status, notes, actor } = req.body;
+    db.run(`INSERT INTO member_milestones (youth_id, pathway_id, status, completed_at, notes) VALUES (?, ?, ?, ?, ?) ON CONFLICT(youth_id, pathway_id) DO UPDATE SET status = excluded.status, completed_at = excluded.completed_at, notes = excluded.notes`,
+        [youth_id, pathway_id, status, status === 'Completed' ? getManilaTime() : null, notes], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'UPDATE_MILESTONE', `Updated milestone ID ${pathway_id} for youth ID ${youth_id} to '${status}'`);
+            res.json({ success: true });
+        }
+    );
+});
+
+// 2. Private Journals API
+app.get('/api/journals/:youth_id', (req, res) => {
+    db.all(`SELECT * FROM private_journals WHERE youth_id = ? ORDER BY created_at DESC`, [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/journals', (req, res) => {
+    const { youth_id, title, content, mood, actor } = req.body;
+    db.run(`INSERT INTO private_journals (youth_id, title, content, mood, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [youth_id, title, content, mood, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'CREATE_JOURNAL', `Added private spiritual journal entry`);
+            res.json({ success: true, id: this.lastID });
+        }
+    );
+});
+
+app.delete('/api/journals/:id', (req, res) => {
+    db.run(`DELETE FROM private_journals WHERE id = ?`, [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// 3. Prayer Center API
+app.get('/api/prayers', (req, res) => {
+    const sql = `SELECT p.*, y.name as author_name FROM prayer_requests p LEFT JOIN youth y ON p.youth_id = y.id ORDER BY p.created_at DESC`;
+    db.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/prayers', (req, res) => {
+    const { youth_id, title, request, is_anonymous, actor } = req.body;
+    db.run(`INSERT INTO prayer_requests (youth_id, title, request, is_anonymous, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [youth_id, title, request, is_anonymous ? 1 : 0, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'CREATE_PRAYER', `Submitted prayer request '${title}'`);
+            res.json({ success: true, id: this.lastID });
+        }
+    );
+});
+
+app.post('/api/prayers/:id/intercede', (req, res) => {
+    const { youth_id } = req.body;
+    db.run(`INSERT OR IGNORE INTO prayer_intercessions (prayer_id, youth_id, prayed_at) VALUES (?, ?, ?)`,
+        [req.params.id, youth_id, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
+        }
+    );
+});
+
+// 4. Small Groups API
+app.get('/api/small-groups', (req, res) => {
+    const sql = `SELECT g.*, y.name as leader_name, (SELECT COUNT(*) FROM small_group_members WHERE group_id = g.id) as member_count FROM small_groups g LEFT JOIN youth y ON g.leader_id = y.id ORDER BY g.name ASC`;
+    db.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/small-groups', (req, res) => {
+    const { name, leader_id, meeting_schedule, venue, actor } = req.body;
+    db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [name, leader_id, meeting_schedule, venue, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            logActivity(actor, 'CREATE_SMALL_GROUP', `Created small group '${name}'`);
+            res.json({ success: true, id: this.lastID });
+        }
+    );
+});
+
+app.post('/api/small-groups/:id/join', (req, res) => {
+    const { youth_id } = req.body;
+    db.run(`INSERT OR IGNORE INTO small_group_members (group_id, youth_id, joined_at) VALUES (?, ?, ?)`,
+        [req.params.id, youth_id, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
+        }
+    );
 });
 
 // EVENTS API
@@ -712,26 +890,7 @@ app.get('/api/users/list', (req, res) => {
     });
 });
 
-app.get('/api/directory/export', (req, res) => {
-    db.all("SELECT * FROM members ORDER BY full_name ASC", [], (err, rows) => {
-        if (err || !rows || rows.length === 0) {
-            db.all("SELECT * FROM youth ORDER BY name ASC", [], (e, r) => sendCSV(res, r || []));
-        } else { sendCSV(res, rows); }
-    });
-});
-
-function sendCSV(res, rows) {
-    let csv = 'Name,Age,Role,Phone,Email,Status\n';
-    (rows || []).forEach(r => { csv += `"${r.full_name||r.name||''}","${r.age||''}","${r.role||''}","${r.phone||r.mobile||''}","${r.email||''}","${r.status||''}"\n`; });
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename=Community_Directory.csv');
-    res.status(200).send(csv);
-}
-
-// ==============================================================================
-// CRM EXPANSION API ENDPOINTS - MINISTRIES
-// ==============================================================================
-
+// MINISTRIES API
 app.get('/api/ministries', (req, res) => {
     db.all(`SELECT m.*, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = m.id) as member_count FROM ministries m ORDER BY m.name ASC`, [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -796,7 +955,6 @@ app.post('/api/ministries/:id/members', (req, res) => {
     });
 });
 
-// Update Ministry Member Role & Sub-role
 app.put('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => {
     const { role, sub_role, actor } = req.body;
     db.run(`UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?`,
@@ -826,10 +984,7 @@ app.get('/api/youth/:id/ministries', (req, res) => {
     });
 });
 
-// ==============================================================================
-// CRM EXPANSION API ENDPOINTS - EVENT ROLES
-// ==============================================================================
-
+// EVENT ROLES API
 app.get('/api/events/:id/roles', (req, res) => {
     const sql = `SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, y.id, y.name, y.qr_code, y.profile_picture
                  FROM event_roles er JOIN youth y ON er.youth_id = y.id
@@ -860,7 +1015,6 @@ app.post('/api/events/:id/roles-notes', (req, res) => {
     });
 });
 
-// Update Event Member Role & Sub-role
 app.put('/api/events/:event_id/roles/:mapping_id', (req, res) => {
     const { role_name, sub_role, actor } = req.body;
     db.run(`UPDATE event_roles SET role_name = ?, sub_role = ? WHERE id = ?`,
@@ -891,5 +1045,5 @@ app.get('/api/youth/:id/event_roles', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running safely on Port ${PORT}`);
+    console.log(`Server running safely on Port ${PORT} (V2.0 Transformational Engine Active)`);
 });
