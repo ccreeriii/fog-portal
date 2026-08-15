@@ -3,8 +3,11 @@
 // ==============================================================================
 
 window.V2Discipleship = {
+    _cachedDirectory: null,
+    _spiritualChart: null,
+
     init: function() {
-        console.log('[V2 Engine] Initializing Transformational Discipleship Engine with Admin Controls...');
+        console.log('[V2 Engine] Initializing Transformational Discipleship Engine with Gamification UI...');
         this.hookIntoV1Lifecycle();
     },
 
@@ -18,7 +21,6 @@ window.V2Discipleship = {
     },
 
     hookIntoV1Lifecycle: function() {
-        // Intercept Navigation Builder
         if (typeof window.buildNav === 'function') {
             const originalBuildNav = window.buildNav;
             window.buildNav = function() {
@@ -27,7 +29,6 @@ window.V2Discipleship = {
             };
         }
 
-        // Intercept Profile Populator
         if (typeof window.populateProfileTab === 'function') {
             const originalPopulateProfileTab = window.populateProfileTab;
             window.populateProfileTab = async function(member) {
@@ -36,7 +37,6 @@ window.V2Discipleship = {
             };
         }
 
-        // Intercept Profile Modal Tabs
         if (typeof window.switchProfileModalTab === 'function') {
             const origSwitch = window.switchProfileModalTab;
             window.switchProfileModalTab = function(tab) {
@@ -51,7 +51,6 @@ window.V2Discipleship = {
             };
         }
 
-        // Intercept Modal Opener to inject Pastoral Data
         if (typeof window.openViewProfileModal === 'function') {
             const origOpenViewProfile = window.openViewProfileModal;
             window.openViewProfileModal = async function(youthId) {
@@ -66,7 +65,6 @@ window.V2Discipleship = {
             };
         }
 
-        // Intercept Top Level Tab Switcher
         if (typeof window.switchTab === 'function') {
             const origSwitchTab = window.switchTab;
             window.switchTab = function(tabId) {
@@ -83,12 +81,11 @@ window.V2Discipleship = {
         if (sidebar && !document.getElementById('navBtnDiscipleshipAdmin')) {
             const logoutBtn = sidebar.querySelector('.text-danger');
             
-            // Standard Discipleship Tab for Everyone
             let v2SidebarHtml = `<button id="navBtnDiscipleship" class="nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')">🔥 Discipleship</button>`;
             
-            // Admin-Only Discipleship Tab
             if (window.hasPerm && (window.hasPerm('access_discipleship') || window.hasPerm('edit_entries'))) {
                 v2SidebarHtml += `<button id="navBtnDiscipleshipAdmin" class="nav-btn" data-target="discipleshipAdminTab" onclick="switchTab('discipleshipAdminTab')" style="color: #8B5CF6;">👑 Discipleship Admin</button>`;
+                v2SidebarHtml += `<button id="navBtnAIAssistant" class="nav-btn" data-target="aiAssistantTab" onclick="switchTab('aiAssistantTab')" style="color: #10B981;">🤖 AI Assistant</button>`;
             }
 
             if (logoutBtn) logoutBtn.insertAdjacentHTML('beforebegin', v2SidebarHtml);
@@ -106,9 +103,44 @@ window.V2Discipleship = {
         }
     },
 
-    // ==========================================
-    // MEMBER DISCIPLESHIP METHODS
-    // ==========================================
+    setAiPrompt: function(text) {
+        document.getElementById('aiChatInput').value = text;
+    },
+
+    sendAiMessage: async function(e) {
+        e.preventDefault();
+        const inputElem = document.getElementById('aiChatInput');
+        const text = inputElem.value.trim();
+        if (!text) return;
+
+        const chatBox = document.getElementById('aiChatHistory');
+        chatBox.innerHTML += `<div class="chat-msg chat-user">${text}</div>`;
+        inputElem.value = '';
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        const typingId = 'typing_' + Date.now();
+        chatBox.innerHTML += `<div id="${typingId}" class="chat-msg chat-ai" style="opacity: 0.7;">Thinking...</div>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        try {
+            const session = this.getSession();
+            const res = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: text, actor: session.username })
+            });
+            const data = await res.json();
+
+            document.getElementById(typingId).remove();
+            chatBox.innerHTML += `<div class="chat-msg chat-ai">${data.response}</div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+        } catch (err) {
+            document.getElementById(typingId).remove();
+            chatBox.innerHTML += `<div class="chat-msg chat-ai" style="color: red;">Network error connecting to the AI core.</div>`;
+        }
+    },
+
     loadModule: async function(memberId) {
         if (!memberId) return;
         await Promise.all([
@@ -127,6 +159,43 @@ window.V2Discipleship = {
             const container = document.getElementById('nextStepContainer');
             if (!container) return;
 
+            const verses = [
+                { text: "For I know the plans I have for you, declares the Lord, plans for welfare and not for evil, to give you a future and a hope.", ref: "Jeremiah 29:11" },
+                { text: "I can do all things through him who strengthens me.", ref: "Philippians 4:13" },
+                { text: "Trust in the Lord with all your heart, and do not lean on your own understanding.", ref: "Proverbs 3:5" },
+                { text: "Be strong and courageous. Do not be frightened, and do not be dismayed, for the Lord your God is with you wherever you go.", ref: "Joshua 1:9" },
+                { text: "But they who wait for the Lord shall renew their strength; they shall mount up with wings like eagles.", ref: "Isaiah 40:31" },
+                { text: "Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come.", ref: "2 Corinthians 5:17" },
+                { text: "And let us consider how to stir up one another to love and good works.", ref: "Hebrews 10:24" }
+            ];
+            const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
+            const dailyVerse = verses[dayOfYear % verses.length];
+            
+            const verseContainer = document.getElementById('verseOfDayContainer');
+            if (verseContainer) {
+                verseContainer.innerHTML = `
+                    <div class="card" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: #FFF; border: none; padding: 20px;">
+                        <h3 style="color: #FFF; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; margin-bottom: 15px; display:flex; align-items:center; gap:8px;">📖 Daily Manna</h3>
+                        <p style="font-size: 1.15rem; font-style: italic; margin-bottom: 10px; line-height: 1.5;">"${dailyVerse.text}"</p>
+                        <p style="font-weight: bold; text-align: right; margin: 0; font-size: 0.9rem;">- ${dailyVerse.ref}</p>
+                    </div>
+                `;
+            }
+
+            let totalSteps = data.allSteps ? data.allSteps.length : 0;
+            let completedSteps = data.allSteps ? data.allSteps.filter(s => s.member_status === 'Completed').length : 0;
+            let percentage = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+
+            const badgesHtml = (data.allSteps || []).map(s => {
+                const isCompleted = s.member_status === 'Completed';
+                return `
+                    <div class="achievement-badge ${isCompleted ? 'unlocked' : 'locked'}">
+                        <div class="badge-icon">${isCompleted ? '🏆' : '🔒'}</div>
+                        <div class="badge-name">${s.title.split(':')[0]}</div>
+                    </div>
+                `;
+            }).join('');
+
             if (data.nextStep) {
                 const step = data.nextStep;
                 const isCompleted = step.member_status === 'Completed';
@@ -143,6 +212,23 @@ window.V2Discipleship = {
                                 ${!isCompleted ? `<button class="btn btn-sm" style="background: #FFF; color: var(--primary); font-weight: bold;" onclick="V2Discipleship.completeStep(${youthId}, ${step.id})">✅ Mark as Completed</button>` : `<span style="font-weight: bold; color: #FFF;">🎉 Milestone Achieved!</span>`}
                             </div>
                         </div>
+
+                        <div style="margin-top: 20px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: bold;">
+                                <span>Spiritual Growth Track</span>
+                                <span>${percentage}%</span>
+                            </div>
+                            <div class="spiritual-progress-container">
+                                <div class="spiritual-progress-bar" style="width: ${percentage}%"></div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 15px;">
+                            <h3 style="font-size: 0.95rem; margin-bottom: 10px; border:none; padding:0; color:#FFF;">🏆 My Unlocked Badges</h3>
+                            <div class="badges-grid">
+                                ${badgesHtml}
+                            </div>
+                        </div>
                     </div>
                 `;
             } else {
@@ -157,9 +243,7 @@ window.V2Discipleship = {
                             <h4>${s.title}</h4>
                             <p>${s.description}</p>
                         </div>
-                        <div>
-                            <span class="badge ${s.member_status === 'Completed' ? 'badge-green' : 'badge-orange'}">${s.member_status || 'Pending'}</span>
-                        </div>
+                        <div><span class="badge ${s.member_status === 'Completed' ? 'badge-green' : 'badge-orange'}">${s.member_status || 'Pending'}</span></div>
                     </div>
                 `).join('');
             }
@@ -336,24 +420,69 @@ window.V2Discipleship = {
         } catch (err) { alert('Network error occurred.'); }
     },
 
-    // ==========================================
-    // ADMIN DISCIPLESHIP METHODS
-    // ==========================================
-    
     switchAdminSubTab: function(tab) {
+        document.getElementById('subTabAdminAnalytics').style.display = tab === 'analytics' ? 'block' : 'none';
         document.getElementById('subTabAdminPathways').style.display = tab === 'pathways' ? 'block' : 'none';
         document.getElementById('subTabAdminGroups').style.display = tab === 'groups' ? 'block' : 'none';
+        document.getElementById('btnSubAdminAnalytics').classList.toggle('active', tab === 'analytics');
         document.getElementById('btnSubAdminPathways').classList.toggle('active', tab === 'pathways');
         document.getElementById('btnSubAdminGroups').classList.toggle('active', tab === 'groups');
     },
 
     loadAdminModule: async function() {
         await Promise.all([
+            this.loadAdminAnalytics(),
             this.loadAdminPathways(),
             this.loadAdminSmallGroups()
         ]);
-        if (window.youthData && window.youthData.length === 0 && window.loadDirectory) {
-            window.loadDirectory();
+    },
+
+    loadAdminAnalytics: async function() {
+        try {
+            const res = await fetch('/api/discipleship/analytics/stages');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            const ctx = document.getElementById('spiritualStagesChart');
+            if (!ctx) return;
+
+            if (this._spiritualChart) {
+                this._spiritualChart.destroy();
+            }
+
+            const labels = [];
+            const counts = [];
+            const backgroundColors = ['#CBD5E1', '#FF6B00', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
+
+            labels.push('Not Started');
+            counts.push(data.unassigned || 0);
+
+            data.stages.forEach(stage => {
+                labels.push(stage.title);
+                counts.push(stage.user_count);
+            });
+
+            this._spiritualChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Members in this Stage',
+                        data: counts,
+                        backgroundColor: backgroundColors,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        } catch (e) {
+            console.error('Failed to load chart analytics', e);
         }
     },
 
@@ -408,12 +537,21 @@ window.V2Discipleship = {
         });
     },
 
-    filterLeaderSearch: function() {
+    filterLeaderSearch: async function() {
         const q = document.getElementById('sgLeaderSearch').value.toLowerCase().trim();
         const dropdown = document.getElementById('sgLeaderDropdown');
         if (q.length < 2) { dropdown.style.display = 'none'; return; }
         
-        const matches = (window.youthData || []).filter(y => (y.name || '').toLowerCase().includes(q));
+        if (!this._cachedDirectory) {
+            try {
+                const res = await fetch('/api/youth');
+                this._cachedDirectory = await res.json();
+            } catch(e) {
+                this._cachedDirectory = [];
+            }
+        }
+
+        const matches = this._cachedDirectory.filter(y => (y.name || '').toLowerCase().includes(q));
         if (matches.length > 0) {
             dropdown.innerHTML = matches.map(y => `
                 <div style="padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer;" onclick="V2Discipleship.selectLeader(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')">
@@ -486,9 +624,6 @@ window.V2Discipleship = {
         });
     },
 
-    // ==========================================
-    // PASTORAL CARE OVERSIGHT
-    // ==========================================
     loadPastoralOversight: async function(youthId) {
         try {
             const res = await fetch(`/api/discipleship/member-progress/${youthId}`);
