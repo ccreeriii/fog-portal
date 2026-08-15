@@ -18,14 +18,13 @@ let currentRosterFilter = 'all';
 let currentPreRegYouthIds = new Set();
 let currentMinistryId = null;
 
-// Pagination States
 let currentDirPage = 1; let dirPerPage = 10; let filteredDir = [];
 let currentAttPage = 1; let attPerPage = 10; let filteredAtt = [];
 let currentActPage = 1; let actPerPage = 10; let filteredAct = [];
 
-// ==============================================================================
-// ARMORED OFFLINE SYNC ENGINE
-// ==============================================================================
+let modalRolesData = []; let modalRolesPage = 1;
+let modalAttData = []; let modalAttPage = 1;
+
 const _originalFetch = window.fetch;
 const OfflineManager = {
     init: function() {
@@ -132,7 +131,7 @@ const OfflineManager = {
 
         localStorage.setItem('fog_offline_queue', JSON.stringify(failed));
         if (failed.length === 0) {
-            console.log('[Offline Sync Engine] All offline actions synchronized successfully to Raspberry Pi!');
+            console.log('[Offline Sync Engine] All offline actions synchronized successfully!');
             if(document.getElementById('eventsTab') && document.getElementById('eventsTab').classList.contains('active')) window.loadEvents();
             if(document.getElementById('directoryTab') && document.getElementById('directoryTab').classList.contains('active')) window.loadDirectory();
             if(document.getElementById('checkinTab') && document.getElementById('checkinTab').classList.contains('active')) window.updateActiveEventBanner();
@@ -409,6 +408,98 @@ window.switchAnalyticsSubTab = function(tab) {
     document.getElementById('btnAnalyticsTabRoles').classList.toggle('active', tab === 'roles');
 };
 
+// ==============================================================================
+// MODAL PROFILE TABS & PAGINATION LOGIC
+// ==============================================================================
+window.switchProfileModalTab = function(tab) {
+    document.getElementById('profileTabRoles').style.display = tab === 'roles' ? 'block' : 'none';
+    document.getElementById('profileTabAttendance').style.display = tab === 'attendance' ? 'block' : 'none';
+    document.getElementById('btnProfileTabRoles').classList.toggle('active', tab === 'roles');
+    document.getElementById('btnProfileTabAttendance').classList.toggle('active', tab === 'attendance');
+};
+
+window.renderModalRoles = function() {
+    const container = document.getElementById('modalMinistriesHistory');
+    const paginator = document.getElementById('modalRolesPagination');
+    const perPage = 10;
+    const totalPages = Math.ceil(modalRolesData.length / perPage) || 1;
+    const start = (modalRolesPage - 1) * perPage;
+    const paged = modalRolesData.slice(start, start + perPage);
+
+    if (modalRolesData.length === 0) {
+        container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No roles assigned yet.</p>`;
+        paginator.style.display = 'none';
+        return;
+    }
+
+    let html = '';
+    paged.forEach(item => {
+        if (item.type === 'ministry') {
+            const combinedRole = `${item.role}${item.sub_role ? ' | ' + item.sub_role : ''}`;
+            html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                <strong style="color:var(--text-main); font-size: 0.95rem;">🏛️ ${item.ministry_name}</strong>
+                <span style="font-size:11px; color:var(--primary); background: rgba(255,107,0,0.1); padding: 3px 8px; border-radius: 6px; text-align:right;">${combinedRole}</span>
+            </div>`;
+        } else {
+            const combinedRole = `${item.role_name}${item.sub_role ? ' | ' + item.sub_role : ''}`;
+            html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                <div><strong style="color:var(--text-main); font-size: 0.95rem;">📅 ${item.event_name}</strong><br><small style="color:var(--text-muted);">${item.event_date}</small></div>
+                <div style="text-align: right;"><span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px;">${combinedRole}</span></div>
+            </div>`;
+        }
+    });
+    container.innerHTML = html;
+
+    if (modalRolesData.length > 10) {
+        paginator.style.display = 'block';
+        paginator.innerHTML = `
+            <button class="btn btn-outline btn-sm" onclick="modalRolesPage--; renderModalRoles()" ${modalRolesPage === 1 ? 'disabled' : ''}>◀</button>
+            <span style="font-size: 0.85rem; margin: 0 10px; color: var(--text-main);">Page ${modalRolesPage} of ${totalPages}</span>
+            <button class="btn btn-outline btn-sm" onclick="modalRolesPage++; renderModalRoles()" ${modalRolesPage === totalPages ? 'disabled' : ''}>▶</button>
+        `;
+    } else {
+        paginator.style.display = 'none';
+    }
+};
+
+window.renderModalAttendance = function() {
+    const container = document.getElementById('modalAttendanceHistory');
+    const paginator = document.getElementById('modalAttendancePagination');
+    const perPage = 10;
+    const totalPages = Math.ceil(modalAttData.length / perPage) || 1;
+    const start = (modalAttPage - 1) * perPage;
+    const paged = modalAttData.slice(start, start + perPage);
+
+    if (modalAttData.length === 0) {
+        container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No attendance history recorded yet.</p>`;
+        paginator.style.display = 'none';
+        return;
+    }
+
+    container.innerHTML = paged.map(h => `
+        <div style="border-bottom: 1px solid var(--border-color); padding: 10px 5px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong style="color: var(--text-main);">${h.event_name}</strong><br>
+                <small style="color: var(--text-muted);">📅 ${h.event_date}</small>
+            </div>
+            <div style="text-align: right;">
+                <span class="badge ${h.is_walkin ? 'badge-orange' : 'badge-blue'}" style="font-size: 0.7rem;">${h.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span><br>
+                <small style="color: var(--success); font-weight: bold;">${new Date(h.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+            </div>
+        </div>`).join('');
+
+    if (modalAttData.length > 10) {
+        paginator.style.display = 'block';
+        paginator.innerHTML = `
+            <button class="btn btn-outline btn-sm" onclick="modalAttPage--; renderModalAttendance()" ${modalAttPage === 1 ? 'disabled' : ''}>◀</button>
+            <span style="font-size: 0.85rem; margin: 0 10px; color: var(--text-main);">Page ${modalAttPage} of ${totalPages}</span>
+            <button class="btn btn-outline btn-sm" onclick="modalAttPage++; renderModalAttendance()" ${modalAttPage === totalPages ? 'disabled' : ''}>▶</button>
+        `;
+    } else {
+        paginator.style.display = 'none';
+    }
+};
+
 window.loadBackups = async function() {
     const res = await fetch('/api/backups');
     const backups = await res.json();
@@ -580,32 +671,127 @@ window.populateProfileTab = async function(member) {
         });
     }
 
-    window.loadMinistriesAndEventRolesForProfile(member.id, 'myMinistriesHistory');
+    // Reset switch tabs
+    window.switchMyProfileTab = function(tab) {
+        document.getElementById('myProfileTabRoles').style.display = tab === 'roles' ? 'block' : 'none';
+        document.getElementById('myProfileTabAttendance').style.display = tab === 'attendance' ? 'block' : 'none';
+        document.getElementById('btnMyProfileTabRoles').classList.toggle('active', tab === 'roles');
+        document.getElementById('btnMyProfileTabAttendance').classList.toggle('active', tab === 'attendance');
+    };
+
+    window.renderMyProfileRoles = function() {
+        const container = document.getElementById('myMinistriesHistory');
+        const paginator = document.getElementById('myRolesPagination');
+        const perPage = 10;
+        const totalPages = Math.ceil(modalRolesData.length / perPage) || 1;
+        const start = (modalRolesPage - 1) * perPage;
+        const paged = modalRolesData.slice(start, start + perPage);
+
+        if (modalRolesData.length === 0) {
+            container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No roles assigned yet.</p>`;
+            paginator.style.display = 'none';
+            return;
+        }
+
+        let html = '';
+        paged.forEach(item => {
+            if (item.type === 'ministry') {
+                const combinedRole = `${item.role}${item.sub_role ? ' | ' + item.sub_role : ''}`;
+                html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="color:var(--text-main); font-size: 0.95rem;">🏛️ ${item.ministry_name}</strong>
+                    <span style="font-size:11px; color:var(--primary); background: rgba(255,107,0,0.1); padding: 3px 8px; border-radius: 6px; text-align:right;">${combinedRole}</span>
+                </div>`;
+            } else {
+                const combinedRole = `${item.role_name}${item.sub_role ? ' | ' + item.sub_role : ''}`;
+                html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                    <div><strong style="color:var(--text-main); font-size: 0.95rem;">📅 ${item.event_name}</strong><br><small style="color:var(--text-muted);">${item.event_date}</small></div>
+                    <div style="text-align: right;"><span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px;">${combinedRole}</span></div>
+                </div>`;
+            }
+        });
+        container.innerHTML = html;
+
+        if (modalRolesData.length > 10) {
+            paginator.style.display = 'block';
+            paginator.innerHTML = `
+                <button type="button" class="btn btn-outline btn-sm" onclick="modalRolesPage--; renderMyProfileRoles()" ${modalRolesPage === 1 ? 'disabled' : ''}>◀</button>
+                <span style="font-size: 0.85rem; margin: 0 10px; color: var(--text-main);">Page ${modalRolesPage} of ${totalPages}</span>
+                <button type="button" class="btn btn-outline btn-sm" onclick="modalRolesPage++; renderMyProfileRoles()" ${modalRolesPage === totalPages ? 'disabled' : ''}>▶</button>
+            `;
+        } else {
+            paginator.style.display = 'none';
+        }
+    };
+
+    window.renderMyProfileAttendance = function() {
+        const container = document.getElementById('myAttendanceHistory');
+        const paginator = document.getElementById('myAttendancePagination');
+        const perPage = 10;
+        const totalPages = Math.ceil(modalAttData.length / perPage) || 1;
+        const start = (modalAttPage - 1) * perPage;
+        const paged = modalAttData.slice(start, start + perPage);
+
+        if (modalAttData.length === 0) {
+            container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No attendance history recorded yet.</p>`;
+            paginator.style.display = 'none';
+            return;
+        }
+
+        container.innerHTML = paged.map(h => `
+            <div style="border-bottom: 1px solid var(--border-color); padding: 10px 5px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong style="color: var(--text-main);">${h.event_name}</strong><br>
+                    <small style="color: var(--text-muted);">📅 ${h.event_date}</small>
+                </div>
+                <div style="text-align: right;">
+                    <span class="badge ${h.is_walkin ? 'badge-orange' : 'badge-blue'}" style="font-size: 0.7rem;">${h.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span><br>
+                    <small style="color: var(--success); font-weight: bold;">${new Date(h.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                </div>
+            </div>`).join('');
+
+        if (modalAttData.length > 10) {
+            paginator.style.display = 'block';
+            paginator.innerHTML = `
+                <button type="button" class="btn btn-outline btn-sm" onclick="modalAttPage--; renderMyProfileAttendance()" ${modalAttPage === 1 ? 'disabled' : ''}>◀</button>
+                <span style="font-size: 0.85rem; margin: 0 10px; color: var(--text-main);">Page ${modalAttPage} of ${totalPages}</span>
+                <button type="button" class="btn btn-outline btn-sm" onclick="modalAttPage++; renderMyProfileAttendance()" ${modalAttPage === totalPages ? 'disabled' : ''}>▶</button>
+            `;
+        } else {
+            paginator.style.display = 'none';
+        }
+    };
+
+    try {
+        const [minRes, evtRes] = await Promise.all([
+            fetch(`/api/youth/${member.id}/ministries`),
+            fetch(`/api/youth/${member.id}/event_roles`)
+        ]);
+        const ministries = await minRes.json();
+        const eventRoles = await evtRes.json();
+
+        modalRolesData = [];
+        ministries.forEach(m => modalRolesData.push({type: 'ministry', ...m}));
+        eventRoles.forEach(er => modalRolesData.push({type: 'event', ...er}));
+        
+        modalRolesData.sort((a,b) => {
+            const dateA = new Date(a.assigned_at || a.event_date || 0);
+            const dateB = new Date(b.assigned_at || b.event_date || 0);
+            return dateB - dateA;
+        });
+
+        modalRolesPage = 1;
+        window.renderMyProfileRoles();
+    } catch(e) { console.error('Failed to load profile roles:', e); }
 
     try {
         const safeFetch = window.fetch.bind(window);
         const res = await safeFetch(`/api/youth/${member.id}/history`);
-        const history = await res.json();
-        const historyContainer = document.getElementById('myAttendanceHistory');
-
-        if (historyContainer) {
-            if (!history || history.length === 0) {
-                historyContainer.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No attendance history recorded yet.</p>`;
-            } else {
-                historyContainer.innerHTML = history.map(h => `
-                    <div style="border-bottom: 1px solid var(--border-color); padding: 10px 5px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong style="color: var(--text-main);">${h.event_name}</strong><br>
-                            <small style="color: var(--text-muted);">📅 ${h.event_date}</small>
-                        </div>
-                        <div style="text-align: right;">
-                            <span class="badge ${h.is_walkin ? 'badge-orange' : 'badge-blue'}" style="font-size: 0.7rem;">${h.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span><br>
-                            <small style="color: var(--success); font-weight: bold;">${new Date(h.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
-                        </div>
-                    </div>`).join('');
-            }
-        }
+        modalAttData = await res.json();
+        modalAttPage = 1;
+        window.renderMyProfileAttendance();
     } catch(e) { console.error('Failed to load personal history:', e); }
+
+    window.switchMyProfileTab('roles');
 };
 
 window.populateAdminProfile = function(username) {
@@ -1029,7 +1215,32 @@ window.openViewProfileModal = async function(youthId) {
 
     const safeName = member.name || 'Unknown';
     document.getElementById('modalProfileName').innerText = safeName;
-    document.getElementById('modalProfileCode').innerText = `Unique Pass ID: ${member.qr_code || ''}`;
+    
+    const isOwner = currentMember && currentMember.id == youthId;
+    const isSuperAdmin = currentUser === 'celsocreeriii@gmail.com';
+    const passIdElem = document.getElementById('modalProfileCode');
+    const rightPanel = document.querySelector('#viewProfileModal .profile-header-right');
+
+    if (isOwner || isSuperAdmin) {
+        passIdElem.innerText = `Unique Pass ID: ${member.qr_code || ''}`;
+        passIdElem.style.display = 'inline-block';
+        if (rightPanel) rightPanel.style.display = 'flex';
+        
+        document.getElementById('modalQrContainer').innerHTML = '';
+        if(member.qr_code) {
+            QRCode.toDataURL(member.qr_code, { width: 180 }, function (err, url) {
+                if(!err) {
+                    const img = document.createElement('img'); img.src = url;
+                    document.getElementById('modalQrContainer').appendChild(img);
+                    const dlBtn = document.getElementById('modalDownloadQrBtn');
+                    if(dlBtn) dlBtn.href = url;
+                }
+            });
+        }
+    } else {
+        passIdElem.style.display = 'none';
+        if (rightPanel) rightPanel.style.display = 'none';
+    }
 
     document.getElementById('modalBioSummary').innerHTML = `
         <strong>Email Address:</strong> ${member.email || 'N/A'}<br>
@@ -1045,50 +1256,44 @@ window.openViewProfileModal = async function(youthId) {
         avatar.innerHTML = safeName.charAt(0).toUpperCase();
     }
 
-    document.getElementById('modalQrContainer').innerHTML = '';
-    if(member.qr_code) {
-        QRCode.toDataURL(member.qr_code, { width: 180 }, function (err, url) {
-            if(!err) {
-                const img = document.createElement('img'); img.src = url;
-                document.getElementById('modalQrContainer').appendChild(img);
-                const dlBtn = document.getElementById('modalDownloadQrBtn');
-                if(dlBtn) dlBtn.href = url;
-            }
-        });
-    }
+    try {
+        const [minRes, evtRes] = await Promise.all([
+            fetch(`/api/youth/${youthId}/ministries`),
+            fetch(`/api/youth/${youthId}/event_roles`)
+        ]);
+        const ministries = await minRes.json();
+        const eventRoles = await evtRes.json();
 
-    window.loadMinistriesAndEventRolesForProfile(member.id, 'modalMinistriesHistory');
+        modalRolesData = [];
+        ministries.forEach(m => modalRolesData.push({type: 'ministry', ...m}));
+        eventRoles.forEach(er => modalRolesData.push({type: 'event', ...er}));
+        
+        modalRolesData.sort((a,b) => {
+            const dateA = new Date(a.assigned_at || a.event_date || 0);
+            const dateB = new Date(b.assigned_at || b.event_date || 0);
+            return dateB - dateA;
+        });
+
+        modalRolesPage = 1;
+        window.renderModalRoles();
+    } catch(e) { console.error('Failed to load modal roles:', e); }
 
     try {
         const safeFetch = window.fetch.bind(window);
         const res = await safeFetch(`/api/youth/${youthId}/history`);
-        const history = await res.json();
-        const historyContainer = document.getElementById('modalAttendanceHistory');
-
-        if (historyContainer) {
-            if (!history || history.length === 0) {
-                historyContainer.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No attendance history recorded yet.</p>`;
-            } else {
-                historyContainer.innerHTML = history.map(h => `
-                    <div style="border-bottom: 1px solid var(--border-color); padding: 10px 5px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong style="color: var(--text-main);">${h.event_name}</strong><br>
-                            <small style="color: var(--text-muted);">📅 ${h.event_date}</small>
-                        </div>
-                        <div style="text-align: right;">
-                            <span class="badge ${h.is_walkin ? 'badge-orange' : 'badge-blue'}" style="font-size: 0.7rem;">${h.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span><br>
-                            <small style="color: var(--success); font-weight: bold;">${new Date(h.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
-                        </div>
-                    </div>`).join('');
-            }
-        }
+        modalAttData = await res.json();
+        modalAttPage = 1;
+        window.renderModalAttendance();
     } catch(e) { console.error('Failed to load modal history:', e); }
 
+    window.switchProfileModalTab('roles');
     const modal = document.getElementById('viewProfileModal');
     if(modal) modal.classList.add('active');
 };
 
-window.closeViewProfileModal = function() { document.getElementById('viewProfileModal').classList.remove('active'); };
+window.closeViewProfileModal = function() { 
+    document.getElementById('viewProfileModal').classList.remove('active'); 
+};
 
 window.loadMinistries = async function() {
     try {

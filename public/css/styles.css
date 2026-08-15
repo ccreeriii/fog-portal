@@ -216,7 +216,6 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
         display: contents !important;
     }
 
-    /* 🔥 INCREASED AVATAR SIZE FOR MOBILE */
     #myProfileAvatar, #viewModalProfileAvatar {
         grid-column: 1 / 2;
         grid-row: 1 / 2;
@@ -336,17 +335,22 @@ header { background: var(--card-bg); border-bottom: 3px solid var(--primary); pa
    LIST CONTAINER STRICT HEIGHT FIXES (MOBILE SAFE)
    ========================================= */
 
-#myAttendanceHistory,
-#modalAttendanceHistory,
 #analyticsRosterContainer,
-#myMinistriesHistory,
-#modalMinistriesHistory,
 #ministryRosterContainer,
 #eventRolesContainer {
     min-height: 250px !important;
     max-height: 400px;
     overflow-y: auto;
     padding-right: 8px;
+}
+
+#myAttendanceHistory,
+#modalAttendanceHistory,
+#myMinistriesHistory,
+#modalMinistriesHistory {
+    height: auto;
+    overflow-y: visible;
+    padding-right: 0;
 }
 
 /* =========================================

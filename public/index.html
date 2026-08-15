@@ -119,7 +119,7 @@
     </div>
 
     <div id="profileTab" class="tab-content">
-        
+
         <div class="card profile-header-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; padding: 25px;">
             <div class="profile-header-left" style="display: flex; align-items: center; gap: 25px; flex-wrap: wrap;">
                 <div id="myProfileAvatar" class="avatar-circle" style="width: 130px; height: 130px; font-size: 3.5rem;"></div>
@@ -178,14 +178,22 @@
             </form>
         </div>
 
-        <div class="profile-history-grid">
+        <div class="sub-nav" style="margin-bottom: 15px; margin-top: 20px;">
+            <button id="btnMyProfileTabRoles" class="sub-nav-btn active" onclick="switchMyProfileTab('roles')">🎭 Roles</button>
+            <button id="btnMyProfileTabAttendance" class="sub-nav-btn" onclick="switchMyProfileTab('attendance')">📋 Attendance History</button>
+        </div>
+
+        <div id="myProfileTabRoles" style="display: block; animation: fadeIn 0.3s ease-out;">
             <div class="card" style="margin-bottom: 0;">
-                <h2 style="text-align: left;">My Ministries & Roles</h2>
-                <div id="myMinistriesHistory" style="max-height: 250px; overflow-y: auto; padding: 5px;"></div>
+                <div id="myMinistriesHistory" style="padding: 5px;"></div>
+                <div id="myRolesPagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
             </div>
+        </div>
+
+        <div id="myProfileTabAttendance" style="display: none; animation: fadeIn 0.3s ease-out;">
             <div class="card" style="margin-bottom: 0;">
-                <h2 style="text-align: left;">My Attendance History</h2>
-                <div id="myAttendanceHistory" style="max-height: 250px; overflow-y: auto; padding: 5px;"></div>
+                <div id="myAttendanceHistory" style="padding: 5px;"></div>
+                <div id="myAttendancePagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
             </div>
         </div>
 
@@ -861,18 +869,18 @@
 <div id="viewProfileModal" class="modal">
     <div class="modal-content" style="max-width: 750px;">
         <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeViewProfileModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2 style="margin-bottom: 20px;">Member Profile</h2>
         
+        <h2 style="margin-bottom: 20px;">Member Profile</h2>
+
         <div class="profile-header-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; background: var(--bg-light); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 20px;">
             <div class="profile-header-left" style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
                 <div id="viewModalProfileAvatar" class="avatar-circle" style="width: 110px; height: 110px; font-size: 2.5rem; background: #FFF;"></div>
                 <div>
                     <h3 id="modalProfileName" style="color: var(--primary); font-size: 1.6rem; margin: 0 0 5px 0;"></h3>
-                    <p id="modalProfileCode" class="badge badge-orange" style="font-size: 0.95rem; margin: 0; padding: 6px 10px;"></p>
+                    <p id="modalProfileCode" class="badge badge-orange" style="font-size: 0.95rem; margin: 0; padding: 6px 10px; display: none;"></p>
                 </div>
             </div>
-            <div class="profile-header-right" style="display: flex; flex-direction: column; align-items: center; gap: 10px; background: #FFF; padding: 12px; border-radius: 12px; border: 1px solid var(--border-color);">
+            <div class="profile-header-right" style="display: none; flex-direction: column; align-items: center; gap: 10px; background: #FFF; padding: 12px; border-radius: 12px; border: 1px solid var(--border-color);">
                 <div id="modalQrContainer" style="background: #fff; padding: 5px; border-radius: 8px;"></div>
                 <a id="modalDownloadQrBtn" class="btn btn-primary btn-sm" download="Pass.png" style="width: 100%; font-weight: bold;">📥 Download Pass</a>
             </div>
@@ -880,14 +888,22 @@
 
         <div class="modal-summary" id="modalBioSummary" style="margin-top: 0;"></div>
 
-        <div class="profile-history-grid" style="margin-bottom: 10px;">
+        <div class="sub-nav" style="margin-bottom: 15px; margin-top: 15px;">
+            <button id="btnProfileTabRoles" class="sub-nav-btn active" onclick="switchProfileModalTab('roles')">🎭 Roles</button>
+            <button id="btnProfileTabAttendance" class="sub-nav-btn" onclick="switchProfileModalTab('attendance')">📋 Attendance History</button>
+        </div>
+
+        <div id="profileTabRoles" style="display: block; animation: fadeIn 0.3s ease-out;">
             <div style="background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px;">
-                <h3 style="font-size: 1.1rem; margin-bottom: 12px; color: var(--text-main); border-bottom: 2px solid #E2E8F0; padding-bottom: 8px;">Ministries & Event Roles</h3>
-                <div id="modalMinistriesHistory" style="max-height: 200px; overflow-y: auto; font-size: 0.95rem; padding-right: 5px;"></div>
+                <div id="modalMinistriesHistory" style="font-size: 0.95rem; padding-right: 5px;"></div>
+                <div id="modalRolesPagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
             </div>
+        </div>
+
+        <div id="profileTabAttendance" style="display: none; animation: fadeIn 0.3s ease-out;">
             <div style="background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px;">
-                <h3 style="font-size: 1.1rem; margin-bottom: 12px; color: var(--text-main); border-bottom: 2px solid #E2E8F0; padding-bottom: 8px;">Attendance History</h3>
-                <div id="modalAttendanceHistory" style="max-height: 200px; overflow-y: auto; font-size: 0.95rem; padding-right: 5px;"></div>
+                <div id="modalAttendanceHistory" style="font-size: 0.95rem; padding-right: 5px;"></div>
+                <div id="modalAttendancePagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
             </div>
         </div>
 
