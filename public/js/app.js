@@ -305,16 +305,15 @@ window.buildNav = function() {
     if (isAdmin) {
         hamburger.style.display = 'block';
         bottomNav.style.display = 'none';
-        
+
         sidebarHtml += `<button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
-        sidebarHtml += `<button class="nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')">🔔 My Inbox</button>`; // Fixed: Inbox for Admins
-        
+        sidebarHtml += `<button class="nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')">🔔 My Inbox</button>`;
+
         if (window.hasPerm('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
         if (window.hasPerm('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
         if (window.hasPerm('access_ministries')) sidebarHtml += `<button class="nav-btn" data-target="ministriesTab" onclick="switchTab('ministriesTab')">🏛️ Ministries</button>`;
         if (window.hasPerm('access_events')) sidebarHtml += `<button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Planner</button>`;
-        
-        // Discipleship & New Features (Consolidated & Cleaned)
+
         sidebarHtml += `<button class="nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')">📖 Personal Growth</button>`;
         if (window.hasPerm('access_discipleship')) sidebarHtml += `<button class="nav-btn" data-target="discipleshipAdminTab" onclick="switchTab('discipleshipAdminTab')">🌱 Discipleship Admin</button>`;
         if (window.hasPerm('access_worship')) sidebarHtml += `<button class="nav-btn" data-target="worshipTab" onclick="switchTab('worshipTab')">🎵 Worship Hub</button>`;
@@ -324,7 +323,7 @@ window.buildNav = function() {
         if (window.hasPerm('access_attendance')) sidebarHtml += `<button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
         if (window.hasPerm('access_activity')) sidebarHtml += `<button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
         if (window.hasPerm('access_permissions')) sidebarHtml += `<button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔐 Permissions</button>`;
-        
+
         sidebarHtml += `<button class="nav-btn text-danger" onclick="handleLogout()">🚪 Logout (${currentUser})</button>`;
 
         sidebar.innerHTML = sidebarHtml;
@@ -332,7 +331,7 @@ window.buildNav = function() {
     } else {
         hamburger.style.display = 'none';
         bottomNav.style.display = 'flex';
-        
+
         bottomHtml += `<button class="bottom-nav-btn active" data-target="profileTab" onclick="switchTab('profileTab')"><div class="icon">👤</div>Profile</button>`;
         bottomHtml += `<button class="bottom-nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')"><div class="icon">🔔</div>Inbox</button>`;
         bottomHtml += `<button class="bottom-nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')"><div class="icon">📖</div>Grow</button>`;
@@ -345,18 +344,14 @@ window.buildNav = function() {
 
 window.applyGranularPermissions = function() {
     const canAdd = window.hasPerm('add_entries');
-
     const btnSubEventCreate = document.getElementById('btnSubEventCreate');
     if(btnSubEventCreate) btnSubEventCreate.style.display = canAdd ? 'inline-block' : 'none';
-
     const btnSubMinistryCreate = document.getElementById('btnSubMinistryCreate');
     if(btnSubMinistryCreate) btnSubMinistryCreate.style.display = canAdd ? 'inline-block' : 'none';
-
     const btnCheckinWalkin = document.getElementById('btnCheckinWalkin');
     if(btnCheckinWalkin) btnCheckinWalkin.style.display = canAdd ? 'inline-block' : 'none';
     const addEntryAnalyticsBtn = document.getElementById('addEntryAnalyticsBtn');
     if(addEntryAnalyticsBtn) addEntryAnalyticsBtn.style.display = canAdd ? 'flex' : 'none';
-
     const btnDirectoryAddMember = document.getElementById('btnDirectoryAddMember');
     if(btnDirectoryAddMember) btnDirectoryAddMember.style.display = canAdd ? 'inline-block' : 'none';
 };
@@ -458,9 +453,14 @@ window.renderModalRoles = function() {
             </div>`;
         } else {
             const combinedRole = `${item.role_name}${item.sub_role ? ' | ' + item.sub_role : ''}`;
+            let statusBadge = `<span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px; margin-left:5px;">${combinedRole}</span>`;
+            if(item.status === 'Accepted') statusBadge += ` <span style="font-size:11px; font-weight:bold; color:var(--success); margin-left:5px;">✅ Accepted</span>`;
+            else if(item.status === 'Declined') statusBadge += ` <span style="font-size:11px; font-weight:bold; color:var(--danger); margin-left:5px;">❌ Declined</span>`;
+            else statusBadge += ` <span style="font-size:11px; font-weight:bold; color:#F59E0B; margin-left:5px;">⏳ Pending</span>`;
+
             html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
                 <div><strong style="color:var(--text-main); font-size: 0.95rem;">📅 ${item.event_name}</strong><br><small style="color:var(--text-muted);">${item.event_date}</small></div>
-                <div style="text-align: right;"><span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px;">${combinedRole}</span></div>
+                <div style="text-align: right;">${statusBadge}</div>
             </div>`;
         }
     });
@@ -647,9 +647,14 @@ window.loadMinistriesAndEventRolesForProfile = async function(youthId, container
             html += `<div style="margin-top: 10px;">`;
             eventRoles.forEach(er => {
                 const combinedRole = `${er.role_name}${er.sub_role ? ' | ' + er.sub_role : ''}`;
+                let statusBadge = `<span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px; margin-left:5px;">${combinedRole}</span>`;
+                if(er.status === 'Accepted') statusBadge += ` <span style="font-size:11px; font-weight:bold; color:var(--success); margin-left:5px;">✅ Accepted</span>`;
+                else if(er.status === 'Declined') statusBadge += ` <span style="font-size:11px; font-weight:bold; color:var(--danger); margin-left:5px;">❌ Declined</span>`;
+                else statusBadge += ` <span style="font-size:11px; font-weight:bold; color:#F59E0B; margin-left:5px;">⏳ Pending</span>`;
+
                 html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
                     <div><strong style="color:var(--text-main); font-size: 0.95rem;">📅 ${er.event_name}</strong><br><small style="color:var(--text-muted);">${er.event_date}</small></div>
-                    <div style="text-align: right;"><span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px;">${combinedRole}</span></div>
+                    <div style="text-align: right;">${statusBadge}</div>
                 </div>`;
             });
             html += `</div>`;
@@ -662,7 +667,6 @@ window.loadMinistriesAndEventRolesForProfile = async function(youthId, container
         }
     } catch(e) { console.error('Failed to load profile roles', e); }
 };
-
 window.populateProfileTab = async function(member) {
     document.getElementById('myMemberId').value = member.id;
     document.getElementById('myProfileName').innerText = member.name || 'Member';
@@ -695,8 +699,10 @@ window.populateProfileTab = async function(member) {
 
     window.switchMyProfileTab = function(tab) {
         document.getElementById('myProfileTabRoles').style.display = tab === 'roles' ? 'block' : 'none';
+        document.getElementById('myProfileTabSchedule').style.display = tab === 'schedule' ? 'block' : 'none';
         document.getElementById('myProfileTabAttendance').style.display = tab === 'attendance' ? 'block' : 'none';
         document.getElementById('btnMyProfileTabRoles').classList.toggle('active', tab === 'roles');
+        document.getElementById('btnMyProfileTabSchedule').classList.toggle('active', tab === 'schedule');
         document.getElementById('btnMyProfileTabAttendance').classList.toggle('active', tab === 'attendance');
     };
 
@@ -724,9 +730,14 @@ window.populateProfileTab = async function(member) {
                 </div>`;
             } else {
                 const combinedRole = `${item.role_name}${item.sub_role ? ' | ' + item.sub_role : ''}`;
+                let statusBadge = `<span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px; margin-left:5px;">${combinedRole}</span>`;
+                if(item.status === 'Accepted') statusBadge += ` <span style="font-size:11px; font-weight:bold; color:var(--success); margin-left:5px;">✅ Accepted</span>`;
+                else if(item.status === 'Declined') statusBadge += ` <span style="font-size:11px; font-weight:bold; color:var(--danger); margin-left:5px;">❌ Declined</span>`;
+                else statusBadge += ` <span style="font-size:11px; font-weight:bold; color:#F59E0B; margin-left:5px;">⏳ Pending</span>`;
+
                 html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
                     <div><strong style="color:var(--text-main); font-size: 0.95rem;">📅 ${item.event_name}</strong><br><small style="color:var(--text-muted);">${item.event_date}</small></div>
-                    <div style="text-align: right;"><span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px;">${combinedRole}</span></div>
+                    <div style="text-align: right;">${statusBadge}</div>
                 </div>`;
             }
         });
@@ -788,6 +799,54 @@ window.populateProfileTab = async function(member) {
         }
     };
 
+    window.loadMySchedule = async function(id) {
+        try {
+            const [evtRes, blockRes] = await Promise.all([
+                fetch(`/api/youth/${id}/event_roles`),
+                fetch(`/api/youth/${id}/blockouts`)
+            ]);
+            const eventRoles = await evtRes.json();
+            const blockouts = await blockRes.json();
+
+            // Render Pending Invites
+            const pending = eventRoles.filter(r => r.status === 'Pending');
+            const pendingContainer = document.getElementById('myPendingInvitesList');
+            if (pending.length === 0) {
+                pendingContainer.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:0;">You have no pending invites at this time.</p>';
+            } else {
+                pendingContainer.innerHTML = pending.map(p => `
+                    <div style="background:var(--bg-light); border:1px solid #F59E0B; padding:15px; border-radius:8px; margin-bottom:10px;">
+                        <strong style="color:var(--text-main); font-size:1rem;">📅 ${p.event_name}</strong><br>
+                        <small style="color:var(--text-muted);">${p.event_date}</small>
+                        <div style="margin: 10px 0;">
+                            <span class="badge badge-orange">${p.role_name} ${p.sub_role ? '| '+p.sub_role : ''}</span>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn btn-primary btn-sm" style="flex:1;" onclick="respondToInvite(${p.event_id}, ${p.mapping_id}, 'Accepted')">✅ Accept</button>
+                            <button class="btn btn-outline btn-sm" style="flex:1; border-color:var(--danger); color:var(--danger);" onclick="respondToInvite(${p.event_id}, ${p.mapping_id}, 'Declined')">❌ Decline</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // Render Blockouts
+            const blockContainer = document.getElementById('myBlockoutsList');
+            if (blockouts.length === 0) {
+                blockContainer.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:0;">No blockout dates set.</p>';
+            } else {
+                blockContainer.innerHTML = blockouts.map(b => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid var(--border-color);">
+                        <div>
+                            <strong style="color:var(--danger);">${b.block_date}</strong><br>
+                            <small style="color:var(--text-muted);">${b.reason}</small>
+                        </div>
+                        <button class="btn btn-outline btn-sm" onclick="deleteBlockoutDate(${b.id})">Remove</button>
+                    </div>
+                `).join('');
+            }
+        } catch(e) { console.error('Error loading schedule', e); }
+    };
+
     try {
         const [minRes, evtRes] = await Promise.all([
             fetch(`/api/youth/${member.id}/ministries`),
@@ -808,6 +867,7 @@ window.populateProfileTab = async function(member) {
 
         modalRolesPage = 1;
         window.renderMyProfileRoles();
+        window.loadMySchedule(member.id);
     } catch(e) { console.error('Failed to load profile roles:', e); }
 
     try {
@@ -819,6 +879,48 @@ window.populateProfileTab = async function(member) {
     } catch(e) { console.error('Failed to load personal history:', e); }
 
     window.switchMyProfileTab('roles');
+};
+
+window.respondToInvite = async function(eventId, mappingId, status) {
+    window.triggerActionConfirmation(`Are you sure you want to mark this invite as ${status}?`, async () => {
+        try {
+            const res = await fetch(`/api/events/${eventId}/roles/${mappingId}/status`, {
+                method: 'PUT', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ status, actor: currentUser })
+            });
+            if (res.ok) {
+                window.populateProfileTab(currentMember);
+            }
+        } catch(e) { alert("Network error connecting to server."); }
+    });
+};
+
+window.submitBlockoutDate = async function(e) {
+    e.preventDefault();
+    const date = document.getElementById('newBlockDate').value;
+    const reason = document.getElementById('newBlockReason').value;
+    try {
+        const res = await fetch('/api/blockouts', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ youth_id: currentMember.id, block_date: date, reason })
+        });
+        if (res.ok) {
+            document.getElementById('addBlockoutForm').reset();
+            window.loadMySchedule(currentMember.id);
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to add blockout date');
+        }
+    } catch(e) { alert('Network Error'); }
+};
+
+window.deleteBlockoutDate = async function(id) {
+    window.triggerActionConfirmation('Remove this blockout date?', async () => {
+        try {
+            const res = await fetch(`/api/blockouts/${id}`, { method: 'DELETE' });
+            if (res.ok) window.loadMySchedule(currentMember.id);
+        } catch(e) {}
+    });
 };
 
 window.populateAdminProfile = function(username) {
@@ -2385,6 +2487,11 @@ window.loadEventRoles = async function(eventId) {
             const editBtn = window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px; margin-right: 5px;" onclick="openEditEventRoleModal(${r.mapping_id}, '${(r.role_name||'').replace(/'/g, "\\'")}', '${(r.sub_role||'').replace(/'/g, "\\'")}')">✏️ Edit</button>` : '';
             const delBtn = window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="removeEventRole(${r.mapping_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>` : '';
             const combinedRole = `${r.role_name}${r.sub_role ? ' | ' + r.sub_role : ''}`;
+            
+            let statusBadge = '';
+            if(r.status === 'Accepted') statusBadge = ` <span style="font-size:10px; font-weight:bold; color:var(--success); margin-left:5px;">✅ Accepted</span>`;
+            else if(r.status === 'Declined') statusBadge = ` <span style="font-size:10px; font-weight:bold; color:var(--danger); margin-left:5px;">❌ Declined</span>`;
+            else statusBadge = ` <span style="font-size:10px; font-weight:bold; color:#F59E0B; margin-left:5px;">⏳ Pending</span>`;
 
             return `
             <div style="padding: 12px 10px; border-bottom: 1px solid var(--bg-light); display: flex; justify-content: space-between; align-items: center;">
@@ -2393,6 +2500,7 @@ window.loadEventRoles = async function(eventId) {
                     <div>
                         <strong style="color: var(--text-main); font-size: 0.95rem;">${safeName}</strong>
                         <span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px; margin-left: 8px;">${combinedRole}</span>
+                        ${statusBadge}
                     </div>
                 </div>
                 <div style="text-align: right;">${editBtn}${delBtn}</div>
@@ -2615,7 +2723,6 @@ window.loadUserPermissionsList = async function() {
 
 window.openAssignPermissionModal = async function(id, displayName) {
     try {
-        // Query the active users list to find their specific permissions rather than the youth list
         const res = await fetch('/api/users/list');
         const dbUsers = await res.json();
         const targetUser = dbUsers.find(u => u.youth_id === id);

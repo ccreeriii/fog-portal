@@ -141,6 +141,11 @@ db.serialize(() => {
         id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, subscription TEXT, created_at DATETIME
     )`);
 
+    // V5.0 SCHEDULING & ROSTER TABLES
+    db.run(`CREATE TABLE IF NOT EXISTS blockout_dates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, block_date TEXT, reason TEXT, created_at DATETIME, UNIQUE(youth_id, block_date)
+    )`);
+
     // SCHEMA AUTO-HEALING
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
@@ -152,11 +157,12 @@ db.serialize(() => {
     db.run(`ALTER TABLE users ADD COLUMN youth_id INTEGER`, () => {});
     db.run(`ALTER TABLE ministry_members ADD COLUMN sub_role TEXT`, () => {});
     db.run(`ALTER TABLE event_roles ADD COLUMN sub_role TEXT`, () => {});
+    db.run(`ALTER TABLE event_roles ADD COLUMN status TEXT DEFAULT 'Pending'`, () => {}); // V5.0 Invite Status
     db.run(`ALTER TABLE events ADD COLUMN roles_restricted_notes TEXT`, () => {});
     db.run(`ALTER TABLE ministries ADD COLUMN logo TEXT`, () => {});
     db.run(`ALTER TABLE songs ADD COLUMN youtube_url TEXT`, () => {});
 
-    // Ensure superadmin has ALL permissions including new Communications access
+    // Ensure superadmin has ALL permissions
     const superadminPermissions = JSON.stringify([
         'access_checkin', 'access_directory', 'access_events',
         'access_attendance', 'access_activity', 'access_permissions',
@@ -199,6 +205,28 @@ function logActivity(username, action, details) {
     db.run(`INSERT INTO activity_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)`,
         [username || 'System', action, details, getManilaTime()]
     );
+}
+
+// Helper to push individual notification securely (V5.0 Rosters Engine)
+function pushToUser(youthId, title, message) {
+    db.get(`SELECT qr_code FROM youth WHERE id = ?`, [youthId], (err, y) => {
+        if (y && y.qr_code) {
+            db.all(`SELECT subscription FROM push_subscriptions WHERE username = ?`, [y.qr_code], (err, subs) => {
+                if (subs && subs.length > 0) {
+                    const payload = JSON.stringify({ title, body: message, url: '/' });
+                    subs.forEach(row => {
+                        try {
+                            webpush.sendNotification(JSON.parse(row.subscription), payload).catch(e => {
+                                if (e.statusCode === 404 || e.statusCode === 410) {
+                                    db.run(`DELETE FROM push_subscriptions WHERE subscription = ?`, [row.subscription]);
+                                }
+                            });
+                        } catch(e){}
+                    });
+                }
+            });
+        }
+    });
 }
 
 // ==============================================================================
@@ -450,7 +478,7 @@ app.delete('/api/events/:event_id/preregs/:youth_id', (req, res) => {
     });
 });
 
-// MINISTRIES & EVENT ROLES
+// MINISTRIES
 app.get('/api/ministries', (req, res) => { db.all(`SELECT m.*, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = m.id) as member_count FROM ministries m ORDER BY m.name ASC`, [], (err, rows) => { res.json(rows); }); });
 app.post('/api/ministries', (req, res) => { db.run(`INSERT INTO ministries (name, description, logo, created_at) VALUES (?, ?, ?, ?)`, [req.body.name, req.body.description, req.body.logo, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
 app.put('/api/ministries/:id', (req, res) => {
@@ -465,12 +493,72 @@ app.post('/api/ministries/:id/members', (req, res) => { db.run(`INSERT INTO mini
 app.put('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.run(`UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?`, [req.body.role, req.body.sub_role, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.delete('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.run(`DELETE FROM ministry_members WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.get('/api/youth/:id/ministries', (req, res) => { db.all(`SELECT m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
-app.get('/api/events/:id/roles', (req, res) => { db.all(`SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, y.id, y.name, y.qr_code, y.profile_picture FROM event_roles er JOIN youth y ON er.youth_id = y.id WHERE er.event_id = ? ORDER BY er.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
-app.post('/api/events/:id/roles', (req, res) => { db.run(`INSERT INTO event_roles (event_id, youth_id, role_name, sub_role, assigned_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.role_name, req.body.sub_role, getManilaTime()], function(err) { res.json({ success: true }); }); });
+
+// ==============================================================================
+// V5.0 EVENT ROLES & BLOCKOUT DATES (VOLUNTEER SCHEDULING)
+// ==============================================================================
+app.get('/api/events/:id/roles', (req, res) => {
+    db.all(`SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, er.status, y.id, y.name, y.qr_code, y.profile_picture FROM event_roles er JOIN youth y ON er.youth_id = y.id WHERE er.event_id = ? ORDER BY er.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); });
+});
+
+app.post('/api/events/:id/roles', (req, res) => {
+    const eventId = req.params.id;
+    const { youth_id, role_name, sub_role, actor } = req.body;
+
+    // Verify Date against Blockouts
+    db.get(`SELECT name, event_date FROM events WHERE id = ?`, [eventId], (err, evt) => {
+        if (!evt) return res.status(404).json({ error: 'Event not found.' });
+
+        db.get(`SELECT reason FROM blockout_dates WHERE youth_id = ? AND block_date = ?`, [youth_id, evt.event_date], (err, blockout) => {
+            if (blockout) {
+                return res.status(400).json({ error: `Cannot schedule! This member has blocked out ${evt.event_date}. Reason: ${blockout.reason || 'Unavailable'}` });
+            }
+
+            // Insert if safe
+            db.run(`INSERT INTO event_roles (event_id, youth_id, role_name, sub_role, assigned_at, status) VALUES (?, ?, ?, ?, ?, 'Pending')`,
+                [eventId, youth_id, role_name, sub_role, getManilaTime()], function(err) {
+                    if (err) return res.status(500).json({ error: err.message });
+                    pushToUser(youth_id, "📅 Scheduling Invite", `You've been invited to serve as ${role_name} for ${evt.name}. Check your profile to accept!`);
+                    res.json({ success: true });
+            });
+        });
+    });
+});
+
 app.post('/api/events/:id/roles-notes', (req, res) => { db.run(`UPDATE events SET roles_restricted_notes = ? WHERE id = ?`, [req.body.roles_restricted_notes, req.params.id], function(err) { res.json({ success: true }); }); });
 app.put('/api/events/:event_id/roles/:mapping_id', (req, res) => { db.run(`UPDATE event_roles SET role_name = ?, sub_role = ? WHERE id = ?`, [req.body.role_name, req.body.sub_role, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.delete('/api/events/:event_id/roles/:mapping_id', (req, res) => { db.run(`DELETE FROM event_roles WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
-app.get('/api/youth/:id/event_roles', (req, res) => { db.all(`SELECT e.name as event_name, er.role_name, er.sub_role, er.assigned_at, e.event_date FROM event_roles er JOIN events e ON er.event_id = e.id WHERE er.youth_id = ? ORDER BY e.event_date DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+
+app.get('/api/youth/:id/event_roles', (req, res) => {
+    db.all(`SELECT er.id as mapping_id, e.id as event_id, e.name as event_name, er.role_name, er.sub_role, er.assigned_at, er.status, e.event_date FROM event_roles er JOIN events e ON er.event_id = e.id WHERE er.youth_id = ? ORDER BY e.event_date DESC`, [req.params.id], (err, rows) => { res.json(rows); });
+});
+
+// Member Accept/Decline Invite
+app.put('/api/events/:event_id/roles/:mapping_id/status', (req, res) => {
+    db.run(`UPDATE event_roles SET status = ? WHERE id = ?`, [req.body.status, req.params.mapping_id], function(err) {
+        logActivity(req.body.actor, 'RESPOND_INVITE', `Marked role mapping ${req.params.mapping_id} as ${req.body.status}`);
+        res.json({ success: true });
+    });
+});
+
+app.get('/api/youth/:id/blockouts', (req, res) => {
+    db.all(`SELECT * FROM blockout_dates WHERE youth_id = ? ORDER BY block_date ASC`, [req.params.id], (err, rows) => { res.json(rows); });
+});
+
+app.post('/api/blockouts', (req, res) => {
+    const { youth_id, block_date, reason } = req.body;
+    db.run(`INSERT INTO blockout_dates (youth_id, block_date, reason, created_at) VALUES (?, ?, ?, ?)`,
+        [youth_id, block_date, reason, getManilaTime()], function(err) {
+            if (err) return res.status(400).json({ error: 'Date already blocked or invalid.' });
+            res.json({ success: true });
+        });
+});
+
+app.delete('/api/blockouts/:id', (req, res) => {
+    db.run(`DELETE FROM blockout_dates WHERE id = ?`, [req.params.id], function(err) {
+        res.json({ success: true });
+    });
+});
 
 // ==============================================================================
 // V2.0 DISCIPLESHIP ENGINE
@@ -537,12 +625,10 @@ app.delete('/api/worship/setlists/:setlist_id/songs/:mapping_id', (req, res) => 
 // ==============================================================================
 // V4.0 - COMMUNICATIONS & PUSH NOTIFICATIONS ENGINE
 // ==============================================================================
-
-// Subscribes a user's device for Push Notifications
 app.post('/api/communications/subscribe', (req, res) => {
     const { username, subscription } = req.body;
     if (!username || !subscription) return res.status(400).json({ error: 'Missing data' });
-    
+
     db.run(`INSERT INTO push_subscriptions (username, subscription, created_at) VALUES (?, ?, ?)
             ON CONFLICT(username) DO UPDATE SET subscription = excluded.subscription`,
         [username, JSON.stringify(subscription), getManilaTime()],
@@ -553,7 +639,6 @@ app.post('/api/communications/subscribe', (req, res) => {
     );
 });
 
-// Unsubscribes a user's device
 app.post('/api/communications/unsubscribe', (req, res) => {
     const { username } = req.body;
     db.run(`DELETE FROM push_subscriptions WHERE username = ?`, [username], function(err) {
@@ -561,18 +646,15 @@ app.post('/api/communications/unsubscribe', (req, res) => {
     });
 });
 
-// Broadcasts an announcement and triggers Web Push to devices
 app.post('/api/communications/broadcast', (req, res) => {
     const { target, title, message, actor } = req.body;
     if (!title || !message || !target) return res.status(400).json({ error: "Missing fields" });
 
-    // 1. Save Announcement
     db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`,
         [title, message, target, actor || 'System', getManilaTime()], function(err) {
             if (err) return res.status(500).json({ error: err.message });
             const announcementId = this.lastID;
 
-            // 2. Identify Targets
             let targetQuery = `SELECT id, qr_code FROM youth`;
             let targetParams = [];
 
@@ -590,9 +672,8 @@ app.post('/api/communications/broadcast', (req, res) => {
 
             db.all(targetQuery, targetParams, (err, youths) => {
                 if (err) console.error("Broadcast routing error:", err);
-                const usernames = ['celsocreeriii@gmail.com']; // Always push to superadmin
+                const usernames = ['celsocreeriii@gmail.com']; 
 
-                // 3. Save to User Inboxes
                 if (youths && youths.length > 0) {
                     const stmt = db.prepare(`INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)`);
                     youths.forEach(y => {
@@ -604,7 +685,6 @@ app.post('/api/communications/broadcast', (req, res) => {
                     stmt.finalize();
                 }
 
-                // 4. Trigger Native Web-Push via Google/Apple
                 const placeholders = usernames.map(() => '?').join(',');
                 db.all(`SELECT subscription FROM push_subscriptions WHERE username IN (${placeholders})`, usernames, (err, subs) => {
                     if (err || !subs || subs.length === 0) return res.json({ success: true, sentCount: 0 });
@@ -618,7 +698,6 @@ app.post('/api/communications/broadcast', (req, res) => {
                             return webpush.sendNotification(pushSub, payload)
                                 .then(() => { sentCount++; })
                                 .catch(e => {
-                                    // If subscription is dead/unsubscribed, clean it up
                                     if (e.statusCode === 404 || e.statusCode === 410) {
                                         db.run(`DELETE FROM push_subscriptions WHERE subscription = ?`, [row.subscription]);
                                     }
@@ -633,25 +712,20 @@ app.post('/api/communications/broadcast', (req, res) => {
     });
 });
 
-// Fetch Broadcast History for Admin
 app.get('/api/communications/history', (req, res) => {
     db.all(`SELECT id, title, target_audience as target, message, author as sender, created_at FROM announcements ORDER BY created_at DESC`, [], (err, rows) => {
         res.json(rows || []);
     });
 });
 
-// Fetch Inbox for specific user
 app.get('/api/communications/inbox', (req, res) => {
     const username = req.query.username;
-    
-    // Superadmin sees all announcements
     if (username === 'celsocreeriii@gmail.com') {
         db.all(`SELECT title, message, created_at FROM announcements ORDER BY created_at DESC LIMIT 50`, [], (err, rows) => {
             res.json(rows || []);
         });
         return;
     }
-
     db.get(`SELECT id FROM youth WHERE qr_code = ?`, [username], (err, youth) => {
         if (!youth) return res.json([]);
         const sql = `SELECT a.title, a.message, a.created_at
@@ -666,5 +740,5 @@ app.get('/api/communications/inbox', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running safely on Port ${PORT} (V4.0 Push Notification Engine Active)`);
+    console.log(`Server running safely on Port ${PORT} (V5.0 Rostering Engine Active)`);
 });

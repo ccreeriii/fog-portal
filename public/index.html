@@ -148,6 +148,7 @@
 
         <div class="sub-nav" style="margin-bottom: 15px;">
             <button id="btnMyProfileTabRoles" class="sub-nav-btn active" onclick="switchMyProfileTab('roles')">🎭 Roles</button>
+            <button id="btnMyProfileTabSchedule" class="sub-nav-btn" onclick="switchMyProfileTab('schedule')">📅 Schedule</button>
             <button id="btnMyProfileTabAttendance" class="sub-nav-btn" onclick="switchMyProfileTab('attendance')">📋 Attendance History</button>
         </div>
 
@@ -155,6 +156,23 @@
             <div class="card" style="margin-bottom: 0;">
                 <div id="myMinistriesHistory" style="padding: 5px;"></div>
                 <div id="myRolesPagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
+            </div>
+        </div>
+
+        <div id="myProfileTabSchedule" style="display: none; animation: fadeIn 0.3s ease-out;">
+            <div class="card" style="margin-bottom: 20px;">
+                <h2 style="color: #F59E0B;">⏳ Pending Event Invites</h2>
+                <div id="myPendingInvitesList"></div>
+            </div>
+            <div class="card" style="margin-bottom: 0; border-color: var(--danger);">
+                <h2 style="color: var(--danger);">🛑 My Blockout Dates</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Add dates when you are out of town or unavailable so leaders know not to schedule you.</p>
+                <form id="addBlockoutForm" onsubmit="submitBlockoutDate(event)" style="display:flex; gap:10px; margin-bottom: 15px;">
+                    <input type="date" id="newBlockDate" class="form-control" required>
+                    <input type="text" id="newBlockReason" class="form-control" placeholder="Reason (e.g. Exams, Vacation)" required>
+                    <button type="submit" class="btn btn-primary" style="background: var(--danger);">Block Date</button>
+                </form>
+                <div id="myBlockoutsList"></div>
             </div>
         </div>
 
@@ -713,6 +731,102 @@
     </div>
 </div>
 
+<div id="eventAnalyticsModal" class="modal">
+    <div class="modal-content" style="max-width: 800px; background: #F8FAFC;">
+        <div class="modal-drag-handle"></div>
+        <span class="close-modal" onclick="closeAnalyticsModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
+
+        <div style="display: flex; gap: 20px; align-items: flex-start; margin-bottom: 15px; flex-wrap: wrap;">
+            <div id="analyticsModalPoster" style="width: 100px; height: 140px; border-radius: 8px; overflow: hidden; background: #E2E8F0; border: 1px solid var(--border-color); flex-shrink: 0;"></div>
+            <div style="flex: 1; min-width: 250px;">
+                <h2 id="analyticsEventTitle" style="color: var(--primary); font-size: 1.5rem; margin-bottom: 5px; padding: 0; border: none;">Event Title</h2>
+                <p id="analyticsEventMeta" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px;">Date & Venue</p>
+                <div id="analyticsEventLinks" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
+            </div>
+            <button id="analyticsEditEventBtn" class="btn btn-outline btn-sm" style="display: none; height: fit-content;">✏️ Edit Event</button>
+        </div>
+
+        <div class="sub-nav" style="background: #FFF; border-radius: 8px; padding: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px;">
+            <button id="btnAnalyticsTabOverview" class="sub-nav-btn active" onclick="switchAnalyticsSubTab('overview')">📊 Analytics & Roster</button>
+            <button id="btnAnalyticsTabRoles" class="sub-nav-btn" onclick="switchAnalyticsSubTab('roles')">🎭 Event Roles / Volunteers</button>
+        </div>
+
+        <div id="analyticsTabOverview" style="display: block; animation: fadeIn 0.3s ease-out;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px;">
+                <div id="cardTurnout" style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); text-align: center; cursor: pointer; transition: 0.2s;" onclick="setAnalyticsCardFilter('all')">
+                    <div id="statTotalTurnout" style="font-size: 1.8rem; font-weight: 800; color: var(--primary);">0</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Turned Up</div>
+                </div>
+                <div id="cardPreReg" style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); text-align: center; cursor: pointer; transition: 0.2s; opacity: 0.5;" onclick="setAnalyticsCardFilter('prereg')">
+                    <div id="statTotalPreReg" style="font-size: 1.8rem; font-weight: 800; color: var(--success);">0</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Pre-Registered</div>
+                </div>
+                <div id="cardWalkin" style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); text-align: center; cursor: pointer; transition: 0.2s; opacity: 0.5;" onclick="setAnalyticsCardFilter('walkin')">
+                    <div id="statWalkins" style="font-size: 1.8rem; font-weight: 800; color: var(--text-main);">0</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Walk-ins</div>
+                </div>
+                <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); text-align: center;">
+                    <div id="statTurnoutPercent" style="font-size: 1.8rem; font-weight: 800; color: #8B5CF6;">0%</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Pre-Reg Turnout %</div>
+                </div>
+            </div>
+
+            <div style="background: #FFF; border-radius: 12px; padding: 15px; border: 1px solid var(--border-color);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="font-size: 1.1rem; color: var(--text-main); margin: 0; border: none; padding: 0;">Event Roster</h3>
+                    <button id="addEntryAnalyticsBtn" class="btn btn-primary btn-sm" style="display:none;" onclick="openAddAttendeeModal()">➕ Add Entry</button>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
+                    <input type="text" id="attSearchNative" placeholder="🔍 Search roster by name or ID..." class="form-control" style="flex: 1; margin: 0;" oninput="filterAnalyticsRoster()">
+                    <select id="attAgeNative" class="form-control" style="width: 130px; margin: 0;" onchange="filterAnalyticsRoster()">
+                        <option value="all">All Ages</option>
+                        <option value="mini">Minis (7-12)</option>
+                        <option value="youth">Youth (13-21)</option>
+                        <option value="adult">Adults (22+)</option>
+                    </select>
+                    <div id="attRosterCount" class="badge badge-blue" style="font-size: 0.85rem; padding: 10px 12px; margin: 0; white-space: nowrap;">Total: 0</div>
+                </div>
+
+                <div id="analyticsRosterContainer" style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px;"></div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px; flex-wrap: wrap; gap: 10px;">
+                    <button type="button" class="btn btn-outline" onclick="exportAnalyticsCSV()">📥 Export List (.csv)</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeAnalyticsModal()">Close Window</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="analyticsTabRoles" style="display: none; animation: fadeIn 0.3s ease-out;">
+            <div style="background: #FFF; border-radius: 12px; padding: 15px; border: 1px solid var(--border-color);">
+                <div id="eventRolesRestrictedSection" style="display: none; background: #FEF3C7; border: 1px solid #F59E0B; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 style="color: #D97706; font-size: 1rem; margin-bottom: 10px; border: none;">🔒 Leaders' Event Notes & Logistics</h3>
+                    <textarea id="eventRolesDetailNotes" class="form-control" rows="3" placeholder="Briefings, call times, or private links for the team..."></textarea>
+                    <button class="btn btn-sm" style="background: #D97706; color: #FFF; margin-top: 10px;" onclick="saveEventRolesNotes()">Save Notes</button>
+                </div>
+
+                <div id="eventRoleAssignControls" style="display: none; background: var(--bg-light); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 15px;">
+                    <h4 style="margin-bottom: 10px; font-size: 0.9rem;">Assign Member to Task</h4>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <div style="flex: 2; min-width: 200px; position: relative;">
+                            <input type="text" id="evtRoleSearchInput" class="form-control" placeholder="Search directory..." autocomplete="off" onkeyup="filterEventRoleSearch()">
+                            <div id="evtRoleSearchDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid var(--border-color); border-radius:0 0 8px 8px; max-height:200px; overflow-y:auto; z-index:100; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
+                        </div>
+                        <input type="hidden" id="evtRoleSelectedUserId">
+                        <input type="text" id="evtRoleNameInput" class="form-control" placeholder="Primary Role (e.g. Food)" style="flex: 1; min-width: 150px;">
+                        <input type="text" id="evtRoleSubRoleInput" class="form-control" placeholder="Sub-Role / Note (e.g. Snacks)" style="flex: 1; min-width: 150px;">
+                        <button class="btn btn-primary" onclick="assignEventRole()" style="flex: 1;">Assign Task</button>
+                    </div>
+                </div>
+
+                <h3 style="font-size: 1.1rem; margin-bottom: 12px; color: var(--text-main); border-bottom: 2px solid var(--bg-light); padding-bottom: 8px;">Event Team & Volunteers</h3>
+                <div id="eventRolesContainer" style="max-height: 300px; overflow-y: auto; padding-right: 5px;"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
 <div id="worshipSetlistModal" class="modal">
     <div class="modal-content">
         <div class="modal-drag-handle"></div>
@@ -760,6 +874,55 @@
                 <button type="submit" class="btn btn-primary">Save Changes</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div id="editEventRoleModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-drag-handle"></div>
+        <span class="close-modal" onclick="closeEditEventRoleModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
+        <h2>Edit Event Role</h2>
+        <input type="hidden" id="editEvtRoleMappingId">
+        <div class="form-group">
+            <label>Primary Role</label>
+            <input type="text" id="editEvtRoleNameInput" class="form-control">
+        </div>
+        <div class="form-group">
+            <label>Sub-Role / Note</label>
+            <input type="text" id="editEvtSubRoleInput" class="form-control">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeEditEventRoleModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveEventRoleEdit()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<div id="editMinistryRoleModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-drag-handle"></div>
+        <span class="close-modal" onclick="closeEditMinistryRoleModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
+        <h2>Edit Ministry Role</h2>
+        <input type="hidden" id="editMinRoleMappingId">
+        <div class="form-group">
+            <label>Role Level</label>
+            <select id="editMinRoleSelect" class="form-control">
+                <option value="Ministry Head">Ministry Head</option>
+                <option value="Assistant Ministry Head">Assistant Ministry Head</option>
+                <option value="Youth Ministry Head">Youth Ministry Head</option>
+                <option value="Core Member">Core Member</option>
+                <option value="Member">Member</option>
+                <option value="Integration Period">Integration Period</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Sub-Role</label>
+            <input type="text" id="editMinSubRoleInput" class="form-control">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeEditMinistryRoleModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveMinistryRoleEdit()">Save Changes</button>
+        </div>
     </div>
 </div>
 
