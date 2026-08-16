@@ -413,8 +413,8 @@ window.switchMinistrySubTab = function(tab) {
 };
 
 window.switchAnalyticsSubTab = function(tab) {
-    document.getElementById('analyticsTabOverview').classList.toggle('active', tab === 'overview');
-    document.getElementById('analyticsTabRoles').classList.toggle('active', tab === 'roles');
+    document.getElementById('analyticsTabOverview').style.display = tab === 'overview' ? 'block' : 'none';
+    document.getElementById('analyticsTabRoles').style.display = tab === 'roles' ? 'block' : 'none';
     document.getElementById('btnAnalyticsTabOverview').classList.toggle('active', tab === 'overview');
     document.getElementById('btnAnalyticsTabRoles').classList.toggle('active', tab === 'roles');
 };
@@ -2487,7 +2487,7 @@ window.loadEventRoles = async function(eventId) {
             const editBtn = window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" style="font-size: 10px; padding: 4px 8px; margin-right: 5px;" onclick="openEditEventRoleModal(${r.mapping_id}, '${(r.role_name||'').replace(/'/g, "\\'")}', '${(r.sub_role||'').replace(/'/g, "\\'")}')">✏️ Edit</button>` : '';
             const delBtn = window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" style="font-size: 10px; padding: 4px 8px;" onclick="removeEventRole(${r.mapping_id}, '${safeName.replace(/'/g, "\\'")}')">🗑️ Remove</button>` : '';
             const combinedRole = `${r.role_name}${r.sub_role ? ' | ' + r.sub_role : ''}`;
-            
+
             let statusBadge = '';
             if(r.status === 'Accepted') statusBadge = ` <span style="font-size:10px; font-weight:bold; color:var(--success); margin-left:5px;">✅ Accepted</span>`;
             else if(r.status === 'Declined') statusBadge = ` <span style="font-size:10px; font-weight:bold; color:var(--danger); margin-left:5px;">❌ Declined</span>`;
