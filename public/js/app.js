@@ -860,10 +860,15 @@ window.populateProfileTab = async function(member) {
         eventRoles.forEach(er => modalRolesData.push({type: 'event', ...er}));
 
         modalRolesData.sort((a,b) => {
-            const dateA = new Date(a.assigned_at || a.event_date || 0);
-            const dateB = new Date(b.assigned_at || b.event_date || 0);
-            return dateB - dateA;
-        });
+    // 1. Prioritize ministry roles over event roles
+    if (a.type === 'ministry' && b.type === 'event') return -1;
+    if (a.type === 'event' && b.type === 'ministry') return 1;
+    
+    // 2. Sort by date descending (newest first) for identical types
+    const dateA = new Date(a.assigned_at || a.event_date || 0);
+    const dateB = new Date(b.assigned_at || b.event_date || 0);
+    return dateB - dateA;
+});
 
         modalRolesPage = 1;
         window.renderMyProfileRoles();
