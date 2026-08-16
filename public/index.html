@@ -12,7 +12,9 @@
     <link rel="stylesheet" href="/css/styles.css">
     <link rel="stylesheet" href="/css/v2-styles.css">
     <link rel="stylesheet" href="/css/v3-styles.css">
+    <link rel="stylesheet" href="/css/v4-styles.css">
     <style>
+        /* AI Chat Bubbles CSS */
         .ai-chat-box { display: flex; flex-direction: column; gap: 15px; max-height: 450px; overflow-y: auto; padding: 15px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin-bottom: 15px; }
         .chat-msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; font-size: 0.95rem; line-height: 1.4; }
         .chat-user { align-self: flex-end; background: var(--primary); color: #FFF; border-bottom-right-radius: 2px; }
@@ -234,7 +236,51 @@
         </div>
     </div>
 
-    <!-- V2.0 ADMIN DISCIPLESHIP OVERSIGHT TAB -->
+    <div id="inboxTab" class="tab-content">
+        <div class="card">
+            <h2>🔔 My Inbox</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Stay up to date with announcements and messages from the leadership team.</p>
+            <div id="inboxContainer">
+                <div style="text-align:center; padding:40px 20px;">
+                    <p style="color:var(--text-muted);">Loading your messages...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="communicationsAdminTab" class="tab-content">
+        <div class="card">
+            <h2 style="color: #3B82F6;">📢 Broadcast Engine</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Send targeted announcements and push notifications to specific groups or the entire congregation.</p>
+
+            <div class="broadcast-form-container">
+                <form id="broadcastForm" onsubmit="V4Communications.sendBroadcast(event)">
+                    <div class="form-group">
+                        <label>Target Audience *</label>
+                        <select id="bcTargetSelect" class="form-control" required>
+                            <option value="All">All Registered Members</option>
+                            <option value="Leaders">All Leaders & Admins</option>
+                            </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Announcement Title *</label>
+                        <input type="text" id="bcTitle" class="form-control" placeholder="e.g. Urgent Prayer Request or Event Update" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Message Body *</label>
+                        <textarea id="bcMessage" class="form-control" rows="5" placeholder="Type your message here..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%; background: #3B82F6;">Send Broadcast</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Broadcast History</h2>
+            <div id="broadcastHistoryContainer"></div>
+        </div>
+    </div>
+
     <div id="discipleshipAdminTab" class="tab-content">
         <div class="sub-nav">
             <button id="btnSubAdminAnalytics" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('analytics')">📊 Analytics</button>
@@ -293,12 +339,11 @@
         </div>
     </div>
 
-    <!-- V2.0 AI MINISTRY ASSISTANT TAB -->
     <div id="aiAssistantTab" class="tab-content">
         <div class="card">
             <h2 style="color: #10B981; display:flex; align-items:center; gap:8px;">🤖 AI Ministry Assistant</h2>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Ask natural language questions about your congregation's data, attendance, and prayer requests.</p>
-            
+
             <div id="aiChatHistory" class="ai-chat-box">
                 <div class="chat-msg chat-ai">
                     Hello! I am your FOG Ministry Assistant. How can I help you support the congregation today?
@@ -318,7 +363,6 @@
         </div>
     </div>
 
-    <!-- V2.0 TRANSFORMATIONAL DISCIPLESHIP ENGINE TAB -->
     <div id="discipleshipTab" class="tab-content">
         <div id="verseOfDayContainer"></div>
         <div id="nextStepContainer"></div>
@@ -359,7 +403,6 @@
         </div>
     </div>
 
-    <!-- NEW V3.0 WORSHIP MEDIA HUB TAB -->
     <div id="worshipTab" class="tab-content">
         <div class="sub-nav">
             <button id="btnSubWorshipLibrary" class="sub-nav-btn active" onclick="V3Worship.switchWorshipSubTab('library')">🎵 Song Library</button>
@@ -404,7 +447,6 @@
         </div>
     </div>
 
-    <!-- V1 Core Tabs -->
     <div id="ministriesTab" class="tab-content">
         <div class="sub-nav">
             <button id="btnSubMinistryList" class="sub-nav-btn active" onclick="switchMinistrySubTab('list')">🏛️ Ministry Directory</button>
@@ -646,16 +688,25 @@
 
 </div>
 
-<!-- ALL MODALS -->
+<div id="confirmModal" class="modal" style="z-index: 9999;">
+    <div class="modal-content" style="max-width: 400px; text-align: center;">
+        <div class="modal-drag-handle"></div>
+        <h2 style="color: var(--danger); border-bottom: none; margin-bottom: 10px;">⚠️ Confirm Action</h2>
+        <p id="confirmSummary" style="font-size: 1rem; color: var(--text-main); margin-bottom: 20px;"></p>
+        <div class="modal-footer" style="display: flex; gap: 10px; justify-content: center; padding-top: 15px; border-top: 1px solid var(--border-color);">
+            <button type="button" class="btn btn-secondary" onclick="closeConfirmModal()" style="flex: 1;">Cancel</button>
+            <button type="button" id="executeConfirmBtn" class="btn btn-danger" style="flex: 1;">Proceed</button>
+        </div>
+    </div>
+</div>
 
-<!-- WORSHIP SETLIST MANAGER MODAL -->
 <div id="worshipSetlistModal" class="modal">
     <div class="modal-content">
         <div class="modal-drag-handle"></div>
         <span class="close-modal" onclick="V3Worship.closeSetlistManager()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
         <h2 id="wsSetlistModalName">Editing Setlist</h2>
         <input type="hidden" id="wsActiveSetlistId">
-        
+
         <div class="form-group" style="margin-top: 15px;">
             <label>Add Song to Setlist</label>
             <div style="display:flex; gap:10px;">
@@ -675,7 +726,6 @@
     </div>
 </div>
 
-<!-- NEW: EDIT SONG MODAL -->
 <div id="editSongModal" class="modal">
     <div class="modal-content">
         <div class="modal-drag-handle"></div>
@@ -959,6 +1009,7 @@
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_discipleship" style="width:20px;height:20px;"> Access "Discipleship Admin"</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_ai" style="width:20px;height:20px;"> Access "AI Assistant"</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_worship" style="width:20px;height:20px;"> Access "Worship Hub"</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_communications" style="width:20px;height:20px;"> Access "Communications Broadcasts"</label>
                     <hr style="border:0; border-top:1px solid var(--border-color); margin: 5px 0;">
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: var(--primary);"><input type="checkbox" class="permCheckModal" value="add_entries" style="width:20px;height:20px;"> ➕ Add Entries (Forms, Roles, Walk-ins)</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: #8B5CF6;"><input type="checkbox" class="permCheckModal" value="edit_entries" style="width:20px;height:20px;"> ✏️ Edit Entries (Profiles, Events, Notes)</label>
@@ -973,309 +1024,6 @@
     </div>
 </div>
 
-<div id="editMemberModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeEditMemberModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2>Edit Member Profile</h2>
-        <form onsubmit="event.preventDefault();">
-            <input type="hidden" id="editMemberId">
-            <div class="form-group">
-                <label>Update Profile Picture</label>
-                <input type="file" id="editMemberProfilePic" class="form-control" accept="image/*">
-            </div>
-            <div class="form-group">
-                <label>Full Name</label>
-                <input type="text" id="editMemberName" class="form-control" required>
-            </div>
-            <div class="form-group">
-                <label>Email Address</label>
-                <input type="email" id="editMemberEmail" class="form-control">
-            </div>
-            <div style="display: flex; gap: 15px;">
-                <div class="form-group" style="flex: 1;">
-                    <label>Age</label>
-                    <input type="number" id="editMemberAge" class="form-control">
-                </div>
-                <div class="form-group" style="flex: 1;">
-                    <label>Birthday</label>
-                    <input type="date" id="editMemberBirthday" class="form-control">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Social Media Handle</label>
-                <input type="text" id="editMemberSocial" class="form-control">
-            </div>
-            <div class="form-group">
-                <label>Parents / Guardian Name</label>
-                <input type="text" id="editMemberParents" class="form-control">
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeEditMemberModal()">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="saveMemberEditWithConfirm()">Save Changes</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div id="eventAnalyticsModal" class="modal">
-    <div class="modal-content" style="max-width: 700px;">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeAnalyticsModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-
-        <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 20px;">
-            <div id="analyticsModalPoster" style="width: 85px; height: 85px; background: var(--bg-light); border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); flex-shrink: 0; display:flex; align-items:center; justify-content:center;"></div>
-            <div style="flex: 1;">
-                <h2 id="analyticsEventTitle" style="margin-bottom: 6px; border:none; padding:0;">Event Analytics</h2>
-                <p id="analyticsEventMeta" style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0; margin-bottom: 10px;"></p>
-                <div id="analyticsEventLinks" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
-            </div>
-        </div>
-
-        <div class="sub-nav" style="margin-bottom: 15px;">
-            <button id="btnAnalyticsTabOverview" class="sub-nav-btn active" onclick="switchAnalyticsSubTab('overview')">📊 Overview & Roster</button>
-            <button id="btnAnalyticsTabRoles" class="sub-nav-btn" onclick="switchAnalyticsSubTab('roles')">🎭 Event Roles</button>
-        </div>
-
-        <div id="analyticsTabOverview" class="analytics-sub-tab active">
-            <div class="metric-grid">
-                <div id="cardTurnout" class="metric-card metric-card-clickable" style="background: #3B82F6;" onclick="setAnalyticsCardFilter('all')">
-                    <h3 id="statTotalTurnout" style="margin: 0; font-size: 26px;">0</h3><p style="margin: 6px 0 0; font-size: 12px; font-weight:600;">Arrived</p>
-                </div>
-                <div id="cardPreReg" class="metric-card metric-card-clickable" style="background: var(--success);" onclick="setAnalyticsCardFilter('prereg')">
-                    <h3 id="statTotalPreReg" style="margin: 0; font-size: 26px;">0</h3><p style="margin: 6px 0 0; font-size: 12px; font-weight:600;">Pre-Reg'd</p>
-                </div>
-                <div id="cardWalkin" class="metric-card metric-card-clickable" style="background: #F59E0B;" onclick="setAnalyticsCardFilter('walkin')">
-                    <h3 id="statWalkins" style="margin: 0; font-size: 26px;">0</h3><p style="margin: 6px 0 0; font-size: 12px; font-weight:600;">Walk-ins</p>
-                </div>
-                <div class="metric-card" style="background: #8B5CF6;">
-                    <h3 id="statTurnoutPercent" style="margin: 0; font-size: 26px;">0%</h3><p style="margin: 6px 0 0; font-size: 12px; font-weight:600;">Turnout</p>
-                </div>
-            </div>
-
-            <div style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center; flex-wrap: wrap;">
-                <input type="text" id="attSearchNative" placeholder="🔍 Search roster..." class="form-control" style="flex: 1; min-width:180px;" oninput="filterAnalyticsRoster()">
-                <select id="attAgeNative" class="form-control" style="width: auto;" onchange="filterAnalyticsRoster()">
-                    <option value="all">All Ages</option>
-                    <option value="mini">Minis</option>
-                    <option value="youth">Youth</option>
-                    <option value="adult">Adults</option>
-                </select>
-                <div id="attRosterCount" class="badge badge-blue" style="font-size: 0.9rem; padding: 10px 14px; white-space: nowrap;">Total: 0</div>
-            </div>
-
-            <div id="analyticsRosterContainer" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px;"></div>
-        </div>
-
-        <div id="analyticsTabRoles" class="analytics-sub-tab">
-            <div id="eventRolesRestrictedSection" style="display: none; background: #FEF3C7; border: 1px solid #F59E0B; padding: 15px; border-radius: 8px; margin-bottom: 25px;">
-                <h3 style="color: #D97706; font-size: 1rem; margin-bottom: 10px; border: none;">🔒 Event Roles & Logistics Notes</h3>
-                <textarea id="eventRolesDetailNotes" class="form-control" rows="3" placeholder="Confidential schedules, call times, or run-sheets..."></textarea>
-                <button class="btn btn-sm" style="background: #D97706; color: #FFF; margin-top: 10px;" onclick="saveEventRolesNotes()">Save Notes</button>
-            </div>
-
-            <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 20px;">Assign specific tasks or committees (e.g., Coordinator, Food, Music) to members for this event.</p>
-
-            <div id="eventRoleAssignControls" style="display: none; background: var(--bg-light); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 15px;">
-                <h4 style="margin-bottom: 10px; font-size: 0.9rem;">Assign New Role</h4>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <div style="flex: 2; min-width: 200px; position: relative;">
-                        <input type="text" id="evtRoleSearchInput" class="form-control" placeholder="Search directory by name..." autocomplete="off" onkeyup="filterEventRoleSearch()">
-                        <div id="evtRoleSearchDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid var(--border-color); border-radius:0 0 8px 8px; max-height:200px; overflow-y:auto; z-index:100; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
-                    </div>
-                    <input type="hidden" id="evtRoleSelectedUserId">
-                    <input type="text" id="evtRoleNameInput" class="form-control" placeholder="Main Role (e.g. Music)" style="flex: 1; min-width: 120px;">
-                    <input type="text" id="evtRoleSubRoleInput" class="form-control" placeholder="Sub-Role (e.g. Drummer)" style="flex: 1; min-width: 120px;">
-                    <button class="btn btn-primary" onclick="assignEventRole()" style="flex: 1;">Assign</button>
-                </div>
-            </div>
-
-            <div id="eventRolesContainer" style="max-height: 300px; overflow-y: auto; padding-right: 5px;"></div>
-        </div>
-
-        <div class="modal-footer" style="flex-direction: column; gap: 10px; margin-top: 20px;">
-            <div style="display: flex; gap: 10px; width: 100%;">
-                <button type="button" class="btn btn-primary" id="addEntryAnalyticsBtn" style="flex:1; display:none;" onclick="openAddAttendeeModal()">➕ Add Entry</button>
-                <button type="button" class="btn btn-outline" style="flex:1;" id="analyticsEditEventBtn">✏️ Edit Event</button>
-            </div>
-            <button type="button" class="btn btn-outline" style="width: 100%;" onclick="exportAnalyticsCSV()">📥 Export List (CSV)</button>
-        </div>
-    </div>
-</div>
-
-<div id="viewProfileModal" class="modal">
-    <div class="modal-content" style="max-width: 750px;">
-        <div class="modal-drag-handle"></div>
-
-        <h2 style="margin-bottom: 20px;">Member Profile</h2>
-
-        <div class="profile-header-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; background: var(--bg-light); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 20px;">
-            <div class="profile-header-left" style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-                <div id="viewModalProfileAvatar" class="avatar-circle" style="width: 110px; height: 110px; font-size: 2.5rem; background: #FFF;"></div>
-                <div>
-                    <h3 id="modalProfileName" style="color: var(--primary); font-size: 1.6rem; margin: 0 0 5px 0;"></h3>
-                    <p id="modalProfileCode" class="badge badge-orange" style="font-size: 0.95rem; margin: 0; padding: 6px 10px; display: none;"></p>
-                </div>
-            </div>
-            <div class="profile-header-right" style="display: none; flex-direction: column; align-items: center; gap: 10px; background: #FFF; padding: 12px; border-radius: 12px; border: 1px solid var(--border-color);">
-                <div id="modalQrContainer" style="background: #fff; padding: 5px; border-radius: 8px;"></div>
-                <a id="modalDownloadQrBtn" class="btn btn-primary btn-sm" download="Pass.png" style="width: 100%; font-weight: bold;">📥 Download Pass</a>
-            </div>
-        </div>
-
-        <div class="modal-summary" id="modalBioSummary" style="margin-top: 0;"></div>
-
-        <div class="sub-nav" style="margin-bottom: 15px; margin-top: 15px;">
-            <button id="btnProfileTabRoles" class="sub-nav-btn active" onclick="switchProfileModalTab('roles')">🎭 Roles</button>
-            <button id="btnProfileTabAttendance" class="sub-nav-btn" onclick="switchProfileModalTab('attendance')">📋 Attendance History</button>
-            <button id="btnProfileTabPastoral" class="sub-nav-btn" onclick="switchProfileModalTab('pastoral')" style="display: none; color: #8B5CF6;">🕊️ Pastoral Care</button>
-        </div>
-
-        <div id="profileTabRoles" style="display: block; animation: fadeIn 0.3s ease-out;">
-            <div style="background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px;">
-                <div id="modalMinistriesHistory" style="font-size: 0.95rem; padding-right: 5px;"></div>
-                <div id="modalRolesPagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
-            </div>
-        </div>
-
-        <div id="profileTabAttendance" style="display: none; animation: fadeIn 0.3s ease-out;">
-            <div style="background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px;">
-                <div id="modalAttendanceHistory" style="font-size: 0.95rem; padding-right: 5px;"></div>
-                <div id="modalAttendancePagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
-            </div>
-        </div>
-
-        <div id="profileTabPastoral" style="display: none; animation: fadeIn 0.3s ease-out;">
-            <div style="background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px;">
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0; margin-bottom: 15px;">Highly secure pastoral oversight notes. These notes are completely hidden from the member.</p>
-                <div id="modalPastoralHistory"></div>
-            </div>
-        </div>
-
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick="closeViewProfileModal()">Close</button>
-        </div>
-    </div>
-</div>
-
-<div id="confirmModal" class="modal" style="z-index: 3000;">
-    <div class="modal-content" style="max-width: 400px; text-align: center;">
-        <div class="modal-drag-handle"></div>
-        <h2 style="border:none; margin-bottom:10px;">Are you sure?</h2>
-        <div id="confirmSummary" style="color: var(--text-muted); margin-bottom: 25px; font-size: 1.05rem;">Summary of action...</div>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <button type="button" id="executeConfirmBtn" class="btn btn-danger" style="width: 100%;">Execute Action</button>
-            <button type="button" class="btn btn-outline" style="width: 100%;" onclick="closeConfirmModal()">Cancel</button>
-        </div>
-    </div>
-</div>
-
-<div id="editAttendanceModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeEditAttendanceModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2>Edit Attendance Record</h2>
-        <form onsubmit="event.preventDefault();">
-            <input type="hidden" id="editAttId">
-            <div class="form-group">
-                <label>Check-in Timestamp</label>
-                <input type="text" id="editAttTime" class="form-control" required>
-            </div>
-            <div class="form-group">
-                <label>Walk-in Status</label>
-                <select id="editAttWalkin" class="form-control">
-                    <option value="0">Pre-Registered</option>
-                    <option value="1">Walk-in</option>
-                </select>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeEditAttendanceModal()">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="saveAttendanceEditWithConfirm()">Save Changes</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div id="editMinistryModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeEditMinistryModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2>Edit Ministry Info</h2>
-        <form onsubmit="event.preventDefault(); saveMinistryEdit();">
-            <div class="form-group">
-                <label>Update Ministry Logo</label>
-                <input type="file" id="editMinLogo" class="form-control" accept="image/*">
-            </div>
-            <div class="form-group">
-                <label>Ministry Name *</label>
-                <input type="text" id="editMinName" class="form-control" required>
-            </div>
-            <div class="form-group">
-                <label>Description</label>
-                <textarea id="editMinDesc" class="form-control" rows="3"></textarea>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeEditMinistryModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Changes</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div id="editMinistryRoleModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeEditMinistryRoleModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2>Edit Ministry Role</h2>
-        <form onsubmit="event.preventDefault(); saveMinistryRoleEdit();">
-            <input type="hidden" id="editMinRoleMappingId">
-            <div class="form-group">
-                <label>Primary Role Level</label>
-                <select id="editMinRoleSelect" class="form-control">
-                    <option value="Ministry Head">Ministry Head</option>
-                    <option value="Assistant Ministry Head">Assistant Ministry Head</option>
-                    <option value="Youth Ministry Head">Youth Ministry Head</option>
-                    <option value="Core Member">Core Member</option>
-                    <option value="Member">Member</option>
-                    <option value="Integration Period">Integration Period</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Sub-Role (Optional)</label>
-                <input type="text" id="editMinSubRoleInput" class="form-control" placeholder="e.g. Drummer, Lead Singer">
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeEditMinistryRoleModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Role</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div id="editEventRoleModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeEditEventRoleModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2>Edit Event Role</h2>
-        <form onsubmit="event.preventDefault(); saveEventRoleEdit();">
-            <input type="hidden" id="editEvtRoleMappingId">
-            <div class="form-group">
-                <label>Main Role Name</label>
-                <input type="text" id="editEvtRoleNameInput" class="form-control" placeholder="e.g. Coordinator, Food" required>
-            </div>
-            <div class="form-group">
-                <label>Sub-Role (Optional)</label>
-                <input type="text" id="editEvtSubRoleInput" class="form-control" placeholder="e.g. Front Desk, Clean Up">
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeEditEventRoleModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Role</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- FLOATING WORSHIP PLAYER -->
 <div id="worshipAudioPlayer" class="worship-player-container" style="display:none;">
     <div class="worship-player-info">
         <strong id="wpTitle">Song Title</strong>
@@ -1300,5 +1048,6 @@
 <script src="/js/app.js"></script>
 <script src="/js/v2-discipleship.js"></script>
 <script src="/js/v3-worship.js"></script>
+<script src="/js/v4-communications.js"></script>
 </body>
 </html>
