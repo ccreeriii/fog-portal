@@ -1,67 +1,33 @@
 // ==============================================================================
-// FIRE OF GOD (FOG) V2.0 - TRANSFORMATIONAL DISCIPLESHIP ENGINE CLIENT LOGIC
+// FIRE OF GOD (FOG) V3.0 - WORSHIP MEDIA HUB
 // ==============================================================================
 
-window.V2Discipleship = {
-    _cachedDirectory: null,
-    _spiritualChart: null,
+window.V3Worship = {
+    _audioPlayer: null,
+    _cachedSongs: [],
+    _isHooked: false, // SAFETY LOCK
 
     init: function() {
-        console.log('[V2 Engine] Initializing Transformational Discipleship Engine with Gamification UI...');
-        this.hookIntoV1Lifecycle();
+        console.log('[V3 Engine] Initializing Worship Media Hub...');
+        this.hookIntoLifecycle();
     },
 
     getSession: function() {
         try {
             const session = JSON.parse(localStorage.getItem('fog_user'));
             return session || { username: null, member: null };
-        } catch(e) {
-            return { username: null, member: null };
-        }
+        } catch(e) { return { username: null, member: null }; }
     },
 
-    hookIntoV1Lifecycle: function() {
+    hookIntoLifecycle: function() {
+        if (this._isHooked) return; // Prevents infinite recursive wrapping of buildNav
+        this._isHooked = true;
+
         if (typeof window.buildNav === 'function') {
             const originalBuildNav = window.buildNav;
             window.buildNav = function() {
-                originalBuildNav(); 
-                V2Discipleship.injectV2NavButtons(); 
-            };
-        }
-
-        if (typeof window.populateProfileTab === 'function') {
-            const originalPopulateProfileTab = window.populateProfileTab;
-            window.populateProfileTab = async function(member) {
-                await originalPopulateProfileTab(member); 
-                V2Discipleship.loadModule(member.id); 
-            };
-        }
-
-        if (typeof window.switchProfileModalTab === 'function') {
-            const origSwitch = window.switchProfileModalTab;
-            window.switchProfileModalTab = function(tab) {
-                origSwitch(tab);
-                const pastTab = document.getElementById('profileTabPastoral');
-                const pastBtn = document.getElementById('btnProfileTabPastoral');
-                if(pastTab) pastTab.style.display = tab === 'pastoral' ? 'block' : 'none';
-                if(pastBtn) {
-                    if (tab === 'pastoral') { pastBtn.classList.add('active'); pastBtn.style.border = '1px solid #8B5CF6'; }
-                    else { pastBtn.classList.remove('active'); pastBtn.style.border = 'none'; }
-                }
-            };
-        }
-
-        if (typeof window.openViewProfileModal === 'function') {
-            const origOpenViewProfile = window.openViewProfileModal;
-            window.openViewProfileModal = async function(youthId) {
-                await origOpenViewProfile(youthId);
-                const pastBtn = document.getElementById('btnProfileTabPastoral');
-                if (window.hasPerm && (window.hasPerm('access_discipleship') || window.hasPerm('edit_entries'))) {
-                    if(pastBtn) pastBtn.style.display = 'inline-block';
-                    V2Discipleship.loadPastoralOversight(youthId);
-                } else {
-                    if(pastBtn) pastBtn.style.display = 'none';
-                }
+                originalBuildNav();
+                V3Worship.injectNavButtons();
             };
         }
 
@@ -69,608 +35,384 @@ window.V2Discipleship = {
             const origSwitchTab = window.switchTab;
             window.switchTab = function(tabId) {
                 origSwitchTab(tabId);
-                if (tabId === 'discipleshipAdminTab') {
-                    V2Discipleship.loadAdminModule();
-                }
+                if (tabId === 'worshipTab') { V3Worship.loadModule(); }
             };
         }
     },
 
-    injectV2NavButtons: function() {
+    injectNavButtons: function() {
         const sidebar = document.getElementById('sidebarNav');
-        if (sidebar && !document.getElementById('navBtnDiscipleshipAdmin')) {
+        if (sidebar && !document.getElementById('navBtnWorship')) {
             const logoutBtn = sidebar.querySelector('.text-danger');
-            
-            let v2SidebarHtml = `<button id="navBtnDiscipleship" class="nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')">🔥 Discipleship</button>`;
-            
-            if (window.hasPerm && (window.hasPerm('access_discipleship') || window.hasPerm('edit_entries'))) {
-                v2SidebarHtml += `<button id="navBtnDiscipleshipAdmin" class="nav-btn" data-target="discipleshipAdminTab" onclick="switchTab('discipleshipAdminTab')" style="color: #8B5CF6;">👑 Discipleship Admin</button>`;
-                v2SidebarHtml += `<button id="navBtnAIAssistant" class="nav-btn" data-target="aiAssistantTab" onclick="switchTab('aiAssistantTab')" style="color: #10B981;">🤖 AI Assistant</button>`;
+            let v3SidebarHtml = '';
+            if (window.hasPerm && window.hasPerm('access_worship')) {
+                v3SidebarHtml = `<button id="navBtnWorship" class="nav-btn" data-target="worshipTab" onclick="switchTab('worshipTab')">🎸 Worship Hub</button>`;
             }
-
-            if (logoutBtn) logoutBtn.insertAdjacentHTML('beforebegin', v2SidebarHtml);
+            if (logoutBtn && v3SidebarHtml) logoutBtn.insertAdjacentHTML('beforebegin', v3SidebarHtml);
         }
 
         const bottomNav = document.getElementById('bottomNav');
-        if (bottomNav && !document.getElementById('bottomNavDiscipleship')) {
+        if (bottomNav && !document.getElementById('bottomNavWorship')) {
             const logoutBtn = bottomNav.lastElementChild;
-            const v2BottomHtml = `
-                <button id="bottomNavDiscipleship" class="bottom-nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')">
-                    <div class="icon">🔥</div>Discipleship
-                </button>
-            `;
-            if (logoutBtn) logoutBtn.insertAdjacentHTML('beforebegin', v2BottomHtml);
+            let v3BottomHtml = '';
+            if (window.hasPerm && window.hasPerm('access_worship')) {
+                v3BottomHtml = `
+                    <button id="bottomNavWorship" class="bottom-nav-btn" data-target="worshipTab" onclick="switchTab('worshipTab')">
+                        <div class="icon">🎸</div>Worship
+                    </button>
+                `;
+            }
+            if (logoutBtn && v3BottomHtml) logoutBtn.insertAdjacentHTML('beforebegin', v3BottomHtml);
         }
     },
 
-    setAiPrompt: function(text) {
-        document.getElementById('aiChatInput').value = text;
+    switchWorshipSubTab: function(tab) {
+        document.getElementById('subTabWorshipLibrary').style.display = tab === 'library' ? 'block' : 'none';
+        document.getElementById('subTabWorshipSetlists').style.display = tab === 'setlists' ? 'block' : 'none';
+        document.getElementById('btnSubWorshipLibrary').classList.toggle('active', tab === 'library');
+        document.getElementById('btnSubWorshipSetlists').classList.toggle('active', tab === 'setlists');
+
+        if (tab === 'library') this.loadSongs();
+        if (tab === 'setlists') this.loadSetlists();
     },
 
-    sendAiMessage: async function(e) {
-        e.preventDefault();
-        const inputElem = document.getElementById('aiChatInput');
-        const text = inputElem.value.trim();
-        if (!text) return;
-
-        const chatBox = document.getElementById('aiChatHistory');
-        chatBox.innerHTML += `<div class="chat-msg chat-user">${text}</div>`;
-        inputElem.value = '';
-        chatBox.scrollTop = chatBox.scrollHeight;
-
-        const typingId = 'typing_' + Date.now();
-        chatBox.innerHTML += `<div id="${typingId}" class="chat-msg chat-ai" style="opacity: 0.7;">Thinking...</div>`;
-        chatBox.scrollTop = chatBox.scrollHeight;
-
-        try {
-            const session = this.getSession();
-            const res = await fetch('/api/ai/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: text, actor: session.username })
-            });
-            const data = await res.json();
-
-            document.getElementById(typingId).remove();
-            chatBox.innerHTML += `<div class="chat-msg chat-ai">${data.response}</div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-        } catch (err) {
-            document.getElementById(typingId).remove();
-            chatBox.innerHTML += `<div class="chat-msg chat-ai" style="color: red;">Network error connecting to the AI core.</div>`;
-        }
-    },
-
-    loadModule: async function(memberId) {
-        if (!memberId) return;
+    loadModule: async function() {
         await Promise.all([
-            this.loadNextStepWithGod(memberId),
-            this.loadJournals(memberId),
-            this.loadPrayerRequests(memberId),
-            this.loadSmallGroups(memberId)
+            this.loadSongs(),
+            this.loadSetlists()
         ]);
     },
 
-    loadNextStepWithGod: async function(youthId) {
+    formatMediaUrl: function(url) {
+        if (!url) return "";
+        const gDriveRegex = /(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([-\w]+)/;
+        const gMatch = url.match(gDriveRegex);
+        if (gMatch && gMatch[1]) {
+            return `https://docs.google.com/uc?export=download&id=${gMatch[1]}`;
+        }
+        if (url.includes('dropbox.com')) {
+            return url.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '').replace('&dl=0', '') + '?raw=1';
+        }
+        return url;
+    },
+
+    // ==========================================
+    // DUAL AUDIO / YOUTUBE PLAYER LOGIC
+    // ==========================================
+    playSong: function(title, artist, rawUrl, ytUrl) {
+        const playerDiv = document.getElementById('worshipAudioPlayer');
+        const titleElem = document.getElementById('wpTitle');
+        const artistElem = document.getElementById('wpArtist');
+        const audioElem = document.getElementById('wpAudio');
+        const ytContainer = document.getElementById('wpYoutubeContainer');
+
+        titleElem.innerText = title;
+        artistElem.innerText = artist || 'Unknown Artist';
+
+        // Reset both players
+        audioElem.pause();
+        audioElem.src = "";
+        ytContainer.innerHTML = "";
+
+        if (ytUrl) {
+            // Extract the YouTube Video ID
+            const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+            const match = ytUrl.match(ytRegex);
+
+            if (match && match[1]) {
+                const vidId = match[1];
+                // Inject the YouTube IFrame
+                ytContainer.innerHTML = `<iframe src="https://www.youtube.com/embed/${vidId}?autoplay=1&rel=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+                ytContainer.style.display = 'block';
+                audioElem.style.display = 'none';
+            } else {
+                alert("The provided YouTube URL appears to be invalid.");
+                return;
+            }
+        } else if (rawUrl) {
+            // Use standard HTML5 Audio Player
+            const streamUrl = this.formatMediaUrl(rawUrl);
+            audioElem.src = streamUrl;
+            audioElem.load();
+            audioElem.style.display = 'block';
+            ytContainer.style.display = 'none';
+
+            const playPromise = audioElem.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(e => {
+                    console.warn("Browser prevented autoplay:", e);
+                });
+            }
+        } else {
+            alert("No playable media (Audio or YouTube) was found for this song.");
+            return;
+        }
+
+        playerDiv.style.display = 'flex';
+    },
+
+    closePlayer: function() {
+        const playerDiv = document.getElementById('worshipAudioPlayer');
+        const audioElem = document.getElementById('wpAudio');
+        const ytContainer = document.getElementById('wpYoutubeContainer');
+
+        audioElem.pause();
+        audioElem.src = "";
+        ytContainer.innerHTML = ""; // Destroys the iframe to stop YT playback
+        playerDiv.style.display = 'none';
+    },
+
+    // ==========================================
+    // SONG LIBRARY MANAGEMENT
+    // ==========================================
+    loadSongs: async function() {
         try {
-            const res = await fetch(`/api/discipleship/next-step/${youthId}`);
-            if (!res.ok) throw new Error("Network response was not ok");
-            const data = await res.json();
-            const container = document.getElementById('nextStepContainer');
+            const res = await fetch('/api/worship/songs');
+            const songs = await res.json();
+            this._cachedSongs = songs; // Cache for easy editing
+
+            const container = document.getElementById('worshipLibraryList');
             if (!container) return;
 
-            const verses = [
-                { text: "For I know the plans I have for you, declares the Lord, plans for welfare and not for evil, to give you a future and a hope.", ref: "Jeremiah 29:11" },
-                { text: "I can do all things through him who strengthens me.", ref: "Philippians 4:13" },
-                { text: "Trust in the Lord with all your heart, and do not lean on your own understanding.", ref: "Proverbs 3:5" },
-                { text: "Be strong and courageous. Do not be frightened, and do not be dismayed, for the Lord your God is with you wherever you go.", ref: "Joshua 1:9" },
-                { text: "But they who wait for the Lord shall renew their strength; they shall mount up with wings like eagles.", ref: "Isaiah 40:31" },
-                { text: "Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come.", ref: "2 Corinthians 5:17" },
-                { text: "And let us consider how to stir up one another to love and good works.", ref: "Hebrews 10:24" }
-            ];
-            const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
-            const dailyVerse = verses[dayOfYear % verses.length];
-            
-            const verseContainer = document.getElementById('verseOfDayContainer');
-            if (verseContainer) {
-                verseContainer.innerHTML = `
-                    <div class="card" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: #FFF; border: none; padding: 20px;">
-                        <h3 style="color: #FFF; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; margin-bottom: 15px; display:flex; align-items:center; gap:8px;">📖 Daily Manna</h3>
-                        <p style="font-size: 1.15rem; font-style: italic; margin-bottom: 10px; line-height: 1.5;">"${dailyVerse.text}"</p>
-                        <p style="font-weight: bold; text-align: right; margin: 0; font-size: 0.9rem;">- ${dailyVerse.ref}</p>
-                    </div>
-                `;
+            if (songs.length === 0) {
+                container.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No songs added to the library yet.</p>`;
+                return;
             }
 
-            let totalSteps = data.allSteps ? data.allSteps.length : 0;
-            let completedSteps = data.allSteps ? data.allSteps.filter(s => s.member_status === 'Completed').length : 0;
-            let percentage = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-
-            const badgesHtml = (data.allSteps || []).map(s => {
-                const isCompleted = s.member_status === 'Completed';
+            container.innerHTML = songs.map(s => {
+                const hasMedia = s.audio_url || s.youtube_url;
                 return `
-                    <div class="achievement-badge ${isCompleted ? 'unlocked' : 'locked'}">
-                        <div class="badge-icon">${isCompleted ? '🏆' : '🔒'}</div>
-                        <div class="badge-name">${s.title.split(':')[0]}</div>
+                <div class="song-card">
+                    <div style="flex: 1; overflow: hidden;">
+                        <strong style="color: var(--text-main); font-size: 1.05rem;">${s.title}</strong>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin: 2px 0;">${s.artist || 'Unknown'} | Key: ${s.song_key || 'N/A'} | BPM: ${s.bpm || 'N/A'}</p>
                     </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        ${hasMedia ? `<button class="btn btn-sm" style="background:#10B981; color:#FFF;" onclick="V3Worship.playSong('${s.title.replace(/'/g, "\\'")}', '${(s.artist||'').replace(/'/g, "\\'")}', '${s.audio_url || ''}', '${s.youtube_url || ''}')">▶ Play</button>` : ''}
+                        ${s.chord_chart_url ? `<a href="${this.formatMediaUrl(s.chord_chart_url)}" target="_blank" class="btn btn-outline btn-sm">📄 Chords</a>` : ''}
+                        ${window.hasPerm && window.hasPerm('edit_entries') ? `<button class="btn btn-outline btn-sm" onclick="V3Worship.openEditSongModal(${s.id})">✏️ Edit</button>` : ''}
+                        ${window.hasPerm && window.hasPerm('delete_entries') ? `<button class="btn btn-danger btn-sm" onclick="V3Worship.deleteSong(${s.id})">🗑️</button>` : ''}
+                    </div>
+                </div>
                 `;
             }).join('');
 
-            if (data.nextStep) {
-                const step = data.nextStep;
-                const isCompleted = step.member_status === 'Completed';
-                container.innerHTML = `
-                    <div class="fog-spiritual-hero">
-                        <h2>🙏 What is my next step with God?</h2>
-                        <p style="font-size: 1.1rem; font-weight: 600; margin-top: 5px;">Current Milestone: ${step.title}</p>
-                        <p>${step.description}</p>
-                        <div class="fog-next-step-box" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                            <div>
-                                <span class="badge ${isCompleted ? 'badge-green' : 'badge-orange'}" style="background: #FFF; color: var(--primary);">Status: ${step.member_status || 'In Progress'}</span>
-                            </div>
-                            <div>
-                                ${!isCompleted ? `<button class="btn btn-sm" style="background: #FFF; color: var(--primary); font-weight: bold;" onclick="V2Discipleship.completeStep(${youthId}, ${step.id})">✅ Mark as Completed</button>` : `<span style="font-weight: bold; color: #FFF;">🎉 Milestone Achieved!</span>`}
-                            </div>
-                        </div>
-
-                        <div style="margin-top: 20px;">
-                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: bold;">
-                                <span>Spiritual Growth Track</span>
-                                <span>${percentage}%</span>
-                            </div>
-                            <div class="spiritual-progress-container">
-                                <div class="spiritual-progress-bar" style="width: ${percentage}%"></div>
-                            </div>
-                        </div>
-
-                        <div style="margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 15px;">
-                            <h3 style="font-size: 0.95rem; margin-bottom: 10px; border:none; padding:0; color:#FFF;">🏆 My Unlocked Badges</h3>
-                            <div class="badges-grid">
-                                ${badgesHtml}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            } else {
-                container.innerHTML = `<div class="fog-spiritual-hero"><h2>🎉 All Discipleship Milestones Completed!</h2><p>You have successfully journeyed through all foundational steps. Keep discipling others!</p></div>`;
+            const dropdown = document.getElementById('wsSetlistAddSongSelect');
+            if (dropdown) {
+                dropdown.innerHTML = `<option value="">-- Select a Song to Add --</option>` +
+                    songs.map(s => `<option value="${s.id}">${s.title} (${s.song_key || 'N/A'})</option>`).join('');
             }
-
-            const listContainer = document.getElementById('pathwaysListContainer');
-            if (listContainer && data.allSteps) {
-                listContainer.innerHTML = data.allSteps.map(s => `
-                    <div class="pathway-step-card">
-                        <div class="pathway-step-info">
-                            <h4>${s.title}</h4>
-                            <p>${s.description}</p>
-                        </div>
-                        <div><span class="badge ${s.member_status === 'Completed' ? 'badge-green' : 'badge-orange'}">${s.member_status || 'Pending'}</span></div>
-                    </div>
-                `).join('');
-            }
-        } catch (e) { console.error('Failed to load next step', e); }
+        } catch (e) { console.error('Failed to load songs', e); }
     },
 
-    completeStep: async function(youthId, pathwayId) {
-        window.triggerActionConfirmation('Mark this discipleship milestone as completed?', async () => {
-            try {
-                const session = this.getSession();
-                const res = await fetch('/api/discipleship/milestones', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ youth_id: youthId, pathway_id: pathwayId, status: 'Completed', actor: session.username || 'System' })
-                });
-                if (res.ok) {
-                    alert('Milestone updated successfully! Glory to God!');
-                    V2Discipleship.loadNextStepWithGod(youthId);
-                }
-            } catch (err) { alert("Network error. Please try again."); }
-        });
-    },
-
-    loadJournals: async function(youthId) {
-        try {
-            const res = await fetch(`/api/journals/${youthId}`);
-            const journals = await res.json();
-            const container = document.getElementById('journalsContainer');
-            if (!container) return;
-
-            if (journals.length === 0) {
-                container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 15px;">No private journal entries yet. Write your reflections with God below.</p>`;
-                return;
-            }
-
-            container.innerHTML = journals.map(j => `
-                <div class="journal-card">
-                    <div class="journal-card-header">
-                        <strong style="font-size: 1.05rem; color: var(--text-main);">${j.title}</strong>
-                        <span class="journal-mood-badge badge-orange">${j.mood || 'Blessed'}</span>
-                    </div>
-                    <p style="color: var(--text-main); white-space: pre-wrap; margin: 10px 0;">${j.content}</p>
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 8px; font-size: 0.75rem; color: var(--text-muted);">
-                        <span>📅 ${j.created_at}</span>
-                        <button type="button" class="btn btn-danger btn-sm" style="padding: 2px 6px; font-size: 0.7rem;" onclick="V2Discipleship.deleteJournal(${j.id})">Delete</button>
-                    </div>
-                </div>
-            `).join('');
-        } catch (e) { console.error(e); }
-    },
-
-    saveJournal: async function(e) {
-        e.preventDefault();
-        const session = this.getSession();
-        if (!session.member) return alert('Member profile required to save journals.');
-        
-        const payload = {
-            youth_id: session.member.id, title: document.getElementById('journalTitle').value,
-            content: document.getElementById('journalContent').value, mood: document.getElementById('journalMood').value,
-            actor: session.username
-        };
-
-        try {
-            const res = await fetch('/api/journals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (res.ok) { document.getElementById('journalForm').reset(); alert('Private journal saved securely with God.'); this.loadJournals(session.member.id); }
-        } catch (err) { alert("Failed to save journal entry."); }
-    },
-
-    deleteJournal: async function(id) {
-        window.triggerActionConfirmation('Permanently delete this private journal entry?', async () => {
-            try {
-                const res = await fetch(`/api/journals/${id}`, { method: 'DELETE' });
-                const session = this.getSession();
-                if (res.ok && session.member) this.loadJournals(session.member.id);
-            } catch (err) { alert("Failed to delete journal."); }
-        });
-    },
-
-    loadPrayerRequests: async function() {
-        try {
-            const res = await fetch('/api/prayers');
-            const prayers = await res.json();
-            const container = document.getElementById('prayerWallContainer');
-            if (!container) return;
-
-            if (prayers.length === 0) {
-                container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 15px; grid-column: 1 / -1;">No prayer requests shared yet.</p>`;
-                return;
-            }
-
-            const session = this.getSession();
-
-            container.innerHTML = prayers.map(p => `
-                <div class="prayer-card">
-                    <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span class="badge badge-blue">${p.is_anonymous ? 'Anonymous' : (p.author_name || 'Community Member')}</span>
-                            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: bold;">${p.status}</span>
-                        </div>
-                        <h4>${p.title}</h4>
-                        <p>${p.request}</p>
-                    </div>
-                    <div style="border-top: 1px solid var(--border-color); padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 0.75rem; color: var(--text-muted);">${p.created_at}</span>
-                        ${session.member ? `<button type="button" class="btn btn-primary btn-sm" onclick="V2Discipleship.intercede(${p.id})">🙏 Pray</button>` : ''}
-                    </div>
-                </div>
-            `).join('');
-        } catch (e) { console.error(e); }
-    },
-
-    submitPrayer: async function(e) {
-        e.preventDefault();
-        const session = this.getSession();
-        if (!session.member) return alert('Member login required.');
-        const payload = {
-            youth_id: session.member.id, title: document.getElementById('prayerTitle').value,
-            request: document.getElementById('prayerContent').value,
-            is_anonymous: document.getElementById('prayerAnonymous').checked ? 1 : 0, actor: session.username
-        };
-        try {
-            const res = await fetch('/api/prayers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (res.ok) { document.getElementById('prayerForm').reset(); alert('Prayer request shared with the community prayer center.'); this.loadPrayerRequests(); }
-        } catch (err) { alert("Failed to post prayer request."); }
-    },
-
-    intercede: async function(prayerId) {
-        const session = this.getSession();
-        if (!session.member) return;
-        try {
-            const res = await fetch(`/api/prayers/${prayerId}/intercede`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youth_id: session.member.id }) });
-            if (res.ok) alert('Thank you for standing in faith and interceding!');
-        } catch (err) { alert("Network error occurred."); }
-    },
-
-    loadSmallGroups: async function() {
-        try {
-            const res = await fetch('/api/small-groups');
-            const groups = await res.json();
-            const container = document.getElementById('smallGroupsContainer');
-            if (!container) return;
-
-            if (groups.length === 0) {
-                container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 15px;">No small groups active yet.</p>`;
-                return;
-            }
-
-            const session = this.getSession();
-
-            container.innerHTML = groups.map(g => `
-                <div class="card" style="margin-bottom: 15px; box-shadow: none;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                        <div>
-                            <h3 style="color: var(--primary); margin-bottom: 4px; border:none; padding:0;">👥 ${g.name}</h3>
-                            <p style="font-size: 0.85rem; color: var(--text-muted); margin:0;">Leader: ${g.leader_name || 'TBA'} | Schedule: ${g.meeting_schedule || 'Weekly'} | Venue: ${g.venue || 'Online / TBD'}</p>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <span class="badge badge-blue">${g.member_count || 0} Members</span>
-                            ${session.member ? `<button type="button" class="btn btn-primary btn-sm" onclick="V2Discipleship.joinGroup(${g.id})">Join Group</button>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        } catch (e) { console.error(e); }
-    },
-
-    joinGroup: async function(groupId) {
-        const session = this.getSession();
-        if (!session.member) return;
-        try {
-            const res = await fetch(`/api/small-groups/${groupId}/join`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youth_id: session.member.id }) });
-            if (res.ok) { alert('Successfully joined small group!'); this.loadSmallGroups(); }
-            else alert('You are already a member of this small group.');
-        } catch (err) { alert('Network error occurred.'); }
-    },
-
-    switchAdminSubTab: function(tab) {
-        document.getElementById('subTabAdminAnalytics').style.display = tab === 'analytics' ? 'block' : 'none';
-        document.getElementById('subTabAdminPathways').style.display = tab === 'pathways' ? 'block' : 'none';
-        document.getElementById('subTabAdminGroups').style.display = tab === 'groups' ? 'block' : 'none';
-        document.getElementById('btnSubAdminAnalytics').classList.toggle('active', tab === 'analytics');
-        document.getElementById('btnSubAdminPathways').classList.toggle('active', tab === 'pathways');
-        document.getElementById('btnSubAdminGroups').classList.toggle('active', tab === 'groups');
-    },
-
-    loadAdminModule: async function() {
-        await Promise.all([
-            this.loadAdminAnalytics(),
-            this.loadAdminPathways(),
-            this.loadAdminSmallGroups()
-        ]);
-    },
-
-    loadAdminAnalytics: async function() {
-        try {
-            const res = await fetch('/api/discipleship/analytics/stages');
-            if (!res.ok) return;
-            const data = await res.json();
-
-            const ctx = document.getElementById('spiritualStagesChart');
-            if (!ctx) return;
-
-            if (this._spiritualChart) {
-                this._spiritualChart.destroy();
-            }
-
-            const labels = [];
-            const counts = [];
-            const backgroundColors = ['#CBD5E1', '#FF6B00', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
-
-            labels.push('Not Started');
-            counts.push(data.unassigned || 0);
-
-            data.stages.forEach(stage => {
-                labels.push(stage.title);
-                counts.push(stage.user_count);
-            });
-
-            this._spiritualChart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Members in this Stage',
-                        data: counts,
-                        backgroundColor: backgroundColors,
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom' }
-                    }
-                }
-            });
-        } catch (e) {
-            console.error('Failed to load chart analytics', e);
-        }
-    },
-
-    loadAdminPathways: async function() {
-        try {
-            const res = await fetch('/api/discipleship/pathways');
-            const pathways = await res.json();
-            const container = document.getElementById('adminPathwaysList');
-            if(!container) return;
-
-            if(pathways.length === 0) {
-                container.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No pathways created.</p>`;
-                return;
-            }
-
-            container.innerHTML = pathways.map(p => `
-                <div style="border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; background: #FFF;">
-                    <div>
-                        <span class="badge badge-orange" style="margin-bottom: 5px;">Step ${p.step_order}</span>
-                        <strong style="font-size: 1.1rem; color: var(--text-main); display: block;">${p.title}</strong>
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 5px 0 0 0;">${p.description}</p>
-                    </div>
-                    <div>
-                        <button class="btn btn-danger btn-sm" onclick="V2Discipleship.deletePathway(${p.id})">🗑️ Delete</button>
-                    </div>
-                </div>
-            `).join('');
-        } catch(e) { console.error('Failed to load admin pathways', e); }
-    },
-
-    createPathway: async function(e) {
+    createSong: async function(e) {
         e.preventDefault();
         const payload = {
-            title: document.getElementById('pathCreateTitle').value,
-            description: document.getElementById('pathCreateDesc').value,
-            step_order: document.getElementById('pathCreateOrder').value,
+            title: document.getElementById('wsSongTitle').value,
+            artist: document.getElementById('wsSongArtist').value,
+            song_key: document.getElementById('wsSongKey').value,
+            bpm: document.getElementById('wsSongBPM').value,
+            audio_url: document.getElementById('wsSongAudio').value,
+            youtube_url: document.getElementById('wsSongYoutube').value,
+            chord_chart_url: document.getElementById('wsSongChords').value,
             actor: this.getSession().username
         };
-        window.triggerActionConfirmation('Create this new Discipleship Milestone?', async () => {
-            const res = await fetch('/api/discipleship/pathways', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-            if(res.ok) {
-                document.getElementById('createPathwayForm').reset();
-                V2Discipleship.loadAdminPathways();
+        const res = await fetch('/api/worship/songs', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        if (res.ok) {
+            document.getElementById('createSongForm').reset();
+            this.loadSongs();
+        }
+    },
+
+    // NEW: EDIT SONG LOGIC
+    openEditSongModal: function(id) {
+        const s = this._cachedSongs.find(song => song.id === id);
+        if (!s) return;
+        document.getElementById('editSongId').value = s.id;
+        document.getElementById('editSongTitle').value = s.title || '';
+        document.getElementById('editSongArtist').value = s.artist || '';
+        document.getElementById('editSongKey').value = s.song_key || '';
+        document.getElementById('editSongBPM').value = s.bpm || '';
+        document.getElementById('editSongAudio').value = s.audio_url || '';
+        document.getElementById('editSongYoutube').value = s.youtube_url || '';
+        document.getElementById('editSongChords').value = s.chord_chart_url || '';
+        document.getElementById('editSongModal').classList.add('active');
+    },
+
+    closeEditSongModal: function() {
+        document.getElementById('editSongModal').classList.remove('active');
+    },
+
+    saveEditSong: async function(e) {
+        e.preventDefault();
+        const id = document.getElementById('editSongId').value;
+        const payload = {
+            title: document.getElementById('editSongTitle').value,
+            artist: document.getElementById('editSongArtist').value,
+            song_key: document.getElementById('editSongKey').value,
+            bpm: document.getElementById('editSongBPM').value,
+            audio_url: document.getElementById('editSongAudio').value,
+            youtube_url: document.getElementById('editSongYoutube').value,
+            chord_chart_url: document.getElementById('editSongChords').value,
+            actor: this.getSession().username
+        };
+
+        window.triggerActionConfirmation('Save changes to this song?', async () => {
+            const res = await fetch(`/api/worship/songs/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+            if (res.ok) {
+                V3Worship.closeEditSongModal();
+                V3Worship.loadSongs();
             }
         });
     },
 
-    deletePathway: async function(id) {
-        window.triggerActionConfirmation('Permanently delete this pathway? Associated member progress will be removed.', async () => {
-            const res = await fetch(`/api/discipleship/pathways/${id}`, { method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({actor: this.getSession().username}) });
-            if(res.ok) V2Discipleship.loadAdminPathways();
+    deleteSong: async function(id) {
+        window.triggerActionConfirmation('Permanently delete this song? It will be removed from all setlists.', async () => {
+            const res = await fetch(`/api/worship/songs/${id}`, { method: 'DELETE' });
+            if (res.ok) V3Worship.loadSongs();
         });
     },
 
-    filterLeaderSearch: async function() {
-        const q = document.getElementById('sgLeaderSearch').value.toLowerCase().trim();
-        const dropdown = document.getElementById('sgLeaderDropdown');
-        if (q.length < 2) { dropdown.style.display = 'none'; return; }
-        
-        if (!this._cachedDirectory) {
-            try {
-                const res = await fetch('/api/youth');
-                this._cachedDirectory = await res.json();
-            } catch(e) {
-                this._cachedDirectory = [];
-            }
-        }
-
-        const matches = this._cachedDirectory.filter(y => (y.name || '').toLowerCase().includes(q));
-        if (matches.length > 0) {
-            dropdown.innerHTML = matches.map(y => `
-                <div style="padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer;" onclick="V2Discipleship.selectLeader(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')">
-                    <strong style="color:var(--text-main);">${y.name || 'Unknown'}</strong>
-                </div>
-            `).join('');
-            dropdown.style.display = 'block';
-        } else {
-            dropdown.innerHTML = `<div style="padding:10px; color:var(--text-muted);">No matches</div>`;
-            dropdown.style.display = 'block';
-        }
-    },
-
-    selectLeader: function(id, name) {
-        document.getElementById('sgCreateLeaderId').value = id;
-        document.getElementById('sgLeaderSearch').value = name;
-        document.getElementById('sgLeaderDropdown').style.display = 'none';
-    },
-
-    loadAdminSmallGroups: async function() {
+    // ==========================================
+    // SETLIST MANAGEMENT
+    // ==========================================
+    loadSetlists: async function() {
         try {
-            const res = await fetch('/api/small-groups');
-            const groups = await res.json();
-            const container = document.getElementById('adminSmallGroupsList');
-            if(!container) return;
+            const res = await fetch('/api/worship/setlists');
+            const lists = await res.json();
+            const container = document.getElementById('worshipSetlistsContainer');
+            if (!container) return;
 
-            if(groups.length === 0) {
-                container.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No small groups created.</p>`;
+            if (lists.length === 0) {
+                container.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No setlists created yet.</p>`;
                 return;
             }
 
-            container.innerHTML = groups.map(g => `
-                <div style="border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; background: #FFF; flex-wrap: wrap; gap: 10px;">
-                    <div>
-                        <strong style="font-size: 1.1rem; color: var(--primary); display: block;">${g.name}</strong>
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 5px 0 0 0;">Leader: ${g.leader_name || 'None'} | ${g.meeting_schedule} | ${g.venue}</p>
+            container.innerHTML = lists.map(l => `
+                <div class="card" style="margin-bottom: 15px; box-shadow: none; border-color: var(--primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                        <div>
+                            <h3 style="color: var(--primary); margin-bottom: 4px; border:none; padding:0;">📋 ${l.name}</h3>
+                            <p style="font-size: 0.85rem; color: var(--text-muted); margin:0;">Scheduled for: ${l.scheduled_date || 'TBA'}</p>
+                        </div>
+                        <div style="display: flex; gap: 5px;">
+                            <button class="btn btn-outline btn-sm" onclick="V3Worship.openSetlistManager(${l.id}, '${l.name.replace(/'/g, "\\'")}')">Edit Songs</button>
+                            ${window.hasPerm && window.hasPerm('delete_entries') ? `<button class="btn btn-danger btn-sm" onclick="V3Worship.deleteSetlist(${l.id})">🗑️</button>` : ''}
+                        </div>
+                    </div>
+                    <div id="setlist_songs_${l.id}" style="background: var(--bg-light); border-radius: 8px; padding: 10px;">Loading songs...</div>
+                </div>
+            `).join('');
+
+            lists.forEach(l => this.loadSongsForSetlistUI(l.id));
+        } catch (e) { console.error('Failed to load setlists', e); }
+    },
+
+    loadSongsForSetlistUI: async function(setlistId) {
+        try {
+            const res = await fetch(`/api/worship/setlists/${setlistId}/songs`);
+            const songs = await res.json();
+            const container = document.getElementById(`setlist_songs_${setlistId}`);
+            if (!container) return;
+
+            if (songs.length === 0) {
+                container.innerHTML = `<span style="font-size: 0.8rem; color: var(--text-muted);">No songs added to this setlist yet.</span>`;
+                return;
+            }
+
+            container.innerHTML = songs.map((s, index) => {
+                const hasMedia = s.audio_url || s.youtube_url;
+                return `
+                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-color);">
+                    <div style="font-size: 0.9rem; color: var(--text-main);">
+                        <strong>${index + 1}. ${s.title}</strong> <span style="color:var(--text-muted); font-size: 0.8rem;">(Key: ${s.song_key || 'N/A'})</span>
                     </div>
                     <div style="display:flex; gap: 5px;">
-                        <span class="badge badge-blue" style="display:flex; align-items:center;">👥 ${g.member_count} Members</span>
-                        <button class="btn btn-danger btn-sm" onclick="V2Discipleship.deleteSmallGroup(${g.id})">🗑️ Delete</button>
+                        ${hasMedia ? `<button class="btn btn-sm" style="background:transparent; border:none; color:#10B981; cursor:pointer;" onclick="V3Worship.playSong('${s.title.replace(/'/g, "\\'")}', '', '${s.audio_url || ''}', '${s.youtube_url || ''}')">▶</button>` : ''}
+                        ${s.chord_chart_url ? `<a href="${this.formatMediaUrl(s.chord_chart_url)}" target="_blank" style="text-decoration:none; font-size: 0.8rem;">📄</a>` : ''}
                     </div>
                 </div>
-            `).join('');
-        } catch(e) { console.error('Failed to load admin small groups', e); }
+                `;
+            }).join('');
+        } catch (e) { console.error('Failed to load setlist songs', e); }
     },
 
-    createSmallGroup: async function(e) {
+    createSetlist: async function(e) {
         e.preventDefault();
         const payload = {
-            name: document.getElementById('sgCreateName').value,
-            leader_id: document.getElementById('sgCreateLeaderId').value || null,
-            meeting_schedule: document.getElementById('sgCreateSchedule').value,
-            venue: document.getElementById('sgCreateVenue').value,
+            name: document.getElementById('wsSetlistName').value,
+            scheduled_date: document.getElementById('wsSetlistDate').value,
             actor: this.getSession().username
         };
-        window.triggerActionConfirmation('Create this new Small Group?', async () => {
-            const res = await fetch('/api/small-groups', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-            if(res.ok) {
-                document.getElementById('createSmallGroupForm').reset();
-                document.getElementById('sgCreateLeaderId').value = '';
-                V2Discipleship.loadAdminSmallGroups();
-            }
+        const res = await fetch('/api/worship/setlists', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        if (res.ok) {
+            document.getElementById('createSetlistForm').reset();
+            this.loadSetlists();
+        }
+    },
+
+    deleteSetlist: async function(id) {
+        window.triggerActionConfirmation('Permanently delete this setlist?', async () => {
+            const res = await fetch(`/api/worship/setlists/${id}`, { method: 'DELETE' });
+            if (res.ok) V3Worship.loadSetlists();
         });
     },
 
-    deleteSmallGroup: async function(id) {
-        window.triggerActionConfirmation('Permanently delete this small group?', async () => {
-            const res = await fetch(`/api/small-groups/${id}`, { method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({actor: this.getSession().username}) });
-            if(res.ok) V2Discipleship.loadAdminSmallGroups();
-        });
+    openSetlistManager: async function(setlistId, name) {
+        document.getElementById('wsActiveSetlistId').value = setlistId;
+        document.getElementById('wsSetlistModalName').innerText = `Editing: ${name}`;
+        await this.loadSetlistManagerSongs(setlistId);
+        document.getElementById('worshipSetlistModal').classList.add('active');
     },
 
-    loadPastoralOversight: async function(youthId) {
-        try {
-            const res = await fetch(`/api/discipleship/member-progress/${youthId}`);
-            const pathways = await res.json();
-            const container = document.getElementById('modalPastoralHistory');
-            if (!container) return;
+    closeSetlistManager: function() {
+        document.getElementById('worshipSetlistModal').classList.remove('active');
+        this.loadSetlists();
+    },
 
-            if (pathways.length === 0) {
-                container.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No pathways active for this member.</p>`;
-                return;
-            }
+    loadSetlistManagerSongs: async function(setlistId) {
+        const res = await fetch(`/api/worship/setlists/${setlistId}/songs`);
+        const songs = await res.json();
+        const container = document.getElementById('wsModalSongsList');
 
-            container.innerHTML = pathways.map(p => `
-                <div style="background: #FFF; border: 1px solid var(--border-color); border-left: 4px solid #8B5CF6; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <strong style="color:var(--text-main); font-size:1.05rem;">${p.title}</strong>
-                        <span class="badge ${p.status === 'Completed' ? 'badge-green' : 'badge-orange'}">${p.status || 'Pending'}</span>
-                    </div>
-                    <div class="form-group" style="margin-bottom:8px;">
-                        <label style="font-size:0.8rem; color:var(--text-muted);">Pastoral / Growth Notes (Hidden from Member)</label>
-                        <textarea id="pastoralNotes_${p.pathway_id}" class="form-control" rows="2" placeholder="Leave leadership notes on their spiritual progress...">${p.pastoral_notes || ''}</textarea>
-                    </div>
-                    <div style="text-align: right;">
-                        <button class="btn btn-sm" style="background:#8B5CF6; color:#FFF;" onclick="V2Discipleship.savePastoralNotes(${youthId}, ${p.pathway_id}, '${p.status || 'In Progress'}')">💾 Save Notes</button>
-                    </div>
+        if (songs.length === 0) {
+            container.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No songs in this setlist.</p>`;
+            return;
+        }
+
+        container.innerHTML = songs.map(s => `
+            <div style="border-bottom: 1px solid var(--border-color); padding: 10px 0; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong style="color: var(--text-main); font-size: 0.95rem;">${s.title}</strong>
+                    <br><small style="color: var(--text-muted);">Key: ${s.song_key || 'N/A'}</small>
                 </div>
-            `).join('');
-
-        } catch (e) { console.error('Failed to load pastoral oversight', e); }
+                <button class="btn btn-danger btn-sm" onclick="V3Worship.removeSongFromSetlist(${setlistId}, ${s.mapping_id})">🗑️ Remove</button>
+            </div>
+        `).join('');
     },
 
-    savePastoralNotes: async function(youthId, pathwayId, currentStatus) {
-        const notes = document.getElementById(`pastoralNotes_${pathwayId}`).value;
-        const payload = {
-            youth_id: youthId,
-            pathway_id: pathwayId,
-            status: currentStatus,
-            notes: notes,
-            actor: this.getSession().username
-        };
-        window.triggerActionConfirmation('Save private pastoral notes?', async () => {
-            const res = await fetch('/api/discipleship/milestones', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-            if(res.ok) alert('Pastoral notes saved securely.');
+    addSongToActiveSetlist: async function() {
+        const setlistId = document.getElementById('wsActiveSetlistId').value;
+        const songId = document.getElementById('wsSetlistAddSongSelect').value;
+        if (!setlistId || !songId) return alert('Please select a song.');
+
+        const res = await fetch(`/api/worship/setlists/${setlistId}/songs`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({song_id: songId})
         });
+        if (res.ok) {
+            document.getElementById('wsSetlistAddSongSelect').value = '';
+            this.loadSetlistManagerSongs(setlistId);
+        }
+    },
+
+    removeSongFromSetlist: async function(setlistId, mappingId) {
+        const res = await fetch(`/api/worship/setlists/${setlistId}/songs/${mappingId}`, { method: 'DELETE' });
+        if (res.ok) this.loadSetlistManagerSongs(setlistId);
     }
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    V2Discipleship.init();
+    V3Worship.init();
 });
