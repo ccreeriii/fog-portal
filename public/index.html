@@ -5,12 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-
     <title>FIRE OF GOD MINISTRIES - Community Portal</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
     <link rel="stylesheet" href="/css/styles.css">
     <link rel="stylesheet" href="/css/v2-styles.css">
+    <link rel="stylesheet" href="/css/v3-styles.css">
+    <style>
+        .ai-chat-box { display: flex; flex-direction: column; gap: 15px; max-height: 450px; overflow-y: auto; padding: 15px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin-bottom: 15px; }
+        .chat-msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; font-size: 0.95rem; line-height: 1.4; }
+        .chat-user { align-self: flex-end; background: var(--primary); color: #FFF; border-bottom-right-radius: 2px; }
+        .chat-ai { align-self: flex-start; background: #E2E8F0; color: #0F172A; border-bottom-left-radius: 2px; }
+        .ai-pill-btn { background: #FFF; border: 1px solid #10B981; color: #10B981; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; transition: 0.2s; white-space: nowrap; }
+        .ai-pill-btn:hover { background: #10B981; color: #FFF; }
+    </style>
 </head>
 <body>
 
@@ -223,55 +232,27 @@
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Latest 10 daily/hourly database backups. Restoring will auto-backup your current live state first.</p>
             <div id="backupListContainer"></div>
         </div>
-
     </div>
 
-    <div id="discipleshipTab" class="tab-content">
-        <div id="nextStepContainer"></div>
-
-        <div class="card">
-            <h2>Discipleship Pathways & Milestones</h2>
-            <div id="pathwaysListContainer"></div>
-        </div>
-
-        <div class="card">
-            <h2>Private Spiritual Journal</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Record your personal reflections, prayers, and walk with God securely.</p>
-            <form id="journalForm" onsubmit="V2Discipleship.saveJournal(event)">
-                <div class="form-group"><label>Title *</label><input type="text" id="journalTitle" class="form-control" placeholder="e.g. Morning Devotion on Grace" required></div>
-                <div style="display:flex; gap:15px;">
-                    <div class="form-group" style="flex:1;"><label>Mood / State</label><select id="journalMood" class="form-control"><option value="Blessed">Blessed & Grateful</option><option value="Seeking">Seeking Guidance</option><option value="Joyful">Joyful</option><option value="Reflective">Reflective</option></select></div>
-                </div>
-                <div class="form-group"><label>Journal Content *</label><textarea id="journalContent" class="form-control" rows="4" placeholder="Write your thoughts..." required></textarea></div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Save Journal Entry</button>
-            </form>
-            <div id="journalsContainer" style="margin-top: 25px;"></div>
-        </div>
-
-        <div class="card">
-            <h2>Community Prayer Center</h2>
-            <form id="prayerForm" onsubmit="V2Discipleship.submitPrayer(event)">
-                <div class="form-group"><label>Prayer Title *</label><input type="text" id="prayerTitle" class="form-control" required></div>
-                <div class="form-group"><label>Prayer Request / Praise Report *</label><textarea id="prayerContent" class="form-control" rows="3" required></textarea></div>
-                <div class="form-group" style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="prayerAnonymous" style="width:18px;height:18px;"><label for="prayerAnonymous" style="margin:0;">Post Anonymously</label></div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Submit Prayer Request</button>
-            </form>
-            <div id="prayerWallContainer" class="prayer-wall-grid"></div>
-        </div>
-
-        <div class="card">
-            <h2>Small Groups / Connect Groups</h2>
-            <div id="smallGroupsContainer"></div>
-        </div>
-    </div>
-
+    <!-- V2.0 ADMIN DISCIPLESHIP OVERSIGHT TAB -->
     <div id="discipleshipAdminTab" class="tab-content">
         <div class="sub-nav">
-            <button id="btnSubAdminPathways" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('pathways')">🗺️ Pathway Builder</button>
+            <button id="btnSubAdminAnalytics" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('analytics')">📊 Analytics</button>
+            <button id="btnSubAdminPathways" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('pathways')">🗺️ Pathway Builder</button>
             <button id="btnSubAdminGroups" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('groups')">👥 Small Groups Manager</button>
         </div>
 
-        <div id="subTabAdminPathways" class="discipleship-admin-sub-tab active" style="animation: fadeIn 0.3s ease-out;">
+        <div id="subTabAdminAnalytics" class="discipleship-admin-sub-tab active" style="animation: fadeIn 0.3s ease-out;">
+            <div class="card">
+                <h2>Congregation Spiritual Stages</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px;">Visual breakdown of where active members are in their discipleship journey.</p>
+                <div class="chart-wrapper">
+                    <canvas id="spiritualStagesChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="subTabAdminPathways" class="discipleship-admin-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
             <div class="card">
                 <h2>Create New Discipleship Milestone</h2>
                 <form id="createPathwayForm" onsubmit="V2Discipleship.createPathway(event)">
@@ -312,6 +293,118 @@
         </div>
     </div>
 
+    <!-- V2.0 AI MINISTRY ASSISTANT TAB -->
+    <div id="aiAssistantTab" class="tab-content">
+        <div class="card">
+            <h2 style="color: #10B981; display:flex; align-items:center; gap:8px;">🤖 AI Ministry Assistant</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Ask natural language questions about your congregation's data, attendance, and prayer requests.</p>
+            
+            <div id="aiChatHistory" class="ai-chat-box">
+                <div class="chat-msg chat-ai">
+                    Hello! I am your FOG Ministry Assistant. How can I help you support the congregation today?
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 5px;">
+                <button class="ai-pill-btn" onclick="V2Discipleship.setAiPrompt('Who hasn\'t attended recently?')">Who is missing?</button>
+                <button class="ai-pill-btn" onclick="V2Discipleship.setAiPrompt('How many members do we have total?')">Directory Size</button>
+                <button class="ai-pill-btn" onclick="V2Discipleship.setAiPrompt('Show me recent prayer requests.')">Recent Prayers</button>
+            </div>
+
+            <form style="display: flex; gap: 10px;" onsubmit="V2Discipleship.sendAiMessage(event)">
+                <input type="text" id="aiChatInput" class="form-control" placeholder="Type your question here..." required style="flex: 1;">
+                <button type="submit" class="btn btn-primary" style="background: #10B981;">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- V2.0 TRANSFORMATIONAL DISCIPLESHIP ENGINE TAB -->
+    <div id="discipleshipTab" class="tab-content">
+        <div id="verseOfDayContainer"></div>
+        <div id="nextStepContainer"></div>
+
+        <div class="card">
+            <h2>Discipleship Pathways & Milestones</h2>
+            <div id="pathwaysListContainer"></div>
+        </div>
+
+        <div class="card">
+            <h2>Private Spiritual Journal</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Record your personal reflections, prayers, and walk with God securely.</p>
+            <form id="journalForm" onsubmit="V2Discipleship.saveJournal(event)">
+                <div class="form-group"><label>Title *</label><input type="text" id="journalTitle" class="form-control" placeholder="e.g. Morning Devotion on Grace" required></div>
+                <div style="display:flex; gap:15px;">
+                    <div class="form-group" style="flex:1;"><label>Mood / State</label><select id="journalMood" class="form-control"><option value="Blessed">Blessed & Grateful</option><option value="Seeking">Seeking Guidance</option><option value="Joyful">Joyful</option><option value="Reflective">Reflective</option></select></div>
+                </div>
+                <div class="form-group"><label>Journal Content *</label><textarea id="journalContent" class="form-control" rows="4" placeholder="Write your thoughts..." required></textarea></div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Save Journal Entry</button>
+            </form>
+            <div id="journalsContainer" style="margin-top: 25px;"></div>
+        </div>
+
+        <div class="card">
+            <h2>Community Prayer Center</h2>
+            <form id="prayerForm" onsubmit="V2Discipleship.submitPrayer(event)">
+                <div class="form-group"><label>Prayer Title *</label><input type="text" id="prayerTitle" class="form-control" required></div>
+                <div class="form-group"><label>Prayer Request / Praise Report *</label><textarea id="prayerContent" class="form-control" rows="3" required></textarea></div>
+                <div class="form-group" style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="prayerAnonymous" style="width:18px;height:18px;"><label for="prayerAnonymous" style="margin:0;">Post Anonymously</label></div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Submit Prayer Request</button>
+            </form>
+            <div id="prayerWallContainer" class="prayer-wall-grid"></div>
+        </div>
+
+        <div class="card">
+            <h2>Small Groups / Connect Groups</h2>
+            <div id="smallGroupsContainer"></div>
+        </div>
+    </div>
+
+    <!-- NEW V3.0 WORSHIP MEDIA HUB TAB -->
+    <div id="worshipTab" class="tab-content">
+        <div class="sub-nav">
+            <button id="btnSubWorshipLibrary" class="sub-nav-btn active" onclick="V3Worship.switchWorshipSubTab('library')">🎵 Song Library</button>
+            <button id="btnSubWorshipSetlists" class="sub-nav-btn" onclick="V3Worship.switchWorshipSubTab('setlists')">📋 Setlists</button>
+        </div>
+
+        <div id="subTabWorshipLibrary" class="worship-sub-tab active" style="animation: fadeIn 0.3s ease-out;">
+            <div class="card">
+                <h2>Add New Song</h2>
+                <form id="createSongForm" onsubmit="V3Worship.createSong(event)">
+                    <div class="form-group"><label>Song Title *</label><input type="text" id="wsSongTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Artist / Original Writer</label><input type="text" id="wsSongArtist" class="form-control"></div>
+                    <div style="display:flex; gap:15px;">
+                        <div class="form-group" style="flex:1;"><label>Key</label><input type="text" id="wsSongKey" class="form-control" placeholder="e.g. G"></div>
+                        <div class="form-group" style="flex:1;"><label>BPM</label><input type="text" id="wsSongBPM" class="form-control" placeholder="e.g. 72"></div>
+                    </div>
+                    <div class="form-group"><label>Audio MP3/WAV Link (Drive/Dropbox)</label><input type="url" id="wsSongAudio" class="form-control" placeholder="https://..."></div>
+                    <div class="form-group"><label>YouTube Video Link</label><input type="url" id="wsSongYoutube" class="form-control" placeholder="https://youtube.com/watch?..."></div>
+                    <div class="form-group"><label>Chord Chart PDF Link</label><input type="url" id="wsSongChords" class="form-control" placeholder="https://..."></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Add to Library</button>
+                </form>
+            </div>
+            <div class="card">
+                <h2>Worship Library</h2>
+                <div id="worshipLibraryList"></div>
+            </div>
+        </div>
+
+        <div id="subTabWorshipSetlists" class="worship-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+            <div class="card">
+                <h2>Create New Setlist</h2>
+                <form id="createSetlistForm" onsubmit="V3Worship.createSetlist(event)">
+                    <div class="form-group"><label>Setlist Name (Event/Service) *</label><input type="text" id="wsSetlistName" class="form-control" placeholder="e.g. Sunday Youth Service" required></div>
+                    <div class="form-group"><label>Scheduled Date</label><input type="date" id="wsSetlistDate" class="form-control"></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Create Setlist</button>
+                </form>
+            </div>
+            <div class="card">
+                <h2>Active Setlists</h2>
+                <div id="worshipSetlistsContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- V1 Core Tabs -->
     <div id="ministriesTab" class="tab-content">
         <div class="sub-nav">
             <button id="btnSubMinistryList" class="sub-nav-btn active" onclick="switchMinistrySubTab('list')">🏛️ Ministry Directory</button>
@@ -551,6 +644,60 @@
         </div>
     </div>
 
+</div>
+
+<!-- ALL MODALS -->
+
+<!-- WORSHIP SETLIST MANAGER MODAL -->
+<div id="worshipSetlistModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-drag-handle"></div>
+        <span class="close-modal" onclick="V3Worship.closeSetlistManager()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
+        <h2 id="wsSetlistModalName">Editing Setlist</h2>
+        <input type="hidden" id="wsActiveSetlistId">
+        
+        <div class="form-group" style="margin-top: 15px;">
+            <label>Add Song to Setlist</label>
+            <div style="display:flex; gap:10px;">
+                <select id="wsSetlistAddSongSelect" class="form-control"></select>
+                <button type="button" class="btn btn-primary" onclick="V3Worship.addSongToActiveSetlist()">Add</button>
+            </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <h3 style="font-size:1rem; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:10px;">Current Songs</h3>
+            <div id="wsModalSongsList" style="max-height:300px; overflow-y:auto;"></div>
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn btn-primary" onclick="V3Worship.closeSetlistManager()" style="width:100%;">Done</button>
+        </div>
+    </div>
+</div>
+
+<!-- NEW: EDIT SONG MODAL -->
+<div id="editSongModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-drag-handle"></div>
+        <span class="close-modal" onclick="V3Worship.closeEditSongModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
+        <h2>Edit Song</h2>
+        <form id="editSongForm" onsubmit="V3Worship.saveEditSong(event)">
+            <input type="hidden" id="editSongId">
+            <div class="form-group"><label>Song Title *</label><input type="text" id="editSongTitle" class="form-control" required></div>
+            <div class="form-group"><label>Artist / Original Writer</label><input type="text" id="editSongArtist" class="form-control"></div>
+            <div style="display:flex; gap:15px;">
+                <div class="form-group" style="flex:1;"><label>Key</label><input type="text" id="editSongKey" class="form-control"></div>
+                <div class="form-group" style="flex:1;"><label>BPM</label><input type="text" id="editSongBPM" class="form-control"></div>
+            </div>
+            <div class="form-group"><label>Audio MP3/WAV Link</label><input type="url" id="editSongAudio" class="form-control"></div>
+            <div class="form-group"><label>YouTube Video Link</label><input type="url" id="editSongYoutube" class="form-control"></div>
+            <div class="form-group"><label>Chord Chart PDF Link</label><input type="url" id="editSongChords" class="form-control"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="V3Worship.closeEditSongModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <div id="ministryDetailsModal" class="modal">
@@ -810,6 +957,8 @@
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_activity" style="width:20px;height:20px;"> Access "Activity Logs"</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_permissions" style="width:20px;height:20px;"> Access "Add Permissions"</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_discipleship" style="width:20px;height:20px;"> Access "Discipleship Admin"</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_ai" style="width:20px;height:20px;"> Access "AI Assistant"</label>
+                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_worship" style="width:20px;height:20px;"> Access "Worship Hub"</label>
                     <hr style="border:0; border-top:1px solid var(--border-color); margin: 5px 0;">
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: var(--primary);"><input type="checkbox" class="permCheckModal" value="add_entries" style="width:20px;height:20px;"> ➕ Add Entries (Forms, Roles, Walk-ins)</label>
                     <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: #8B5CF6;"><input type="checkbox" class="permCheckModal" value="edit_entries" style="width:20px;height:20px;"> ✏️ Edit Entries (Profiles, Events, Notes)</label>
@@ -1126,6 +1275,19 @@
     </div>
 </div>
 
+<!-- FLOATING WORSHIP PLAYER -->
+<div id="worshipAudioPlayer" class="worship-player-container" style="display:none;">
+    <div class="worship-player-info">
+        <strong id="wpTitle">Song Title</strong>
+        <small id="wpArtist">Artist</small>
+    </div>
+    <div class="worship-player-controls">
+        <audio id="wpAudio" controls controlsList="nodownload" style="display:none;"></audio>
+        <div id="wpYoutubeContainer" style="display:none;"></div>
+    </div>
+    <button class="worship-player-close" onclick="V3Worship.closePlayer()">&times;</button>
+</div>
+
 <script>
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -1137,5 +1299,6 @@
 </script>
 <script src="/js/app.js"></script>
 <script src="/js/v2-discipleship.js"></script>
+<script src="/js/v3-worship.js"></script>
 </body>
 </html>

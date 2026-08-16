@@ -151,6 +151,24 @@ db.serialize(() => {
         UNIQUE(group_id, youth_id)
     )`);
 
+    // V3.0 WORSHIP MEDIA HUB TABLES
+    db.run(`CREATE TABLE IF NOT EXISTS songs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT, artist TEXT, song_key TEXT, bpm TEXT,
+        audio_url TEXT, chord_chart_url TEXT, created_at DATETIME
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS setlists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT, scheduled_date TEXT, created_at DATETIME
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS setlist_songs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        setlist_id INTEGER, song_id INTEGER, sort_order INTEGER,
+        UNIQUE(setlist_id, song_id)
+    )`);
+
     // SCHEMA AUTO-HEALING
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
@@ -164,11 +182,13 @@ db.serialize(() => {
     db.run(`ALTER TABLE event_roles ADD COLUMN sub_role TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN roles_restricted_notes TEXT`, () => {});
     db.run(`ALTER TABLE ministries ADD COLUMN logo TEXT`, () => {});
+    db.run(`ALTER TABLE songs ADD COLUMN youtube_url TEXT`, () => {});
 
+    // Ensure superadmin has ALL permissions
     const superadminPermissions = JSON.stringify([
         'access_checkin', 'access_directory', 'access_events',
         'access_attendance', 'access_activity', 'access_permissions',
-        'access_ministries', 'access_discipleship', 'access_ai',
+        'access_ministries', 'access_discipleship', 'access_ai', 'access_worship',
         'add_entries', 'edit_entries', 'delete_entries'
     ]);
 
@@ -330,7 +350,6 @@ app.post('/api/backups/restore', (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// AUTH & LOGIN
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
     db.get(`SELECT * FROM users WHERE (username = ? OR username = (SELECT email FROM youth WHERE qr_code = ?)) AND password = ?`, [username, username, password], (err, user) => {
@@ -362,7 +381,6 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// YOUTH PROFILES
 app.put('/api/youth/profile/:id', (req, res) => {
     const { name, age, birthday, social_media, parents_name, password, email, profile_picture, actor } = req.body;
     let sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, password=?, email=? WHERE id=?`;
@@ -635,7 +653,6 @@ app.put('/api/events/:event_id/roles/:mapping_id', (req, res) => { db.run(`UPDAT
 app.delete('/api/events/:event_id/roles/:mapping_id', (req, res) => { db.run(`DELETE FROM event_roles WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.get('/api/youth/:id/event_roles', (req, res) => { db.all(`SELECT e.name as event_name, er.role_name, er.sub_role, er.assigned_at, e.event_date FROM event_roles er JOIN events e ON er.event_id = e.id WHERE er.youth_id = ? ORDER BY e.event_date DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 
-
 // ==============================================================================
 // V2.0 DISCIPLESHIP ENGINE
 // ==============================================================================
@@ -712,7 +729,7 @@ app.delete('/api/small-groups/:id', (req, res) => { db.run(`DELETE FROM small_gr
 app.post('/api/small-groups/:id/join', (req, res) => { db.run(`INSERT OR IGNORE INTO small_group_members (group_id, youth_id, joined_at) VALUES (?, ?, ?)`, [req.params.id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
 
 // ==============================================================================
-// V2.0 - AI MINISTRY ASSISTANT (MVP INTENT ENGINE)
+// V2.0 - AI MINISTRY ASSISTANT
 // ==============================================================================
 app.post('/api/ai/chat', (req, res) => {
     const { prompt, actor } = req.body;
@@ -766,6 +783,77 @@ app.post('/api/ai/chat', (req, res) => {
     }, 600);
 });
 
+// ==============================================================================
+// V3.0 - WORSHIP MEDIA HUB
+// ==============================================================================
+app.get('/api/worship/songs', (req, res) => { 
+    db.all(`SELECT * FROM songs ORDER BY title ASC`, [], (err, rows) => { res.json(rows); }); 
+});
+
+app.post('/api/worship/songs', (req, res) => { 
+    const { title, artist, song_key, bpm, audio_url, youtube_url, chord_chart_url, actor } = req.body; 
+    db.run(`INSERT INTO songs (title, artist, song_key, bpm, audio_url, youtube_url, chord_chart_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, 
+    [title, artist, song_key, bpm, audio_url, youtube_url, chord_chart_url, getManilaTime()], function(err) { 
+        if(err) return res.status(500).json({error: err.message});
+        logActivity(actor, 'ADD_SONG', `Added song '${title}' to library`);
+        res.json({ success: true, id: this.lastID }); 
+    }); 
+});
+
+app.put('/api/worship/songs/:id', (req, res) => {
+    const { title, artist, song_key, bpm, audio_url, youtube_url, chord_chart_url, actor } = req.body;
+    db.run(`UPDATE songs SET title=?, artist=?, song_key=?, bpm=?, audio_url=?, youtube_url=?, chord_chart_url=? WHERE id=?`,
+    [title, artist, song_key, bpm, audio_url, youtube_url, chord_chart_url, req.params.id], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        logActivity(actor, 'EDIT_SONG', `Updated song '${title}' in library`);
+        res.json({ success: true });
+    });
+});
+
+app.delete('/api/worship/songs/:id', (req, res) => { 
+    db.run(`DELETE FROM songs WHERE id=?`, [req.params.id], function(err) { 
+        db.run(`DELETE FROM setlist_songs WHERE song_id=?`, [req.params.id]); 
+        res.json({ success: true }); 
+    }); 
+});
+
+app.get('/api/worship/setlists', (req, res) => { 
+    db.all(`SELECT * FROM setlists ORDER BY scheduled_date DESC`, [], (err, rows) => { res.json(rows); }); 
+});
+
+app.post('/api/worship/setlists', (req, res) => { 
+    const { name, scheduled_date, actor } = req.body; 
+    db.run(`INSERT INTO setlists (name, scheduled_date, created_at) VALUES (?, ?, ?)`, [name, scheduled_date, getManilaTime()], function(err) { 
+        logActivity(actor, 'CREATE_SETLIST', `Created setlist '${name}'`);
+        res.json({ success: true, id: this.lastID }); 
+    }); 
+});
+
+app.delete('/api/worship/setlists/:id', (req, res) => { 
+    db.run(`DELETE FROM setlists WHERE id=?`, [req.params.id], function(err) { 
+        db.run(`DELETE FROM setlist_songs WHERE setlist_id=?`, [req.params.id]); 
+        res.json({ success: true }); 
+    }); 
+});
+
+app.get('/api/worship/setlists/:id/songs', (req, res) => { 
+    db.all(`SELECT ss.id as mapping_id, s.* FROM setlist_songs ss JOIN songs s ON ss.song_id = s.id WHERE ss.setlist_id = ? ORDER BY ss.sort_order ASC`, [req.params.id], (err, rows) => { res.json(rows); }); 
+});
+
+app.post('/api/worship/setlists/:id/songs', (req, res) => { 
+    const { song_id } = req.body; 
+    db.get(`SELECT MAX(sort_order) as max_sort FROM setlist_songs WHERE setlist_id = ?`, [req.params.id], (err, row) => { 
+        const nextSort = (row && row.max_sort !== null ? row.max_sort : 0) + 1; 
+        db.run(`INSERT OR IGNORE INTO setlist_songs (setlist_id, song_id, sort_order) VALUES (?, ?, ?)`, [req.params.id, song_id, nextSort], function(err) { 
+            res.json({ success: true }); 
+        }); 
+    }); 
+});
+
+app.delete('/api/worship/setlists/:setlist_id/songs/:mapping_id', (req, res) => { 
+    db.run(`DELETE FROM setlist_songs WHERE id=?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); 
+});
+
 app.listen(PORT, () => {
-    console.log(`Server running safely on Port ${PORT} (V2.0 Core Active with V1 Intact)`);
+    console.log(`Server running safely on Port ${PORT} (V3.0 Worship Media Hub Active)`);
 });
