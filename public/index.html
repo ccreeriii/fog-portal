@@ -166,6 +166,19 @@
         </div>
 
         <div class="card" style="margin-top: 20px;">
+            <h2 style="display:flex; align-items:center; gap:8px;">🔔 Notification Preferences</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Turn on push notifications to receive real-time updates and important alerts directly to your device.</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-light); padding:15px; border-radius:8px; border:1px solid var(--border-color);">
+                <div>
+                    <strong id="notifStatusText" style="color:var(--text-main);">Status: Checking...</strong>
+                    <div id="notifSubtext" style="font-size: 0.75rem; color:var(--text-muted);">Please wait.</div>
+                </div>
+                <button id="notifToggleBtn" class="btn btn-primary btn-sm" onclick="V4Communications.togglePush()">Enable</button>
+            </div>
+            <p id="iosWarning" style="display:none; font-size: 0.75rem; color: #F59E0B; margin-top: 10px;">📱 <strong>iPhone Users:</strong> You must tap "Share" and "Add to Home Screen" first for notifications to work!</p>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
             <h2 style="text-align: left; margin-bottom: 20px;">Personal Profile Details</h2>
             <form onsubmit="handleSelfProfileUpdate(event)">
                 <input type="hidden" id="myMemberId">
