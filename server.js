@@ -146,6 +146,17 @@ db.serialize(() => {
         id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, block_date TEXT, reason TEXT, created_at DATETIME, UNIQUE(youth_id, block_date)
     )`);
 
+    // V6.0 GAMIFICATION & ENGAGEMENT TABLES
+    db.run(`CREATE TABLE IF NOT EXISTS gamification_points (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER UNIQUE, points INTEGER DEFAULT 0, created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS weekly_challenges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, points INTEGER, is_active INTEGER DEFAULT 1, created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS user_challenge_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, challenge_id INTEGER, completed_at DATETIME, UNIQUE(youth_id, challenge_id)
+    )`);
+
     // SCHEMA AUTO-HEALING
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
@@ -196,6 +207,19 @@ db.serialize(() => {
             ];
             const stmt = db.prepare(`INSERT INTO discipleship_pathways (title, description, step_order, created_at) VALUES (?, ?, ?, ?)`);
             defaultSteps.forEach(step => stmt.run([step[0], step[1], step[2], getManilaTime()]));
+            stmt.finalize();
+        }
+    });
+
+    // Auto-Seed Gamification Challenges if empty
+    db.get(`SELECT COUNT(*) as cnt FROM weekly_challenges`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            const defaultChallenges = [
+                ["Read Proverbs 1", "Spend time reading the first chapter of Proverbs and reflecting on wisdom.", 50],
+                ["Pray for a Friend", "Spend 5 minutes praying intentionally for a friend in need.", 30]
+            ];
+            const stmt = db.prepare(`INSERT INTO weekly_challenges (title, description, points, created_at) VALUES (?, ?, ?, ?)`);
+            defaultChallenges.forEach(c => stmt.run([c[0], c[1], c[2], getManilaTime()]));
             stmt.finalize();
         }
     });
@@ -435,6 +459,12 @@ app.post('/api/checkin', (req, res) => {
             if (row) return res.status(400).json({ error: 'Member is ALREADY checked in for this event.' });
             db.run(`INSERT INTO attendance (youth_id, event_id, is_walkin, checked_in_at) VALUES (?, ?, ?, ?)`, [targetYouthId, event_id, is_walkin ? 1 : 0, getManilaTime()], function (err) {
                 logActivity(actor, 'CHECK_IN', `Checked in member ID ${targetYouthId}`);
+
+                // --- V6.0 GAMIFICATION: AUTOMATIC +10 POINTS FOR EVENT CHECK-IN ---
+                db.run(`INSERT INTO gamification_points (youth_id, points, created_at) VALUES (?, 10, ?)
+                        ON CONFLICT(youth_id) DO UPDATE SET points = points + 10`, [targetYouthId, getManilaTime()]);
+                // -------------------------------------------------------------------
+
                 db.get(`SELECT name FROM youth WHERE id = ?`, [targetYouthId], (e, y) => { res.json({ success: true, member_name: y ? y.name : 'Member', youth_id: targetYouthId, log_id: this.lastID }); });
             });
         });
@@ -717,30 +747,19 @@ app.get('/api/communications/history', (req, res) => {
     });
 });
 
-/* THE FIX: DYNAMIC AUTHORIZATION FOR DELETING BROADCASTS */
 app.delete('/api/communications/broadcast/:id', (req, res) => {
     const { actor } = req.body;
-
-    // Immediately pass the superadmin
     if (actor === 'celsocreeriii@gmail.com') {
         executeDelete();
         return;
     }
-
-    // Dynamic Permission Check for other users
     db.get(`SELECT permissions FROM users WHERE username = ?`, [actor], (err, user) => {
         if (err || !user) return res.status(403).json({ error: 'Unauthorized: User not found.' });
-        
         let perms = [];
         try { perms = JSON.parse(user.permissions); } catch(e) {}
-
-        if (perms.includes('delete_entries')) {
-            executeDelete();
-        } else {
-            return res.status(403).json({ error: 'Unauthorized: Missing delete_entries permission.' });
-        }
+        if (perms.includes('delete_entries')) { executeDelete(); } 
+        else { return res.status(403).json({ error: 'Unauthorized: Missing delete_entries permission.' }); }
     });
-
     function executeDelete() {
         db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) {
             if (err) return res.status(500).json({ error: err.message });
@@ -789,6 +808,83 @@ app.delete('/api/communications/inbox/:id', (req, res) => {
     }
 });
 
+// ==============================================================================
+// V6.0 - GAMIFICATION & ENGAGEMENT API ENGINE
+// ==============================================================================
+
+// 1. Get Global Leaderboard
+app.get('/api/gamification/leaderboard', (req, res) => {
+    db.all(`SELECT g.points, y.name, y.profile_picture 
+            FROM gamification_points g 
+            JOIN youth y ON g.youth_id = y.id 
+            ORDER BY g.points DESC LIMIT 10`, [], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+// 2. Get Specific User Points
+app.get('/api/gamification/points/:youth_id', (req, res) => {
+    db.get(`SELECT points FROM gamification_points WHERE youth_id = ?`, [req.params.youth_id], (err, row) => {
+        res.json({ points: row ? row.points : 0 });
+    });
+});
+
+// 3. Get Active Challenges & Check if User Completed Them
+app.get('/api/gamification/challenges', (req, res) => {
+    const youthId = req.query.youth_id;
+    db.all(`SELECT * FROM weekly_challenges WHERE is_active = 1 ORDER BY created_at DESC`, [], (err, challenges) => {
+        if (err || !challenges) return res.json([]);
+        if (!youthId) return res.json(challenges); // If admin/unspecified, just return list
+
+        // Check against user's completion logs
+        db.all(`SELECT challenge_id FROM user_challenge_logs WHERE youth_id = ?`, [youthId], (err2, logs) => {
+            const completedIds = new Set((logs || []).map(l => l.challenge_id));
+            const enrichedChallenges = challenges.map(c => ({
+                ...c,
+                completed: completedIds.has(c.id)
+            }));
+            res.json(enrichedChallenges);
+        });
+    });
+});
+
+// 4. User Completes a Challenge -> Award Points
+app.post('/api/gamification/challenges/:id/complete', (req, res) => {
+    const { youth_id, actor } = req.body;
+    const challengeId = req.params.id;
+
+    // Verify the challenge exists and get its point value
+    db.get(`SELECT points FROM weekly_challenges WHERE id = ? AND is_active = 1`, [challengeId], (err, challenge) => {
+        if (!challenge) return res.status(404).json({ error: 'Challenge not found or inactive.' });
+
+        // Attempt to log completion. (UNIQUE constraint prevents double-dipping)
+        db.run(`INSERT INTO user_challenge_logs (youth_id, challenge_id, completed_at) VALUES (?, ?, ?)`,
+            [youth_id, challengeId, getManilaTime()], function(err) {
+            
+            if (err) return res.status(400).json({ error: 'You have already completed this challenge!' });
+
+            // Successfully logged! Now give them the points.
+            db.run(`INSERT INTO gamification_points (youth_id, points, created_at) VALUES (?, ?, ?)
+                    ON CONFLICT(youth_id) DO UPDATE SET points = points + ?`, 
+                [youth_id, challenge.points, getManilaTime(), challenge.points], function(err2) {
+                
+                logActivity(actor || 'System', 'COMPLETED_CHALLENGE', `User ID ${youth_id} completed Challenge ${challengeId} (+${challenge.points} pts)`);
+                res.json({ success: true, pointsAwarded: challenge.points });
+            });
+        });
+    });
+});
+
+// 5. Admin: Create a New Weekly Challenge
+app.post('/api/gamification/challenges', (req, res) => {
+    const { title, description, points, actor } = req.body;
+    db.run(`INSERT INTO weekly_challenges (title, description, points, created_at) VALUES (?, ?, ?, ?)`,
+        [title, description, points, getManilaTime()], function(err) {
+        logActivity(actor, 'CREATE_CHALLENGE', `Created new challenge '${title}' for ${points} points`);
+        res.json({ success: true, id: this.lastID });
+    });
+});
+
 app.listen(PORT, () => {
-    console.log(`Server running safely on Port ${PORT} (V5.0 Rostering Engine Active)`);
+    console.log(`Server running safely on Port ${PORT} (V6.0 Gamification Engine Active)`);
 });
