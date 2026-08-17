@@ -218,7 +218,6 @@ function bindExecuteAction() {
 }
 bindExecuteAction();
 
-// STRICT GLOBAL PERMISSION EVALUATOR
 window.hasPerm = function(perm) {
     if (currentUser === 'celsocreeriii@gmail.com') return true;
     if (!userPermissions || !Array.isArray(userPermissions)) return false;
@@ -290,9 +289,6 @@ window.closeSidebar = function() {
     document.getElementById('sidebarOverlay').classList.remove('active');
 };
 
-// ==========================================
-// FIXED SIDEBAR NAVIGATION MENU (CLEANED & V8 ARCADE INJECTED)
-// ==========================================
 window.buildNav = function() {
     const sidebar = document.getElementById('sidebarNav');
     const bottomNav = document.getElementById('bottomNav');
@@ -308,8 +304,6 @@ window.buildNav = function() {
 
         sidebarHtml += `<button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
         sidebarHtml += `<button class="nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')">🔔 My Inbox</button>`;
-        
-        // V8: ARCADE TAB ADDITION
         sidebarHtml += `<button class="nav-btn" data-target="arcadeTab" onclick="switchTab('arcadeTab')">🎯 FOG Arcade</button>`;
 
         if (window.hasPerm('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
@@ -337,10 +331,7 @@ window.buildNav = function() {
 
         bottomHtml += `<button class="bottom-nav-btn active" data-target="profileTab" onclick="switchTab('profileTab')"><div class="icon">👤</div>Profile</button>`;
         bottomHtml += `<button class="bottom-nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')"><div class="icon">🔔</div>Inbox</button>`;
-        
-        // V8: ARCADE TAB ADDITION
         bottomHtml += `<button class="bottom-nav-btn" data-target="arcadeTab" onclick="switchTab('arcadeTab')"><div class="icon">🎯</div>Arcade</button>`;
-        
         bottomHtml += `<button class="bottom-nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')"><div class="icon">📖</div>Grow</button>`;
         bottomHtml += `<button class="bottom-nav-btn" onclick="handleLogout()"><div class="icon">🚪</div>Logout</button>`;
 
@@ -394,6 +385,12 @@ window.switchTab = function(tabId) {
     if (tabId === 'activityLogsTab') window.loadActivityLogs();
     if (tabId === 'permissionsTab') window.resetPermUserList();
 
+    if (tabId === 'profileTab') {
+        if (window.V6Gamification && typeof window.V6Gamification.loadMyPoints === 'function') {
+            window.V6Gamification.loadMyPoints();
+        }
+    }
+
     if (tabId === 'profileTab' && currentUser === 'celsocreeriii@gmail.com') {
         document.getElementById('adminBackupCard').style.display = 'block';
         window.loadBackups();
@@ -426,9 +423,6 @@ window.switchAnalyticsSubTab = function(tab) {
     document.getElementById('btnAnalyticsTabRoles').classList.toggle('active', tab === 'roles');
 };
 
-// ==============================================================================
-// MODAL PROFILE TABS & PAGINATION LOGIC
-// ==============================================================================
 window.switchProfileModalTab = function(tab) {
     document.getElementById('profileTabRoles').style.display = tab === 'roles' ? 'block' : 'none';
     document.getElementById('profileTabAttendance').style.display = tab === 'attendance' ? 'block' : 'none';
@@ -625,57 +619,8 @@ window.handleLogout = async function() {
     window.switchTab('loginTab');
 };
 
-window.loadMinistriesAndEventRolesForProfile = async function(youthId, containerId) {
-    const container = document.getElementById(containerId);
-    if(!container) return;
-
-    try {
-        const [minRes, evtRes] = await Promise.all([
-            fetch(`/api/youth/${youthId}/ministries`),
-            fetch(`/api/youth/${youthId}/event_roles`)
-        ]);
-        const ministries = await minRes.json();
-        const eventRoles = await evtRes.json();
-
-        let html = '';
-        if(ministries.length > 0) {
-            html += `<div style="margin-bottom: 10px;">`;
-            ministries.forEach(m => {
-                const combinedRole = `${m.role}${m.sub_role ? ' | ' + m.sub_role : ''}`;
-                html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="color:var(--text-main); font-size: 0.95rem;">🏛️ ${m.ministry_name}</strong>
-                    <span style="font-size:11px; color:var(--primary); background: rgba(255,107,0,0.1); padding: 3px 8px; border-radius: 6px; text-align:right;">${combinedRole}</span>
-                </div>`;
-            });
-            html += `</div>`;
-        }
-
-        if(eventRoles.length > 0) {
-            html += `<div style="margin-top: 10px;">`;
-            eventRoles.forEach(er => {
-                const combinedRole = `${er.role_name}${er.sub_role ? ' | ' + er.sub_role : ''}`;
-                let statusBadge = `<span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px; margin-left:5px;">${combinedRole}</span>`;
-                if(er.status === 'Accepted') statusBadge += ` <span style="font-size:11px; font-weight:bold; color:var(--success); margin-left:5px;">✅ Accepted</span>`;
-                else if(er.status === 'Declined') statusBadge += ` <span style="font-size:11px; font-weight:bold; color:var(--danger); margin-left:5px;">❌ Declined</span>`;
-                else statusBadge += ` <span style="font-size:11px; font-weight:bold; color:#F59E0B; margin-left:5px;">⏳ Pending</span>`;
-
-                html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-                    <div><strong style="color:var(--text-main); font-size: 0.95rem;">📅 ${er.event_name}</strong><br><small style="color:var(--text-muted);">${er.event_date}</small></div>
-                    <div style="text-align: right;">${statusBadge}</div>
-                </div>`;
-            });
-            html += `</div>`;
-        }
-
-        if(html === '') {
-            container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No ministry or event roles assigned yet.</p>`;
-        } else {
-            container.innerHTML = html;
-        }
-    } catch(e) { console.error('Failed to load profile roles', e); }
-};
-
 window.populateProfileTab = async function(member) {
+    currentMember = member;
     document.getElementById('myMemberId').value = member.id;
     document.getElementById('myProfileName').innerText = member.name || 'Member';
     document.getElementById('myProfileCode').innerText = `Unique Pass ID: ${member.qr_code || 'N/A'}`;
@@ -685,6 +630,11 @@ window.populateProfileTab = async function(member) {
     document.getElementById('myEditBirthday').value = member.birthday || '';
     document.getElementById('myEditSocial').value = member.social_media || '';
     document.getElementById('myEditParents').value = member.parents_name || '';
+
+    // Load Gamification 3-tier Points in Profile
+    if (window.V6Gamification && typeof window.V6Gamification.loadMyPoints === 'function') {
+        window.V6Gamification.loadMyPoints();
+    }
 
     const avatar = document.getElementById('myProfileAvatar');
     if (member.profile_picture) {
@@ -714,99 +664,6 @@ window.populateProfileTab = async function(member) {
         document.getElementById('btnMyProfileTabAttendance').classList.toggle('active', tab === 'attendance');
     };
 
-    window.renderMyProfileRoles = function() {
-        const container = document.getElementById('myMinistriesHistory');
-        const paginator = document.getElementById('myRolesPagination');
-        const perPage = 10;
-        const totalPages = Math.ceil(modalRolesData.length / perPage) || 1;
-        const start = (modalRolesPage - 1) * perPage;
-        const paged = modalRolesData.slice(start, start + perPage);
-
-        if (modalRolesData.length === 0) {
-            container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No roles assigned yet.</p>`;
-            paginator.style.display = 'none';
-            return;
-        }
-
-        let html = '';
-        paged.forEach(item => {
-            if (item.type === 'ministry') {
-                const combinedRole = `${item.role}${item.sub_role ? ' | ' + item.sub_role : ''}`;
-                html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="color:var(--text-main); font-size: 0.95rem;">🏛️ ${item.ministry_name}</strong>
-                    <span style="font-size:11px; color:var(--primary); background: rgba(255,107,0,0.1); padding: 3px 8px; border-radius: 6px; text-align:right;">${combinedRole}</span>
-                </div>`;
-            } else {
-                const combinedRole = `${item.role_name}${item.sub_role ? ' | ' + item.sub_role : ''}`;
-                let statusBadge = `<span style="font-size:11px; color:#8B5CF6; background: rgba(139,92,246,0.1); padding: 3px 8px; border-radius: 6px; margin-left:5px;">${combinedRole}</span>`;
-                if(item.status === 'Accepted') statusBadge += ` <span style="font-size:11px; font-weight:bold; color:var(--success); margin-left:5px;">✅ Accepted</span>`;
-                else if(item.status === 'Declined') statusBadge += ` <span style="font-size:11px; font-weight:bold; color:var(--danger); margin-left:5px;">❌ Declined</span>`;
-                else statusBadge += ` <span style="font-size:11px; font-weight:bold; color:#F59E0B; margin-left:5px;">⏳ Pending</span>`;
-
-                html += `<div style="padding: 8px 5px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-                    <div><strong style="color:var(--text-main); font-size: 0.95rem;">📅 ${item.event_name}</strong><br><small style="color:var(--text-muted);">${item.event_date}</small></div>
-                    <div style="text-align: right;">${statusBadge}</div>
-                </div>`;
-            }
-        });
-        container.innerHTML = html;
-
-        if (modalRolesData.length > 10) {
-            paginator.style.display = 'flex';
-            paginator.style.justifyContent = 'center';
-            paginator.style.gap = '10px';
-            paginator.style.alignItems = 'center';
-            paginator.innerHTML = `
-                <button type="button" class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalRolesPage--; renderMyProfileRoles()" ${modalRolesPage === 1 ? 'disabled' : ''}>◀ Prev</button>
-                <span style="font-size: 0.85rem; color: var(--text-main); white-space: nowrap;">${modalRolesPage} of ${totalPages}</span>
-                <button type="button" class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalRolesPage++; renderMyProfileRoles()" ${modalRolesPage === totalPages ? 'disabled' : ''}>Next ▶</button>
-            `;
-        } else {
-            paginator.style.display = 'none';
-        }
-    };
-
-    window.renderMyProfileAttendance = function() {
-        const container = document.getElementById('myAttendanceHistory');
-        const paginator = document.getElementById('myAttendancePagination');
-        const perPage = 10;
-        const totalPages = Math.ceil(modalAttData.length / perPage) || 1;
-        const start = (modalAttPage - 1) * perPage;
-        const paged = modalAttData.slice(start, start + perPage);
-
-        if (modalAttData.length === 0) {
-            container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">No attendance history recorded yet.</p>`;
-            paginator.style.display = 'none';
-            return;
-        }
-
-        container.innerHTML = paged.map(h => `
-            <div style="border-bottom: 1px solid var(--border-color); padding: 10px 5px; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <strong style="color: var(--text-main);">${h.event_name}</strong><br>
-                    <small style="color: var(--text-muted);">📅 ${h.event_date}</small>
-                </div>
-                <div style="text-align: right;">
-                    <span class="badge ${h.is_walkin ? 'badge-orange' : 'badge-blue'}" style="font-size: 0.7rem;">${h.is_walkin ? 'Walk-in' : 'Pre-Reg'}</span><br>
-                    <small style="color: var(--success); font-weight: bold;">${new Date(h.checked_in_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
-                </div>
-            </div>`).join('');
-
-        if (modalAttData.length > 10) {
-            paginator.style.display = 'flex';
-            paginator.style.justifyContent = 'center';
-            paginator.style.gap = '10px';
-            paginator.style.alignItems = 'center';
-            paginator.innerHTML = `
-                <button type="button" class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalAttPage--; renderMyProfileAttendance()" ${modalAttPage === 1 ? 'disabled' : ''}>◀ Prev</button>
-                <span style="font-size: 0.85rem; color: var(--text-main); white-space: nowrap;">${modalAttPage} of ${totalPages}</span>
-                <button type="button" class="btn btn-outline btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="modalAttPage++; renderMyProfileAttendance()" ${modalAttPage === totalPages ? 'disabled' : ''}>Next ▶</button>
-            `;
-        } else {
-            paginator.style.display = 'none';
-        }
-    };
-
     window.loadMySchedule = async function(id) {
         try {
             const [evtRes, blockRes] = await Promise.all([
@@ -816,7 +673,6 @@ window.populateProfileTab = async function(member) {
             const eventRoles = await evtRes.json();
             const blockouts = await blockRes.json();
 
-            // Render Pending Invites
             const pending = eventRoles.filter(r => r.status === 'Pending');
             const pendingContainer = document.getElementById('myPendingInvitesList');
             if (pending.length === 0) {
@@ -837,7 +693,6 @@ window.populateProfileTab = async function(member) {
                 `).join('');
             }
 
-            // Render Blockouts
             const blockContainer = document.getElementById('myBlockoutsList');
             if (blockouts.length === 0) {
                 blockContainer.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:0;">No blockout dates set.</p>';
@@ -868,18 +723,15 @@ window.populateProfileTab = async function(member) {
         eventRoles.forEach(er => modalRolesData.push({type: 'event', ...er}));
 
         modalRolesData.sort((a,b) => {
-    // 1. Prioritize ministry roles over event roles
-    if (a.type === 'ministry' && b.type === 'event') return -1;
-    if (a.type === 'event' && b.type === 'ministry') return 1;
-
-    // 2. Sort by date descending (newest first) for identical types
-    const dateA = new Date(a.assigned_at || a.event_date || 0);
-    const dateB = new Date(b.assigned_at || b.event_date || 0);
-    return dateB - dateA;
-});
+            if (a.type === 'ministry' && b.type === 'event') return -1;
+            if (a.type === 'event' && b.type === 'ministry') return 1;
+            const dateA = new Date(a.assigned_at || a.event_date || 0);
+            const dateB = new Date(b.assigned_at || b.event_date || 0);
+            return dateB - dateA;
+        });
 
         modalRolesPage = 1;
-        window.renderMyProfileRoles();
+        window.renderModalRoles();
         window.loadMySchedule(member.id);
     } catch(e) { console.error('Failed to load profile roles:', e); }
 
@@ -888,7 +740,7 @@ window.populateProfileTab = async function(member) {
         const res = await safeFetch(`/api/youth/${member.id}/history`);
         modalAttData = await res.json();
         modalAttPage = 1;
-        window.renderMyProfileAttendance();
+        window.renderModalAttendance();
     } catch(e) { console.error('Failed to load personal history:', e); }
 
     window.switchMyProfileTab('roles');
@@ -945,6 +797,8 @@ window.populateAdminProfile = function(username) {
     document.getElementById('myQrContainer').innerHTML = `<span class="badge badge-orange" style="font-size: 1.1rem; padding: 12px 20px;">AUTHORIZED LEADER</span>`;
     document.getElementById('myMinistriesHistory').innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">Admin System Account. No roles mapped.</p>`;
     document.getElementById('myAttendanceHistory').innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 10px;">Admin System Account. No check-ins mapped.</p>`;
+    const badgeContainer = document.getElementById('myGamificationBadges');
+    if(badgeContainer) badgeContainer.style.display = 'none';
 };
 
 window.handleSelfProfileUpdate = async function(e) {
@@ -972,37 +826,6 @@ window.handleSelfProfileUpdate = async function(e) {
             window.populateProfileTab(data.member);
         }
     });
-};
-
-window.handlePublicRegistration = async function(e) {
-    e.preventDefault();
-    const fileInput = document.getElementById('regProfilePic');
-    let picBase64 = null;
-    if (fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
-
-    const payload = {
-        name: document.getElementById('regName').value, age: document.getElementById('regAge').value,
-        birthday: document.getElementById('regBirthday').value, email: document.getElementById('regEmail').value,
-        social_media: document.getElementById('regSocial').value, parents_name: document.getElementById('regParents').value,
-        profile_picture: picBase64, actor: currentUser || 'Public Registration'
-    };
-
-    const res = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await res.json();
-
-    if (data.qr_code) {
-        document.getElementById('passMemberName').innerText = payload.name;
-        document.getElementById('passMemberCode').innerText = `Pass ID & Login: ${data.qr_code}`;
-        document.getElementById('qrCanvasContainer').innerHTML = '';
-        QRCode.toDataURL(data.qr_code, { width: 220 }, function (err, url) {
-            const img = document.createElement('img'); img.src = url;
-            document.getElementById('qrCanvasContainer').appendChild(img);
-            document.getElementById('downloadQrBtn').href = url;
-        });
-        document.getElementById('qrPassCard').style.display = 'block';
-        document.getElementById('regForm').reset();
-        youthData = [];
-    }
 };
 
 window.initScanner = function() {
@@ -1677,7 +1500,7 @@ window.assignMinistryRole = async function() {
             document.getElementById('minSubRoleInput').value = '';
             window.loadMinistryRoster(currentMinistryId);
             window.loadMinistries();
-        } else alert(data.error || 'Failed to assign role. (They may already be in this ministry)');
+        } else alert(data.error || 'Failed to assign role.');
     } catch(e) { alert('Connection error.'); }
 };
 
@@ -1921,6 +1744,7 @@ window.openEditEventModal = function(eventId) {
         const elDate = document.getElementById('editEvtDate'); if(elDate) elDate.value = e.event_date || '';
         const elTime = document.getElementById('editEvtTime'); if(elTime) elTime.value = e.time_start || '';
         const elVen = document.getElementById('editEvtVenue'); if(elVen) elVen.value = e.venue || '';
+        const elPts = document.getElementById('editEvtPoints'); if(elPts) elPts.value = e.event_points !== undefined ? e.event_points : 10;
         const elPh = document.getElementById('editEvtPhotosUrl'); if(elPh) elPh.value = e.photos_url || '';
         const elMat = document.getElementById('editEvtMaterialsUrl'); if(elMat) elMat.value = e.materials_url || '';
         const elPos = document.getElementById('editEvtPoster'); if(elPos) elPos.value = '';
@@ -1950,6 +1774,7 @@ window.submitEditEvent = async function() {
         const payload = {
             name: document.getElementById('editEvtName').value, event_date: document.getElementById('editEvtDate').value,
             time_start: document.getElementById('editEvtTime').value, venue: document.getElementById('editEvtVenue').value,
+            event_points: parseInt(document.getElementById('editEvtPoints').value) || 10,
             poster: posterBase64, photos_url: document.getElementById('editEvtPhotosUrl').value,
             materials_url: document.getElementById('editEvtMaterialsUrl').value, actor: currentUser
         };
@@ -1991,7 +1816,7 @@ window.setEventViewMode = function(mode) {
             <div style="border-bottom: 1px solid var(--border-color); padding: 15px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div>
                     <strong style="cursor: pointer; color: var(--primary); font-size: 1.1rem;" onclick="openAnalyticsModal(${e.id})">${safeName}</strong><br>
-                    <small style="color: var(--text-muted); font-size: 0.85rem;">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
+                    <small style="color: var(--text-muted); font-size: 0.85rem;">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'} | 🎫 +${e.event_points || 10} XP</small>
                     ${linkBadges ? `<div style="margin-top: 8px;">${linkBadges}</div>` : ''}
                 </div>
                 <div style="display: flex; gap: 6px;">
@@ -2014,7 +1839,7 @@ window.setEventViewMode = function(mode) {
                 <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
                         <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${safeName}</h3>
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>📍 ${e.venue || 'No Location'}</p>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>📍 ${e.venue || 'No Location'}<br>🎫 +${e.event_points || 10} XP</p>
                         ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
                     </div>
                     <div style="display: flex; gap: 6px; margin-top: 10px;">
@@ -2055,6 +1880,7 @@ window.handleCreateEvent = function(e) {
         const payload = {
             name: document.getElementById('evtName').value, event_date: document.getElementById('evtDate').value,
             time_start: document.getElementById('evtTime').value, venue: document.getElementById('evtVenue').value,
+            event_points: parseInt(document.getElementById('evtPoints').value) || 10,
             poster: posterBase64, photos_url: document.getElementById('evtPhotosUrl').value,
             materials_url: document.getElementById('evtMaterialsUrl').value, actor: currentUser
         };
@@ -2318,7 +2144,7 @@ window.openAnalyticsModal = async function(eventId) {
         }
 
         if(document.getElementById('analyticsEventTitle')) document.getElementById('analyticsEventTitle').innerText = data.event.name || 'Event';
-        if(document.getElementById('analyticsEventMeta')) document.getElementById('analyticsEventMeta').innerText = `📅 Date: ${data.event.event_date || ''} | 📍 Venue: ${data.event.venue || 'N/A'}`;
+        if(document.getElementById('analyticsEventMeta')) document.getElementById('analyticsEventMeta').innerText = `📅 Date: ${data.event.event_date || ''} | 📍 Venue: ${data.event.venue || 'N/A'} | 🎫 +${data.event.event_points || 10} XP`;
 
         let linksHtml = '';
         if(data.event.photos_url) linksHtml += `<a href="${data.event.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration: none;">📷 Photos</a>`;
