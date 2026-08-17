@@ -672,7 +672,7 @@ app.post('/api/communications/broadcast', (req, res) => {
 
             db.all(targetQuery, targetParams, (err, youths) => {
                 if (err) console.error("Broadcast routing error:", err);
-                const usernames = ['celsocreeriii@gmail.com']; 
+                const usernames = ['celsocreeriii@gmail.com'];
 
                 if (youths && youths.length > 0) {
                     const stmt = db.prepare(`INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)`);
@@ -718,17 +718,28 @@ app.get('/api/communications/history', (req, res) => {
     });
 });
 
+app.delete('/api/communications/broadcast/:id', (req, res) => {
+    const { actor } = req.body;
+    if (actor !== 'celsocreeriii@gmail.com') return res.status(403).json({ error: 'Unauthorized' });
+    db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]);
+        logActivity(actor, 'DELETE_BROADCAST', `Deleted global broadcast ID ${req.params.id}`);
+        res.json({ success: true, deleted: this.changes });
+    });
+});
+
 app.get('/api/communications/inbox', (req, res) => {
     const username = req.query.username;
     if (username === 'celsocreeriii@gmail.com') {
-        db.all(`SELECT title, message, created_at FROM announcements ORDER BY created_at DESC LIMIT 50`, [], (err, rows) => {
+        db.all(`SELECT id as notification_id, title, message, author, created_at FROM announcements ORDER BY created_at DESC LIMIT 50`, [], (err, rows) => {
             res.json(rows || []);
         });
         return;
     }
     db.get(`SELECT id FROM youth WHERE qr_code = ?`, [username], (err, youth) => {
         if (!youth) return res.json([]);
-        const sql = `SELECT a.title, a.message, a.created_at
+        const sql = `SELECT n.id as notification_id, a.title, a.message, a.author, a.created_at
                      FROM user_notifications n
                      JOIN announcements a ON n.announcement_id = a.id
                      WHERE n.youth_id = ?
@@ -737,6 +748,23 @@ app.get('/api/communications/inbox', (req, res) => {
             res.json(rows || []);
         });
     });
+});
+
+app.delete('/api/communications/inbox/:id', (req, res) => {
+    const { actor, username } = req.body;
+    if (username === 'celsocreeriii@gmail.com') {
+        db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]);
+            logActivity(actor, 'DELETE_INBOX_MSG', `Admin deleted global broadcast ID ${req.params.id}`);
+            res.json({ success: true });
+        });
+    } else {
+        db.run(`DELETE FROM user_notifications WHERE id = ?`, [req.params.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
+        });
+    }
 });
 
 app.listen(PORT, () => {

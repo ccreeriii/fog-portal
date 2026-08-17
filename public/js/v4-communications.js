@@ -34,7 +34,7 @@ window.V4Communications = {
         // Apple iOS Check
         const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-        
+
         if (isIos && !isStandalone) {
             statusTxt.innerText = "Status: Unavailable";
             statusTxt.style.color = "var(--danger)";
@@ -65,7 +65,7 @@ window.V4Communications = {
             } else {
                 statusTxt.innerText = "Status: Disabled";
                 statusTxt.style.color = "var(--text-main)";
-                
+
                 if (Notification.permission === 'denied') {
                     subTxt.innerText = "Blocked in browser settings.";
                     btn.disabled = true;
@@ -140,7 +140,7 @@ window.V4Communications = {
         const targetSelect = document.getElementById('bcTargetSelect');
         const titleInput = document.getElementById('bcTitle');
         const messageInput = document.getElementById('bcMessage');
-        
+
         if(!targetSelect || !titleInput || !messageInput) return;
 
         const target = targetSelect.value;
@@ -154,7 +154,7 @@ window.V4Communications = {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ target, title, message, actor: currentUser })
                 });
-                
+
                 const data = await res.json();
                 if(data.success) {
                     alert(`Broadcast sent successfully! Delivered to ${data.sentCount} devices.`);
@@ -169,6 +169,26 @@ window.V4Communications = {
         });
     },
 
+    deleteBroadcast: function(id) {
+        window.triggerActionConfirmation('Are you sure you want to permanently delete this broadcast from history?', async () => {
+            try {
+                const res = await fetch(`/api/communications/broadcast/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ actor: currentUser })
+                });
+                const data = await res.json();
+                if(data.success) {
+                    window.V4Communications.loadHistory();
+                } else {
+                    alert('Failed to delete broadcast: ' + (data.error || 'Unauthorized'));
+                }
+            } catch(e) { 
+                alert('Network error deleting broadcast.'); 
+            }
+        });
+    },
+
     loadHistory: async function() {
         const container = document.getElementById('broadcastHistoryContainer');
         if(!container) return;
@@ -179,15 +199,42 @@ window.V4Communications = {
                 container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding: 20px;">No broadcasts sent yet.</p>';
                 return;
             }
-            container.innerHTML = data.map(b => `
+            container.innerHTML = data.map(b => {
+                const delBtn = window.hasPerm('delete_entries') || currentUser === 'celsocreeriii@gmail.com' ? `<button class="btn btn-outline btn-sm" style="margin-left: 10px; border-color: var(--danger); color: var(--danger); padding: 2px 6px; font-size: 0.7rem;" onclick="window.V4Communications.deleteBroadcast(${b.id})">🗑️ Delete</button>` : '';
+                return `
                 <div style="padding:15px; border-bottom:1px solid var(--border-color);">
-                    <strong style="color:var(--text-main); font-size:1.05rem;">${b.title}</strong>
-                    <span class="badge badge-blue" style="float:right;">${b.target}</span>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <strong style="color:var(--text-main); font-size:1.05rem;">${b.title}</strong>
+                        <div>
+                            <span class="badge badge-blue">${b.target}</span>
+                            ${delBtn}
+                        </div>
+                    </div>
                     <p style="font-size:0.9rem; color:var(--text-muted); margin:8px 0;">${b.message}</p>
                     <small style="color:var(--text-muted);">Sent by ${b.sender} on ${b.created_at}</small>
                 </div>
-            `).join('');
+            `}).join('');
         } catch(e) { console.error('Failed to load history'); }
+    },
+
+    deleteInboxMessage: function(id) {
+        window.triggerActionConfirmation('Remove this message from your inbox?', async () => {
+            try {
+                const res = await fetch(`/api/communications/inbox/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ actor: currentUser, username: currentUser })
+                });
+                const data = await res.json();
+                if(data.success) {
+                    window.V4Communications.loadInbox();
+                } else {
+                    alert('Failed to delete message: ' + (data.error || 'Unknown error'));
+                }
+            } catch(e) { 
+                alert('Network error deleting message.'); 
+            }
+        });
     },
 
     loadInbox: async function() {
@@ -201,10 +248,14 @@ window.V4Communications = {
                 return;
             }
             container.innerHTML = data.map(b => `
-                <div style="padding:15px; border-bottom:1px solid var(--border-color); background: #FFF; margin-bottom: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
-                    <strong style="color:var(--primary); font-size:1.05rem;">${b.title}</strong>
+                <div style="padding:15px; border-bottom:1px solid var(--border-color); background: #FFF; margin-bottom: 10px; border-radius: 8px; border: 1px solid var(--border-color); position: relative;">
+                    <button type="button" class="btn btn-outline btn-sm" style="position: absolute; top: 15px; right: 15px; padding: 4px 8px; font-size: 0.8rem; border-color: var(--danger); color: var(--danger);" onclick="window.V4Communications.deleteInboxMessage(${b.notification_id})">🗑️</button>
+                    <strong style="color:var(--primary); font-size:1.05rem; display: block; padding-right: 35px;">${b.title}</strong>
                     <p style="font-size:0.9rem; color:var(--text-main); margin:8px 0;">${b.message}</p>
-                    <small style="color:var(--text-muted);">📅 ${b.created_at}</small>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                        <small style="color:var(--text-muted); font-weight: 600;">👤 Sent by: ${b.author || 'System'}</small>
+                        <small style="color:var(--text-muted);">📅 ${b.created_at}</small>
+                    </div>
                 </div>
             `).join('');
         } catch(e) { console.error('Failed to load inbox'); }
