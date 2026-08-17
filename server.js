@@ -158,18 +158,17 @@ db.serialize(() => {
         id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, challenge_id INTEGER, completed_at DATETIME, UNIQUE(youth_id, challenge_id)
     )`);
 
-    // V7.0/8.0 AI ASSISTANT & AUTOMATION TABLES
+    // V7.0 AI ASSISTANT & AUTOMATION TABLES
     db.run(`CREATE TABLE IF NOT EXISTS ai_chat_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, persona TEXT, prompt TEXT, response TEXT, is_private INTEGER DEFAULT 0, created_at DATETIME
     )`);
     db.run(`CREATE TABLE IF NOT EXISTS ai_communication_drafts (
         id INTEGER PRIMARY KEY AUTOINCREMENT, target_youth_id INTEGER, draft_type TEXT, suggested_message TEXT, status TEXT DEFAULT 'Pending', created_at DATETIME
     )`);
-    db.run(`CREATE TABLE IF NOT EXISTS ai_custom_knowledge (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, keywords TEXT, response TEXT, created_at DATETIME
-    )`);
-    db.run(`CREATE TABLE IF NOT EXISTS ai_unanswered_queries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, prompt TEXT, asked_by TEXT, created_at DATETIME
+
+    // V8.0 ARCADE & MINIGAMES TABLES
+    db.run(`CREATE TABLE IF NOT EXISTS arcade_score_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, game_name TEXT, score INTEGER, played_at DATETIME
     )`);
 
     // SCHEMA AUTO-HEALING
@@ -272,25 +271,30 @@ function pushToUser(youthId, title, message) {
 // ==============================================================================
 cron.schedule('0 9 * * 1', () => { // Runs every Monday at 9:00 AM Manila Time
     console.log('[CRON] Running Weekly Absence Detection & AI Push Drafts...');
-    
+
+    // Calculate the cutoff date (14 days ago)
     const cutoffDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    cutoffDate.setDate(cutoffDate.getDate() - 14); 
+    cutoffDate.setDate(cutoffDate.getDate() - 14);
     const pad = (n) => String(n).padStart(2, '0');
     const cutoffStr = `${cutoffDate.getFullYear()}-${pad(cutoffDate.getMonth()+1)}-${pad(cutoffDate.getDate())} 00:00:00`;
 
+    // Find users whose LAST check-in is older than 14 days, or who have NEVER checked in
     const sql = `
-        SELECT y.id, y.name, MAX(a.checked_in_at) as last_seen 
-        FROM youth y 
-        LEFT JOIN attendance a ON y.id = a.youth_id 
-        GROUP BY y.id 
+        SELECT y.id, y.name, MAX(a.checked_in_at) as last_seen
+        FROM youth y
+        LEFT JOIN attendance a ON y.id = a.youth_id
+        GROUP BY y.id
         HAVING last_seen < ? OR last_seen IS NULL
     `;
 
     db.all(sql, [cutoffStr], (err, rows) => {
         if (err || !rows) return;
-        
+
         rows.forEach(user => {
+            // Future AI Integration: The actual LLM will dynamically write this based on their profile data
+            // For now, the system creates the foundational draft
             const draftMsg = `Hi ${user.name || 'there'}, we've missed you at recent gatherings! Let us know how we can pray for you today.`;
+
             db.run(`INSERT INTO ai_communication_drafts (target_youth_id, draft_type, suggested_message, created_at) VALUES (?, 'Push', ?, ?)`,
                 [user.id, draftMsg, getManilaTime()]
             );
@@ -577,7 +581,7 @@ app.delete('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { d
 app.get('/api/youth/:id/ministries', (req, res) => { db.all(`SELECT m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 
 // ==============================================================================
-// V5.0 EVENT ROLES & BLOCKOUT DATES (VOLUNTEER SCHEDULING)
+// V5.0 EVENT ROLES & BLOCKOUT DATES
 // ==============================================================================
 app.get('/api/events/:id/roles', (req, res) => {
     db.all(`SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, er.status, y.id, y.name, y.qr_code, y.profile_picture FROM event_roles er JOIN youth y ON er.youth_id = y.id WHERE er.event_id = ? ORDER BY er.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); });
@@ -679,144 +683,36 @@ app.delete('/api/small-groups/:id', (req, res) => { db.run(`DELETE FROM small_gr
 app.post('/api/small-groups/:id/join', (req, res) => { db.run(`INSERT OR IGNORE INTO small_group_members (group_id, youth_id, joined_at) VALUES (?, ?, ?)`, [req.params.id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
 
 // ==============================================================================
-// V8.0 AI KNOWLEDGE ENGINE (FUZZY INTENT ROUTER)
+// V7.0 AI ASSISTANT ENDPOINT (Incognito Mode & Personas)
 // ==============================================================================
-async function processAIQuery(q, persona) {
-    // 1. Check Custom Trained Knowledge First (User-created matches)
-    const customKnowledge = await new Promise(res => db.all(`SELECT * FROM ai_custom_knowledge`, [], (err, rows) => res(rows || [])));
-    for (let item of customKnowledge) {
-        const keywords = item.keywords.split(',').map(k => k.trim().toLowerCase());
-        // Fuzzy Match: If ANY of the comma-separated keywords are found in the user's prompt
-        if (keywords.some(kw => q.includes(kw))) {
-            return item.response;
-        }
-    }
-
-    // 2. Advanced Regex Intent Matching (Fuzzy Built-in Logic)
-    
-    // Intent: Missing / Absent
-    if (/(missing|absent|not attend|haven't seen|where is)/i.test(q)) {
-        const rows = await new Promise(res => db.all(`SELECT y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id ORDER BY last_seen ASC LIMIT 10`, [], (err, r) => res(r||[])));
-        let msg = "Here are the members who haven't checked in recently:<br>";
-        rows.forEach(r => msg += `• ${r.name}<br>`);
-        return msg;
-    }
-
-    // Intent: Directory Size / Total Members
-    if (/(total member|how many member|directory size|population)/i.test(q)) {
-        const row = await new Promise(res => db.get(`SELECT count(*) as total FROM youth`, [], (err, r) => res(r)));
-        return `We currently have <strong>${row.total} registered members</strong> in the directory.`;
-    }
-
-    // Intent: Minors / Under 18
-    if (/(under 18|below 18|minors|kids|children)/i.test(q)) {
-        const rows = await new Promise(res => db.all(`SELECT name, age FROM youth WHERE age < 18 ORDER BY age ASC`, [], (err, r) => res(r||[])));
-        if (!rows || rows.length === 0) return "There are currently no registered members under 18 years old.";
-        let msg = `Here are the members under 18 years old (${rows.length} total):<br>`;
-        rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`);
-        return msg;
-    }
-
-    // Intent: Events / Gatherings Planner
-    if (/(event|gathering|upcoming|schedule)/i.test(q)) {
-        const rows = await new Promise(res => db.all(`SELECT name, event_date, time_start FROM events ORDER BY event_date DESC LIMIT 5`, [], (err, r) => res(r||[])));
-        if (!rows || rows.length === 0) return "There are no upcoming events right now.";
-        let msg = "Here are the most recent and upcoming events:<br>";
-        rows.forEach(r => msg += `• <strong>${r.name}</strong> on ${r.event_date} @ ${r.time_start || 'TBA'}<br>`);
-        return msg;
-    }
-
-    // Intent: Ministries / Departments
-    if (/(ministry|ministries|department|team)/i.test(q)) {
-        const rows = await new Promise(res => db.all(`SELECT name, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = ministries.id) as count FROM ministries`, [], (err, r) => res(r||[])));
-        if (!rows || rows.length === 0) return "No ministries have been set up yet.";
-        let msg = "Here are the active ministries and their member counts:<br>";
-        rows.forEach(r => msg += `• <strong>${r.name}</strong> (${r.count} members)<br>`);
-        return msg;
-    }
-
-    // Intent: Check-in / Analytics
-    if (/(check.?in|attendance|turnout|analytics)/i.test(q)) {
-        const event = await new Promise(res => db.get(`SELECT id, name, event_date FROM events ORDER BY event_date DESC LIMIT 1`, [], (err, r) => res(r)));
-        if (!event) return "No events found to analyze.";
-        const stats = await new Promise(res => db.get(`SELECT count(*) as total, sum(case when is_walkin=1 then 1 else 0 end) as walkins FROM attendance WHERE event_id = ?`, [event.id], (err, r) => res(r)));
-        return `At our latest event <strong>${event.name}</strong> (${event.event_date}), we had <strong>${stats.total} total check-ins</strong> (${stats.walkins || 0} walk-ins).`;
-    }
-
-    // Intent: Event Roles
-    if (/(role|volunteer|serve)/i.test(q)) {
-        const rows = await new Promise(res => db.all(`SELECT y.name, er.role_name, e.name as event_name FROM event_roles er JOIN youth y ON er.youth_id = y.id JOIN events e ON er.event_id = e.id ORDER BY er.assigned_at DESC LIMIT 5`, [], (err, r) => res(r||[])));
-        if (!rows || rows.length === 0) return "No roles have been assigned yet.";
-        let msg = "Here are the most recent volunteer assignments:<br>";
-        rows.forEach(r => msg += `• <strong>${r.name}</strong> is serving as <em>${r.role_name}</em> (${r.event_name})<br>`);
-        return msg;
-    }
-
-    // 3. Fallback -> Trigger the Unanswered Flow
-    return null; 
-}
-
-// ----------------------------------------------------
-// AI Chat Endpoint
-// ----------------------------------------------------
-app.post('/api/ai/chat', async (req, res) => {
+app.post('/api/ai/chat', (req, res) => {
     const { prompt, persona, is_private, actor } = req.body;
     const q = (prompt || '').toLowerCase();
 
-    try {
-        let reply = await processAIQuery(q, persona);
-
-        if (!reply) {
-            // UNANSWERED FALLBACK
-            reply = `I'm still learning! I don't have an exact answer for that yet. I've saved your question to my training inbox, and my human leaders will teach me how to answer it soon!`;
-            
-            if (!is_private) {
-                db.run(`INSERT INTO ai_unanswered_queries (prompt, asked_by, created_at) VALUES (?, ?, ?)`,
-                    [prompt, actor || 'System', getManilaTime()]
-                );
-            }
-        }
-
-        // Always log the actual chat unless it's Private
+    const finalizeChat = (reply) => {
         if (!is_private) {
             db.run(`INSERT INTO ai_chat_logs (username, persona, prompt, response, is_private, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
                 [actor || 'System', persona || 'General Assistant', prompt, reply, getManilaTime()]
             );
         }
+        setTimeout(() => { res.json({ response: reply }); }, 600);
+    };
 
-        setTimeout(() => res.json({ response: reply }), 600);
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ response: "I encountered a system error while thinking." });
+    if (q.includes('missing') || q.includes('absent') || q.includes('not attend')) {
+        db.all(`SELECT y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id ORDER BY last_seen ASC LIMIT 10`, [], (err, rows) => {
+            let msg = "Haven't checked in recently:<br>"; rows.forEach(r => msg += `• ${r.name}<br>`);
+            finalizeChat(msg);
+        });
+        return;
     }
-});
+    if (q.includes('how many member') || q.includes('total member')) {
+        db.get(`SELECT count(*) as total FROM youth`, [], (err, row) => {
+            finalizeChat(`We currently have <strong>${row.total} members</strong>.`);
+        });
+        return;
+    }
 
-// ----------------------------------------------------
-// AI Training / Knowledge Base Endpoints (Admin)
-// ----------------------------------------------------
-app.get('/api/ai/unanswered', (req, res) => {
-    db.all(`SELECT * FROM ai_unanswered_queries ORDER BY created_at DESC`, [], (err, rows) => res.json(rows || []));
-});
-
-app.delete('/api/ai/unanswered/:id', (req, res) => {
-    db.run(`DELETE FROM ai_unanswered_queries WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); });
-});
-
-app.get('/api/ai/knowledge', (req, res) => {
-    db.all(`SELECT * FROM ai_custom_knowledge ORDER BY created_at DESC`, [], (err, rows) => res.json(rows || []));
-});
-
-app.post('/api/ai/knowledge', (req, res) => {
-    const { keywords, response, actor } = req.body;
-    db.run(`INSERT INTO ai_custom_knowledge (keywords, response, created_at) VALUES (?, ?, ?)`,
-        [keywords, response, getManilaTime()], function(err) {
-            logActivity(actor, 'TRAIN_AI', `Taught AI a new response for keywords: ${keywords}`);
-            res.json({ success: true, id: this.lastID });
-    });
-});
-
-app.delete('/api/ai/knowledge/:id', (req, res) => {
-    db.run(`DELETE FROM ai_custom_knowledge WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); });
+    finalizeChat(`Hello! I am your <strong>FOG Ministry AI Assistant</strong>. [Persona: ${persona || 'General Assistant'}]${is_private ? ' 🔏 (Incognito Mode Active)' : ''}`);
 });
 
 // V3.0 WORSHIP HUB
@@ -1055,6 +951,40 @@ app.post('/api/gamification/challenges', (req, res) => {
     });
 });
 
+// ==============================================================================
+// V8.0 - ARCADE & MINIGAMES API (WITH LEADERBOARDS)
+// ==============================================================================
+app.post('/api/arcade/submit', (req, res) => {
+    const { youth_id, game_name, score, actor } = req.body;
+    if (!youth_id || !game_name || !score) return res.status(400).json({ error: 'Missing arcade payload data.' });
+
+    db.run(`INSERT INTO arcade_score_logs (youth_id, game_name, score, played_at) VALUES (?, ?, ?, ?)`,
+        [youth_id, game_name, score, getManilaTime()], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            
+            db.run(`INSERT INTO gamification_points (youth_id, points, created_at) VALUES (?, ?, ?)
+                    ON CONFLICT(youth_id) DO UPDATE SET points = points + ?`,
+                [youth_id, score, getManilaTime(), score], function(err2) {
+                    
+                logActivity(actor || 'System', 'ARCADE_SCORE', `User ID ${youth_id} scored ${score} XP on ${game_name}`);
+                res.json({ success: true, pointsAwarded: score });
+            });
+    });
+});
+
+app.get('/api/arcade/leaderboard', (req, res) => {
+    db.all(`
+        SELECT y.name, y.profile_picture, SUM(a.score) as total_score 
+        FROM arcade_score_logs a
+        JOIN youth y ON a.youth_id = y.id
+        GROUP BY a.youth_id
+        ORDER BY total_score DESC
+        LIMIT 10
+    `, [], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
 app.listen(PORT, () => {
-    console.log(`Server running safely on Port ${PORT} (V8.0 AI Knowledge Engine Active)`);
+    console.log(`Server running safely on Port ${PORT} (V8.0 Arcade Active)`);
 });

@@ -14,7 +14,6 @@
     <link rel="stylesheet" href="/css/v3-styles.css">
     <link rel="stylesheet" href="/css/v4-styles.css">
     <style>
-        /* AI Chat Bubbles CSS */
         .ai-chat-box { display: flex; flex-direction: column; gap: 15px; max-height: 450px; overflow-y: auto; padding: 15px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin-bottom: 15px; }
         .chat-msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; font-size: 0.95rem; line-height: 1.4; }
         .chat-user { align-self: flex-end; background: var(--primary); color: #FFF; border-bottom-right-radius: 2px; }
@@ -131,7 +130,6 @@
     </div>
 
     <div id="profileTab" class="tab-content">
-
         <div class="card profile-header-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; padding: 25px;">
             <div class="profile-header-left" style="display: flex; align-items: center; gap: 25px; flex-wrap: wrap;">
                 <div id="myProfileAvatar" class="avatar-circle" style="width: 130px; height: 130px; font-size: 3.5rem;"></div>
@@ -282,6 +280,45 @@
         </div>
     </div>
 
+    <div id="arcadeTab" class="tab-content">
+        <div class="card arcade-hub-card" style="padding: 0; overflow: hidden; border-color: #FF6B00; background: #0F172A;">
+            <div style="padding: 15px 20px; background: linear-gradient(135deg, #FF6B00, #F59E0B); color: #FFF; display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="margin:0; border:none; padding:0; color: #FFF; font-weight: 800; display:flex; align-items:center; gap:10px;">
+                    <span style="font-size: 1.5rem;">🎯</span> FOG ARCADE
+                </h2>
+                <div style="background: rgba(0,0,0,0.3); padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 0.9rem;">
+                    TOTAL XP: <span id="arcadeCurrentXP" style="color: #FEF3C7;">0</span>
+                </div>
+            </div>
+
+            <div class="sub-nav" style="background: #1E293B; border-bottom: 1px solid #334155; margin-bottom: 0; padding: 10px 15px;">
+                <button id="btnArcadeGames" class="sub-nav-btn active" style="color:#FFF;" onclick="V8Arcade.switchTab('games')">🎮 Games</button>
+                <button id="btnArcadeLeaderboard" class="sub-nav-btn" style="color:#FFF;" onclick="V8Arcade.switchTab('leaderboard')">🏆 Arcade Leaderboard</button>
+            </div>
+            
+            <div id="arcadeGamesList" style="padding: 20px;">
+                <p style="color: #CBD5E1; font-size: 0.9rem; margin-bottom: 20px;">Play minigames to earn XP, level up, and boost your standing in the Arcade!</p>
+                <div class="arcade-grid">
+                    <div class="arcade-game-tile" onclick="V8Slingshot.mountGameUI()">
+                        <div class="game-tile-icon">🪨</div>
+                        <div class="game-tile-info">
+                            <h3>David's Slingshot</h3>
+                            <p>Break the blocks of Fear, Pride, and Doubt! 100 Levels of Physics Fun.</p>
+                        </div>
+                        <div class="game-tile-action">PLAY</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="arcadeLeaderboardView" style="display: none; padding: 20px;">
+                <h3 style="color: #F59E0B; margin-bottom: 15px;">Top Arcade Players</h3>
+                <div id="arcadeLeaderboardContainer"></div>
+            </div>
+
+            <div id="arcadeActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
+        </div>
+    </div>
+
     <div id="communicationsAdminTab" class="tab-content">
         <div class="card">
             <h2 style="color: #3B82F6;">📢 Broadcast Engine</h2>
@@ -393,81 +430,46 @@
                 </form>
             </div>
         </div>
-
     </div>
 
     <div id="aiAssistantTab" class="tab-content">
-        <div class="sub-nav">
-            <button id="btnAiSubChat" class="sub-nav-btn active" onclick="V7AIAssistant.switchSubTab('chat')">💬 AI Chat</button>
-            <button id="btnAiSubTrain" class="sub-nav-btn" onclick="V7AIAssistant.switchSubTab('train')">🧠 Train AI</button>
-        </div>
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                <h2 style="color: #10B981; margin: 0; display:flex; align-items:center; gap:8px;">🤖 AI Ministry Assistant</h2>
 
-        <div id="aiSubTabChat" class="ai-sub-tab active" style="animation: fadeIn 0.3s ease-out;">
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
-                    <h2 style="color: #10B981; margin: 0; display:flex; align-items:center; gap:8px;">🤖 AI Ministry Assistant</h2>
-                    <div style="display: flex; align-items: center; gap: 15px;">
-                        <select id="aiPersonaSelect" class="form-control" style="width: auto; margin: 0; padding: 5px 10px;">
-                            <option value="General Assistant">General Assistant</option>
-                            <option value="Youth Pastor">Youth Pastor (Encouraging)</option>
-                            <option value="Senior Pastor">Senior Pastor (Theological)</option>
-                            <option value="Administrator">Administrator (Data-focused)</option>
-                        </select>
-                        <div style="display:flex; align-items:center; gap:5px; background:var(--bg-light); padding:5px 10px; border-radius:8px; border:1px solid var(--border-color);">
-                            <input type="checkbox" id="aiPrivateToggle" style="width:18px;height:18px; margin:0;">
-                            <label for="aiPrivateToggle" style="margin:0; font-size:0.85rem; color:var(--text-muted); cursor:pointer;">Incognito</label>
-                        </div>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <select id="aiPersonaSelect" class="form-control" style="width: auto; margin: 0; padding: 5px 10px;">
+                        <option value="General Assistant">General Assistant</option>
+                        <option value="Youth Pastor">Youth Pastor (Encouraging)</option>
+                        <option value="Senior Pastor">Senior Pastor (Theological)</option>
+                        <option value="Administrator">Administrator (Data-focused)</option>
+                    </select>
+
+                    <div style="display:flex; align-items:center; gap:5px; background:var(--bg-light); padding:5px 10px; border-radius:8px; border:1px solid var(--border-color);">
+                        <input type="checkbox" id="aiPrivateToggle" style="width:18px;height:18px; margin:0;">
+                        <label for="aiPrivateToggle" style="margin:0; font-size:0.85rem; color:var(--text-muted); cursor:pointer;">Incognito (Don't Log)</label>
                     </div>
                 </div>
+            </div>
 
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Ask natural language questions about your congregation's data, attendance, and prayer requests.</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Ask natural language questions about your congregation's data, attendance, and prayer requests.</p>
 
-                <div id="aiChatHistory" class="ai-chat-box">
-                    <div class="chat-msg chat-ai">
-                        Hello! I am your FOG Ministry Assistant. How can I help you support the congregation today?
-                    </div>
+            <div id="aiChatHistory" class="ai-chat-box">
+                <div class="chat-msg chat-ai">
+                    Hello! I am your FOG Ministry Assistant. How can I help you support the congregation today?
                 </div>
-
-                <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 5px;">
-                    <button class="ai-pill-btn" onclick="V7AIAssistant.setPrompt('Who hasn\'t attended recently?')">Who is missing?</button>
-                    <button class="ai-pill-btn" onclick="V7AIAssistant.setPrompt('How many members do we have total?')">Directory Size</button>
-                    <button class="ai-pill-btn" onclick="V7AIAssistant.setPrompt('List all members under 18')">Minors (Under 18)</button>
-                </div>
-
-                <form style="display: flex; gap: 10px;" onsubmit="V7AIAssistant.sendMessage(event)">
-                    <input type="text" id="aiChatInput" class="form-control" placeholder="Type your question here..." required style="flex: 1;">
-                    <button type="submit" class="btn btn-primary" style="background: #10B981;">Send</button>
-                </form>
-            </div>
-        </div>
-
-        <div id="aiSubTabTrain" class="ai-sub-tab" style="display: none; animation: fadeIn 0.3s ease-out;">
-            <div class="card" style="border-color: #F59E0B;">
-                <h2 style="color: #D97706;">📥 Unanswered AI Queries</h2>
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Questions the AI didn't know how to answer. Click "Teach" to add them to the knowledge base.</p>
-                <div id="aiUnansweredList" style="max-height: 250px; overflow-y: auto;"></div>
             </div>
 
-            <div class="card">
-                <h2 style="color: var(--primary);">🧠 Teach AI (Custom Knowledge)</h2>
-                <form id="trainAiForm" onsubmit="V7AIAssistant.teachAI(event)">
-                    <div class="form-group">
-                        <label>Keywords / Trigger Phrases (Comma separated) *</label>
-                        <input type="text" id="trainKeywords" class="form-control" placeholder="e.g. vision, mission, core values" required>
-                        <small style="color:var(--text-muted);">If the user types ANY of these words, the AI will reply with the exact response below.</small>
-                    </div>
-                    <div class="form-group">
-                        <label>AI Response *</label>
-                        <textarea id="trainResponse" class="form-control" rows="4" placeholder="Type the exact answer the AI should give..." required></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">Save to AI Knowledge Base</button>
-                </form>
+            <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 5px;">
+                <button class="ai-pill-btn" onclick="V7AIAssistant.setPrompt('Who hasn\'t attended recently?')">Who is missing?</button>
+                <button class="ai-pill-btn" onclick="V7AIAssistant.setPrompt('How many members do we have total?')">Directory Size</button>
+                <button class="ai-pill-btn" onclick="V7AIAssistant.setPrompt('Show me recent prayer requests.')">Recent Prayers</button>
             </div>
 
-            <div class="card">
-                <h2>📚 Current Knowledge Base</h2>
-                <div id="aiKnowledgeList" style="max-height: 300px; overflow-y: auto;"></div>
-            </div>
+            <form style="display: flex; gap: 10px;" onsubmit="V7AIAssistant.sendMessage(event)">
+                <input type="text" id="aiChatInput" class="form-control" placeholder="Type your question here..." required style="flex: 1;">
+                <button type="submit" class="btn btn-primary" style="background: #10B981;">Send</button>
+            </form>
         </div>
     </div>
 
@@ -1463,5 +1465,6 @@
 <script src="/js/v4-communications.js"></script>
 <script src="/js/v6-gamification.js"></script>
 <script src="/js/v7-ai-assistant.js"></script>
+<script src="/js/v8-slingshot.js"></script>
 </body>
 </html>
