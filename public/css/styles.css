@@ -149,9 +149,9 @@ header {
     -webkit-overflow-scrolling: touch;
     min-height: 52px;
     align-items: center;
-    flex-shrink: 0 !important; /* CRITICAL: completely prevents vertical squeezing by parent modal */
+    flex-shrink: 0 !important;
     position: relative;
-    z-index: 10; /* Elevates above metric grid */
+    z-index: 10;
 }
 
 .sub-nav::-webkit-scrollbar { display: none; }
@@ -172,7 +172,7 @@ header {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0 !important; /* CRITICAL: ensures tab buttons never collapse */
+    flex-shrink: 0 !important;
 }
 .sub-nav-btn:hover { background: var(--bg-light); color: var(--text-main); }
 .sub-nav-btn.active { background: rgba(255,107,0,0.1);
@@ -182,7 +182,7 @@ header {
 .event-sub-tab, .ministry-sub-tab, .analytics-sub-tab, .checkin-sub-tab { 
     display: none; 
     animation: fadeIn 0.3s ease-out;
-    margin-top: 15px; /* FIX: Pushes the 4-card analytics and content significantly lower */
+    margin-top: 15px;
     clear: both;
 }
 .event-sub-tab.active, .ministry-sub-tab.active, .analytics-sub-tab.active, .checkin-sub-tab.active { display: block; }
@@ -192,7 +192,6 @@ header {
 .card h2 { color: var(--text-main); font-size: 1.3rem; margin-bottom: 15px; border-bottom: 2px solid var(--bg-light);
     padding-bottom: 8px; font-weight: 700; }
 
-/* FIX: Forces top sections above tabs to dynamically breathe and expand */
 .card > div:first-child, .modal-content > div:first-child {
     min-height: min-content;
     height: auto !important;
@@ -262,15 +261,44 @@ header {
 .profile-history-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;
 }
 
-/* MODALS TO BOTTOM SHEETS */
+/* =========================================
+   MODALS TO BOTTOM SHEETS
+   ========================================= */
 .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     background: rgba(15,23,42,0.6); z-index: 1000; justify-content: center; align-items: center; padding: 20px; opacity: 0; transition: opacity 0.3s; }
-.modal.active { display: flex;
-    opacity: 1; }
+.modal.active { display: flex; opacity: 1; }
 .modal-content { background: #FFF; border-radius: 16px; width: 100%; max-width: 650px; padding: 26px; box-shadow: 0 20px 40px rgba(0,0,0,0.2);
     max-height: 90vh; overflow-y: auto; transform: scale(0.95); transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1); display: flex; flex-direction: column;
 }
 .modal.active .modal-content { transform: scale(1); }
+
+/* =========================================
+   MODAL Z-INDEX STACKING FIX (THE FIX!)
+   ========================================= */
+/* Base Modals */
+#viewProfileModal,
+#eventAnalyticsModal,
+#ministryDetailsModal {
+    z-index: 1000;
+}
+
+/* Sub-Modals (Must appear strictly over the Base Modals) */
+#editMemberModal,
+#editMinistryModal,
+#editMinistryRoleModal,
+#editEventRoleModal,
+#editAttendanceModal {
+    z-index: 1050 !important;
+}
+
+/* System Overrides */
+#imageViewerModal {
+    z-index: 2000 !important;
+}
+#confirmModal {
+    z-index: 3000 !important;
+}
+
 .modal-summary { background: var(--bg-light); border-left: 4px solid var(--primary); padding: 15px; margin: 20px 0; font-size: 0.95rem;
     border-radius: 0 8px 8px 0; color: var(--text-main); }
 .modal-drag-handle { display: none; width: 40px; height: 5px; background: #CBD5E1; border-radius: 3px;
@@ -288,7 +316,7 @@ header {
 /* 4-CARD ANALYTICS FIX */
 .metric-grid { 
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0;
-    position: relative; z-index: 1; /* Guarantees it stays strictly beneath tabs */
+    position: relative; z-index: 1;
 }
 .metric-card { border-radius: 12px; padding: 18px 8px; text-align: center; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
 .metric-card-clickable { cursor: pointer;
@@ -395,16 +423,14 @@ body.is-offline header { top: 34px; }
     .modal-footer { bottom: calc(-20px - env(safe-area-inset-bottom));
     }
 
-    /* =========================================
-       SUB-NAV TABS UN-CLIPPED MOBILE ADJUSTMENT (ANTI-SQUISH)
-       ========================================= */
+    /* SUB-NAV TABS UN-CLIPPED MOBILE ADJUSTMENT */
     .sub-nav {
         gap: 6px;
         justify-content: space-between;
         flex-wrap: nowrap !important;
         min-height: 52px;
         padding-bottom: 6px;
-        flex-shrink: 0 !important; /* CRITICAL: prevents vertical squeezing */
+        flex-shrink: 0 !important; 
     }
     
     .sub-nav-btn {
@@ -414,6 +440,6 @@ body.is-offline header { top: 34px; }
         text-align: center;
         white-space: nowrap;
         min-height: 44px;
-        flex-shrink: 0 !important; /* CRITICAL: prevents vertical squeezing */
+        flex-shrink: 0 !important; 
     }
 }
