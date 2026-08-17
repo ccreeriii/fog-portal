@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const webpush = require('web-push');
+const cron = require('node-cron');
 const app = express();
 
 // FORCE DISABLE CACHE FOR DEVELOPMENT
@@ -157,6 +158,20 @@ db.serialize(() => {
         id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, challenge_id INTEGER, completed_at DATETIME, UNIQUE(youth_id, challenge_id)
     )`);
 
+    // V7.0/8.0 AI ASSISTANT & AUTOMATION TABLES
+    db.run(`CREATE TABLE IF NOT EXISTS ai_chat_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, persona TEXT, prompt TEXT, response TEXT, is_private INTEGER DEFAULT 0, created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS ai_communication_drafts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, target_youth_id INTEGER, draft_type TEXT, suggested_message TEXT, status TEXT DEFAULT 'Pending', created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS ai_custom_knowledge (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, keywords TEXT, response TEXT, created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS ai_unanswered_queries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, prompt TEXT, asked_by TEXT, created_at DATETIME
+    )`);
+
     // SCHEMA AUTO-HEALING
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
@@ -251,6 +266,44 @@ function pushToUser(youthId, title, message) {
         }
     });
 }
+
+// ==============================================================================
+// V7.0 AI AUTOMATION ENGINE (CRON JOBS)
+// ==============================================================================
+cron.schedule('0 9 * * 1', () => { // Runs every Monday at 9:00 AM Manila Time
+    console.log('[CRON] Running Weekly Absence Detection & AI Push Drafts...');
+    
+    const cutoffDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    cutoffDate.setDate(cutoffDate.getDate() - 14); 
+    const pad = (n) => String(n).padStart(2, '0');
+    const cutoffStr = `${cutoffDate.getFullYear()}-${pad(cutoffDate.getMonth()+1)}-${pad(cutoffDate.getDate())} 00:00:00`;
+
+    const sql = `
+        SELECT y.id, y.name, MAX(a.checked_in_at) as last_seen 
+        FROM youth y 
+        LEFT JOIN attendance a ON y.id = a.youth_id 
+        GROUP BY y.id 
+        HAVING last_seen < ? OR last_seen IS NULL
+    `;
+
+    db.all(sql, [cutoffStr], (err, rows) => {
+        if (err || !rows) return;
+        
+        rows.forEach(user => {
+            const draftMsg = `Hi ${user.name || 'there'}, we've missed you at recent gatherings! Let us know how we can pray for you today.`;
+            db.run(`INSERT INTO ai_communication_drafts (target_youth_id, draft_type, suggested_message, created_at) VALUES (?, 'Push', ?, ?)`,
+                [user.id, draftMsg, getManilaTime()]
+            );
+        });
+
+        if (rows.length > 0) {
+            console.log(`[CRON] Successfully drafted ${rows.length} Push Notification(s) for absent members.`);
+        }
+    });
+}, {
+    scheduled: true,
+    timezone: "Asia/Manila"
+});
 
 // ==============================================================================
 // BASE API & OPEN GRAPH
@@ -534,7 +587,6 @@ app.post('/api/events/:id/roles', (req, res) => {
     const eventId = req.params.id;
     const { youth_id, role_name, sub_role, actor } = req.body;
 
-    // Verify Date against Blockouts
     db.get(`SELECT name, event_date FROM events WHERE id = ?`, [eventId], (err, evt) => {
         if (!evt) return res.status(404).json({ error: 'Event not found.' });
 
@@ -543,7 +595,6 @@ app.post('/api/events/:id/roles', (req, res) => {
                 return res.status(400).json({ error: `Cannot schedule! This member has blocked out ${evt.event_date}. Reason: ${blockout.reason || 'Unavailable'}` });
             }
 
-            // Insert if safe
             db.run(`INSERT INTO event_roles (event_id, youth_id, role_name, sub_role, assigned_at, status) VALUES (?, ?, ?, ?, ?, 'Pending')`,
                 [eventId, youth_id, role_name, sub_role, getManilaTime()], function(err) {
                     if (err) return res.status(500).json({ error: err.message });
@@ -562,7 +613,6 @@ app.get('/api/youth/:id/event_roles', (req, res) => {
     db.all(`SELECT er.id as mapping_id, e.id as event_id, e.name as event_name, er.role_name, er.sub_role, er.assigned_at, er.status, e.event_date FROM event_roles er JOIN events e ON er.event_id = e.id WHERE er.youth_id = ? ORDER BY e.event_date DESC`, [req.params.id], (err, rows) => { res.json(rows); });
 });
 
-// Member Accept/Decline Invite
 app.put('/api/events/:event_id/roles/:mapping_id/status', (req, res) => {
     db.run(`UPDATE event_roles SET status = ? WHERE id = ?`, [req.body.status, req.params.mapping_id], function(err) {
         logActivity(req.body.actor, 'RESPOND_INVITE', `Marked role mapping ${req.params.mapping_id} as ${req.body.status}`);
@@ -628,15 +678,145 @@ app.put('/api/small-groups/:id', (req, res) => { db.run(`UPDATE small_groups SET
 app.delete('/api/small-groups/:id', (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
 app.post('/api/small-groups/:id/join', (req, res) => { db.run(`INSERT OR IGNORE INTO small_group_members (group_id, youth_id, joined_at) VALUES (?, ?, ?)`, [req.params.id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
 
-app.post('/api/ai/chat', (req, res) => {
-    const q = (req.body.prompt || '').toLowerCase();
-    if (q.includes('missing') || q.includes('absent') || q.includes('not attend')) {
-        db.all(`SELECT y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id ORDER BY last_seen ASC LIMIT 10`, [], (err, rows) => {
-            let msg = "Haven't checked in recently:<br>"; rows.forEach(r => msg += `• ${r.name}<br>`); res.json({ response: msg });
-        }); return;
+// ==============================================================================
+// V8.0 AI KNOWLEDGE ENGINE (FUZZY INTENT ROUTER)
+// ==============================================================================
+async function processAIQuery(q, persona) {
+    // 1. Check Custom Trained Knowledge First (User-created matches)
+    const customKnowledge = await new Promise(res => db.all(`SELECT * FROM ai_custom_knowledge`, [], (err, rows) => res(rows || [])));
+    for (let item of customKnowledge) {
+        const keywords = item.keywords.split(',').map(k => k.trim().toLowerCase());
+        // Fuzzy Match: If ANY of the comma-separated keywords are found in the user's prompt
+        if (keywords.some(kw => q.includes(kw))) {
+            return item.response;
+        }
     }
-    if (q.includes('how many member') || q.includes('total member')) { db.get(`SELECT count(*) as total FROM youth`, [], (err, row) => { res.json({ response: `We currently have <strong>${row.total} members</strong>.` }); }); return; }
-    setTimeout(() => { res.json({ response: `Hello! I am your <strong>FOG Ministry AI Assistant</strong>.` }); }, 600);
+
+    // 2. Advanced Regex Intent Matching (Fuzzy Built-in Logic)
+    
+    // Intent: Missing / Absent
+    if (/(missing|absent|not attend|haven't seen|where is)/i.test(q)) {
+        const rows = await new Promise(res => db.all(`SELECT y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id ORDER BY last_seen ASC LIMIT 10`, [], (err, r) => res(r||[])));
+        let msg = "Here are the members who haven't checked in recently:<br>";
+        rows.forEach(r => msg += `• ${r.name}<br>`);
+        return msg;
+    }
+
+    // Intent: Directory Size / Total Members
+    if (/(total member|how many member|directory size|population)/i.test(q)) {
+        const row = await new Promise(res => db.get(`SELECT count(*) as total FROM youth`, [], (err, r) => res(r)));
+        return `We currently have <strong>${row.total} registered members</strong> in the directory.`;
+    }
+
+    // Intent: Minors / Under 18
+    if (/(under 18|below 18|minors|kids|children)/i.test(q)) {
+        const rows = await new Promise(res => db.all(`SELECT name, age FROM youth WHERE age < 18 ORDER BY age ASC`, [], (err, r) => res(r||[])));
+        if (!rows || rows.length === 0) return "There are currently no registered members under 18 years old.";
+        let msg = `Here are the members under 18 years old (${rows.length} total):<br>`;
+        rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`);
+        return msg;
+    }
+
+    // Intent: Events / Gatherings Planner
+    if (/(event|gathering|upcoming|schedule)/i.test(q)) {
+        const rows = await new Promise(res => db.all(`SELECT name, event_date, time_start FROM events ORDER BY event_date DESC LIMIT 5`, [], (err, r) => res(r||[])));
+        if (!rows || rows.length === 0) return "There are no upcoming events right now.";
+        let msg = "Here are the most recent and upcoming events:<br>";
+        rows.forEach(r => msg += `• <strong>${r.name}</strong> on ${r.event_date} @ ${r.time_start || 'TBA'}<br>`);
+        return msg;
+    }
+
+    // Intent: Ministries / Departments
+    if (/(ministry|ministries|department|team)/i.test(q)) {
+        const rows = await new Promise(res => db.all(`SELECT name, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = ministries.id) as count FROM ministries`, [], (err, r) => res(r||[])));
+        if (!rows || rows.length === 0) return "No ministries have been set up yet.";
+        let msg = "Here are the active ministries and their member counts:<br>";
+        rows.forEach(r => msg += `• <strong>${r.name}</strong> (${r.count} members)<br>`);
+        return msg;
+    }
+
+    // Intent: Check-in / Analytics
+    if (/(check.?in|attendance|turnout|analytics)/i.test(q)) {
+        const event = await new Promise(res => db.get(`SELECT id, name, event_date FROM events ORDER BY event_date DESC LIMIT 1`, [], (err, r) => res(r)));
+        if (!event) return "No events found to analyze.";
+        const stats = await new Promise(res => db.get(`SELECT count(*) as total, sum(case when is_walkin=1 then 1 else 0 end) as walkins FROM attendance WHERE event_id = ?`, [event.id], (err, r) => res(r)));
+        return `At our latest event <strong>${event.name}</strong> (${event.event_date}), we had <strong>${stats.total} total check-ins</strong> (${stats.walkins || 0} walk-ins).`;
+    }
+
+    // Intent: Event Roles
+    if (/(role|volunteer|serve)/i.test(q)) {
+        const rows = await new Promise(res => db.all(`SELECT y.name, er.role_name, e.name as event_name FROM event_roles er JOIN youth y ON er.youth_id = y.id JOIN events e ON er.event_id = e.id ORDER BY er.assigned_at DESC LIMIT 5`, [], (err, r) => res(r||[])));
+        if (!rows || rows.length === 0) return "No roles have been assigned yet.";
+        let msg = "Here are the most recent volunteer assignments:<br>";
+        rows.forEach(r => msg += `• <strong>${r.name}</strong> is serving as <em>${r.role_name}</em> (${r.event_name})<br>`);
+        return msg;
+    }
+
+    // 3. Fallback -> Trigger the Unanswered Flow
+    return null; 
+}
+
+// ----------------------------------------------------
+// AI Chat Endpoint
+// ----------------------------------------------------
+app.post('/api/ai/chat', async (req, res) => {
+    const { prompt, persona, is_private, actor } = req.body;
+    const q = (prompt || '').toLowerCase();
+
+    try {
+        let reply = await processAIQuery(q, persona);
+
+        if (!reply) {
+            // UNANSWERED FALLBACK
+            reply = `I'm still learning! I don't have an exact answer for that yet. I've saved your question to my training inbox, and my human leaders will teach me how to answer it soon!`;
+            
+            if (!is_private) {
+                db.run(`INSERT INTO ai_unanswered_queries (prompt, asked_by, created_at) VALUES (?, ?, ?)`,
+                    [prompt, actor || 'System', getManilaTime()]
+                );
+            }
+        }
+
+        // Always log the actual chat unless it's Private
+        if (!is_private) {
+            db.run(`INSERT INTO ai_chat_logs (username, persona, prompt, response, is_private, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
+                [actor || 'System', persona || 'General Assistant', prompt, reply, getManilaTime()]
+            );
+        }
+
+        setTimeout(() => res.json({ response: reply }), 600);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ response: "I encountered a system error while thinking." });
+    }
+});
+
+// ----------------------------------------------------
+// AI Training / Knowledge Base Endpoints (Admin)
+// ----------------------------------------------------
+app.get('/api/ai/unanswered', (req, res) => {
+    db.all(`SELECT * FROM ai_unanswered_queries ORDER BY created_at DESC`, [], (err, rows) => res.json(rows || []));
+});
+
+app.delete('/api/ai/unanswered/:id', (req, res) => {
+    db.run(`DELETE FROM ai_unanswered_queries WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); });
+});
+
+app.get('/api/ai/knowledge', (req, res) => {
+    db.all(`SELECT * FROM ai_custom_knowledge ORDER BY created_at DESC`, [], (err, rows) => res.json(rows || []));
+});
+
+app.post('/api/ai/knowledge', (req, res) => {
+    const { keywords, response, actor } = req.body;
+    db.run(`INSERT INTO ai_custom_knowledge (keywords, response, created_at) VALUES (?, ?, ?)`,
+        [keywords, response, getManilaTime()], function(err) {
+            logActivity(actor, 'TRAIN_AI', `Taught AI a new response for keywords: ${keywords}`);
+            res.json({ success: true, id: this.lastID });
+    });
+});
+
+app.delete('/api/ai/knowledge/:id', (req, res) => {
+    db.run(`DELETE FROM ai_custom_knowledge WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); });
 });
 
 // V3.0 WORSHIP HUB
@@ -757,7 +937,7 @@ app.delete('/api/communications/broadcast/:id', (req, res) => {
         if (err || !user) return res.status(403).json({ error: 'Unauthorized: User not found.' });
         let perms = [];
         try { perms = JSON.parse(user.permissions); } catch(e) {}
-        if (perms.includes('delete_entries')) { executeDelete(); } 
+        if (perms.includes('delete_entries')) { executeDelete(); }
         else { return res.status(403).json({ error: 'Unauthorized: Missing delete_entries permission.' }); }
     });
     function executeDelete() {
@@ -811,32 +991,27 @@ app.delete('/api/communications/inbox/:id', (req, res) => {
 // ==============================================================================
 // V6.0 - GAMIFICATION & ENGAGEMENT API ENGINE
 // ==============================================================================
-
-// 1. Get Global Leaderboard
 app.get('/api/gamification/leaderboard', (req, res) => {
-    db.all(`SELECT g.points, y.name, y.profile_picture 
-            FROM gamification_points g 
-            JOIN youth y ON g.youth_id = y.id 
+    db.all(`SELECT g.points, y.name, y.profile_picture
+            FROM gamification_points g
+            JOIN youth y ON g.youth_id = y.id
             ORDER BY g.points DESC LIMIT 10`, [], (err, rows) => {
         res.json(rows || []);
     });
 });
 
-// 2. Get Specific User Points
 app.get('/api/gamification/points/:youth_id', (req, res) => {
     db.get(`SELECT points FROM gamification_points WHERE youth_id = ?`, [req.params.youth_id], (err, row) => {
         res.json({ points: row ? row.points : 0 });
     });
 });
 
-// 3. Get Active Challenges & Check if User Completed Them
 app.get('/api/gamification/challenges', (req, res) => {
     const youthId = req.query.youth_id;
     db.all(`SELECT * FROM weekly_challenges WHERE is_active = 1 ORDER BY created_at DESC`, [], (err, challenges) => {
         if (err || !challenges) return res.json([]);
-        if (!youthId) return res.json(challenges); // If admin/unspecified, just return list
+        if (!youthId) return res.json(challenges);
 
-        // Check against user's completion logs
         db.all(`SELECT challenge_id FROM user_challenge_logs WHERE youth_id = ?`, [youthId], (err2, logs) => {
             const completedIds = new Set((logs || []).map(l => l.challenge_id));
             const enrichedChallenges = challenges.map(c => ({
@@ -848,26 +1023,22 @@ app.get('/api/gamification/challenges', (req, res) => {
     });
 });
 
-// 4. User Completes a Challenge -> Award Points
 app.post('/api/gamification/challenges/:id/complete', (req, res) => {
     const { youth_id, actor } = req.body;
     const challengeId = req.params.id;
 
-    // Verify the challenge exists and get its point value
     db.get(`SELECT points FROM weekly_challenges WHERE id = ? AND is_active = 1`, [challengeId], (err, challenge) => {
         if (!challenge) return res.status(404).json({ error: 'Challenge not found or inactive.' });
 
-        // Attempt to log completion. (UNIQUE constraint prevents double-dipping)
         db.run(`INSERT INTO user_challenge_logs (youth_id, challenge_id, completed_at) VALUES (?, ?, ?)`,
             [youth_id, challengeId, getManilaTime()], function(err) {
-            
+
             if (err) return res.status(400).json({ error: 'You have already completed this challenge!' });
 
-            // Successfully logged! Now give them the points.
             db.run(`INSERT INTO gamification_points (youth_id, points, created_at) VALUES (?, ?, ?)
-                    ON CONFLICT(youth_id) DO UPDATE SET points = points + ?`, 
+                    ON CONFLICT(youth_id) DO UPDATE SET points = points + ?`,
                 [youth_id, challenge.points, getManilaTime(), challenge.points], function(err2) {
-                
+
                 logActivity(actor || 'System', 'COMPLETED_CHALLENGE', `User ID ${youth_id} completed Challenge ${challengeId} (+${challenge.points} pts)`);
                 res.json({ success: true, pointsAwarded: challenge.points });
             });
@@ -875,7 +1046,6 @@ app.post('/api/gamification/challenges/:id/complete', (req, res) => {
     });
 });
 
-// 5. Admin: Create a New Weekly Challenge
 app.post('/api/gamification/challenges', (req, res) => {
     const { title, description, points, actor } = req.body;
     db.run(`INSERT INTO weekly_challenges (title, description, points, created_at) VALUES (?, ?, ?, ?)`,
@@ -886,5 +1056,5 @@ app.post('/api/gamification/challenges', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running safely on Port ${PORT} (V6.0 Gamification Engine Active)`);
+    console.log(`Server running safely on Port ${PORT} (V8.0 AI Knowledge Engine Active)`);
 });
