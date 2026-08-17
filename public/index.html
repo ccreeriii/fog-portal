@@ -280,8 +280,7 @@
         </div>
     </div>
 
-    <!-- V8.0 ARCADE HUB DASHBOARD (LIGHT MODE) -->
-    <div id="arcadeTab" class="tab-content">
+        <div id="arcadeTab" class="tab-content">
         <div class="card arcade-hub-card" style="padding: 0; overflow: hidden; border-color: var(--primary); background: var(--card-bg);">
             <div style="padding: 15px 20px; background: linear-gradient(135deg, #FF6B00, #F59E0B); color: #FFF; display: flex; justify-content: space-between; align-items: center;">
                 <h2 style="margin:0; border:none; padding:0; color: #FFF; font-weight: 800; display:flex; align-items:center; gap:10px;">
@@ -292,63 +291,65 @@
                 </div>
             </div>
 
-            <!-- Arcade Sub-Navigation -->
-            <div class="sub-nav" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); margin-bottom: 0; padding: 10px 15px;">
+                        <div class="sub-nav" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); margin-bottom: 0; padding: 10px 15px;">
                 <button id="btnArcadeGames" class="sub-nav-btn active" onclick="V8Arcade.switchTab('games')">🎮 Games</button>
                 <button id="btnArcadeLeaderboard" class="sub-nav-btn" onclick="V8Arcade.switchTab('leaderboard')">🏆 Arcade Leaderboard</button>
             </div>
-            
+
             <div id="arcadeGamesList" style="padding: 20px;">
                 <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">Play minigames to earn XP, level up, and boost your standing in the Arcade!</p>
+                
+                <div class="arcade-featured-game" onclick="V8JonahsDive.mountGameUI()">
+                    <div class="featured-banner">
+                        <div class="featured-badge">⭐ NEW & FEATURED</div>
+                        <div class="game-tile-icon" style="font-size: 5rem; padding: 10px 0; display: inline-block;">🐋</div>
+                    </div>
+                    <div class="featured-info">
+                        <h3>Jonah's Deep Sea Dive</h3>
+                        <p>Hold to swim up, release to sink! Dodge the anchors and survive the deep sea.</p>
+                        <div class="featured-action">PLAY NOW</div>
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: center; justify-content: space-between; margin: 25px 0 15px 0; border-bottom: 2px solid var(--border-color); padding-bottom: 8px;">
+                    <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-main); font-weight: 800;">More Arcade Games</h3>
+                </div>
+
                 <div class="arcade-grid">
-                    <!-- GAME 1: DAVID'S SLINGSHOT -->
-                    <div class="arcade-game-tile" onclick="V8Slingshot.mountGameUI()">
+                                        <div class="arcade-game-tile" onclick="V8Slingshot.mountGameUI()">
                         <div class="game-tile-icon">🪨</div>
                         <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">David's Slingshot</h3>
-                            <p style="color: var(--text-muted);">Break the blocks of Fear, Pride, and Doubt! 50 Levels of Physics Fun.</p>
+                            <h3>David's Slingshot</h3>
+                            <p>Break blocks of Fear & Pride!</p>
                         </div>
                         <div class="game-tile-action">PLAY</div>
                     </div>
 
-                    <!-- GAME 2: NOAH'S ARK -->
-                    <div class="arcade-game-tile" onclick="V8NoahsArk.mountGameUI()">
+                                        <div class="arcade-game-tile" onclick="V8NoahsArk.mountGameUI()">
                         <div class="game-tile-icon">🚢</div>
                         <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Noah's Ark: Rescue</h3>
-                            <p style="color: var(--text-muted);">Control Noah to save the animals before the flood! Grid puzzle for Minis.</p>
+                            <h3>Noah's Ark</h3>
+                            <p>Save the animals before the flood!</p>
                         </div>
                         <div class="game-tile-action" style="background: #10B981;">PLAY</div>
                     </div>
 
-                    <!-- GAME 3: MOSES' RED SEA DASH -->
-                    <div class="arcade-game-tile" onclick="V8RedSea.mountGameUI()">
+                                        <div class="arcade-game-tile" onclick="V8RedSea.mountGameUI()">
                         <div class="game-tile-icon">🌊</div>
                         <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Moses' Red Sea Dash</h3>
-                            <p style="color: var(--text-muted);">Dodge chariots, leap over rocks, and collect Manna in a 3-lane runner!</p>
+                            <h3>Red Sea Dash</h3>
+                            <p>Dodge chariots in a 3-lane runner!</p>
                         </div>
                         <div class="game-tile-action" style="background: #3B82F6;">PLAY</div>
                     </div>
 
-                    <!-- GAME 4: PETER'S LEAP OF FAITH -->
-                    <div class="arcade-game-tile" onclick="V8PetersLeap.mountGameUI()">
+                                        <div class="arcade-game-tile" onclick="V8PetersLeap.mountGameUI()">
                         <div class="game-tile-icon">🚶‍♂️</div>
                         <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Peter's Leap of Faith</h3>
-                            <p style="color: var(--text-muted);">Bounce on waves and rocks! Keep your eyes on Jesus to reach new heights.</p>
+                            <h3>Leap of Faith</h3>
+                            <p>Bounce on waves! Eyes on Jesus.</p>
                         </div>
                         <div class="game-tile-action" style="background: #8B5CF6;">PLAY</div>
-                    </div>
-
-                    <!-- GAME 5: JONAH'S DEEP SEA DIVE (NEW!) -->
-                    <div class="arcade-game-tile" onclick="V8JonahsDive.mountGameUI()">
-                        <div class="game-tile-icon">🐋</div>
-                        <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Jonah's Deep Sea Dive</h3>
-                            <p style="color: var(--text-muted);">Hold to swim up, release to sink! Dodge the anchors and survive the deep.</p>
-                        </div>
-                        <div class="game-tile-action" style="background: #0284C7;">PLAY</div>
                     </div>
                 </div>
             </div>
@@ -358,13 +359,11 @@
                 <div id="arcadeLeaderboardContainer"></div>
             </div>
 
-            <!-- CANVAS CONTAINER -->
-            <div id="arcadeActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
+                        <div id="arcadeActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
         </div>
     </div>
 
-    <!-- V1.0-V7.0 Admin & System Tabs Restored -->
-    <div id="communicationsAdminTab" class="tab-content">
+        <div id="communicationsAdminTab" class="tab-content">
         <div class="card">
             <h2 style="color: #3B82F6;">📢 Broadcast Engine</h2>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Send targeted announcements and push notifications to specific groups or the entire congregation.</p>
@@ -862,7 +861,6 @@
 
 </div>
 
-<!-- System Modals -->
 <div id="confirmModal" class="modal" style="z-index: 9999;">
     <div class="modal-content" style="max-width: 400px; text-align: center;">
         <div class="modal-drag-handle"></div>
@@ -983,7 +981,7 @@
                 <select id="wsSetlistAddSongSelect" class="form-control"></select>
                 <button type="button" class="btn btn-primary" onclick="V3Worship.addSongToActiveSetlist()">Add</button>
             </div>
-        </div>
+            </div>
 
         <div style="margin-top: 20px;">
             <h3 style="font-size:1rem; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:10px;">Current Songs</h3>
@@ -1038,7 +1036,7 @@
             <button class="btn btn-secondary" onclick="closeEditEventRoleModal()">Cancel</button>
             <button class="btn btn-primary" onclick="saveEventRoleEdit()">Save Changes</button>
         </div>
-    </div>
+        </div>
 </div>
 
 <div id="editMinistryRoleModal" class="modal">
@@ -1359,7 +1357,6 @@
 <script src="/js/v6-gamification.js"></script>
 <script src="/js/v7-ai-assistant.js"></script>
 
-<!-- ARCADE ENGINES -->
 <script src="/js/v8-slingshot.js"></script>
 <script src="/js/v8-noahs-ark.js"></script>
 <script src="/js/v8-red-sea.js"></script>
