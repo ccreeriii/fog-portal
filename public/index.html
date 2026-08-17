@@ -135,10 +135,18 @@
                 <div id="myProfileAvatar" class="avatar-circle" style="width: 130px; height: 130px; font-size: 3.5rem;"></div>
                 <div>
                     <h2 id="myProfileName" style="color: var(--primary); font-size: 1.8rem; margin: 0 0 8px 0; border: none; padding: 0;"></h2>
-                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center;">
+                    
+                    <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start;">
                         <p id="myProfileCode" class="badge badge-orange" style="font-size: 1rem; margin: 0; padding: 8px 12px;"></p>
-                        <p id="myProfilePoints" class="badge" style="background: #FEF3C7; color: #D97706; font-size: 1rem; margin: 0; padding: 8px 12px; display: none;">⭐ <span id="myPointsValue">0</span> Pts</p>
+                        
+                        <div id="myGamificationBadges" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; display: none;">
+                            <p class="badge" style="background: #FEF3C7; color: #D97706; font-size: 0.85rem; margin: 0; padding: 6px 10px;">⭐ <span id="myPointsValue">0</span> Overall XP</p>
+                            <p class="badge" style="background: #E0E7FF; color: #2563EB; font-size: 0.75rem; margin: 0; padding: 6px 10px;">🎮 <span id="myArcadeXp">0</span> Arcade</p>
+                            <p class="badge" style="background: #D1FAE5; color: #059669; font-size: 0.75rem; margin: 0; padding: 6px 10px;">🌱 <span id="myGrowthXp">0</span> Growth</p>
+                            <p class="badge" style="background: #F3E8FF; color: #DB2777; font-size: 0.75rem; margin: 0; padding: 6px 10px;">🎫 <span id="myEventXp">0</span> Events</p>
+                        </div>
                     </div>
+                    
                 </div>
             </div>
             <div class="profile-header-right" style="display: flex; flex-direction: column; align-items: center; gap: 12px; background: var(--bg-light); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color);">
@@ -280,7 +288,7 @@
         </div>
     </div>
 
-        <div id="arcadeTab" class="tab-content">
+    <div id="arcadeTab" class="tab-content">
         <div class="card arcade-hub-card" style="padding: 0; overflow: hidden; border-color: var(--primary); background: var(--card-bg);">
             <div style="padding: 15px 20px; background: linear-gradient(135deg, #FF6B00, #F59E0B); color: #FFF; display: flex; justify-content: space-between; align-items: center;">
                 <h2 style="margin:0; border:none; padding:0; color: #FFF; font-weight: 800; display:flex; align-items:center; gap:10px;">
@@ -291,65 +299,57 @@
                 </div>
             </div>
 
-                        <div class="sub-nav" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); margin-bottom: 0; padding: 10px 15px;">
+            <div class="sub-nav" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); margin-bottom: 0; padding: 10px 15px;">
                 <button id="btnArcadeGames" class="sub-nav-btn active" onclick="V8Arcade.switchTab('games')">🎮 Games</button>
                 <button id="btnArcadeLeaderboard" class="sub-nav-btn" onclick="V8Arcade.switchTab('leaderboard')">🏆 Arcade Leaderboard</button>
             </div>
 
             <div id="arcadeGamesList" style="padding: 20px;">
                 <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">Play minigames to earn XP, level up, and boost your standing in the Arcade!</p>
-                
-                <div class="arcade-featured-game" onclick="V8JonahsDive.mountGameUI()">
-                    <div class="featured-banner">
-                        <div class="featured-badge">⭐ NEW & FEATURED</div>
-                        <div class="game-tile-icon" style="font-size: 5rem; padding: 10px 0; display: inline-block;">🐋</div>
-                    </div>
-                    <div class="featured-info">
-                        <h3>Jonah's Deep Sea Dive</h3>
-                        <p>Hold to swim up, release to sink! Dodge the anchors and survive the deep sea.</p>
-                        <div class="featured-action">PLAY NOW</div>
-                    </div>
-                </div>
-
-                <div style="display: flex; align-items: center; justify-content: space-between; margin: 25px 0 15px 0; border-bottom: 2px solid var(--border-color); padding-bottom: 8px;">
-                    <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-main); font-weight: 800;">More Arcade Games</h3>
-                </div>
-
                 <div class="arcade-grid">
-                                        <div class="arcade-game-tile" onclick="V8Slingshot.mountGameUI()">
+                    <div class="arcade-game-tile" onclick="V8Slingshot.mountGameUI()">
                         <div class="game-tile-icon">🪨</div>
                         <div class="game-tile-info">
-                            <h3>David's Slingshot</h3>
-                            <p>Break blocks of Fear & Pride!</p>
+                            <h3 style="color: var(--text-main);">David's Slingshot</h3>
+                            <p style="color: var(--text-muted);">Break the blocks of Fear, Pride, and Doubt! 50 Levels of Physics Fun.</p>
                         </div>
                         <div class="game-tile-action">PLAY</div>
                     </div>
 
-                                        <div class="arcade-game-tile" onclick="V8NoahsArk.mountGameUI()">
+                    <div class="arcade-game-tile" onclick="V8NoahsArk.mountGameUI()">
                         <div class="game-tile-icon">🚢</div>
                         <div class="game-tile-info">
-                            <h3>Noah's Ark</h3>
-                            <p>Save the animals before the flood!</p>
+                            <h3 style="color: var(--text-main);">Noah's Ark: Rescue</h3>
+                            <p style="color: var(--text-muted);">Control Noah to save the animals before the flood! Grid puzzle for Minis.</p>
                         </div>
                         <div class="game-tile-action" style="background: #10B981;">PLAY</div>
                     </div>
 
-                                        <div class="arcade-game-tile" onclick="V8RedSea.mountGameUI()">
+                    <div class="arcade-game-tile" onclick="V8RedSea.mountGameUI()">
                         <div class="game-tile-icon">🌊</div>
                         <div class="game-tile-info">
-                            <h3>Red Sea Dash</h3>
-                            <p>Dodge chariots in a 3-lane runner!</p>
+                            <h3 style="color: var(--text-main);">Moses' Red Sea Dash</h3>
+                            <p style="color: var(--text-muted);">Dodge chariots, leap over rocks, and collect Manna in a 3-lane runner!</p>
                         </div>
                         <div class="game-tile-action" style="background: #3B82F6;">PLAY</div>
                     </div>
 
-                                        <div class="arcade-game-tile" onclick="V8PetersLeap.mountGameUI()">
+                    <div class="arcade-game-tile" onclick="V8PetersLeap.mountGameUI()">
                         <div class="game-tile-icon">🚶‍♂️</div>
                         <div class="game-tile-info">
-                            <h3>Leap of Faith</h3>
-                            <p>Bounce on waves! Eyes on Jesus.</p>
+                            <h3 style="color: var(--text-main);">Peter's Leap of Faith</h3>
+                            <p style="color: var(--text-muted);">Bounce on waves and rocks! Keep your eyes on Jesus to reach new heights.</p>
                         </div>
                         <div class="game-tile-action" style="background: #8B5CF6;">PLAY</div>
+                    </div>
+
+                    <div class="arcade-game-tile" onclick="V8JonahsDive.mountGameUI()">
+                        <div class="game-tile-icon">🐋</div>
+                        <div class="game-tile-info">
+                            <h3 style="color: var(--text-main);">Jonah's Deep Sea Dive</h3>
+                            <p style="color: var(--text-muted);">Hold to swim up, release to sink! Dodge the anchors and survive the deep.</p>
+                        </div>
+                        <div class="game-tile-action" style="background: #0284C7;">PLAY</div>
                     </div>
                 </div>
             </div>
@@ -359,11 +359,11 @@
                 <div id="arcadeLeaderboardContainer"></div>
             </div>
 
-                        <div id="arcadeActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
+            <div id="arcadeActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
         </div>
     </div>
 
-        <div id="communicationsAdminTab" class="tab-content">
+    <div id="communicationsAdminTab" class="tab-content">
         <div class="card">
             <h2 style="color: #3B82F6;">📢 Broadcast Engine</h2>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Send targeted announcements and push notifications to specific groups or the entire congregation.</p>
@@ -467,7 +467,7 @@
                         <textarea id="gamCreateDesc" class="form-control" rows="2" placeholder="Explain the task to the members..." required></textarea>
                     </div>
                     <div class="form-group">
-                        <label>Points Awarded *</label>
+                        <label>Growth Points Awarded *</label>
                         <input type="number" id="gamCreatePoints" class="form-control" value="50" required>
                     </div>
                     <button type="submit" class="btn btn-primary" style="width:100%; background: #F59E0B;">Publish Challenge</button>
@@ -521,22 +521,47 @@
         <div id="verseOfDayContainer"></div>
         <div id="nextStepContainer"></div>
 
-        <div class="card" style="border-top: 4px solid #F59E0B;">
-            <h2 style="color: #D97706; display:flex; align-items:center; gap:8px;">🏆 Spiritual Growth & Challenges</h2>
+        <div class="card" style="border-top: 4px solid #059669;">
+            <h2 style="color: #047857; display:flex; align-items:center; gap:8px;">🌱 Spiritual Growth & Challenges</h2>
             <div class="sub-nav" style="margin-bottom: 15px;">
-                <button id="btnGamTabChallenges" class="sub-nav-btn active" onclick="V6Gamification.switchTab('challenges')">🎯 Weekly Challenges</button>
+                <button id="btnGamTabChallenges" class="sub-nav-btn active" onclick="V6Gamification.switchTab('challenges')">🎯 Weekly Tasks</button>
+                <button id="btnGamTabGames" class="sub-nav-btn" onclick="V6Gamification.switchTab('games')">🧠 Games</button>
                 <button id="btnGamTabLeaderboard" class="sub-nav-btn" onclick="V6Gamification.switchTab('leaderboard')">🏅 Leaderboard</button>
             </div>
 
             <div id="gamTabChallenges" style="display: block; animation: fadeIn 0.3s ease-out;">
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Complete tasks to earn points and grow in your faith!</p>
-                <div id="gamActiveChallengesList">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Complete tasks to earn Growth XP and rank up!</p>
+                <div id="gamActiveChallengesList"></div>
+            </div>
+
+            <div id="gamTabGames" style="display: none; animation: fadeIn 0.3s ease-out;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Play games and earn Growth XP!</p>
+                
+                <div class="arcade-grid" id="growthGamesGrid">
+                    <div class="arcade-game-tile" onclick="V9GrowthGames.mountCatechismClash()">
+                        <div class="game-tile-icon">⏱️</div>
+                        <div class="game-tile-info">
+                            <h3 style="color: var(--text-main);">Catechism Clash</h3>
+                            <p style="color: var(--text-muted);">60-Second Sprint! Answer fast to earn massive multipliers.</p>
+                        </div>
+                        <div class="game-tile-action" style="background: #059669;">PLAY NOW</div>
                     </div>
+                    
+                    <div class="arcade-game-tile" onclick="V9GrowthGames.mountWouldYouRather()">
+                        <div class="game-tile-icon">⚖️</div>
+                        <div class="game-tile-info">
+                            <h3 style="color: var(--text-main);">Would You Rather</h3>
+                            <p style="color: var(--text-muted);">Daily Faith & Life Poll. Instant +5 Growth XP.</p>
+                        </div>
+                        <div class="game-tile-action" style="background: #8B5CF6;">VOTE</div>
+                    </div>
+                </div>
+
+                <div id="growthActiveGameArea" style="display:none; width: 100%; position: relative; margin-top: 15px;"></div>
             </div>
 
             <div id="gamTabLeaderboard" style="display: none; animation: fadeIn 0.3s ease-out;">
-                <div id="gamLeaderboardList">
-                    </div>
+                <div id="gamLeaderboardList"></div>
             </div>
         </div>
 
@@ -786,6 +811,10 @@
                         <input type="text" id="evtVenue" class="form-control">
                     </div>
                     <div class="form-group">
+                        <label>Points Awarded for Attendance *</label>
+                        <input type="number" id="evtPoints" class="form-control" value="10" required>
+                    </div>
+                    <div class="form-group">
                         <label>Event Poster Image</label>
                         <input type="file" id="evtPoster" class="form-control" accept="image/*">
                     </div>
@@ -981,7 +1010,7 @@
                 <select id="wsSetlistAddSongSelect" class="form-control"></select>
                 <button type="button" class="btn btn-primary" onclick="V3Worship.addSongToActiveSetlist()">Add</button>
             </div>
-            </div>
+        </div>
 
         <div style="margin-top: 20px;">
             <h3 style="font-size:1rem; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:10px;">Current Songs</h3>
@@ -1036,7 +1065,7 @@
             <button class="btn btn-secondary" onclick="closeEditEventRoleModal()">Cancel</button>
             <button class="btn btn-primary" onclick="saveEventRoleEdit()">Save Changes</button>
         </div>
-        </div>
+    </div>
 </div>
 
 <div id="editMinistryRoleModal" class="modal">
@@ -1285,6 +1314,10 @@
                 <input type="text" id="editEvtVenue" class="form-control">
             </div>
             <div class="form-group">
+                <label>Points Awarded for Attendance *</label>
+                <input type="number" id="editEvtPoints" class="form-control" value="10" required>
+            </div>
+            <div class="form-group">
                 <label>Update Poster Image</label>
                 <input type="file" id="editEvtPoster" class="form-control" accept="image/*">
             </div>
@@ -1362,6 +1395,8 @@
 <script src="/js/v8-red-sea.js"></script>
 <script src="/js/v8-peters-leap.js"></script>
 <script src="/js/v8-jonahs-dive.js"></script>
+
+<script src="/js/v9-growth-games.js"></script>
 
 </body>
 </html>
