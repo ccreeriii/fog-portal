@@ -4,8 +4,9 @@ window.V8Slingshot = {
     animationFrameId: null,
     isPlaying: false,
     
-    // Core Game Mechanics added for Levels!
+    // Core Game Mechanics
     level: 1,
+    maxLevel: 50,
     score: 0,
     stonesLeft: 3,
     
@@ -60,9 +61,9 @@ window.V8Slingshot = {
             </div>
             <div style="position: relative;">
                 <canvas id="slingshotCanvas"></canvas>
-                <div id="ssOverlay" style="position: absolute; inset: 0; background: rgba(15,23,42,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; color: white;">
-                    <h2 style="color: #FF6B00; margin-bottom: 10px; font-size: 1.8rem; border: none;">Armor Breaker</h2>
-                    <p style="text-align: center; max-width: 80%; color: #CBD5E1; margin-bottom: 20px;">Destroy the blocks of Fear, Pride, and Doubt to level up!</p>
+                <div id="ssOverlay" style="position: absolute; inset: 0; background: rgba(15,23,42,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; padding: 20px;">
+                    <h2 style="color: #FF6B00; margin-bottom: 10px; font-size: 1.8rem; border: none; text-align:center;">Armor Breaker</h2>
+                    <p style="text-align: center; max-width: 90%; color: #CBD5E1; margin-bottom: 20px; font-size: 0.95rem;">Destroy the blocks of Fear, Pride, and Doubt! Target points scale up as levels get harder.</p>
                     <button class="btn btn-primary" onclick="V8Slingshot.startGame()">▶ Start Game</button>
                 </div>
             </div>
@@ -116,38 +117,70 @@ window.V8Slingshot = {
         this.blocks = [];
         const groundY = this.canvas.height - 40;
         
-        // Procedural Level Difficulty Math
-        let numBlocks = Math.min(3 + this.level, 18);
-        let maxCols = Math.min(numBlocks, 3 + Math.floor(this.level / 3));
+        let numBlocks = Math.min(3 + this.level, 20); 
         let boxSize = 35;
-        let startX = this.canvas.width - (maxCols * boxSize) - 20;
-
+        
         const labels = ['FEAR', 'PRIDE', 'DOUBT', 'ENVY', 'LUST', 'GREED', 'HATE', 'LIES'];
         const colors = ['#EF4444', '#8B5CF6', '#F59E0B', '#3B82F6', '#EC4899', '#10B981', '#6366F1', '#F43F5E'];
 
-        let bCount = 0;
-        let row = 0;
-        let colsInRow = maxCols;
-
-        while(bCount < numBlocks && colsInRow > 0) {
-            for(let c = 0; c < colsInRow; c++) {
-                if(bCount >= numBlocks) break;
-                // Add slight jitter so stacked physics feels slightly unstable/fun
-                let jitterX = Math.random() * 2 - 1; 
-                this.blocks.push({
-                    x: startX + (c * boxSize) + jitterX,
-                    y: groundY - ((row + 1) * boxSize),
-                    w: boxSize - 2,
-                    h: boxSize - 2,
-                    active: true,
-                    text: labels[bCount % labels.length],
-                    color: colors[bCount % colors.length]
-                });
-                bCount++;
+        // LEVEL 1-4: Basic Ground Pyramid
+        if (this.level < 5) {
+            let cols = 3 + Math.floor(this.level / 2);
+            let startX = this.canvas.width - (cols * boxSize) - 30;
+            let row = 0;
+            while (cols > 0 && this.blocks.length < numBlocks) {
+                for (let c = 0; c < cols; c++) {
+                    if (this.blocks.length >= numBlocks) break;
+                    let jitterX = Math.random() * 2 - 1;
+                    this.blocks.push({
+                        x: startX + (c * boxSize) + jitterX,
+                        y: groundY - ((row + 1) * boxSize),
+                        w: boxSize - 2, h: boxSize - 2, active: true, floating: false, moving: false,
+                        text: labels[this.blocks.length % labels.length],
+                        color: colors[this.blocks.length % colors.length]
+                    });
+                }
+                row++; cols--; startX += (boxSize / 2);
             }
-            row++;
-            colsInRow--; // Make it a pyramid
-            startX += (boxSize / 2);
+        } 
+        // LEVEL 5-9: Scattered Towers
+        else if (this.level < 10) {
+            for (let i = 0; i < numBlocks; i++) {
+                let col = i % 3; 
+                let row = Math.floor(i / 3);
+                this.blocks.push({
+                    x: this.canvas.width - 60 - (col * 80), 
+                    y: groundY - ((row + 1) * boxSize),
+                    w: boxSize - 2, h: boxSize - 2, active: true, floating: false, moving: false,
+                    text: labels[i % labels.length], color: colors[i % colors.length]
+                });
+            }
+        } 
+        // LEVEL 10-19: Static Floating Targets in the Sky
+        else if (this.level < 20) {
+            for (let i = 0; i < numBlocks; i++) {
+                this.blocks.push({
+                    x: (this.canvas.width / 2) + Math.random() * (this.canvas.width / 2 - 40),
+                    y: 40 + Math.random() * (groundY - 140),
+                    w: boxSize, h: boxSize, active: true, floating: true, moving: false,
+                    text: labels[i % labels.length], color: colors[i % colors.length]
+                });
+            }
+        } 
+        // LEVEL 20-50: High-Speed Flying & Moving Obstacles!
+        else {
+            for (let i = 0; i < numBlocks; i++) {
+                let baseSpeed = 1 + (this.level * 0.05); // Speed scales up with level
+                let speedY = baseSpeed * (Math.random() > 0.5 ? 1 : -1);
+                
+                this.blocks.push({
+                    x: (this.canvas.width / 2) + Math.random() * (this.canvas.width / 2 - 40),
+                    y: 60 + Math.random() * (groundY - 180),
+                    vy: speedY,
+                    w: boxSize, h: boxSize, active: true, floating: true, moving: true,
+                    text: labels[i % labels.length], color: colors[i % colors.length]
+                });
+            }
         }
     },
 
@@ -221,20 +254,29 @@ window.V8Slingshot = {
     updatePhysics: function() {
         const groundY = this.canvas.height - 40;
 
-        // Block Gravity (Collapsing structures)
+        // Block Gravity & Movement
         this.blocks.forEach(b => {
             if (!b.active) return;
-            if (b.y + b.h < groundY) {
-                // Check if supported by another block
-                let supported = false;
-                this.blocks.forEach(other => {
-                    if (other !== b && other.active) {
-                        if (Math.abs(b.x - other.x) < b.w && Math.abs((b.y + b.h) - other.y) < 5) {
-                            supported = true;
+            
+            if (!b.floating) {
+                // If it's a ground block, check if supported
+                if (b.y + b.h < groundY) {
+                    let supported = false;
+                    this.blocks.forEach(other => {
+                        if (other !== b && other.active && !other.floating) {
+                            if (Math.abs(b.x - other.x) < b.w && Math.abs((b.y + b.h) - other.y) < 5) {
+                                supported = true;
+                            }
                         }
-                    }
-                });
-                if (!supported) b.y += 5; // Fall down
+                    });
+                    if (!supported) b.y += 5; // Fall down
+                }
+            } else if (b.moving) {
+                // If it's a flying block, move it!
+                b.y += b.vy;
+                if (b.y < 30 || b.y + b.h > groundY - 30) {
+                    b.vy *= -1; // Bounce off invisible sky/ground boundaries
+                }
             }
         });
 
@@ -280,7 +322,11 @@ window.V8Slingshot = {
                         b.active = false;
                         this.stone.vx *= 0.6; 
                         this.stone.vy *= -0.6; 
-                        this.score += 50;
+                        
+                        // Dynamic XP Calculation (5 XP at Level 1, up to 10 XP at Level 50)
+                        let earnedXP = Math.min(10, Math.floor(5 + (this.level * 0.1)));
+                        this.score += earnedXP;
+                        
                         document.getElementById('ssScoreDisplay').innerText = this.score;
                     }
                 }
@@ -293,7 +339,7 @@ window.V8Slingshot = {
 
         if (allBroken) {
             this.isPlaying = false;
-            this.score += (this.level * 100); // Level completion bonus
+            this.score += Math.floor(10 + (this.level * 0.5)); // Minor Level completion bonus
             document.getElementById('ssScoreDisplay').innerText = this.score;
             this.handleLevelWin();
         } 
@@ -364,14 +410,28 @@ window.V8Slingshot = {
         this.draw();
         const overlay = document.getElementById('ssOverlay');
         overlay.style.display = 'flex';
-        overlay.innerHTML = `
-            <h2 style="color: #10B981; font-size: 2rem; margin-bottom: 5px; border:none;">Level ${this.level} Cleared! 🎉</h2>
-            <p style="color: #FFF; font-size: 1rem; margin-bottom: 15px;">Obstacles crushed.</p>
-            <div style="background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
-                <span style="color: #F59E0B; font-weight: bold; font-size: 1.2rem;">Total XP: ${this.score}</span>
-            </div>
-            <button class="btn btn-primary" onclick="V8Slingshot.level++; V8Slingshot.startLevel()">Next Level ▶</button>
-        `;
+        
+        if (this.level >= this.maxLevel) {
+            // YOU BEAT THE GAME!
+            overlay.innerHTML = `
+                <h2 style="color: #F59E0B; font-size: 2.2rem; margin-bottom: 5px; border:none; text-align:center;">🏆 GAME BEATEN!</h2>
+                <p style="color: #FFF; font-size: 1rem; margin-bottom: 15px; text-align:center;">You cleared all 50 levels of Armor Breaker!</p>
+                <div style="background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
+                    <span style="color: #10B981; font-weight: bold; font-size: 1.2rem;">Total XP: ${this.score}</span>
+                </div>
+                <button class="btn btn-primary" onclick="V8Slingshot.handleGameOver()">Claim XP & Exit</button>
+            `;
+        } else {
+            // NORMAL LEVEL ADVANCE
+            overlay.innerHTML = `
+                <h2 style="color: #10B981; font-size: 2rem; margin-bottom: 5px; border:none;">Level ${this.level} Cleared! 🎉</h2>
+                <p style="color: #FFF; font-size: 1rem; margin-bottom: 15px;">Obstacles crushed.</p>
+                <div style="background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
+                    <span style="color: #F59E0B; font-weight: bold; font-size: 1.2rem;">Current XP: ${this.score}</span>
+                </div>
+                <button class="btn btn-primary" onclick="V8Slingshot.level++; V8Slingshot.startLevel()">Next Level ▶</button>
+            `;
+        }
     },
 
     handleGameOver: async function() {
@@ -379,13 +439,13 @@ window.V8Slingshot = {
         const overlay = document.getElementById('ssOverlay');
         overlay.style.display = 'flex';
         overlay.innerHTML = `
-            <h2 style="color: #EF4444; font-size: 2rem; margin-bottom: 5px; border:none;">Out of Stones!</h2>
+            <h2 style="color: #EF4444; font-size: 2rem; margin-bottom: 5px; border:none;">Run Ended!</h2>
             <p style="color: #FFF; font-size: 1rem; margin-bottom: 15px;">You made it to Level ${this.level}.</p>
             <div style="background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
                 <span style="color: #F59E0B; font-weight: bold; font-size: 1.2rem;">${this.score} XP Earned!</span>
             </div>
             <div style="display:flex; gap:10px;">
-                <button class="btn btn-secondary" onclick="V8Slingshot.exitGame()">Exit</button>
+                <button class="btn btn-secondary" onclick="V8Slingshot.exitGame()">Exit to Arcade</button>
                 <button class="btn btn-primary" onclick="V8Slingshot.startGame()">Play Again</button>
             </div>
         `;
@@ -394,16 +454,21 @@ window.V8Slingshot = {
             try {
                 await fetch('/api/arcade/submit', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ youth_id: currentMember.id, game_name: "David's Slingshot", score: this.score, actor: currentUser })
+                    body: JSON.stringify({ youth_id: currentMember.id, game_name: "David's Slingshot", score: this.score, actor: typeof currentUser !== 'undefined' ? currentUser : 'System' })
                 });
+                
+                // Update Local UI points seamlessly
                 if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
                 if (typeof window.V8Arcade !== 'undefined') window.V8Arcade.loadLeaderboard();
+                if (window.V8Arcade) window.V8Arcade.updateTotalXP();
+                
+                this.score = 0; // Prevent resubmitting the same score
             } catch(e) { console.error("Failed to save score.", e); }
         }
     }
 };
 
-// V8 ARCADE LEADERBOARD ENGINE (No app.js edits needed)
+// V8 ARCADE LEADERBOARD & XP SYNC ENGINE
 window.V8Arcade = {
     switchTab: function(tab) {
         const list = document.getElementById('arcadeGamesList');
@@ -415,6 +480,19 @@ window.V8Arcade = {
         document.getElementById('btnArcadeLeaderboard').classList.toggle('active', tab === 'leaderboard');
         
         if (tab === 'leaderboard') this.loadLeaderboard();
+    },
+
+    updateTotalXP: async function() {
+        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+            try {
+                const res = await fetch(`/api/gamification/points/${currentMember.id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const xpDisplay = document.getElementById('arcadeCurrentXP');
+                    if (xpDisplay) xpDisplay.innerText = data.points || 0;
+                }
+            } catch (e) { console.error("XP Fetch Error", e); }
+        }
     },
 
     loadLeaderboard: async function() {
@@ -456,3 +534,16 @@ window.V8Arcade = {
         }
     }
 };
+
+// Modifies window.switchTab so it automatically loads your XP when you click the Arcade tab
+(function hijackTabForArcade() {
+    const originalSwitchTab = window.switchTab;
+    if (typeof originalSwitchTab === 'function') {
+        window.switchTab = function(...args) {
+            originalSwitchTab.apply(this, args);
+            if (args[0] === 'arcadeTab' && window.V8Arcade) {
+                window.V8Arcade.updateTotalXP();
+            }
+        };
+    }
+})();
