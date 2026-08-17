@@ -291,7 +291,7 @@ window.closeSidebar = function() {
 };
 
 // ==========================================
-// FIXED SIDEBAR NAVIGATION MENU (CLEANED)
+// FIXED SIDEBAR NAVIGATION MENU (CLEANED & V8 ARCADE INJECTED)
 // ==========================================
 window.buildNav = function() {
     const sidebar = document.getElementById('sidebarNav');
@@ -308,6 +308,9 @@ window.buildNav = function() {
 
         sidebarHtml += `<button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
         sidebarHtml += `<button class="nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')">🔔 My Inbox</button>`;
+        
+        // V8: ARCADE TAB ADDITION
+        sidebarHtml += `<button class="nav-btn" data-target="arcadeTab" onclick="switchTab('arcadeTab')">🎯 FOG Arcade</button>`;
 
         if (window.hasPerm('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
         if (window.hasPerm('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
@@ -334,6 +337,10 @@ window.buildNav = function() {
 
         bottomHtml += `<button class="bottom-nav-btn active" data-target="profileTab" onclick="switchTab('profileTab')"><div class="icon">👤</div>Profile</button>`;
         bottomHtml += `<button class="bottom-nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')"><div class="icon">🔔</div>Inbox</button>`;
+        
+        // V8: ARCADE TAB ADDITION
+        bottomHtml += `<button class="bottom-nav-btn" data-target="arcadeTab" onclick="switchTab('arcadeTab')"><div class="icon">🎯</div>Arcade</button>`;
+        
         bottomHtml += `<button class="bottom-nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')"><div class="icon">📖</div>Grow</button>`;
         bottomHtml += `<button class="bottom-nav-btn" onclick="handleLogout()"><div class="icon">🚪</div>Logout</button>`;
 
@@ -667,6 +674,7 @@ window.loadMinistriesAndEventRolesForProfile = async function(youthId, container
         }
     } catch(e) { console.error('Failed to load profile roles', e); }
 };
+
 window.populateProfileTab = async function(member) {
     document.getElementById('myMemberId').value = member.id;
     document.getElementById('myProfileName').innerText = member.name || 'Member';
@@ -863,7 +871,7 @@ window.populateProfileTab = async function(member) {
     // 1. Prioritize ministry roles over event roles
     if (a.type === 'ministry' && b.type === 'event') return -1;
     if (a.type === 'event' && b.type === 'ministry') return 1;
-    
+
     // 2. Sort by date descending (newest first) for identical types
     const dateA = new Date(a.assigned_at || a.event_date || 0);
     const dateB = new Date(b.assigned_at || b.event_date || 0);
