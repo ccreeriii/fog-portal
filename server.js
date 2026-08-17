@@ -157,7 +157,7 @@ db.serialize(() => {
     db.run(`ALTER TABLE users ADD COLUMN youth_id INTEGER`, () => {});
     db.run(`ALTER TABLE ministry_members ADD COLUMN sub_role TEXT`, () => {});
     db.run(`ALTER TABLE event_roles ADD COLUMN sub_role TEXT`, () => {});
-    db.run(`ALTER TABLE event_roles ADD COLUMN status TEXT DEFAULT 'Pending'`, () => {}); // V5.0 Invite Status
+    db.run(`ALTER TABLE event_roles ADD COLUMN status TEXT DEFAULT 'Pending'`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN roles_restricted_notes TEXT`, () => {});
     db.run(`ALTER TABLE ministries ADD COLUMN logo TEXT`, () => {});
     db.run(`ALTER TABLE songs ADD COLUMN youtube_url TEXT`, () => {});
@@ -207,7 +207,6 @@ function logActivity(username, action, details) {
     );
 }
 
-// Helper to push individual notification securely (V5.0 Rosters Engine)
 function pushToUser(youthId, title, message) {
     db.get(`SELECT qr_code FROM youth WHERE id = ?`, [youthId], (err, y) => {
         if (y && y.qr_code) {
@@ -718,15 +717,38 @@ app.get('/api/communications/history', (req, res) => {
     });
 });
 
+/* THE FIX: DYNAMIC AUTHORIZATION FOR DELETING BROADCASTS */
 app.delete('/api/communications/broadcast/:id', (req, res) => {
     const { actor } = req.body;
-    if (actor !== 'celsocreeriii@gmail.com') return res.status(403).json({ error: 'Unauthorized' });
-    db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) {
-        if (err) return res.status(500).json({ error: err.message });
-        db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]);
-        logActivity(actor, 'DELETE_BROADCAST', `Deleted global broadcast ID ${req.params.id}`);
-        res.json({ success: true, deleted: this.changes });
+
+    // Immediately pass the superadmin
+    if (actor === 'celsocreeriii@gmail.com') {
+        executeDelete();
+        return;
+    }
+
+    // Dynamic Permission Check for other users
+    db.get(`SELECT permissions FROM users WHERE username = ?`, [actor], (err, user) => {
+        if (err || !user) return res.status(403).json({ error: 'Unauthorized: User not found.' });
+        
+        let perms = [];
+        try { perms = JSON.parse(user.permissions); } catch(e) {}
+
+        if (perms.includes('delete_entries')) {
+            executeDelete();
+        } else {
+            return res.status(403).json({ error: 'Unauthorized: Missing delete_entries permission.' });
+        }
     });
+
+    function executeDelete() {
+        db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]);
+            logActivity(actor, 'DELETE_BROADCAST', `Deleted global broadcast ID ${req.params.id}`);
+            res.json({ success: true, deleted: this.changes });
+        });
+    }
 });
 
 app.get('/api/communications/inbox', (req, res) => {
