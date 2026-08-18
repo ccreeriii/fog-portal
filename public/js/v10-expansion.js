@@ -5,7 +5,7 @@ window.V10Expansion = {
     init: function() {
         console.log("🚀 V10 Expansion Module Initialized");
         this.hookNavigation();
-        this.loadFeaturedGames();
+        this.loadFeaturedGames(); // Trigger rendering immediately on load
         
         // Auto-load Leaderboards if that tab is opened
         const originalSwitchTab = window.switchTab;
@@ -13,13 +13,37 @@ window.V10Expansion = {
             window.switchTab = function(...args) {
                 originalSwitchTab.apply(this, args);
                 const tabId = args[0];
+                
                 if (tabId === 'leaderboardsHubTab') {
                     window.V10Expansion.loadSegmentedLeaderboard('overall');
                     window.V10Expansion.loadSegmentedLeaderboard('growth');
                     window.V10Expansion.loadSegmentedLeaderboard('arcade');
                 }
+                
+                // Auto-refresh the featured banners when switching to these tabs
+                if (tabId === 'arcadeTab' || tabId === 'discipleshipTab') {
+                    window.V10Expansion.loadFeaturedGames();
+                }
+
+                // 🛡️ NATIVE PATCH: Fix Admin Settings Visibility
+                // Unhides the Global Settings / Featured Games Form for Admins on Profile Tab
+                if (tabId === 'profileTab') {
+                    const settingsCard = document.getElementById('adminSettingsCard');
+                    if (settingsCard) {
+                        if (currentUser === 'celsocreeriii@gmail.com' || (typeof window.hasPerm === 'function' && window.hasPerm('edit_entries'))) {
+                            settingsCard.style.display = 'block';
+                        } else {
+                            settingsCard.style.display = 'none';
+                        }
+                    }
+                }
             };
             window.switchTab.isV10Patched = true;
+
+            // Immediately trigger tab logic if already on profile page during load
+            if (document.getElementById('profileTab') && document.getElementById('profileTab').classList.contains('active')) {
+                window.switchTab('profileTab');
+            }
         }
 
         // Fetch settings for the Admin Form
@@ -32,7 +56,7 @@ window.V10Expansion = {
             window.buildNav = function() {
                 originalBuildNav();
                 
-                // Inject Global Leaderboards Tab into Sidebar
+                // Inject Global Leaderboards Tab into Sidebar (Admins)
                 const sidebar = document.getElementById('sidebarNav');
                 if (sidebar && !document.getElementById('navBtnLeaderboards')) {
                     const worshipBtn = document.getElementById('navBtnWorship') || sidebar.querySelector('.text-danger');
@@ -41,7 +65,7 @@ window.V10Expansion = {
                     }
                 }
 
-                // Inject Global Leaderboards Tab into Bottom Nav
+                // Inject Global Leaderboards Tab into Bottom Nav (Everyone)
                 const bottomNav = document.getElementById('bottomNav');
                 if (bottomNav && !document.getElementById('bottomNavLeaderboards')) {
                     const lastBtn = bottomNav.lastElementChild;
@@ -60,7 +84,7 @@ window.V10Expansion = {
     },
 
     // --------------------------------------------------------------------------
-    // FEATURED GAMES ENGINE
+    // FEATURED GAMES ENGINE (HERO BANNER)
     // --------------------------------------------------------------------------
     loadAdminFeaturedSettings: async function() {
         if (!document.getElementById('setFeaturedArcade')) return;
@@ -96,31 +120,67 @@ window.V10Expansion = {
             const res = await fetch('/api/settings/featured');
             const data = await res.json();
             
-            this.renderFeaturedSlot('arcadeGamesList', 'featuredArcadeGameContainer', data.featured_arcade);
-            this.renderFeaturedSlot('growthGamesGrid', 'featuredGrowthGameContainer', data.featured_growth);
-        } catch(e) { console.error("Error rendering featured games."); }
+            // If the database is empty, force a default game so it is ALWAYS visible
+            const arcadeGame = data.featured_arcade || "David's Slingshot";
+            const growthGame = data.featured_growth || "Catechism Clash";
+
+            this.renderFeaturedSlot('arcadeGridItems', 'featuredArcadeGameContainer', arcadeGame, false);
+            this.renderFeaturedSlot('growthGamesGrid', 'featuredGrowthGameContainer', growthGame, true);
+        } catch(e) { 
+            console.error("Error rendering featured games.", e); 
+        }
     },
 
-    renderFeaturedSlot: function(gridId, containerId, gameName) {
+    renderFeaturedSlot: function(gridId, containerId, gameName, isGrowth) {
         const container = document.getElementById(containerId);
-        const grid = document.getElementById(gridId);
-        if (!container || !grid || !gameName) return;
+        // Fallback for ID variance
+        const grid = document.getElementById(gridId) || document.getElementById('arcadeGamesList'); 
+        
+        if (!container || !grid) return;
 
-        // Clear existing
-        container.innerHTML = '';
+        // 🛡️ NATIVE PATCH: Reset all tiles in the grid to be visible first
+        const allTiles = grid.querySelectorAll('.arcade-game-card, .arcade-game-tile');
+        allTiles.forEach(t => t.style.display = 'flex');
 
-        // Find the tile by data attribute
+        if (!gameName || gameName === "None") {
+            container.innerHTML = '';
+            return;
+        }
+
+        // Find the tile by its data attribute
         const tile = grid.querySelector(`[data-game-name="${gameName}"]`);
+        
         if (tile) {
-            // Clone the node deeply
-            const clone = tile.cloneNode(true);
-            clone.classList.add('featured-game-card');
+            // 🛡️ NATIVE PATCH: Hide the original tile from the grid to prevent redundancy
+            tile.style.display = 'none';
+
+            // Extract the core game details from the grid tile
+            const iconElem = tile.querySelector('.game-tile-icon') || tile.querySelector('.game-icon');
+            const titleElem = tile.querySelector('h3');
+            const descElem = tile.querySelector('p');
+            const onclickAction = tile.getAttribute('onclick');
+
+            const icon = iconElem ? iconElem.innerHTML : '🎮';
+            const title = titleElem ? titleElem.innerText : gameName;
+            const desc = descElem ? descElem.innerText : 'Play our featured game!';
+
+            // Determine gradient class: Growth is Green, Arcade is Orange
+            const heroClass = isGrowth ? 'hero-game-card growth-hero' : 'hero-game-card';
             
-            // Re-attach the onclick since cloneNode doesn't copy DOM event listeners if they were attached via JS, 
-            // but since they are inline HTML attributes (onclick="..."), they WILL copy over perfectly!
-            
-            container.innerHTML = `<h3 style="color:var(--primary); margin-bottom:10px; font-size:1rem;">⭐ Featured Game</h3>`;
-            container.appendChild(clone);
+            // Generate the massive Horizontal Hero Banner HTML
+            container.innerHTML = `
+                <h3 style="color: var(--text-main); font-size: 1.1rem; font-weight: 800; margin-bottom: 12px; border: none; padding: 0;">⭐ Featured Game</h3>
+                <div class="${heroClass}" onclick="${onclickAction}">
+                    <div class="game-icon">${icon}</div>
+                    <div class="game-info">
+                        <h3>${title}</h3>
+                        <p>${desc}</p>
+                        <div class="game-action">PLAY NOW</div>
+                    </div>
+                </div>
+            `;
+        } else {
+            container.innerHTML = '';
         }
     },
 
@@ -189,7 +249,7 @@ window.V10Expansion = {
     mountGameUI: function(htmlContent) {
         document.getElementById('growthGamesGrid').style.display = 'none';
         
-        // Also hide the featured container to clear up screen space while playing
+        // Hide the featured container to clear up screen space while playing
         const featuredSlot = document.getElementById('featuredGrowthGameContainer');
         if (featuredSlot) featuredSlot.style.display = 'none';
 
@@ -204,6 +264,7 @@ window.V10Expansion = {
         document.getElementById('growthActiveGameArea').innerHTML = '';
         document.getElementById('growthGamesGrid').style.display = 'grid';
         
+        // Bring back the featured banner
         const featuredSlot = document.getElementById('featuredGrowthGameContainer');
         if (featuredSlot) featuredSlot.style.display = 'block';
     },
@@ -360,7 +421,6 @@ window.V10Expansion = {
     },
 
     rxStartSequence: function() {
-        // Generate random sequence of 3 armor pieces
         this.rxState.sequence = [];
         const available = [...this.rxState.armor];
         for(let i=0; i<3; i++) {
@@ -382,10 +442,9 @@ window.V10Expansion = {
 
     rxStartGameplay: function() {
         this.rxState.playerStep = 0;
-        this.rxState.timeLeft = 100; // 10.0 seconds stored as deci-seconds for smooth UI
+        this.rxState.timeLeft = 100; // 10.0 seconds stored as deci-seconds
 
         let buttonsHtml = `<div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">`;
-        // Randomize button placement
         const shuffledButtons = [...this.rxState.armor].sort(() => Math.random() - 0.5);
         shuffledButtons.forEach(a => {
             buttonsHtml += `<button class="btn btn-outline" style="padding:15px 5px; font-size:0.85rem; height:100%; white-space:normal; line-height:1.2; border-color:#CBD5E1;" onclick="V10Expansion.rxTap('${a}', this)">${a}</button>`;
@@ -489,7 +548,7 @@ window.V10Expansion = {
 
     ngRenderQuestion: function() {
         if (this.ngState.currentIndex >= this.ngState.questions.length) {
-            return this.ngEndGame("YOU BEAT THE GAME!"); // Highly unlikely if DB has 100+ questions
+            return this.ngEndGame("YOU BEAT THE GAME!");
         }
 
         const q = this.ngState.questions[this.ngState.currentIndex];
@@ -640,7 +699,7 @@ window.V10Expansion = {
 
     cwRenderGrid: function() {
         const size = this.cwState.gridSize;
-        // Create 2D arrays for answers and HTML inputs
+        // Create 2D arrays for answers
         let answerGrid = Array(size).fill(null).map(() => Array(size).fill(''));
         
         // Plot words
