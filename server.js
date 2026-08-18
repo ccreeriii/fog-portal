@@ -68,7 +68,7 @@ db.serialize(() => {
     )`);
     db.run(`CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, event_date TEXT, time_start TEXT, venue TEXT,
-        poster TEXT, photos_url TEXT, materials_url TEXT, created_at DATETIME
+        poster TEXT, photos_url TEXT, materials_url TEXT, event_points INTEGER DEFAULT 10, created_at DATETIME
     )`);
     db.run(`CREATE TABLE IF NOT EXISTS attendance (
         id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, event_id INTEGER, is_walkin INTEGER DEFAULT 0,
@@ -147,9 +147,9 @@ db.serialize(() => {
         id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, block_date TEXT, reason TEXT, created_at DATETIME, UNIQUE(youth_id, block_date)
     )`);
 
-    // V6.0 GAMIFICATION & ENGAGEMENT TABLES
+    // V6.0 GAMIFICATION WEIGHTED POINTS ENGINE
     db.run(`CREATE TABLE IF NOT EXISTS gamification_points (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER UNIQUE, points INTEGER DEFAULT 0, created_at DATETIME
+        id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER UNIQUE, points INTEGER DEFAULT 0, arcade_xp INTEGER DEFAULT 0, growth_xp INTEGER DEFAULT 0, event_xp INTEGER DEFAULT 0, created_at DATETIME
     )`);
     db.run(`CREATE TABLE IF NOT EXISTS weekly_challenges (
         id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, points INTEGER, is_active INTEGER DEFAULT 1, created_at DATETIME
@@ -157,6 +157,23 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS user_challenge_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, challenge_id INTEGER, completed_at DATETIME, UNIQUE(youth_id, challenge_id)
     )`);
+
+    // V10.5 POINT TRANSACTIONS LEDGER (The new source of truth for all leaderboards)
+    db.run(`CREATE TABLE IF NOT EXISTS point_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, type TEXT, game_name TEXT, amount INTEGER, created_at DATETIME
+    )`);
+
+    // Auto-migrate legacy points into the ledger if it's empty
+    db.get(`SELECT COUNT(*) as cnt FROM point_transactions`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at)
+                    SELECT youth_id, 'arcade', 'Legacy Points', arcade_xp, created_at FROM gamification_points WHERE arcade_xp > 0`);
+            db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at)
+                    SELECT youth_id, 'growth', 'Legacy Points', growth_xp, created_at FROM gamification_points WHERE growth_xp > 0`);
+            db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at)
+                    SELECT youth_id, 'event', 'Legacy Points', event_xp, created_at FROM gamification_points WHERE event_xp > 0`);
+        }
+    });
 
     // V7.0 AI ASSISTANT & AUTOMATION TABLES
     db.run(`CREATE TABLE IF NOT EXISTS ai_chat_logs (
@@ -171,6 +188,38 @@ db.serialize(() => {
         id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, game_name TEXT, score INTEGER, played_at DATETIME
     )`);
 
+    // V9.0 & V10.0 BRAIN GAMES & SETTINGS TABLES
+    db.run(`CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY, value TEXT
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_trivia_questions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT, options TEXT, correct_index INTEGER, category TEXT, created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_polls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT, option_a TEXT, option_b TEXT, votes_a INTEGER DEFAULT 0, votes_b INTEGER DEFAULT 0, created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_user_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, game_type TEXT, game_id INTEGER, played_at DATETIME, UNIQUE(youth_id, game_type, game_id)
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_whoami_questions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, clue1 TEXT, clue2 TEXT, clue3 TEXT, answer TEXT, created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_verse_chain (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, reference TEXT, verse_text TEXT, missing_words TEXT, created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_verse_contributions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, verse_id INTEGER, youth_id INTEGER, word_index INTEGER, guessed_word TEXT, created_at DATETIME, UNIQUE(group_id, verse_id, word_index)
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_verse_scramble (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, reference TEXT, verse_text TEXT, created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_emoji_translation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, emojis TEXT, answer TEXT, options TEXT, created_at DATETIME
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_crosswords (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, grid_size INTEGER, words_json TEXT, created_at DATETIME
+    )`);
+
     // SCHEMA AUTO-HEALING
     db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
@@ -179,6 +228,7 @@ db.serialize(() => {
     db.run(`ALTER TABLE events ADD COLUMN prereg_bottom_banner TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_title TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_info TEXT`, () => {});
+    db.run(`ALTER TABLE events ADD COLUMN event_points INTEGER DEFAULT 10`, () => {});
     db.run(`ALTER TABLE users ADD COLUMN youth_id INTEGER`, () => {});
     db.run(`ALTER TABLE ministry_members ADD COLUMN sub_role TEXT`, () => {});
     db.run(`ALTER TABLE event_roles ADD COLUMN sub_role TEXT`, () => {});
@@ -186,6 +236,9 @@ db.serialize(() => {
     db.run(`ALTER TABLE events ADD COLUMN roles_restricted_notes TEXT`, () => {});
     db.run(`ALTER TABLE ministries ADD COLUMN logo TEXT`, () => {});
     db.run(`ALTER TABLE songs ADD COLUMN youtube_url TEXT`, () => {});
+    db.run(`ALTER TABLE gamification_points ADD COLUMN arcade_xp INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE gamification_points ADD COLUMN growth_xp INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE gamification_points ADD COLUMN event_xp INTEGER DEFAULT 0`, () => {});
 
     // Ensure superadmin has ALL permissions
     const superadminPermissions = JSON.stringify([
@@ -225,7 +278,6 @@ db.serialize(() => {
         }
     });
 
-    // Auto-Seed Gamification Challenges if empty
     db.get(`SELECT COUNT(*) as cnt FROM weekly_challenges`, [], (err, row) => {
         if (row && row.cnt === 0) {
             const defaultChallenges = [
@@ -235,6 +287,92 @@ db.serialize(() => {
             const stmt = db.prepare(`INSERT INTO weekly_challenges (title, description, points, created_at) VALUES (?, ?, ?, ?)`);
             defaultChallenges.forEach(c => stmt.run([c[0], c[1], c[2], getManilaTime()]));
             stmt.finalize();
+        }
+    });
+
+    // 15-Item Emoji Seeder
+    db.get(`SELECT COUNT(*) as cnt FROM brain_emoji_translation`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            const emojis = [
+                ["🐍🍎🧍‍♂️🧍‍♀️", "Adam and Eve", JSON.stringify(["Noah and the Ark", "Adam and Eve", "David and Goliath", "Jesus feeds 5000"])],
+                ["🐋🌊🙏", "Jonah", JSON.stringify(["Moses", "Peter walks on water", "Jonah", "Noah"])],
+                ["👑🦁🕳️", "Daniel in the Lions Den", JSON.stringify(["Daniel in the Lions Den", "David and Goliath", "Samson", "Joseph"])],
+                ["🍞🐟🐟🐟🐟🐟", "Jesus feeds 5000", JSON.stringify(["Jesus feeds 5000", "The Last Supper", "Manna from Heaven", "Water to Wine"])],
+                ["🌊🚶‍♂️", "Peter walks on water", JSON.stringify(["Moses parting the Red Sea", "Peter walks on water", "Jesus baptism", "Noah's Ark"])],
+                ["🚢🌈🕊️", "Noah's Ark", JSON.stringify(["Noah's Ark", "Moses parting the Red Sea", "Jesus baptism", "Jonah"])],
+                ["🐑👦👑", "David", JSON.stringify(["David", "Saul", "Solomon", "Samuel"])],
+                ["💪💇‍♂️🏛️", "Samson", JSON.stringify(["David", "Samson", "Gideon", "Joshua"])],
+                ["🔥🌳👟", "Moses and the Burning Bush", JSON.stringify(["Moses and the Burning Bush", "Elijah and the Prophets of Baal", "Shadrach, Meshach, and Abednego", "The Day of Pentecost"])],
+                ["🎺🔥🌧️", "Elijah and the Prophets of Baal", JSON.stringify(["Elijah and the Prophets of Baal", "Moses and the Burning Bush", "Joshua at Jericho", "The Day of Pentecost"])],
+                ["🔥👦👦👦", "Shadrach, Meshach, and Abednego", JSON.stringify(["Shadrach, Meshach, and Abednego", "Daniel in the Lions Den", "Elijah and the Prophets of Baal", "Moses and the Burning Bush"])],
+                ["👶🧺🌊", "Baby Moses", JSON.stringify(["Baby Moses", "Baby Jesus", "Noah's Ark", "Jonah"])],
+                ["✝️🩸👑", "The Crucifixion", JSON.stringify(["The Crucifixion", "The Last Supper", "The Resurrection", "The Ascension"])],
+                ["🪨🪨📜", "The Ten Commandments", JSON.stringify(["The Ten Commandments", "The Sermon on the Mount", "The Beatitudes", "The Lord's Prayer"])],
+                ["🌟👶🐪", "The Birth of Jesus", JSON.stringify(["The Birth of Jesus", "The Resurrection", "The Ascension", "The Day of Pentecost"])]
+            ];
+            const stmt = db.prepare(`INSERT INTO brain_emoji_translation (emojis, answer, options, created_at) VALUES (?, ?, ?, ?)`);
+            emojis.forEach(e => stmt.run([e[0], e[1], e[2], getManilaTime()]));
+            stmt.finalize();
+        }
+    });
+
+    db.get(`SELECT COUNT(*) as cnt FROM brain_trivia_questions`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            const trivia = [
+                ["What is the shortest book in the New Testament?", JSON.stringify(["3 John", "Philemon", "Jude", "2 John"]), 3, "Bible"],
+                ["Who was the first king of Israel?", JSON.stringify(["David", "Solomon", "Saul", "Samuel"]), 2, "Bible"],
+                ["Where did Jesus perform his first miracle?", JSON.stringify(["Jerusalem", "Cana", "Nazareth", "Bethlehem"]), 1, "Bible"],
+                ["Which apostle was a tax collector before following Jesus?", JSON.stringify(["Peter", "Andrew", "Matthew", "John"]), 2, "Bible"],
+                ["What type of tree did Zacchaeus climb to see Jesus?", JSON.stringify(["Oak", "Sycamore", "Fig", "Olive"]), 1, "Bible"]
+            ];
+            const stmt = db.prepare(`INSERT INTO brain_trivia_questions (question, options, correct_index, category, created_at) VALUES (?, ?, ?, ?, ?)`);
+            trivia.forEach(t => stmt.run([t[0], t[1], t[2], t[3], getManilaTime()]));
+            stmt.finalize();
+        }
+    });
+
+    db.get(`SELECT COUNT(*) as cnt FROM brain_polls`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            db.run(`INSERT INTO brain_polls (question, option_a, option_b, votes_a, votes_b, created_at) VALUES (?, ?, ?, 0, 0, ?)`,
+                ["Would you rather...", "Lead worship for 500 people", "Give the 5-minute message to your small group", getManilaTime()]
+            );
+        }
+    });
+
+    db.get(`SELECT COUNT(*) as cnt FROM brain_whoami_questions`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            db.run(`INSERT INTO brain_whoami_questions (clue1, clue2, clue3, answer, created_at) VALUES (?, ?, ?, ?, ?)`,
+                ["I built a big boat.", "I brought two of every animal.", "A dove brought me an olive branch.", "Noah", getManilaTime()]
+            );
+        }
+    });
+
+    db.get(`SELECT COUNT(*) as cnt FROM brain_verse_chain`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            db.run(`INSERT INTO brain_verse_chain (reference, verse_text, missing_words, created_at) VALUES (?, ?, ?, ?)`,
+                ["John 3:16", "For God so ___ the world that he ___ his one and only ___, that whoever believes in him shall not perish but have eternal life.", JSON.stringify(["loved", "gave", "Son"]), getManilaTime()]
+            );
+        }
+    });
+
+    db.get(`SELECT COUNT(*) as cnt FROM brain_verse_scramble`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            db.run(`INSERT INTO brain_verse_scramble (reference, verse_text, created_at) VALUES (?, ?, ?)`,
+                ["Proverbs 3:5", "Trust in the LORD with all your heart", getManilaTime()]
+            );
+        }
+    });
+
+    db.get(`SELECT COUNT(*) as cnt FROM brain_crosswords`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            const words = [
+                { word: "FAITH", row: 0, col: 0, dir: "H", clue: "Substance of things hoped for" },
+                { word: "FRUIT", row: 0, col: 0, dir: "V", clue: "The ___ of the Spirit" },
+                { word: "TRUTH", row: 4, col: 0, dir: "H", clue: "Jesus is the way, the ___, and the life" }
+            ];
+            db.run(`INSERT INTO brain_crosswords (title, grid_size, words_json, created_at) VALUES (?, ?, ?, ?)`,
+                ["The Basics", 5, JSON.stringify(words), getManilaTime()]
+            );
         }
     });
 });
@@ -267,47 +405,44 @@ function pushToUser(youthId, title, message) {
 }
 
 // ==============================================================================
-// V7.0 AI AUTOMATION ENGINE (CRON JOBS)
+// V10.5 GAMIFICATION ENGINE (TRANSACTION LEDGER)
 // ==============================================================================
-cron.schedule('0 9 * * 1', () => { // Runs every Monday at 9:00 AM Manila Time
-    console.log('[CRON] Running Weekly Absence Detection & AI Push Drafts...');
+function awardPoints(youthId, type, amount, actor, gameName = null) {
+    const amt = parseInt(amount) || 0;
+    
+    // 1. Insert into the immutable ledger
+    db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at) VALUES (?, ?, ?, ?, ?)`, 
+        [youthId, type, gameName, amt, getManilaTime()]);
 
-    // Calculate the cutoff date (14 days ago)
-    const cutoffDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    cutoffDate.setDate(cutoffDate.getDate() - 14);
-    const pad = (n) => String(n).padStart(2, '0');
-    const cutoffStr = `${cutoffDate.getFullYear()}-${pad(cutoffDate.getMonth()+1)}-${pad(cutoffDate.getDate())} 00:00:00`;
+    // 2. Sum the entire ledger to ensure 100% mathematical accuracy forever
+    db.get(`SELECT
+        SUM(CASE WHEN type='arcade' THEN amount ELSE 0 END) as arc,
+        SUM(CASE WHEN type='growth' THEN amount ELSE 0 END) as gro,
+        SUM(CASE WHEN type='event' THEN amount ELSE 0 END) as eve
+        FROM point_transactions WHERE youth_id = ?`, [youthId], (err, row) => {
 
-    // Find users whose LAST check-in is older than 14 days, or who have NEVER checked in
-    const sql = `
-        SELECT y.id, y.name, MAX(a.checked_in_at) as last_seen
-        FROM youth y
-        LEFT JOIN attendance a ON y.id = a.youth_id
-        GROUP BY y.id
-        HAVING last_seen < ? OR last_seen IS NULL
-    `;
+        let arcade = row ? (row.arc || 0) : 0;
+        let growth = row ? (row.gro || 0) : 0;
+        let event = row ? (row.eve || 0) : 0;
+        const overall = Math.floor((arcade * 0.4) + (growth * 0.6) + event);
 
-    db.all(sql, [cutoffStr], (err, rows) => {
-        if (err || !rows) return;
-
-        rows.forEach(user => {
-            // Future AI Integration: The actual LLM will dynamically write this based on their profile data
-            // For now, the system creates the foundational draft
-            const draftMsg = `Hi ${user.name || 'there'}, we've missed you at recent gatherings! Let us know how we can pray for you today.`;
-
-            db.run(`INSERT INTO ai_communication_drafts (target_youth_id, draft_type, suggested_message, created_at) VALUES (?, 'Push', ?, ?)`,
-                [user.id, draftMsg, getManilaTime()]
-            );
-        });
-
-        if (rows.length > 0) {
-            console.log(`[CRON] Successfully drafted ${rows.length} Push Notification(s) for absent members.`);
-        }
+        // 3. Update the caching table
+        db.run(`INSERT INTO gamification_points (youth_id, arcade_xp, growth_xp, event_xp, points, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(youth_id) DO UPDATE SET
+                arcade_xp = excluded.arcade_xp,
+                growth_xp = excluded.growth_xp,
+                event_xp = excluded.event_xp,
+                points = excluded.points`,
+            [youthId, arcade, growth, event, overall, getManilaTime()],
+            function(err2) {
+                if(!err2 && actor) {
+                    logActivity(actor, 'POINTS_AWARDED', `Awarded ${amt} ${type} XP to Youth ID ${youthId}. Game: ${gameName||'N/A'}`);
+                }
+            }
+        );
     });
-}, {
-    scheduled: true,
-    timezone: "Asia/Manila"
-});
+}
 
 // ==============================================================================
 // BASE API & OPEN GRAPH
@@ -329,14 +464,8 @@ app.get('/', (req, res, next) => {
     <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${description}" />
     <meta property="og:image" content="${imageUrl}" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
     <meta property="og:url" content="${protocol}://${host}/?event=${eventId}" />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${title}" />
-    <meta name="twitter:description" content="${description}" />
-    <meta name="twitter:image" content="${imageUrl}" />`;
+    <meta property="og:type" content="website" />`;
             res.send(data.replace('</head>', `${metaTags}\n</head>`));
         });
     });
@@ -348,7 +477,8 @@ app.get('/manifest.json', (req, res) => {
         "name": isStaging ? "FOG MINISTRIES (STAGING)" : "FIRE OF GOD MINISTRIES",
         "short_name": isStaging ? "FOG Staging" : "FOG Portal",
         "description": "Community Portal, CRM, and Transformational Discipleship Engine",
-        "start_url": "/", "display": "standalone", "background_color": "#F8FAFC",
+        "start_url": "/", "display": "standalone",
+        "background_color": "#F8FAFC",
         "theme_color": isStaging ? "#10B981" : "#FF6B00",
         "icons": [
             { "src": isStaging ? "/img/icon-staging.png" : "/img/icon-prod.png", "sizes": "192x192", "type": "image/png" },
@@ -378,8 +508,31 @@ app.post('/api/settings/images', (req, res) => {
     } catch (err) { res.status(500).json({ error: 'Failed to write files to disk: ' + err.message }); }
 });
 
+// 🛡️ CRITICAL FIX: RE-ENABLED STATIC FILE SERVING FOR THE FRONTEND
 app.use(express.static(path.join(__dirname, 'public')));
+// ==============================================================================
+// V7.0 AI AUTOMATION ENGINE (CRON JOBS)
+// ==============================================================================
+cron.schedule('0 9 * * 1', () => { // Runs every Monday at 9:00 AM Manila Time
+    console.log('[CRON] Running Weekly Absence Detection & AI Push Drafts...');
+    const cutoffDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    cutoffDate.setDate(cutoffDate.getDate() - 14);
+    const pad = (n) => String(n).padStart(2, '0');
+    const cutoffStr = `${cutoffDate.getFullYear()}-${pad(cutoffDate.getMonth()+1)}-${pad(cutoffDate.getDate())} 00:00:00`;
 
+    const sql = `SELECT y.id, y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id HAVING last_seen < ? OR last_seen IS NULL`;
+    db.all(sql, [cutoffStr], (err, rows) => {
+        if (err || !rows) return;
+        rows.forEach(user => {
+            const draftMsg = `Hi ${user.name || 'there'}, we've missed you at recent gatherings! Let us know how we can pray for you today.`;
+            db.run(`INSERT INTO ai_communication_drafts (target_youth_id, draft_type, suggested_message, created_at) VALUES (?, 'Push', ?, ?)`, [user.id, draftMsg, getManilaTime()]);
+        });
+    });
+}, { scheduled: true, timezone: "Asia/Manila" });
+
+// ==============================================================================
+// SYSTEM & BACKUP APIs
+// ==============================================================================
 app.get('/api/backups', (req, res) => {
     if (!fs.existsSync(backupDir)) return res.json([]);
     const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.db')).map(f => {
@@ -393,7 +546,6 @@ app.get('/api/backups', (req, res) => {
 app.post('/api/backups/restore', (req, res) => {
     const { filename, actor } = req.body;
     const targetFile = path.join(backupDir, filename);
-    const currentDb = './fog_community.db';
     if (!fs.existsSync(targetFile)) return res.status(404).json({ error: 'File not found' });
     try {
         const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
@@ -408,6 +560,27 @@ app.post('/api/backups/restore', (req, res) => {
             setTimeout(() => { process.exit(0); }, 1000);
         });
     } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/settings/featured', (req, res) => {
+    db.all(`SELECT key, value FROM app_settings WHERE key IN ('featured_arcade', 'featured_growth')`, [], (err, rows) => {
+        let settings = { featured_arcade: '', featured_growth: '' };
+        if (rows) rows.forEach(r => settings[r.key] = r.value);
+        res.json(settings);
+    });
+});
+
+app.post('/api/settings/featured', (req, res) => {
+    const { featured_arcade, featured_growth, actor } = req.body;
+    db.get(`SELECT permissions FROM users WHERE username = ?`, [actor], (err, user) => {
+        if (actor !== 'celsocreeriii@gmail.com' && (!user || !user.permissions.includes('edit_entries'))) {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
+        db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('featured_arcade', ?)`, [featured_arcade || '']);
+        db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('featured_growth', ?)`, [featured_growth || '']);
+        logActivity(actor, 'UPDATE_FEATURED_GAMES', `Updated featured games to: Arcade=${featured_arcade}, Growth=${featured_growth}`);
+        res.json({ success: true });
+    });
 });
 
 // ==============================================================================
@@ -515,13 +688,10 @@ app.post('/api/checkin', (req, res) => {
         db.get(`SELECT id FROM attendance WHERE youth_id = ? AND event_id = ?`, [targetYouthId, event_id], (err, row) => {
             if (row) return res.status(400).json({ error: 'Member is ALREADY checked in for this event.' });
             db.run(`INSERT INTO attendance (youth_id, event_id, is_walkin, checked_in_at) VALUES (?, ?, ?, ?)`, [targetYouthId, event_id, is_walkin ? 1 : 0, getManilaTime()], function (err) {
-                logActivity(actor, 'CHECK_IN', `Checked in member ID ${targetYouthId}`);
-
-                // --- V6.0 GAMIFICATION: AUTOMATIC +10 POINTS FOR EVENT CHECK-IN ---
-                db.run(`INSERT INTO gamification_points (youth_id, points, created_at) VALUES (?, 10, ?)
-                        ON CONFLICT(youth_id) DO UPDATE SET points = points + 10`, [targetYouthId, getManilaTime()]);
-                // -------------------------------------------------------------------
-
+                db.get(`SELECT event_points FROM events WHERE id = ?`, [event_id], (err, evt) => {
+                    const pts = (evt && evt.event_points !== null) ? evt.event_points : 10;
+                    awardPoints(targetYouthId, 'event', pts, actor, 'Event Check-In');
+                });
                 db.get(`SELECT name FROM youth WHERE id = ?`, [targetYouthId], (e, y) => { res.json({ success: true, member_name: y ? y.name : 'Member', youth_id: targetYouthId, log_id: this.lastID }); });
             });
         });
@@ -551,18 +721,13 @@ app.get('/api/events/:id/analytics', (req, res) => {
     });
 });
 app.get('/api/events/:id/poster.jpg', (req, res) => { db.get(`SELECT poster, prereg_banner FROM events WHERE id = ?`, [req.params.id], (err, event) => { if (!event) return res.status(404).send('Not found'); const b64 = event.poster || event.prereg_banner; if (b64 && b64.startsWith('data:image')) { const parts = b64.split(';'); res.writeHead(200, { 'Content-Type': parts[0].split(':')[1] }); res.end(Buffer.from(parts[1].split(',')[1], 'base64')); } else res.status(404).send('No image'); }); });
-app.post('/api/events', (req, res) => { db.run(`INSERT INTO events (name, event_date, time_start, venue, poster, photos_url, materials_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, getManilaTime()], function (err) { logActivity(req.body.actor, 'CREATE_EVENT', `Published event '${req.body.name}'`); res.json({ id: this.lastID }); }); });
-app.put('/api/events/:id', (req, res) => { if (req.body.poster !== undefined && req.body.poster !== null) { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, poster=?, photos_url=?, materials_url=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.params.id], function(err) { res.json({ updated: this.changes }); }); } else { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, photos_url=?, materials_url=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.photos_url, req.body.materials_url, req.params.id], function(err) { res.json({ updated: this.changes }); }); } });
+app.post('/api/events', (req, res) => { db.run(`INSERT INTO events (name, event_date, time_start, venue, poster, photos_url, materials_url, event_points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, getManilaTime()], function (err) { logActivity(req.body.actor, 'CREATE_EVENT', `Published event '${req.body.name}'`); res.json({ id: this.lastID }); }); });
+app.put('/api/events/:id', (req, res) => { if (req.body.poster !== undefined && req.body.poster !== null) { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, poster=?, photos_url=?, materials_url=?, event_points=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, req.params.id], function(err) { res.json({ updated: this.changes }); }); } else { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, photos_url=?, materials_url=?, event_points=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, req.params.id], function(err) { res.json({ updated: this.changes }); }); } });
 app.delete('/api/events/:id', (req, res) => { db.run(`DELETE FROM events WHERE id=?`, [req.params.id], function (err) { logActivity(req.body.actor, 'DELETE_EVENT', `Deleted event record (ID: ${req.params.id})`); res.json({ deleted: this.changes }); }); });
 app.post('/api/events/:id/prereg-settings', (req, res) => { db.run(`UPDATE events SET prereg_banner = ?, prereg_bottom_banner = ?, prereg_title = ?, prereg_info = ? WHERE id = ?`, [req.body.banner, req.body.bottom_banner, req.body.title, req.body.info, req.params.id], function(err) { res.json({ success: true }); }); });
 app.get('/api/events/:id/preregs', (req, res) => { db.all(`SELECT youth_id FROM pre_registrations WHERE event_id = ?`, [req.params.id], (err, rows) => { res.json(rows.map(r => r.youth_id)); }); });
 app.post('/api/preregister', (req, res) => { db.run(`INSERT OR IGNORE INTO pre_registrations (event_id, youth_id, created_at) VALUES (?, ?, ?)`, [req.body.event_id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
-app.delete('/api/events/:event_id/preregs/:youth_id', (req, res) => {
-    db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`, [req.params.event_id, req.params.youth_id], function(err) {
-        logActivity(req.body.actor, 'DELETE_PREREG', `Removed pre-registration for youth ID ${req.params.youth_id} from Event ${req.params.event_id}`);
-        res.json({ success: true, deleted: this.changes });
-    });
-});
+app.delete('/api/events/:event_id/preregs/:youth_id', (req, res) => { db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`, [req.params.event_id, req.params.youth_id], function(err) { res.json({ success: true, deleted: this.changes }); }); });
 
 // MINISTRIES
 app.get('/api/ministries', (req, res) => { db.all(`SELECT m.*, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = m.id) as member_count FROM ministries m ORDER BY m.name ASC`, [], (err, rows) => { res.json(rows); }); });
@@ -580,93 +745,40 @@ app.put('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.r
 app.delete('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.run(`DELETE FROM ministry_members WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.get('/api/youth/:id/ministries', (req, res) => { db.all(`SELECT m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 
-// ==============================================================================
 // V5.0 EVENT ROLES & BLOCKOUT DATES
-// ==============================================================================
-app.get('/api/events/:id/roles', (req, res) => {
-    db.all(`SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, er.status, y.id, y.name, y.qr_code, y.profile_picture FROM event_roles er JOIN youth y ON er.youth_id = y.id WHERE er.event_id = ? ORDER BY er.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); });
-});
-
+app.get('/api/events/:id/roles', (req, res) => { db.all(`SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, er.status, y.id, y.name, y.qr_code, y.profile_picture FROM event_roles er JOIN youth y ON er.youth_id = y.id WHERE er.event_id = ? ORDER BY er.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 app.post('/api/events/:id/roles', (req, res) => {
-    const eventId = req.params.id;
-    const { youth_id, role_name, sub_role, actor } = req.body;
-
+    const eventId = req.params.id; const { youth_id, role_name, sub_role, actor } = req.body;
     db.get(`SELECT name, event_date FROM events WHERE id = ?`, [eventId], (err, evt) => {
         if (!evt) return res.status(404).json({ error: 'Event not found.' });
-
         db.get(`SELECT reason FROM blockout_dates WHERE youth_id = ? AND block_date = ?`, [youth_id, evt.event_date], (err, blockout) => {
-            if (blockout) {
-                return res.status(400).json({ error: `Cannot schedule! This member has blocked out ${evt.event_date}. Reason: ${blockout.reason || 'Unavailable'}` });
-            }
-
-            db.run(`INSERT INTO event_roles (event_id, youth_id, role_name, sub_role, assigned_at, status) VALUES (?, ?, ?, ?, ?, 'Pending')`,
-                [eventId, youth_id, role_name, sub_role, getManilaTime()], function(err) {
-                    if (err) return res.status(500).json({ error: err.message });
-                    pushToUser(youth_id, "📅 Scheduling Invite", `You've been invited to serve as ${role_name} for ${evt.name}. Check your profile to accept!`);
-                    res.json({ success: true });
+            if (blockout) return res.status(400).json({ error: `Cannot schedule! This member has blocked out ${evt.event_date}. Reason: ${blockout.reason || 'Unavailable'}` });
+            db.run(`INSERT INTO event_roles (event_id, youth_id, role_name, sub_role, assigned_at, status) VALUES (?, ?, ?, ?, ?, 'Pending')`, [eventId, youth_id, role_name, sub_role, getManilaTime()], function(err) {
+                if (err) return res.status(500).json({ error: err.message });
+                pushToUser(youth_id, "📅 Scheduling Invite", `You've been invited to serve as ${role_name} for ${evt.name}. Check your profile to accept!`);
+                res.json({ success: true });
             });
         });
     });
 });
-
 app.post('/api/events/:id/roles-notes', (req, res) => { db.run(`UPDATE events SET roles_restricted_notes = ? WHERE id = ?`, [req.body.roles_restricted_notes, req.params.id], function(err) { res.json({ success: true }); }); });
 app.put('/api/events/:event_id/roles/:mapping_id', (req, res) => { db.run(`UPDATE event_roles SET role_name = ?, sub_role = ? WHERE id = ?`, [req.body.role_name, req.body.sub_role, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.delete('/api/events/:event_id/roles/:mapping_id', (req, res) => { db.run(`DELETE FROM event_roles WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
+app.get('/api/youth/:id/event_roles', (req, res) => { db.all(`SELECT er.id as mapping_id, e.id as event_id, e.name as event_name, er.role_name, er.sub_role, er.assigned_at, er.status, e.event_date FROM event_roles er JOIN events e ON er.event_id = e.id WHERE er.youth_id = ? ORDER BY e.event_date DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+app.put('/api/events/:event_id/roles/:mapping_id/status', (req, res) => { db.run(`UPDATE event_roles SET status = ? WHERE id = ?`, [req.body.status, req.params.mapping_id], function(err) { logActivity(req.body.actor, 'RESPOND_INVITE', `Marked role mapping ${req.params.mapping_id} as ${req.body.status}`); res.json({ success: true }); }); });
+app.get('/api/youth/:id/blockouts', (req, res) => { db.all(`SELECT * FROM blockout_dates WHERE youth_id = ? ORDER BY block_date ASC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+app.post('/api/blockouts', (req, res) => { db.run(`INSERT INTO blockout_dates (youth_id, block_date, reason, created_at) VALUES (?, ?, ?, ?)`, [req.body.youth_id, req.body.block_date, req.body.reason, getManilaTime()], function(err) { if (err) return res.status(400).json({ error: 'Date already blocked.' }); res.json({ success: true }); }); });
+app.delete('/api/blockouts/:id', (req, res) => { db.run(`DELETE FROM blockout_dates WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); });
 
-app.get('/api/youth/:id/event_roles', (req, res) => {
-    db.all(`SELECT er.id as mapping_id, e.id as event_id, e.name as event_name, er.role_name, er.sub_role, er.assigned_at, er.status, e.event_date FROM event_roles er JOIN events e ON er.event_id = e.id WHERE er.youth_id = ? ORDER BY e.event_date DESC`, [req.params.id], (err, rows) => { res.json(rows); });
-});
-
-app.put('/api/events/:event_id/roles/:mapping_id/status', (req, res) => {
-    db.run(`UPDATE event_roles SET status = ? WHERE id = ?`, [req.body.status, req.params.mapping_id], function(err) {
-        logActivity(req.body.actor, 'RESPOND_INVITE', `Marked role mapping ${req.params.mapping_id} as ${req.body.status}`);
-        res.json({ success: true });
-    });
-});
-
-app.get('/api/youth/:id/blockouts', (req, res) => {
-    db.all(`SELECT * FROM blockout_dates WHERE youth_id = ? ORDER BY block_date ASC`, [req.params.id], (err, rows) => { res.json(rows); });
-});
-
-app.post('/api/blockouts', (req, res) => {
-    const { youth_id, block_date, reason } = req.body;
-    db.run(`INSERT INTO blockout_dates (youth_id, block_date, reason, created_at) VALUES (?, ?, ?, ?)`,
-        [youth_id, block_date, reason, getManilaTime()], function(err) {
-            if (err) return res.status(400).json({ error: 'Date already blocked or invalid.' });
-            res.json({ success: true });
-        });
-});
-
-app.delete('/api/blockouts/:id', (req, res) => {
-    db.run(`DELETE FROM blockout_dates WHERE id = ?`, [req.params.id], function(err) {
-        res.json({ success: true });
-    });
-});
-
-// ==============================================================================
 // V2.0 DISCIPLESHIP ENGINE
-// ==============================================================================
-app.get('/api/discipleship/next-step/:youth_id', (req, res) => {
-    db.all(`SELECT p.*, m.status as member_status, m.completed_at FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, steps) => {
-        let nextStep = steps.find(s => s.member_status !== 'Completed');
-        if (!nextStep && steps.length > 0) nextStep = steps[steps.length - 1];
-        res.json({ nextStep, allSteps: steps });
-    });
-});
+app.get('/api/discipleship/next-step/:youth_id', (req, res) => { db.all(`SELECT p.*, m.status as member_status, m.completed_at FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, steps) => { let nextStep = steps.find(s => s.member_status !== 'Completed'); if (!nextStep && steps.length > 0) nextStep = steps[steps.length - 1]; res.json({ nextStep, allSteps: steps }); }); });
 app.post('/api/discipleship/milestones', (req, res) => { db.run(`INSERT INTO member_milestones (youth_id, pathway_id, status, completed_at, notes) VALUES (?, ?, ?, ?, ?) ON CONFLICT(youth_id, pathway_id) DO UPDATE SET status = excluded.status, completed_at = excluded.completed_at, notes = excluded.notes`, [req.body.youth_id, req.body.pathway_id, req.body.status, req.body.status === 'Completed' ? getManilaTime() : null, req.body.notes], function(err) { res.json({ success: true }); }); });
 app.get('/api/discipleship/pathways', (req, res) => { db.all(`SELECT * FROM discipleship_pathways ORDER BY step_order ASC`, [], (err, rows) => { res.json(rows); }); });
 app.post('/api/discipleship/pathways', (req, res) => { db.run(`INSERT INTO discipleship_pathways (title, description, step_order, created_at) VALUES (?, ?, ?, ?)`, [req.body.title, req.body.description, req.body.step_order, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
 app.put('/api/discipleship/pathways/:id', (req, res) => { db.run(`UPDATE discipleship_pathways SET title=?, description=?, step_order=? WHERE id=?`, [req.body.title, req.body.description, req.body.step_order, req.params.id], function(err) { res.json({ success: true }); }); });
 app.delete('/api/discipleship/pathways/:id', (req, res) => { db.run(`DELETE FROM discipleship_pathways WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM member_milestones WHERE pathway_id=?`, [req.params.id]); res.json({ success: true }); }); });
 app.get('/api/discipleship/member-progress/:youth_id', (req, res) => { db.all(`SELECT p.id as pathway_id, p.title, m.status, m.completed_at, m.notes as pastoral_notes FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, rows) => { res.json(rows); }); });
-app.get('/api/discipleship/analytics/stages', (req, res) => {
-    db.all(`WITH UserMaxStep AS (SELECT youth_id, MAX(pathway_id) as max_path_id FROM member_milestones WHERE status = 'Completed' OR status = 'In Progress' GROUP BY youth_id) SELECT p.title, COUNT(u.youth_id) as user_count FROM discipleship_pathways p LEFT JOIN UserMaxStep u ON p.id = u.max_path_id GROUP BY p.id, p.title ORDER BY p.step_order ASC`, [], (err, stepRows) => {
-        db.get(`SELECT COUNT(*) as total FROM youth`, [], (err, youthRow) => {
-            const totalYouth = youthRow ? youthRow.total : 0; let assignedYouth = 0; stepRows.forEach(r => assignedYouth += r.user_count);
-            res.json({ stages: stepRows, unassigned: totalYouth - assignedYouth > 0 ? totalYouth - assignedYouth : 0 });
-        });
-    });
-});
+app.get('/api/discipleship/analytics/stages', (req, res) => { db.all(`WITH UserMaxStep AS (SELECT youth_id, MAX(pathway_id) as max_path_id FROM member_milestones WHERE status = 'Completed' OR status = 'In Progress' GROUP BY youth_id) SELECT p.title, COUNT(u.youth_id) as user_count FROM discipleship_pathways p LEFT JOIN UserMaxStep u ON p.id = u.max_path_id GROUP BY p.id, p.title ORDER BY p.step_order ASC`, [], (err, stepRows) => { db.get(`SELECT COUNT(*) as total FROM youth`, [], (err, youthRow) => { const totalYouth = youthRow ? youthRow.total : 0; let assignedYouth = 0; stepRows.forEach(r => assignedYouth += r.user_count); res.json({ stages: stepRows, unassigned: totalYouth - assignedYouth > 0 ? totalYouth - assignedYouth : 0 }); }); }); });
 
 app.get('/api/journals/:youth_id', (req, res) => { db.all(`SELECT * FROM private_journals WHERE youth_id = ? ORDER BY created_at DESC`, [req.params.youth_id], (err, rows) => { res.json(rows); }); });
 app.post('/api/journals', (req, res) => { db.run(`INSERT INTO private_journals (youth_id, title, content, mood, created_at) VALUES (?, ?, ?, ?, ?)`, [req.body.youth_id, req.body.title, req.body.content, req.body.mood, getManilaTime()], function(err) { res.json({ success: true }); }); });
@@ -682,36 +794,18 @@ app.put('/api/small-groups/:id', (req, res) => { db.run(`UPDATE small_groups SET
 app.delete('/api/small-groups/:id', (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
 app.post('/api/small-groups/:id/join', (req, res) => { db.run(`INSERT OR IGNORE INTO small_group_members (group_id, youth_id, joined_at) VALUES (?, ?, ?)`, [req.params.id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
 
-// ==============================================================================
-// V7.0 AI ASSISTANT ENDPOINT (Incognito Mode & Personas)
-// ==============================================================================
+// V7.0 AI ASSISTANT ENDPOINT
 app.post('/api/ai/chat', (req, res) => {
     const { prompt, persona, is_private, actor } = req.body;
     const q = (prompt || '').toLowerCase();
-
     const finalizeChat = (reply) => {
-        if (!is_private) {
-            db.run(`INSERT INTO ai_chat_logs (username, persona, prompt, response, is_private, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
-                [actor || 'System', persona || 'General Assistant', prompt, reply, getManilaTime()]
-            );
-        }
+        if (!is_private) db.run(`INSERT INTO ai_chat_logs (username, persona, prompt, response, is_private, created_at) VALUES (?, ?, ?, ?, 0, ?)`, [actor || 'System', persona || 'General Assistant', prompt, reply, getManilaTime()]);
         setTimeout(() => { res.json({ response: reply }); }, 600);
     };
-
-    if (q.includes('missing') || q.includes('absent') || q.includes('not attend')) {
-        db.all(`SELECT y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id ORDER BY last_seen ASC LIMIT 10`, [], (err, rows) => {
-            let msg = "Haven't checked in recently:<br>"; rows.forEach(r => msg += `• ${r.name}<br>`);
-            finalizeChat(msg);
-        });
-        return;
+    if (q.includes('missing') || q.includes('absent')) {
+        db.all(`SELECT y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id ORDER BY last_seen ASC LIMIT 10`, [], (err, rows) => { let msg = "Haven't checked in recently:<br>"; rows.forEach(r => msg += `• ${r.name}<br>`); finalizeChat(msg); }); return;
     }
-    if (q.includes('how many member') || q.includes('total member')) {
-        db.get(`SELECT count(*) as total FROM youth`, [], (err, row) => {
-            finalizeChat(`We currently have <strong>${row.total} members</strong>.`);
-        });
-        return;
-    }
-
+    if (q.includes('how many member') || q.includes('total member')) { db.get(`SELECT count(*) as total FROM youth`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.total} members</strong>.`); }); return; }
     finalizeChat(`Hello! I am your <strong>FOG Ministry AI Assistant</strong>. [Persona: ${persona || 'General Assistant'}]${is_private ? ' 🔏 (Incognito Mode Active)' : ''}`);
 });
 
@@ -727,264 +821,193 @@ app.get('/api/worship/setlists/:id/songs', (req, res) => { db.all(`SELECT ss.id 
 app.post('/api/worship/setlists/:id/songs', (req, res) => { db.get(`SELECT MAX(sort_order) as max_sort FROM setlist_songs WHERE setlist_id = ?`, [req.params.id], (err, row) => { const nextSort = (row && row.max_sort !== null ? row.max_sort : 0) + 1; db.run(`INSERT OR IGNORE INTO setlist_songs (setlist_id, song_id, sort_order) VALUES (?, ?, ?)`, [req.params.id, req.body.song_id, nextSort], function(err) { res.json({ success: true }); }); }); });
 app.delete('/api/worship/setlists/:setlist_id/songs/:mapping_id', (req, res) => { db.run(`DELETE FROM setlist_songs WHERE id=?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 
-// ==============================================================================
-// V4.0 - COMMUNICATIONS & PUSH NOTIFICATIONS ENGINE
-// ==============================================================================
+// V4.0 COMMUNICATIONS
 app.post('/api/communications/subscribe', (req, res) => {
     const { username, subscription } = req.body;
-    if (!username || !subscription) return res.status(400).json({ error: 'Missing data' });
-
-    db.run(`INSERT INTO push_subscriptions (username, subscription, created_at) VALUES (?, ?, ?)
-            ON CONFLICT(username) DO UPDATE SET subscription = excluded.subscription`,
-        [username, JSON.stringify(subscription), getManilaTime()],
-        function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true });
-        }
-    );
+    db.run(`INSERT INTO push_subscriptions (username, subscription, created_at) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET subscription = excluded.subscription`, [username, JSON.stringify(subscription), getManilaTime()], function(err) { res.json({ success: true }); });
 });
-
-app.post('/api/communications/unsubscribe', (req, res) => {
-    const { username } = req.body;
-    db.run(`DELETE FROM push_subscriptions WHERE username = ?`, [username], function(err) {
-        res.json({ success: true });
-    });
-});
-
+app.post('/api/communications/unsubscribe', (req, res) => { db.run(`DELETE FROM push_subscriptions WHERE username = ?`, [req.body.username], function(err) { res.json({ success: true }); }); });
 app.post('/api/communications/broadcast', (req, res) => {
     const { target, title, message, actor } = req.body;
-    if (!title || !message || !target) return res.status(400).json({ error: "Missing fields" });
-
-    db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`,
-        [title, message, target, actor || 'System', getManilaTime()], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
+    db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', getManilaTime()], function(err) {
             const announcementId = this.lastID;
-
-            let targetQuery = `SELECT id, qr_code FROM youth`;
-            let targetParams = [];
-
-            if (target === 'Leaders') {
-                targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`;
-            } else if (target.startsWith('Ministry:')) {
-                const minId = target.split(':')[1];
-                targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`;
-                targetParams.push(minId);
-            } else if (target.startsWith('Group:')) {
-                const groupId = target.split(':')[1];
-                targetQuery = `SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?`;
-                targetParams.push(groupId);
-            }
+            let targetQuery = `SELECT id, qr_code FROM youth`; let targetParams = [];
+            if (target === 'Leaders') { targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`; } 
+            else if (target.startsWith('Ministry:')) { targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`; targetParams.push(target.split(':')[1]); } 
+            else if (target.startsWith('Group:')) { targetQuery = `SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?`; targetParams.push(target.split(':')[1]); }
 
             db.all(targetQuery, targetParams, (err, youths) => {
-                if (err) console.error("Broadcast routing error:", err);
                 const usernames = ['celsocreeriii@gmail.com'];
-
                 if (youths && youths.length > 0) {
                     const stmt = db.prepare(`INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)`);
-                    youths.forEach(y => {
-                        if (y && y.id) {
-                            stmt.run([y.id, announcementId, getManilaTime()]);
-                            if (y.qr_code) usernames.push(y.qr_code);
-                        }
-                    });
+                    youths.forEach(y => { if (y && y.id) { stmt.run([y.id, announcementId, getManilaTime()]); if (y.qr_code) usernames.push(y.qr_code); } });
                     stmt.finalize();
                 }
-
                 const placeholders = usernames.map(() => '?').join(',');
                 db.all(`SELECT subscription FROM push_subscriptions WHERE username IN (${placeholders})`, usernames, (err, subs) => {
                     if (err || !subs || subs.length === 0) return res.json({ success: true, sentCount: 0 });
-
                     const payload = JSON.stringify({ title, body: message, url: '/' });
                     let sentCount = 0;
-
                     Promise.all(subs.map(row => {
                         try {
-                            const pushSub = JSON.parse(row.subscription);
-                            return webpush.sendNotification(pushSub, payload)
-                                .then(() => { sentCount++; })
-                                .catch(e => {
-                                    if (e.statusCode === 404 || e.statusCode === 410) {
-                                        db.run(`DELETE FROM push_subscriptions WHERE subscription = ?`, [row.subscription]);
-                                    }
-                                });
+                            return webpush.sendNotification(JSON.parse(row.subscription), payload).then(() => { sentCount++; }).catch(e => { if (e.statusCode === 404 || e.statusCode === 410) db.run(`DELETE FROM push_subscriptions WHERE subscription = ?`, [row.subscription]); });
                         } catch(e) { return Promise.resolve(); }
-                    })).then(() => {
-                        logActivity(actor, 'BROADCAST', `Sent broadcast '${title}' to ${target}`);
-                        res.json({ success: true, sentCount });
-                    });
+                    })).then(() => { logActivity(actor, 'BROADCAST', `Sent broadcast '${title}' to ${target}`); res.json({ success: true, sentCount }); });
                 });
             });
     });
 });
-
-app.get('/api/communications/history', (req, res) => {
-    db.all(`SELECT id, title, target_audience as target, message, author as sender, created_at FROM announcements ORDER BY created_at DESC`, [], (err, rows) => {
-        res.json(rows || []);
-    });
-});
-
+app.get('/api/communications/history', (req, res) => { db.all(`SELECT id, title, target_audience as target, message, author as sender, created_at FROM announcements ORDER BY created_at DESC`, [], (err, rows) => { res.json(rows || []); }); });
 app.delete('/api/communications/broadcast/:id', (req, res) => {
     const { actor } = req.body;
-    if (actor === 'celsocreeriii@gmail.com') {
-        executeDelete();
-        return;
-    }
+    if (actor === 'celsocreeriii@gmail.com') { executeDelete(); return; }
     db.get(`SELECT permissions FROM users WHERE username = ?`, [actor], (err, user) => {
-        if (err || !user) return res.status(403).json({ error: 'Unauthorized: User not found.' });
-        let perms = [];
-        try { perms = JSON.parse(user.permissions); } catch(e) {}
-        if (perms.includes('delete_entries')) { executeDelete(); }
-        else { return res.status(403).json({ error: 'Unauthorized: Missing delete_entries permission.' }); }
+        if (!user || !JSON.parse(user.permissions).includes('delete_entries')) return res.status(403).json({ error: 'Unauthorized' });
+        executeDelete();
     });
-    function executeDelete() {
-        db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]);
-            logActivity(actor, 'DELETE_BROADCAST', `Deleted global broadcast ID ${req.params.id}`);
-            res.json({ success: true, deleted: this.changes });
-        });
-    }
+    function executeDelete() { db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]); logActivity(actor, 'DELETE_BROADCAST', `Deleted global broadcast ID ${req.params.id}`); res.json({ success: true }); }); }
 });
-
 app.get('/api/communications/inbox', (req, res) => {
     const username = req.query.username;
-    if (username === 'celsocreeriii@gmail.com') {
-        db.all(`SELECT id as notification_id, title, message, author, created_at FROM announcements ORDER BY created_at DESC LIMIT 50`, [], (err, rows) => {
-            res.json(rows || []);
-        });
-        return;
-    }
+    if (username === 'celsocreeriii@gmail.com') return db.all(`SELECT id as notification_id, title, message, author, created_at FROM announcements ORDER BY created_at DESC LIMIT 50`, [], (err, rows) => { res.json(rows || []); });
     db.get(`SELECT id FROM youth WHERE qr_code = ?`, [username], (err, youth) => {
         if (!youth) return res.json([]);
-        const sql = `SELECT n.id as notification_id, a.title, a.message, a.author, a.created_at
-                     FROM user_notifications n
-                     JOIN announcements a ON n.announcement_id = a.id
-                     WHERE n.youth_id = ?
-                     ORDER BY a.created_at DESC LIMIT 50`;
-        db.all(sql, [youth.id], (err, rows) => {
-            res.json(rows || []);
-        });
+        db.all(`SELECT n.id as notification_id, a.title, a.message, a.author, a.created_at FROM user_notifications n JOIN announcements a ON n.announcement_id = a.id WHERE n.youth_id = ? ORDER BY a.created_at DESC LIMIT 50`, [youth.id], (err, rows) => { res.json(rows || []); });
     });
 });
-
 app.delete('/api/communications/inbox/:id', (req, res) => {
-    const { actor, username } = req.body;
-    if (username === 'celsocreeriii@gmail.com') {
-        db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]);
-            logActivity(actor, 'DELETE_INBOX_MSG', `Admin deleted global broadcast ID ${req.params.id}`);
-            res.json({ success: true });
-        });
-    } else {
-        db.run(`DELETE FROM user_notifications WHERE id = ?`, [req.params.id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true });
-        });
+    if (req.body.username === 'celsocreeriii@gmail.com') { db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]); logActivity(req.body.actor, 'DELETE_INBOX_MSG', `Admin deleted global broadcast ID ${req.params.id}`); res.json({ success: true }); }); } 
+    else { db.run(`DELETE FROM user_notifications WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); }
+});
+
+// ==============================================================================
+// LEADERBOARDS & GAMIFICATION APIs (Defined in Part 1 but recapped here just in case)
+// ==============================================================================
+app.get('/api/leaderboards/:type/:timeframe', (req, res) => {
+    const { type, timeframe } = req.params;
+    let dateCondition = ""; let params = [];
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    
+    if (timeframe === 'month') {
+        const firstDay = new Date(d.getFullYear(), d.getMonth(), 1);
+        dateCondition = "AND pt.created_at >= ?";
+        params.push(firstDay.toISOString().split('T')[0]);
+    } else if (timeframe === 'last_week') {
+        const day = d.getDay();
+        const diffToMonday = d.getDate() - day + (day === 0 ? -6 : 1);
+        const thisMonday = new Date(d.setDate(diffToMonday));
+        const lastMonday = new Date(thisMonday); lastMonday.setDate(lastMonday.getDate() - 7);
+        const lastSunday = new Date(thisMonday); lastSunday.setDate(lastSunday.getDate() - 1);
+        dateCondition = "AND pt.created_at >= ? AND pt.created_at <= ?";
+        params.push(lastMonday.toISOString().split('T')[0] + " 00:00:00");
+        params.push(lastSunday.toISOString().split('T')[0] + " 23:59:59");
     }
-});
 
-// ==============================================================================
-// V6.0 - GAMIFICATION & ENGAGEMENT API ENGINE
-// ==============================================================================
-app.get('/api/gamification/leaderboard', (req, res) => {
-    db.all(`SELECT g.points, y.name, y.profile_picture
-            FROM gamification_points g
-            JOIN youth y ON g.youth_id = y.id
-            ORDER BY g.points DESC LIMIT 10`, [], (err, rows) => {
-        res.json(rows || []);
+    const sql = `
+        SELECT pt.youth_id, y.name, y.profile_picture,
+               SUM(CASE WHEN pt.type = 'arcade' THEN pt.amount ELSE 0 END) as arcade_xp,
+               SUM(CASE WHEN pt.type = 'growth' THEN pt.amount ELSE 0 END) as growth_xp,
+               SUM(CASE WHEN pt.type = 'event' THEN pt.amount ELSE 0 END) as event_xp
+        FROM point_transactions pt
+        JOIN youth y ON pt.youth_id = y.id
+        WHERE 1=1 ${dateCondition}
+        GROUP BY pt.youth_id
+    `;
+
+    db.all(sql, params, (err, rows) => {
+        if (err || !rows) return res.json([]);
+        rows.forEach(r => r.points = Math.floor((r.arcade_xp * 0.4) + (r.growth_xp * 0.6) + r.event_xp));
+
+        let sorted = rows;
+        if (type === 'arcade') sorted.sort((a,b) => b.arcade_xp - a.arcade_xp);
+        else if (type === 'growth') sorted.sort((a,b) => b.growth_xp - a.growth_xp);
+        else sorted.sort((a,b) => b.points - a.points);
+
+        if (type === 'arcade') sorted = sorted.filter(s => s.arcade_xp > 0);
+        else if (type === 'growth') sorted = sorted.filter(s => s.growth_xp > 0);
+        else sorted = sorted.filter(s => s.points > 0);
+
+        res.json(sorted.slice(0, 10));
     });
 });
 
-app.get('/api/gamification/points/:youth_id', (req, res) => {
-    db.get(`SELECT points FROM gamification_points WHERE youth_id = ?`, [req.params.youth_id], (err, row) => {
-        res.json({ points: row ? row.points : 0 });
-    });
+app.get('/api/gamification/game-top/:game_name', (req, res) => {
+    const gameName = req.params.game_name;
+    db.all(`SELECT y.name, y.profile_picture, MAX(pt.amount) as high_score FROM point_transactions pt JOIN youth y ON pt.youth_id = y.id WHERE pt.game_name = ? GROUP BY pt.youth_id ORDER BY high_score DESC LIMIT 3`, [gameName], (err, rows) => { res.json(rows || []); });
 });
 
+app.get('/api/gamification/points/:youth_id', (req, res) => { db.get(`SELECT points, arcade_xp, growth_xp, event_xp FROM gamification_points WHERE youth_id = ?`, [req.params.youth_id], (err, row) => { res.json(row ? row : { points: 0, arcade_xp: 0, growth_xp: 0, event_xp: 0 }); }); });
+app.get('/api/gamification/group-leaderboard', (req, res) => { db.all(`SELECT sg.id, sg.name, SUM(gp.points) as total_points, COUNT(DISTINCT sgm.youth_id) as member_count FROM small_groups sg JOIN small_group_members sgm ON sg.id = sgm.group_id JOIN gamification_points gp ON sgm.youth_id = gp.youth_id GROUP BY sg.id ORDER BY total_points DESC LIMIT 10`, [], (err, rows) => { res.json(rows || []); }); });
 app.get('/api/gamification/challenges', (req, res) => {
     const youthId = req.query.youth_id;
     db.all(`SELECT * FROM weekly_challenges WHERE is_active = 1 ORDER BY created_at DESC`, [], (err, challenges) => {
         if (err || !challenges) return res.json([]);
         if (!youthId) return res.json(challenges);
-
         db.all(`SELECT challenge_id FROM user_challenge_logs WHERE youth_id = ?`, [youthId], (err2, logs) => {
             const completedIds = new Set((logs || []).map(l => l.challenge_id));
-            const enrichedChallenges = challenges.map(c => ({
-                ...c,
-                completed: completedIds.has(c.id)
-            }));
-            res.json(enrichedChallenges);
+            res.json(challenges.map(c => ({ ...c, completed: completedIds.has(c.id) })));
         });
     });
 });
-
 app.post('/api/gamification/challenges/:id/complete', (req, res) => {
     const { youth_id, actor } = req.body;
-    const challengeId = req.params.id;
-
-    db.get(`SELECT points FROM weekly_challenges WHERE id = ? AND is_active = 1`, [challengeId], (err, challenge) => {
+    db.get(`SELECT points FROM weekly_challenges WHERE id = ? AND is_active = 1`, [req.params.id], (err, challenge) => {
         if (!challenge) return res.status(404).json({ error: 'Challenge not found or inactive.' });
-
-        db.run(`INSERT INTO user_challenge_logs (youth_id, challenge_id, completed_at) VALUES (?, ?, ?)`,
-            [youth_id, challengeId, getManilaTime()], function(err) {
-
+        db.run(`INSERT INTO user_challenge_logs (youth_id, challenge_id, completed_at) VALUES (?, ?, ?)`, [youth_id, req.params.id, getManilaTime()], function(err) {
             if (err) return res.status(400).json({ error: 'You have already completed this challenge!' });
-
-            db.run(`INSERT INTO gamification_points (youth_id, points, created_at) VALUES (?, ?, ?)
-                    ON CONFLICT(youth_id) DO UPDATE SET points = points + ?`,
-                [youth_id, challenge.points, getManilaTime(), challenge.points], function(err2) {
-
-                logActivity(actor || 'System', 'COMPLETED_CHALLENGE', `User ID ${youth_id} completed Challenge ${challengeId} (+${challenge.points} pts)`);
-                res.json({ success: true, pointsAwarded: challenge.points });
-            });
+            awardPoints(youth_id, 'growth', challenge.points, actor || 'System', 'Weekly Challenge');
+            res.json({ success: true, pointsAwarded: challenge.points });
         });
     });
 });
+app.post('/api/gamification/challenges', (req, res) => { db.run(`INSERT INTO weekly_challenges (title, description, points, created_at) VALUES (?, ?, ?, ?)`, [req.body.title, req.body.description, req.body.points, getManilaTime()], function(err) { logActivity(req.body.actor, 'CREATE_CHALLENGE', `Created new challenge '${req.body.title}' for ${req.body.points} points`); res.json({ success: true, id: this.lastID }); }); });
 
-app.post('/api/gamification/challenges', (req, res) => {
-    const { title, description, points, actor } = req.body;
-    db.run(`INSERT INTO weekly_challenges (title, description, points, created_at) VALUES (?, ?, ?, ?)`,
-        [title, description, points, getManilaTime()], function(err) {
-        logActivity(actor, 'CREATE_CHALLENGE', `Created new challenge '${title}' for ${points} points`);
-        res.json({ success: true, id: this.lastID });
-    });
-});
-
-// ==============================================================================
-// V8.0 - ARCADE & MINIGAMES API (WITH LEADERBOARDS)
-// ==============================================================================
 app.post('/api/arcade/submit', (req, res) => {
     const { youth_id, game_name, score, actor } = req.body;
-    if (!youth_id || !game_name || !score) return res.status(400).json({ error: 'Missing arcade payload data.' });
-
-    db.run(`INSERT INTO arcade_score_logs (youth_id, game_name, score, played_at) VALUES (?, ?, ?, ?)`,
-        [youth_id, game_name, score, getManilaTime()], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            
-            db.run(`INSERT INTO gamification_points (youth_id, points, created_at) VALUES (?, ?, ?)
-                    ON CONFLICT(youth_id) DO UPDATE SET points = points + ?`,
-                [youth_id, score, getManilaTime(), score], function(err2) {
-                    
-                logActivity(actor || 'System', 'ARCADE_SCORE', `User ID ${youth_id} scored ${score} XP on ${game_name}`);
-                res.json({ success: true, pointsAwarded: score });
-            });
+    db.run(`INSERT INTO arcade_score_logs (youth_id, game_name, score, played_at) VALUES (?, ?, ?, ?)`, [youth_id, game_name, score, getManilaTime()], function(err) {
+            awardPoints(youth_id, 'arcade', score, actor || 'System', game_name);
+            res.json({ success: true, pointsAwarded: score });
     });
 });
 
-app.get('/api/arcade/leaderboard', (req, res) => {
-    db.all(`
-        SELECT y.name, y.profile_picture, SUM(a.score) as total_score 
-        FROM arcade_score_logs a
-        JOIN youth y ON a.youth_id = y.id
-        GROUP BY a.youth_id
-        ORDER BY total_score DESC
-        LIMIT 10
-    `, [], (err, rows) => {
-        res.json(rows || []);
+app.get('/api/growth-games/verse-scramble', (req, res) => { db.get(`SELECT * FROM brain_verse_scramble ORDER BY RANDOM() LIMIT 1`, [], (err, q) => { res.json(q || null); }); });
+app.post('/api/growth-games/verse-scramble/submit', (req, res) => { const { youth_id, game_id, actor } = req.body; db.get(`SELECT id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'verse_scramble' AND game_id = ?`, [youth_id, game_id], (err, row) => { if (row) return res.status(400).json({ error: 'You already played this verse scramble today!' }); db.run(`INSERT INTO brain_user_logs (youth_id, game_type, game_id, played_at) VALUES (?, 'verse_scramble', ?, ?)`, [youth_id, game_id, getManilaTime()]); awardPoints(youth_id, 'growth', 15, actor || 'System', 'Daily Manna Scramble'); res.json({ success: true, pointsAwarded: 15 }); }); });
+
+app.post('/api/growth-games/reflex/submit', (req, res) => { const { youth_id, success, actor } = req.body; const genericId = parseInt(getManilaTime().substring(0, 10).replace(/-/g, '')); db.get(`SELECT id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'reflex' AND game_id = ?`, [youth_id, genericId], (err, row) => { if (row) return res.status(400).json({ error: 'You already completed your daily reflex training!' }); db.run(`INSERT INTO brain_user_logs (youth_id, game_type, game_id, played_at) VALUES (?, 'reflex', ?, ?)`, [youth_id, genericId, getManilaTime()]); let pts = success ? 10 : 2; awardPoints(youth_id, 'growth', pts, actor || 'System', 'Shield of Faith: Reflex Tap'); res.json({ success: true, pointsAwarded: pts }); }); });
+
+app.get('/api/growth-games/narrow-gate', (req, res) => { db.all(`SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 50`, [], (err, rows) => { res.json(rows || []); }); });
+app.post('/api/growth-games/narrow-gate/submit', (req, res) => { const { youth_id, streak, actor } = req.body; let pts = streak * 5; awardPoints(youth_id, 'growth', pts, actor || 'System', 'The Narrow Gate'); res.json({ success: true, pointsAwarded: pts }); });
+
+app.get('/api/growth-games/emoji', (req, res) => {
+    const { youth_id } = req.query; if (!youth_id) return res.json(null);
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6:1);
+    const startOfWeek = new Date(d.setDate(diff)).toISOString().split('T')[0] + " 00:00:00";
+
+    db.all(`SELECT game_id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'emoji' AND created_at >= ?`, [youth_id, startOfWeek], (err, logs) => {
+        if (logs && logs.length >= 15) return res.json({ limit_reached: true });
+        const playedIds = logs ? logs.map(l => l.game_id) : [];
+        const placeholders = playedIds.length > 0 ? playedIds.map(()=>'?').join(',') : "''";
+        db.get(`SELECT * FROM brain_emoji_translation WHERE id NOT IN (${placeholders}) ORDER BY RANDOM() LIMIT 1`, playedIds, (err, q) => { if (!q) return res.json({ exhausted: true }); res.json({ question: q, played_count: playedIds.length }); });
     });
 });
+app.post('/api/growth-games/emoji/submit', (req, res) => { const { youth_id, game_id, actor } = req.body; db.get(`SELECT id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'emoji' AND game_id = ?`, [youth_id, game_id], (err, row) => { if (row) return res.status(400).json({ error: 'You already translated this emoji story!' }); db.run(`INSERT INTO brain_user_logs (youth_id, game_type, game_id, played_at) VALUES (?, 'emoji', ?, ?)`, [youth_id, game_id, getManilaTime()]); awardPoints(youth_id, 'growth', 10, actor || 'System', 'Emoji Sermon Translator'); res.json({ success: true, pointsAwarded: 10 }); }); });
+
+app.get('/api/growth-games/crossword', (req, res) => { db.get(`SELECT * FROM brain_crosswords ORDER BY id DESC LIMIT 1`, [], (err, q) => { res.json(q || null); }); });
+app.post('/api/growth-games/crossword/submit', (req, res) => { const { youth_id, game_id, actor } = req.body; db.get(`SELECT id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'crossword' AND game_id = ?`, [youth_id, game_id], (err, row) => { if (row) return res.status(400).json({ error: 'You already completed this crossword!' }); db.run(`INSERT INTO brain_user_logs (youth_id, game_type, game_id, played_at) VALUES (?, 'crossword', ?, ?)`, [youth_id, game_id, getManilaTime()]); awardPoints(youth_id, 'growth', 25, actor || 'System', 'Word Matrix'); res.json({ success: true, pointsAwarded: 25 }); }); });
+
+app.get('/api/growth-games/trivia', (req, res) => { db.all(`SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 10`, [], (err, rows) => { res.json(rows || []); }); });
+app.post('/api/growth-games/trivia/submit', (req, res) => { const { youth_id, score, actor } = req.body; awardPoints(youth_id, 'growth', score, actor || 'System', 'Catechism Clash'); res.json({ success: true, pointsAwarded: score }); });
+
+app.get('/api/growth-games/poll', (req, res) => { const { youth_id } = req.query; db.get(`SELECT * FROM brain_polls ORDER BY id DESC LIMIT 1`, [], (err, poll) => { if (!poll) return res.json({ poll: null, voted: false }); if (!youth_id) return res.json({ poll, voted: false }); db.get(`SELECT id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'poll' AND game_id = ?`, [youth_id, poll.id], (err2, log) => { res.json({ poll, voted: !!log }); }); }); });
+app.post('/api/growth-games/poll/vote', (req, res) => { const { youth_id, poll_id, choice, actor } = req.body; db.get(`SELECT id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'poll' AND game_id = ?`, [youth_id, poll_id], (err, row) => { if (row) return res.status(400).json({ error: 'You have already voted on this poll!' }); const voteCol = choice === 'a' ? 'votes_a' : 'votes_b'; db.run(`UPDATE brain_polls SET ${voteCol} = ${voteCol} + 1 WHERE id = ?`, [poll_id], function(err3) { db.run(`INSERT INTO brain_user_logs (youth_id, game_type, game_id, played_at) VALUES (?, 'poll', ?, ?)`, [youth_id, poll_id, getManilaTime()]); awardPoints(youth_id, 'growth', 5, actor || 'System', 'Would You Rather'); db.get(`SELECT * FROM brain_polls WHERE id = ?`, [poll_id], (err4, updatedPoll) => { res.json({ success: true, pointsAwarded: 5, poll: updatedPoll }); }); }); }); });
+
+app.get('/api/growth-games/whoami', (req, res) => { db.get(`SELECT id, clue1, clue2, clue3, answer FROM brain_whoami_questions ORDER BY RANDOM() LIMIT 1`, [], (err, q) => { res.json(q || null); }); });
+app.post('/api/growth-games/whoami/submit', (req, res) => { const { youth_id, question_id, clues_used, is_correct, actor } = req.body; db.get(`SELECT id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'whoami' AND game_id = ?`, [youth_id, question_id], (err, row) => { if (row) return res.status(400).json({ error: 'You already played this Who Am I!' }); db.run(`INSERT INTO brain_user_logs (youth_id, game_type, game_id, played_at) VALUES (?, 'whoami', ?, ?)`, [youth_id, question_id, getManilaTime()]); if (is_correct) { let pts = 15; if (clues_used === 2) pts = 10; if (clues_used === 3) pts = 5; awardPoints(youth_id, 'growth', pts, actor || 'System', 'Who Am I?'); res.json({ success: true, pointsAwarded: pts }); } else { res.json({ success: true, pointsAwarded: 0 }); } }); });
+
+app.get('/api/growth-games/verse-chain', (req, res) => { const { group_id } = req.query; db.get(`SELECT * FROM brain_verse_chain ORDER BY id DESC LIMIT 1`, [], (err, verse) => { if (!verse) return res.json({ verse: null, contributions: [] }); if (!group_id) return res.json({ verse, contributions: [] }); db.all(`SELECT word_index, youth_id, guessed_word FROM brain_verse_contributions WHERE group_id = ? AND verse_id = ?`, [group_id, verse.id], (err2, contribs) => { res.json({ verse, contributions: contribs || [] }); }); }); });
+app.post('/api/growth-games/verse-chain/submit', (req, res) => { const { youth_id, group_id, verse_id, word_index, guessed_word, actor } = req.body; if (!group_id) return res.status(400).json({error: "You must be in a small group to play this."}); db.run(`INSERT INTO brain_verse_contributions (group_id, verse_id, youth_id, word_index, guessed_word, created_at) VALUES (?, ?, ?, ?, ?, ?)`, [group_id, verse_id, youth_id, word_index, guessed_word, getManilaTime()], function(err) { if (err) return res.status(400).json({error: "Word already solved by your group!"}); awardPoints(youth_id, 'growth', 10, actor || 'System', 'Verse Chain'); res.json({ success: true, pointsAwarded: 10 }); }); });
 
 app.listen(PORT, () => {
-    console.log(`Server running safely on Port ${PORT} (V8.0 Arcade Active)`);
+    console.log(`Server running safely on Port ${PORT} (V10.5 Leaderboard Engine Active)`);
 });
