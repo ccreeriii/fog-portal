@@ -2,12 +2,13 @@
 // FIRE OF GOD MINISTRIES - V11 GAME ENGINE (LANDING PAGES, 3-TRIES, SUDDEN DEATH)
 
 window.V10Expansion = {
+    bulkDataCache: {}, 
+
     init: function() {
         console.log("🚀 V11 Expansion Module Initialized");
         this.hookNavigation();
         this.loadFeaturedGames(); 
         
-        // Wrap all game cards with the Landing Page Engine after DOM loads
         setTimeout(() => this.applyLandingPages(), 800);
         setTimeout(() => this.loadTopScorers(), 1200); 
         
@@ -29,9 +30,7 @@ window.V10Expansion = {
                 }
                 if (tabId === 'profileTab') {
                     const settingsCard = document.getElementById('adminSettingsCard');
-                    if (settingsCard) {
-                        settingsCard.style.display = (currentUser === 'celsocreeriii@gmail.com' || (typeof window.hasPerm === 'function' && window.hasPerm('edit_entries'))) ? 'block' : 'none';
-                    }
+                    if (settingsCard) settingsCard.style.display = (currentUser === 'celsocreeriii@gmail.com' || (typeof window.hasPerm === 'function' && window.hasPerm('edit_entries'))) ? 'block' : 'none';
                 }
             };
             window.switchTab.isV10Patched = true;
@@ -60,13 +59,33 @@ window.V10Expansion = {
         }
     },
 
+    autoStartArcade: function(moduleObjStr) {
+        const mod = window[moduleObjStr];
+        if(mod && typeof mod.mountGameUI === 'function') {
+            mod.mountGameUI(); 
+            setTimeout(() => {
+                const area = document.getElementById('arcadeActiveGameArea');
+                if(area) {
+                    const btns = area.querySelectorAll('button');
+                    let clicked = false;
+                    btns.forEach(b => {
+                        const txt = b.innerText.toLowerCase();
+                        if(!clicked && (txt.includes('start') || txt.includes('play') || txt.includes('begin'))) {
+                            b.click(); clicked = true;
+                        }
+                    });
+                    if(!clicked && typeof mod.startGame === 'function') mod.startGame();
+                }
+            }, 50);
+        }
+    },
+
     getPlayFunction: function(gameName) {
-        // BYPASS OLD MENUS: Point directly to the start functions!
-        if(gameName === "David's Slingshot") return 'V8Slingshot.startGame()';
-        if(gameName === "Noah's Ark: Rescue") return 'V8NoahsArk.startGame()';
-        if(gameName === "Moses' Red Sea Dash") return 'V8RedSea.startGame()';
-        if(gameName === "Peter's Leap of Faith") return 'V8PetersLeap.startGame()';
-        if(gameName === "Jonah's Deep Sea Dive") return 'V8JonahsDive.startGame()';
+        if(gameName === "David's Slingshot") return 'V10Expansion.autoStartArcade("V8Slingshot")';
+        if(gameName === "Noah's Ark: Rescue") return 'V10Expansion.autoStartArcade("V8NoahsArk")';
+        if(gameName === "Moses' Red Sea Dash") return 'V10Expansion.autoStartArcade("V8RedSea")';
+        if(gameName === "Peter's Leap of Faith") return 'V10Expansion.autoStartArcade("V8PetersLeap")';
+        if(gameName === "Jonah's Deep Sea Dive") return 'V10Expansion.autoStartArcade("V8JonahsDive")';
         if(gameName === 'Catechism Clash') return 'V10Expansion.playCC()';
         if(gameName === 'Who Am I?') return 'V10Expansion.playWAI()';
         if(gameName === 'Daily Manna Scramble') return 'V10Expansion.playVS()';
@@ -82,15 +101,14 @@ window.V10Expansion = {
     loadTopScorers: async function() {
         try {
             const res = await fetch('/api/games/top-scorers-bulk');
-            const bulkData = await res.json();
+            this.bulkDataCache = await res.json();
 
             document.querySelectorAll('.arcade-game-card:not(.hero-game-card)').forEach(card => {
                 const gameName = card.getAttribute('data-game-name');
-                if (!gameName || !bulkData[gameName] || bulkData[gameName].length === 0) return;
-                
+                if (!gameName || !this.bulkDataCache[gameName] || this.bulkDataCache[gameName].length === 0) return;
                 if (card.querySelector('.top-scorers-container')) card.querySelector('.top-scorers-container').remove(); 
 
-                const topPlayers = bulkData[gameName];
+                const topPlayers = this.bulkDataCache[gameName];
                 let html = `<div class="top-scorers-container" style="background: rgba(0,0,0,0.02); border-top: 1px solid var(--border-color); padding: 8px; display: flex; justify-content: center; gap: 8px; margin-top: auto;">`;
                 topPlayers.forEach((p, i) => {
                     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
@@ -123,22 +141,18 @@ window.V10Expansion = {
     openGameLanding: async function(gameName, type, playFn, desc, icon) {
         if (!currentMember || !currentMember.id) return alert("Please log in to play!");
 
-        const gridId = type === 'growth' ? 'growthGamesGrid' : 'arcadeGridItems';
-        const fSlotId = type === 'growth' ? 'featuredGrowthGameContainer' : 'featuredArcadeGameContainer';
+        const listId = type === 'growth' ? 'growthGamesGrid' : 'arcadeGamesList';
+        const fSlotId = type === 'growth' ? 'featuredGrowthGameContainer' : null;
         
-        document.getElementById(gridId).style.display = 'none';
-        if (document.getElementById(fSlotId)) document.getElementById(fSlotId).style.display = 'none';
+        document.getElementById(listId).style.display = 'none';
+        if (fSlotId && document.getElementById(fSlotId)) document.getElementById(fSlotId).style.display = 'none';
 
         const area = document.getElementById(type === 'growth' ? 'growthActiveGameArea' : 'arcadeActiveGameArea');
         area.style.display = 'block';
-        area.innerHTML = `<div style="padding:40px; text-align:center;"><p style="color:var(--text-muted);">Loading Game Data...</p></div>`;
 
         try {
-            const [topRes, attRes] = await Promise.all([
-                fetch(`/api/gamification/game-top/${encodeURIComponent(gameName)}`),
-                fetch(`/api/games/check-attempts?youth_id=${currentMember.id}&game_name=${encodeURIComponent(gameName)}`)
-            ]);
-            const topPlayers = await topRes.json();
+            const topPlayers = this.bulkDataCache[gameName] || [];
+            const attRes = await fetch(`/api/games/check-attempts?youth_id=${currentMember.id}&game_name=${encodeURIComponent(gameName)}`);
             const attemptsData = await attRes.json();
 
             let topHtml = `<p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 5px;">No top scorers yet. Be the first!</p>`;
@@ -158,11 +172,15 @@ window.V10Expansion = {
             const isLocked = attemptsData.remaining <= 0;
             const playBtnHtml = isLocked 
                 ? `<button class="btn btn-secondary" style="width:100%; padding:15px; font-size:1.1rem; cursor:not-allowed;" disabled>Daily Limit Reached (Check back tomorrow!)</button>`
-                : `<button class="btn btn-primary" style="width:100%; padding:15px; font-size:1.1rem; background: ${type === 'growth' ? '#059669' : '#FF6B00'};" onclick="${playFn}">▶ PLAY NOW (${attemptsData.remaining} Tries Left)</button>`;
+                : `<button class="btn btn-primary" style="width:100%; padding:15px; font-size:1.1rem; background: ${type === 'growth' ? '#059669' : '#FF6B00'};" onclick='${playFn}'>▶ PLAY NOW (${attemptsData.remaining} Tries Left)</button>`;
+
+            const returnScript = type === 'growth' 
+                ? `document.getElementById('growthActiveGameArea').style.display='none'; document.getElementById('growthGamesGrid').style.display='grid'; if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display='block';` 
+                : `document.getElementById('arcadeActiveGameArea').style.display='none'; document.getElementById('arcadeGamesList').style.display='block';`;
 
             area.innerHTML = `
                 <div style="padding: 15px; background: #F8FAFC; display: flex; justify-content: space-between; align-items: center; border: 1px solid #E2E8F0; border-radius: 12px 12px 0 0;">
-                    <button class="btn btn-outline btn-sm" onclick="V10Expansion.exitGame()">🔙 Back to Hub</button>
+                    <button class="btn btn-outline btn-sm" onclick="${returnScript}">🔙 Back to Hub</button>
                     <div style="color: #0F172A; font-weight: bold; font-size: 0.9rem;">${icon} ${gameName}</div>
                 </div>
                 <div style="background: #FFF; padding: 30px 20px; border: 1px solid #E2E8F0; border-top: none; border-radius: 0 0 12px 12px;">
@@ -201,12 +219,16 @@ window.V10Expansion = {
                     ? `<div style="font-size: 2rem; color: #10B981; font-weight: 800; margin: 20px 0;">+${data.pointsAwarded} ${type.toUpperCase()} XP!</div><p style="color: #64748B;">You beat your daily high score!</p>` 
                     : `<div style="font-size: 1.2rem; color: #F59E0B; font-weight: 800; margin: 20px 0;">Score: ${score}</div><p style="color: #64748B;">Didn't beat your high score of ${data.highestScore}.</p>`;
 
+                const returnScript = type === 'growth' 
+                    ? `document.getElementById('growthActiveGameArea').style.display='none'; document.getElementById('growthGamesGrid').style.display='grid'; if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display='block';` 
+                    : `document.getElementById('arcadeActiveGameArea').style.display='none'; document.getElementById('arcadeGamesList').style.display='block';`;
+
                 area.innerHTML = `
                     <div style="background: #FFF; padding: 40px 20px; border-radius: 12px; text-align: center; border: 1px solid #E2E8F0;">
                         <h2 style="color: #0F172A; border: none;">Run Completed</h2>
                         ${rewardText}
                         <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 25px;">You have ${data.attemptsLeft} attempts left today.</p>
-                        <button class="btn btn-outline" style="width: 100%; max-width: 250px;" onclick="V10Expansion.exitGame()">Return to Hub</button>
+                        <button class="btn btn-outline" style="width: 100%; max-width: 250px;" onclick="${returnScript}">Return to Hub</button>
                     </div>
                 `;
             } else { alert(data.error || "Failed to save score."); }
@@ -225,9 +247,8 @@ window.V10Expansion = {
 
         const arcadeArea = document.getElementById('arcadeActiveGameArea');
         if(arcadeArea) { arcadeArea.style.display = 'none'; arcadeArea.innerHTML = ''; }
-        const arcadeGrid = document.getElementById('arcadeGridItems');
-        if(arcadeGrid) arcadeGrid.style.display = 'grid';
-        if(document.getElementById('featuredArcadeGameContainer')) document.getElementById('featuredArcadeGameContainer').style.display = 'block';
+        const arcadeList = document.getElementById('arcadeGamesList');
+        if(arcadeList) arcadeList.style.display = 'block';
     },
 
     // --------------------------------------------------------------------------
@@ -451,8 +472,8 @@ window.V10Expansion = {
             
             let topHtml = '';
             try {
-                const topP = await fetch(`/api/gamification/game-top/${encodeURIComponent(gameName)}`).then(r=>r.json());
-                if(topP.length > 0) {
+                const topP = this.bulkDataCache ? this.bulkDataCache[gameName] : [];
+                if(topP && topP.length > 0) {
                     topHtml = `<div style="display:flex; gap:6px; margin-bottom:12px; background:rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 8px; width: fit-content;">`;
                     topP.forEach((p,i) => {
                         const m = i===0?'🥇':i===1?'🥈':'🥉';
@@ -521,13 +542,21 @@ window.V10Expansion = {
 // ==============================================================================
 // V8 ARCADE RE-INJECTION FOR TAB ROUTING
 // ==============================================================================
-window.V8Arcade = {
+window.V8Arcade = Object.assign(window.V8Arcade || {}, {
     switchTab: function(tab) {
-        document.getElementById('arcadeGamesList').style.display = tab === 'games' ? 'block' : 'none';
-        document.getElementById('arcadeLeaderboardView').style.display = tab === 'leaderboard' ? 'block' : 'none';
+        const list = document.getElementById('arcadeGamesList');
+        if(list) list.style.display = tab === 'games' ? 'block' : 'none';
+        const ldr = document.getElementById('arcadeLeaderboardView');
+        if(ldr) ldr.style.display = tab === 'leaderboard' ? 'block' : 'none';
+        
         document.getElementById('btnArcadeGames').classList.toggle('active', tab === 'games');
         const ldrBtn = document.getElementById('btnArcadeLeaderboard');
         if (ldrBtn) ldrBtn.classList.toggle('active', tab === 'leaderboard');
+
+        // Critical Fix: Always kill the active game canvas when switching away from games tab!
+        const area = document.getElementById('arcadeActiveGameArea');
+        if(area) area.style.display = 'none';
+
         if (tab === 'leaderboard') this.loadLeaderboard();
     },
     loadLeaderboard: async function() {
@@ -536,6 +565,7 @@ window.V8Arcade = {
         container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Loading ranks...</p>';
         try {
             const res = await fetch('/api/leaderboards/arcade/all_time');
+            if(!res.ok) throw new Error("API Route missing");
             const data = await res.json();
             if (data.length === 0) return container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Leaderboard is empty. Play games to rank up! 🎮</div>';
             container.innerHTML = data.map((user, index) => {
@@ -547,7 +577,7 @@ window.V8Arcade = {
                     <div style="font-weight: 900; color: #2563EB; font-size: 1.15rem;">🎮 ${user.arcade_xp || 0} XP</div>
                 </div>`;
             }).join('');
-        } catch (e) { container.innerHTML = '<p style="color:red; text-align:center;">Network error loading ranks.</p>'; }
+        } catch (e) { container.innerHTML = '<p style="color:red; text-align:center;">Network error loading ranks. Check your server connection.</p>'; }
     },
     updateTotalXP: async function() {
         if (!currentMember || !currentMember.id) return;
@@ -558,6 +588,6 @@ window.V8Arcade = {
             if (el) el.innerText = data.arcade_xp || 0;
         } catch(e) {}
     }
-};
+});
 
 document.addEventListener('DOMContentLoaded', () => { window.V10Expansion.init(); });
