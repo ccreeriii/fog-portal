@@ -2,22 +2,22 @@
 // FIRE OF GOD MINISTRIES - V11 GAME ENGINE (LANDING PAGES, 3-TRIES, SUDDEN DEATH)
 
 window.V10Expansion = {
-    bulkDataCache: {}, 
+    bulkDataCache: {},
 
     init: function() {
-        console.log("🚀 V11 Expansion Module Initialized");
+        console.log("🚀 V11 Expansion Module Initialized & Server Fallbacks Applied");
         this.hookNavigation();
-        this.loadFeaturedGames(); 
-        
+        this.loadFeaturedGames();
+
         setTimeout(() => this.applyLandingPages(), 800);
-        setTimeout(() => this.loadTopScorers(), 1200); 
-        
+        setTimeout(() => this.loadTopScorers(), 1200);
+
         const originalSwitchTab = window.switchTab;
         if (typeof originalSwitchTab === 'function' && !window.switchTab.isV10Patched) {
             window.switchTab = function(...args) {
                 originalSwitchTab.apply(this, args);
                 const tabId = args[0];
-                
+
                 if (tabId === 'leaderboardsHubTab') {
                     window.V10Expansion.loadSegmentedLeaderboard('overall');
                     window.V10Expansion.loadSegmentedLeaderboard('growth');
@@ -62,7 +62,7 @@ window.V10Expansion = {
     autoStartArcade: function(moduleObjStr) {
         const mod = window[moduleObjStr];
         if(mod && typeof mod.mountGameUI === 'function') {
-            mod.mountGameUI(); 
+            mod.mountGameUI();
             setTimeout(() => {
                 const area = document.getElementById('arcadeActiveGameArea');
                 if(area) {
@@ -100,13 +100,25 @@ window.V10Expansion = {
     // --------------------------------------------------------------------------
     loadTopScorers: async function() {
         try {
-            const res = await fetch('/api/games/top-scorers-bulk');
-            this.bulkDataCache = await res.json();
+            // Iterative fetching allows fallback for missing bulk API route
+            this.bulkDataCache = {};
+            const games = ["David's Slingshot", "Noah's Ark: Rescue", "Moses' Red Sea Dash", "Peter's Leap of Faith", "Jonah's Deep Sea Dive", "Catechism Clash", "Daily Manna Scramble", "Emoji Sermon Translator", "The Narrow Gate", "Shield of Faith: Reflex Tap"];
+            
+            await Promise.all(games.map(async (g) => {
+                try {
+                    const r = await fetch(`/api/gamification/game-top/${encodeURIComponent(g)}`);
+                    if(r.ok) this.bulkDataCache[g] = await r.json();
+                } catch(e) {}
+            }));
 
-            document.querySelectorAll('.arcade-game-card:not(.hero-game-card)').forEach(card => {
+            document.querySelectorAll('.arcade-game-card, .arcade-game-tile').forEach(card => {
                 const gameName = card.getAttribute('data-game-name');
                 if (!gameName || !this.bulkDataCache[gameName] || this.bulkDataCache[gameName].length === 0) return;
-                if (card.querySelector('.top-scorers-container')) card.querySelector('.top-scorers-container').remove(); 
+                
+                // Don't duplicate inside the featured card which handles its own top scorers
+                if (card.classList.contains('arcade-featured-game')) return;
+
+                if (card.querySelector('.top-scorers-container')) card.querySelector('.top-scorers-container').remove();
 
                 const topPlayers = this.bulkDataCache[gameName];
                 let html = `<div class="top-scorers-container" style="background: rgba(0,0,0,0.02); border-top: 1px solid var(--border-color); padding: 8px; display: flex; justify-content: center; gap: 8px; margin-top: auto;">`;
@@ -116,8 +128,8 @@ window.V10Expansion = {
                     html += `<div style="position: relative;">${avatar}<span style="position: absolute; bottom: -5px; right: -5px; font-size: 0.6rem;">${medal}</span></div>`;
                 });
                 html += `</div>`;
-                
-                const actionBtn = card.querySelector('.game-action');
+
+                const actionBtn = card.querySelector('.game-action') || card.querySelector('.game-tile-action');
                 if (actionBtn) actionBtn.insertAdjacentHTML('beforebegin', html);
             });
         } catch (e) { console.error("Bulk Top Scorers Error", e); }
@@ -126,24 +138,36 @@ window.V10Expansion = {
     applyLandingPages: function() {
         document.querySelectorAll('.arcade-game-card, .arcade-game-tile').forEach(card => {
             const gameName = card.getAttribute('data-game-name');
+            // Skip direct-execution games
             if (!gameName || gameName === 'Cell Group Clash' || gameName === 'Verse Chain' || gameName === 'Would You Rather' || gameName === 'Word Matrix') return;
-            
+
             const type = card.closest('#growthGamesGrid') ? 'growth' : 'arcade';
-            const icon = card.querySelector('.game-icon') ? card.querySelector('.game-icon').innerText : '🎮';
+            const icon = card.querySelector('.game-icon') ? card.querySelector('.game-icon').innerText : (card.querySelector('.game-tile-icon') ? card.querySelector('.game-tile-icon').innerText : '🎮');
             const desc = card.querySelector('p') ? card.querySelector('p').innerText.replace(/"/g, "'").replace(/\n/g, " ") : '';
             const playFn = this.getPlayFunction(gameName);
 
-            // Native binding prevents apostrophe crashes
+            // Safe binding to trigger landing page properly
             card.onclick = () => window.V10Expansion.openGameLanding(gameName, type, playFn, desc, icon);
         });
     },
 
     openGameLanding: async function(gameName, type, playFn, desc, icon) {
-        if (!currentMember || !currentMember.id) return alert("Please log in to play!");
+        let safeId = 0;
+        let isPreview = false;
+        
+        // Handle Missing Member ID (Admin Preview Mode functionality)
+        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+            safeId = currentMember.id;
+        } else if (typeof currentUser !== 'undefined' && currentUser) {
+            safeId = 999999; // Dummy ID so Admin can test the UI without crashing
+            isPreview = true;
+        } else {
+            return alert("Please log in to play!");
+        }
 
         const listId = type === 'growth' ? 'growthGamesGrid' : 'arcadeGamesList';
-        const fSlotId = type === 'growth' ? 'featuredGrowthGameContainer' : null;
-        
+        const fSlotId = type === 'growth' ? 'featuredGrowthGameContainer' : 'featuredArcadeGameContainer';
+
         document.getElementById(listId).style.display = 'none';
         if (fSlotId && document.getElementById(fSlotId)) document.getElementById(fSlotId).style.display = 'none';
 
@@ -152,8 +176,18 @@ window.V10Expansion = {
 
         try {
             const topPlayers = this.bulkDataCache[gameName] || [];
-            const attRes = await fetch(`/api/games/check-attempts?youth_id=${currentMember.id}&game_name=${encodeURIComponent(gameName)}`);
-            const attemptsData = await attRes.json();
+            
+            const safeKey = `fog_att_${safeId}_${gameName.replace(/\s+/g, '')}`;
+            let attemptsData = { remaining: 3, highest_score: 0 };
+            try {
+                const stored = JSON.parse(localStorage.getItem(safeKey) || '{}');
+                const today = new Date().toISOString().split('T')[0];
+                if (stored.date === today) attemptsData = stored;
+                else {
+                    attemptsData = { date: today, remaining: 3, highest_score: 0 };
+                    localStorage.setItem(safeKey, JSON.stringify(attemptsData));
+                }
+            } catch(e) {}
 
             let topHtml = `<p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 5px;">No top scorers yet. Be the first!</p>`;
             if (topPlayers.length > 0) {
@@ -170,13 +204,21 @@ window.V10Expansion = {
             }
 
             const isLocked = attemptsData.remaining <= 0;
-            const playBtnHtml = isLocked 
+            let playBtnHtml = isLocked
                 ? `<button class="btn btn-secondary" style="width:100%; padding:15px; font-size:1.1rem; cursor:not-allowed;" disabled>Daily Limit Reached (Check back tomorrow!)</button>`
                 : `<button class="btn btn-primary" style="width:100%; padding:15px; font-size:1.1rem; background: ${type === 'growth' ? '#059669' : '#FF6B00'};" onclick='${playFn}'>▶ PLAY NOW (${attemptsData.remaining} Tries Left)</button>`;
+            
+            // Override play button if an Admin is testing without a member profile
+            if (isPreview) {
+                playBtnHtml = `
+                    <button class="btn btn-primary" style="width:100%; padding:15px; font-size:1.1rem; background: ${type === 'growth' ? '#059669' : '#FF6B00'};" onclick='${playFn}'>▶ ADMIN TEST PLAY (Unlimited)</button>
+                    <p style="color: #EF4444; font-size: 0.8rem; margin-top: 10px; font-weight: bold;">Note: You are logged in as a Leader. Scores will not be permanently logged.</p>
+                `;
+            }
 
-            const returnScript = type === 'growth' 
-                ? `document.getElementById('growthActiveGameArea').style.display='none'; document.getElementById('growthGamesGrid').style.display='grid'; if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display='block';` 
-                : `document.getElementById('arcadeActiveGameArea').style.display='none'; document.getElementById('arcadeGamesList').style.display='block';`;
+            const returnScript = type === 'growth'
+                ? `document.getElementById('growthActiveGameArea').style.display='none'; document.getElementById('growthGamesGrid').style.display='grid'; if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display='block';`
+                : `document.getElementById('arcadeActiveGameArea').style.display='none'; document.getElementById('arcadeGamesList').style.display='block'; if(document.getElementById('featuredArcadeGameContainer')) document.getElementById('featuredArcadeGameContainer').style.display='block';`;
 
             area.innerHTML = `
                 <div style="padding: 15px; background: #F8FAFC; display: flex; justify-content: space-between; align-items: center; border: 1px solid #E2E8F0; border-radius: 12px 12px 0 0;">
@@ -199,40 +241,79 @@ window.V10Expansion = {
                     ${playBtnHtml}
                 </div>
             `;
-        } catch (e) { area.innerHTML = `<p style="color:red;">Error loading game.</p>`; }
+        } catch (e) { 
+            area.innerHTML = `<p style="color:red; padding: 20px;">Error loading game: ${e.message}</p>`; 
+            console.error("Game Landing Error:", e);
+        }
     },
 
     submitUniversalScore: async function(gameName, type, score) {
+        let safeId = 0;
+        let isPreview = false;
+        
+        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+            safeId = currentMember.id;
+        } else if (typeof currentUser !== 'undefined' && currentUser) {
+            safeId = 999999;
+            isPreview = true;
+        } else return;
+
         try {
-            const res = await fetch('/api/games/submit', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ youth_id: currentMember.id, game_name: gameName, score: score, type: type, actor: currentUser })
-            });
-            const data = await res.json();
+            const safeKey = `fog_att_${safeId}_${gameName.replace(/\s+/g, '')}`;
+            let stored = JSON.parse(localStorage.getItem(safeKey) || '{}');
+            if (!isPreview) stored.remaining = Math.max(0, (stored.remaining || 3) - 1);
             
-            if (data.success) {
-                if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
-                if (typeof window.V8Arcade !== 'undefined' && type === 'arcade') window.V8Arcade.updateTotalXP();
+            let beatHigh = false;
+            if (score > (stored.highest_score || 0)) {
+                stored.highest_score = score;
+                beatHigh = true;
+            }
+            localStorage.setItem(safeKey, JSON.stringify(stored));
+
+            let pointsAwarded = score;
+            let success = true;
+            
+            // Only save to DB if it's a real logged-in youth and they scored points
+            if (!isPreview && score > 0) {
+                let url = type === 'arcade' ? '/api/arcade/submit' : '/api/growth-games/trivia/submit';
+                let payload = type === 'arcade' 
+                    ? { youth_id: safeId, game_name: gameName, score: score, actor: currentUser }
+                    : { youth_id: safeId, score: score, actor: currentUser };
+
+                const res = await fetch(url, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                success = data.success;
+                pointsAwarded = data.pointsAwarded;
+            }
+
+            if (success) {
+                if (!isPreview && typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
+                if (!isPreview && typeof window.V8Arcade !== 'undefined' && type === 'arcade') window.V8Arcade.updateTotalXP();
 
                 const area = document.getElementById(type === 'growth' ? 'growthActiveGameArea' : 'arcadeActiveGameArea');
-                let rewardText = data.pointsAwarded > 0 
-                    ? `<div style="font-size: 2rem; color: #10B981; font-weight: 800; margin: 20px 0;">+${data.pointsAwarded} ${type.toUpperCase()} XP!</div><p style="color: #64748B;">You beat your daily high score!</p>` 
-                    : `<div style="font-size: 1.2rem; color: #F59E0B; font-weight: 800; margin: 20px 0;">Score: ${score}</div><p style="color: #64748B;">Didn't beat your high score of ${data.highestScore}.</p>`;
+                let rewardText = pointsAwarded > 0
+                    ? `<div style="font-size: 2rem; color: #10B981; font-weight: 800; margin: 20px 0;">+${pointsAwarded} ${type.toUpperCase()} XP!</div><p style="color: #64748B;">${beatHigh ? 'You beat your daily high score!' : 'Great job!'}</p>`
+                    : `<div style="font-size: 1.2rem; color: #F59E0B; font-weight: 800; margin: 20px 0;">Score: ${score}</div><p style="color: #64748B;">Didn't beat your high score of ${stored.highest_score}.</p>`;
 
-                const returnScript = type === 'growth' 
-                    ? `document.getElementById('growthActiveGameArea').style.display='none'; document.getElementById('growthGamesGrid').style.display='grid'; if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display='block';` 
-                    : `document.getElementById('arcadeActiveGameArea').style.display='none'; document.getElementById('arcadeGamesList').style.display='block';`;
+                if (isPreview) rewardText += `<p style="color: #EF4444; font-size: 0.85rem; font-weight: bold; margin-top: 10px;">(Admin Test: Score bypassed database)</p>`;
+
+                const returnScript = type === 'growth'
+                    ? `document.getElementById('growthActiveGameArea').style.display='none'; document.getElementById('growthGamesGrid').style.display='grid'; if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display='block';`
+                    : `document.getElementById('arcadeActiveGameArea').style.display='none'; document.getElementById('arcadeGamesList').style.display='block'; if(document.getElementById('featuredArcadeGameContainer')) document.getElementById('featuredArcadeGameContainer').style.display='block';`;
 
                 area.innerHTML = `
                     <div style="background: #FFF; padding: 40px 20px; border-radius: 12px; text-align: center; border: 1px solid #E2E8F0;">
                         <h2 style="color: #0F172A; border: none;">Run Completed</h2>
                         ${rewardText}
-                        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 25px;">You have ${data.attemptsLeft} attempts left today.</p>
+                        ${!isPreview ? `<p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 25px;">You have ${stored.remaining} attempts left today.</p>` : ''}
                         <button class="btn btn-outline" style="width: 100%; max-width: 250px;" onclick="${returnScript}">Return to Hub</button>
                     </div>
                 `;
-            } else { alert(data.error || "Failed to save score."); }
-        } catch(e) { alert("Network Error."); }
+            } else { alert("Failed to save score."); }
+        } catch(e) { alert("Network Error."); console.error(e); }
     },
 
     exitGame: function() {
@@ -249,13 +330,14 @@ window.V10Expansion = {
         if(arcadeArea) { arcadeArea.style.display = 'none'; arcadeArea.innerHTML = ''; }
         const arcadeList = document.getElementById('arcadeGamesList');
         if(arcadeList) arcadeList.style.display = 'block';
+        if(document.getElementById('featuredArcadeGameContainer')) document.getElementById('featuredArcadeGameContainer').style.display = 'block';
     },
 
     // --------------------------------------------------------------------------
-    // THE 15-SLIDE SUDDEN DEATH GAME ENGINES (1 WRONG = GAME OVER)
+    // THE 15-SLIDE SUDDEN DEATH GAME ENGINES
     // --------------------------------------------------------------------------
     playCC: async function() {
-        const data = await fetch('/api/games/data/trivia').then(r=>r.json());
+        const data = await fetch('/api/growth-games/narrow-gate').then(r=>r.json());
         this.ccState = { q: data, i: 0, s: 0, t: 60 };
         this._activeTimer = setInterval(() => {
             this.ccState.t--;
@@ -265,7 +347,7 @@ window.V10Expansion = {
         this.renderCC();
     },
     renderCC: function() {
-        if(this.ccState.i >= this.ccState.q.length) { clearInterval(this._activeTimer); return this.submitUniversalScore("Catechism Clash", "growth", this.ccState.s); }
+        if(this.ccState.i >= 15 || this.ccState.i >= this.ccState.q.length) { clearInterval(this._activeTimer); return this.submitUniversalScore("Catechism Clash", "growth", this.ccState.s); }
         const q = this.ccState.q[this.ccState.i]; let opts = JSON.parse(q.options);
         let h = `<div style="display:flex; justify-content:space-between; margin-bottom:15px; font-weight:bold;"><span>Score: ${this.ccState.s}</span><span style="color:red;" id="gTimer">${this.ccState.t}s</span><span>${this.ccState.i+1}/15</span></div>`;
         h += `<h3>${q.question}</h3><div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">`;
@@ -273,26 +355,31 @@ window.V10Expansion = {
         document.getElementById('growthActiveGameArea').innerHTML = `<div style="background:#FFF; padding:20px; border-radius:12px;">${h}</div>`;
     },
     ansCC: function(sel, cor, btn) {
-        if(sel === cor){ 
-            this.ccState.s += 10; btn.style.background='#10B981'; btn.style.color='#FFF'; 
+        if(sel === cor){
+            this.ccState.s += 10; btn.style.background='#10B981'; btn.style.color='#FFF';
             setTimeout(() => { this.ccState.i++; this.renderCC(); }, 800);
-        } else { 
-            btn.style.background='#EF4444'; btn.style.color='#FFF'; 
+        } else {
+            btn.style.background='#EF4444'; btn.style.color='#FFF';
             clearInterval(this._activeTimer);
             setTimeout(() => { this.submitUniversalScore("Catechism Clash", "growth", this.ccState.s); }, 1000);
         }
     },
 
     playWAI: async function() {
-        const data = await fetch('/api/games/data/whoami').then(r=>r.json());
-        this.waiState = { q: data, i: 0, s: 0, clues: 1 };
+        this.waiState = { i: 0, s: 0, clues: 1, currentQ: null };
+        this.nextWAI();
+    },
+    nextWAI: async function() {
+        if(this.waiState.i >= 10) return this.submitUniversalScore("Who Am I?", "growth", this.waiState.s);
+        const r = await fetch('/api/growth-games/whoami');
+        this.waiState.currentQ = await r.json();
+        this.waiState.clues = 1;
         this.renderWAI();
     },
     renderWAI: function() {
-        if(this.waiState.i >= this.waiState.q.length) return this.submitUniversalScore("Who Am I?", "growth", this.waiState.s);
-        const q = this.waiState.q[this.waiState.i];
+        const q = this.waiState.currentQ;
         let pts = this.waiState.clues === 1 ? 15 : this.waiState.clues === 2 ? 10 : 5;
-        let h = `<div style="display:flex; justify-content:space-between; margin-bottom:15px; font-weight:bold;"><span>Score: ${this.waiState.s}</span><span>${this.waiState.i+1}/15</span></div>`;
+        let h = `<div style="display:flex; justify-content:space-between; margin-bottom:15px; font-weight:bold;"><span>Score: ${this.waiState.s}</span><span>${this.waiState.i+1}/10</span></div>`;
         h += `<div style="background:#FFFBEB; padding:15px; border-radius:8px; margin-bottom:10px;"><strong>Clue 1:</strong> ${q.clue1}</div>`;
         if(this.waiState.clues >= 2) h += `<div style="background:#FFFBEB; padding:15px; border-radius:8px; margin-bottom:10px;"><strong>Clue 2:</strong> ${q.clue2}</div>`;
         if(this.waiState.clues >= 3) h += `<div style="background:#FFFBEB; padding:15px; border-radius:8px; margin-bottom:10px;"><strong>Clue 3:</strong> ${q.clue3}</div>`;
@@ -304,31 +391,31 @@ window.V10Expansion = {
         const guess = document.getElementById('waiGuess').value.trim().toLowerCase();
         const resEl = document.getElementById('waiRes');
         if(!guess) return;
-        if(guess === ans.toLowerCase()) { 
-            this.waiState.s += pts; resEl.style.color='#10B981'; resEl.innerText="Correct!"; 
-            setTimeout(() => { this.waiState.i++; this.waiState.clues=1; this.renderWAI(); }, 1200);
-        } else { 
-            resEl.style.color='#EF4444'; resEl.innerText=`Wrong! It was ${ans}.`; 
+        if(guess === ans.toLowerCase()) {
+            this.waiState.s += pts; resEl.style.color='#10B981'; resEl.innerText="Correct!";
+            setTimeout(() => { this.waiState.i++; this.nextWAI(); }, 1200);
+        } else {
+            resEl.style.color='#EF4444'; resEl.innerText=`Wrong! It was ${ans}.`;
             setTimeout(() => { this.submitUniversalScore("Who Am I?", "growth", this.waiState.s); }, 1500);
         }
     },
 
     playVS: async function() {
-        const data = await fetch('/api/games/data/scramble').then(r=>r.json());
-        this.vsState = { q: data, i: 0, s: 0, cur: [], words: [] };
-        this.setupVS();
+        this.vsState = { i: 0, s: 0, cur: [], words: [], currentQ: null };
+        this.nextVS();
     },
-    setupVS: function() {
-        if(this.vsState.i >= this.vsState.q.length) return this.submitUniversalScore("Daily Manna Scramble", "growth", this.vsState.s);
-        const q = this.vsState.q[this.vsState.i];
-        this.vsState.correctOrder = q.verse_text.split(' ');
+    nextVS: async function() {
+        if(this.vsState.i >= 10) return this.submitUniversalScore("Daily Manna Scramble", "growth", this.vsState.s);
+        const r = await fetch('/api/growth-games/verse-scramble');
+        this.vsState.currentQ = await r.json();
+        this.vsState.correctOrder = this.vsState.currentQ.verse_text.split(' ');
         this.vsState.words = [...this.vsState.correctOrder].sort(()=>Math.random()-0.5);
         this.vsState.cur = [];
         this.renderVS();
     },
     renderVS: function() {
-        const q = this.vsState.q[this.vsState.i];
-        let h = `<div style="display:flex; justify-content:space-between; margin-bottom:15px; font-weight:bold;"><span>Score: ${this.vsState.s}</span><span>${this.vsState.i+1}/15</span></div>`;
+        const q = this.vsState.currentQ;
+        let h = `<div style="display:flex; justify-content:space-between; margin-bottom:15px; font-weight:bold;"><span>Score: ${this.vsState.s}</span><span>${this.vsState.i+1}/10</span></div>`;
         h += `<h3>${q.reference}</h3><div style="min-height:60px; padding:10px; border:2px dashed #14B8A6; margin-bottom:15px; display:flex; flex-wrap:wrap; gap:5px;">`;
         this.vsState.cur.forEach((w, idx) => { h += `<button class="btn btn-primary btn-sm" onclick="V10Expansion.vsState.words.push(V10Expansion.vsState.cur.splice(${idx},1)[0]); V10Expansion.renderVS()">${w}</button>`; });
         h += `</div><div style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:15px;">`;
@@ -341,52 +428,62 @@ window.V10Expansion = {
         if(this.vsState.words.length > 0) { resEl.style.color='#EF4444'; resEl.innerText="Use all words!"; return; }
         if(this.vsState.cur.join(' ') === this.vsState.correctOrder.join(' ')) {
             this.vsState.s += 15; resEl.style.color='#10B981'; resEl.innerText="Perfect!";
-            setTimeout(() => { this.vsState.i++; this.setupVS(); }, 1000);
-        } else { 
-            resEl.style.color='#EF4444'; resEl.innerText="Incorrect order! Game Over."; 
+            setTimeout(() => { this.vsState.i++; this.nextVS(); }, 1000);
+        } else {
+            resEl.style.color='#EF4444'; resEl.innerText="Incorrect order! Game Over.";
             setTimeout(() => { this.submitUniversalScore("Daily Manna Scramble", "growth", this.vsState.s); }, 1500);
         }
     },
 
     playEM: async function() {
-        const data = await fetch('/api/games/data/emoji').then(r=>r.json());
-        this.emState = { q: data, i: 0, s: 0 };
+        this.emState = { i: 0, s: 0, currentQ: null };
+        this.nextEM();
+    },
+    nextEM: async function() {
+        if(this.emState.i >= 15) return this.submitUniversalScore("Emoji Sermon Translator", "growth", this.emState.s);
+        
+        // Pass dummy ID for admins if needed, though Emoji fetch handles empty gracefully
+        const safeId = (typeof currentMember !== 'undefined' && currentMember && currentMember.id) ? currentMember.id : 0;
+        
+        const r = await fetch(`/api/growth-games/emoji?youth_id=${safeId}`);
+        const data = await r.json();
+        if(data.limit_reached || data.exhausted || !data.question) return this.submitUniversalScore("Emoji Sermon Translator", "growth", this.emState.s);
+        this.emState.currentQ = data.question;
         this.renderEM();
     },
     renderEM: function() {
-        if(this.emState.i >= this.emState.q.length) return this.submitUniversalScore("Emoji Sermon Translator", "growth", this.emState.s);
-        const q = this.emState.q[this.emState.i]; let opts = JSON.parse(q.options);
+        const q = this.emState.currentQ; let opts = JSON.parse(q.options);
         let h = `<div style="display:flex; justify-content:space-between; margin-bottom:15px; font-weight:bold;"><span>Score: ${this.emState.s}</span><span>${this.emState.i+1}/15</span></div>`;
         h += `<div style="font-size:3rem; text-align:center; letter-spacing:5px; margin-bottom:20px;">${q.emojis}</div><div style="display:flex; flex-direction:column; gap:10px;">`;
         opts.forEach(opt => { h += `<button class="btn btn-outline" onclick="V10Expansion.ansEM('${opt.replace(/'/g,"\\'")}', '${q.answer.replace(/'/g,"\\'")}', this)">${opt}</button>`; });
         document.getElementById('growthActiveGameArea').innerHTML = `<div style="background:#FFF; padding:20px; border-radius:12px;">${h}</div>`;
     },
     ansEM: function(guess, ans, btn) {
-        if(guess === ans) { 
+        if(guess === ans) {
             this.emState.s += 10; btn.style.background='#10B981'; btn.style.color='#FFF'; btn.style.borderColor='#10B981';
-            setTimeout(() => { this.emState.i++; this.renderEM(); }, 800);
-        } else { 
+            setTimeout(() => { this.emState.i++; this.nextEM(); }, 800);
+        } else {
             btn.style.background='#EF4444'; btn.style.color='#FFF'; btn.style.borderColor='#EF4444';
             setTimeout(() => { this.submitUniversalScore("Emoji Sermon Translator", "growth", this.emState.s); }, 1000);
         }
     },
 
     playNG: async function() {
-        const data = await fetch('/api/games/data/trivia').then(r=>r.json());
+        const data = await fetch('/api/growth-games/narrow-gate').then(r=>r.json());
         this.ngState = { q: data, i: 0, s: 0, streak: 0 };
         this.renderNG();
     },
     renderNG: function() {
-        if(this.ngState.i >= this.ngState.q.length) return this.submitUniversalScore("The Narrow Gate", "growth", this.ngState.s);
+        if(this.ngState.i >= 25 || this.ngState.i >= this.ngState.q.length) return this.submitUniversalScore("The Narrow Gate", "growth", this.ngState.s);
         const q = this.ngState.q[this.ngState.i]; let opts = JSON.parse(q.options);
         let h = `<div style="color:#10B981; font-weight:900; font-size:1.2rem; margin-bottom:20px;">🔥 STREAK: ${this.ngState.streak}</div>`;
-        h += `<h3 style="margin-bottom:20px;">${q.question}</h3><div style="display:flex; flex-direction:column; gap:10px;">`;
+        h += `<h3 style="margin-bottom:20px; color:#FFF;">${q.question}</h3><div style="display:flex; flex-direction:column; gap:10px;">`;
         opts.forEach((o, idx) => { h += `<button class="btn btn-outline" style="border-color:#374151; color:#E5E7EB; background:#111827;" onclick="V10Expansion.ansNG(${idx}, ${q.correct_index}, this)">${o}</button>`; });
         document.getElementById('growthActiveGameArea').innerHTML = `<div style="background:#1F2937; color:#FFF; padding:30px; border-radius:12px;">${h}</div>`;
     },
     ansNG: function(sel, cor, btn) {
-        if(sel === cor) { 
-            this.ngState.streak++; this.ngState.s = this.ngState.streak * 5; 
+        if(sel === cor) {
+            this.ngState.streak++; this.ngState.s += this.ngState.streak * 5;
             btn.style.background='#10B981'; btn.style.borderColor='#10B981';
             setTimeout(() => { this.ngState.i++; this.renderNG(); }, 600);
         } else {
@@ -453,8 +550,9 @@ window.V10Expansion = {
             this.renderFeaturedSlot('growthGamesGrid', 'featuredGrowthGameContainer', data.featured_growth || "Catechism Clash", true);
         } catch(e) {}
     },
+    
     renderFeaturedSlot: async function(gridId, containerId, gameName, isGrowth) {
-        const container = document.getElementById(containerId); const grid = document.getElementById(gridId) || document.getElementById('arcadeGamesList'); 
+        const container = document.getElementById(containerId); const grid = document.getElementById(gridId);
         if (!container || !grid) return;
 
         grid.querySelectorAll('.arcade-game-card, .arcade-game-tile').forEach(t => t.style.display = 'flex');
@@ -463,13 +561,13 @@ window.V10Expansion = {
         const tile = grid.querySelector(`[data-game-name="${gameName}"]`);
         if (tile) {
             tile.style.display = 'none'; // Hide from lower grid
-            const icon = tile.querySelector('.game-icon') ? tile.querySelector('.game-icon').innerText : '🎮';
+            const icon = tile.querySelector('.game-icon') ? tile.querySelector('.game-icon').innerText : (tile.querySelector('.game-tile-icon') ? tile.querySelector('.game-tile-icon').innerText : '🎮');
             const title = tile.querySelector('h3') ? tile.querySelector('h3').innerText : gameName;
             const desc = tile.querySelector('p') ? tile.querySelector('p').innerText.replace(/"/g, "'").replace(/\n/g, " ") : 'Play our featured game!';
-            
+
             const type = isGrowth ? 'growth' : 'arcade';
             const playFn = this.getPlayFunction(gameName);
-            
+
             let topHtml = '';
             try {
                 const topP = this.bulkDataCache ? this.bulkDataCache[gameName] : [];
@@ -484,20 +582,30 @@ window.V10Expansion = {
                 }
             } catch(e){}
 
+            // Output the beautiful featured container formatting using strictly existing CSS classes
             container.innerHTML = `
                 <h3 style="color: var(--text-main); font-size: 1.1rem; font-weight: 800; margin-bottom: 12px; border: none; padding: 0;">⭐ Featured Game</h3>
-                <div class="hero-game-card ${isGrowth ? 'growth-hero' : ''}" id="hero-${containerId}">
-                    <div class="game-icon">${icon}</div>
-                    <div class="game-info">
+                <div class="arcade-featured-game" id="hero-${containerId}">
+                    <div class="featured-banner">
+                        <div class="featured-badge">⭐ FEATURED ${isGrowth ? 'GROWTH' : 'ARCADE'}</div>
+                        <div style="font-size: 4rem; margin-top: 15px;">${icon}</div>
+                    </div>
+                    <div class="featured-info">
                         <h3>${title}</h3>
                         <p>${desc}</p>
                         ${topHtml}
-                        <div class="game-action">PLAY NOW</div>
+                        <div class="featured-action">PLAY NOW</div>
                     </div>
                 </div>
             `;
-            // Safe native binding prevents string breaking
-            document.getElementById(`hero-${containerId}`).onclick = () => window.V10Expansion.openGameLanding(gameName, type, playFn, desc, icon);
+            
+            // Wait for DOM to register HTML injection, then bind the click safely
+            setTimeout(() => {
+                const heroCard = document.getElementById(`hero-${containerId}`);
+                if (heroCard) {
+                    heroCard.onclick = () => window.V10Expansion.openGameLanding(gameName, type, playFn, desc, icon);
+                }
+            }, 50);
         }
     },
 
@@ -538,56 +646,5 @@ window.V10Expansion = {
         await fetchAndRender('month', `ldr${typeCap}MonthContainer`);
     }
 };
-
-// ==============================================================================
-// V8 ARCADE RE-INJECTION FOR TAB ROUTING
-// ==============================================================================
-window.V8Arcade = Object.assign(window.V8Arcade || {}, {
-    switchTab: function(tab) {
-        const list = document.getElementById('arcadeGamesList');
-        if(list) list.style.display = tab === 'games' ? 'block' : 'none';
-        const ldr = document.getElementById('arcadeLeaderboardView');
-        if(ldr) ldr.style.display = tab === 'leaderboard' ? 'block' : 'none';
-        
-        document.getElementById('btnArcadeGames').classList.toggle('active', tab === 'games');
-        const ldrBtn = document.getElementById('btnArcadeLeaderboard');
-        if (ldrBtn) ldrBtn.classList.toggle('active', tab === 'leaderboard');
-
-        // Critical Fix: Always kill the active game canvas when switching away from games tab!
-        const area = document.getElementById('arcadeActiveGameArea');
-        if(area) area.style.display = 'none';
-
-        if (tab === 'leaderboard') this.loadLeaderboard();
-    },
-    loadLeaderboard: async function() {
-        const container = document.getElementById('arcadeLeaderboardContainer');
-        if (!container) return;
-        container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Loading ranks...</p>';
-        try {
-            const res = await fetch('/api/leaderboards/arcade/all_time');
-            if(!res.ok) throw new Error("API Route missing");
-            const data = await res.json();
-            if (data.length === 0) return container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Leaderboard is empty. Play games to rank up! 🎮</div>';
-            container.innerHTML = data.map((user, index) => {
-                let rankIcon = `<span style="color: #64748B; font-weight: bold;">#${index + 1}</span>`;
-                if (index === 0) rankIcon = '🥇'; if (index === 1) rankIcon = '🥈'; if (index === 2) rankIcon = '🥉';
-                const avatarHtml = user.profile_picture ? `<img src="${user.profile_picture}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">` : `<div style="width: 40px; height: 40px; border-radius: 50%; background: #F3F4F6; color: #4B5563; display: flex; align-items: center; justify-content: center; font-weight: bold;">${(user.name||'U').charAt(0).toUpperCase()}</div>`;
-                return `<div style="${index===0?'background: #FFFBEB; border-color: #FDE68A;':'background: #FFFFFF; border-color: #E5E7EB;'} border-style: solid; border-width: 1px; border-radius: 12px; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
-                    <div style="display: flex; align-items: center; gap: 15px;"><div style="width: 30px; text-align: center;">${rankIcon}</div>${avatarHtml}<strong style="color: #0F172A; font-size: 1.05rem;">${user.name}</strong></div>
-                    <div style="font-weight: 900; color: #2563EB; font-size: 1.15rem;">🎮 ${user.arcade_xp || 0} XP</div>
-                </div>`;
-            }).join('');
-        } catch (e) { container.innerHTML = '<p style="color:red; text-align:center;">Network error loading ranks. Check your server connection.</p>'; }
-    },
-    updateTotalXP: async function() {
-        if (!currentMember || !currentMember.id) return;
-        try {
-            const res = await fetch(`/api/gamification/points/${currentMember.id}`);
-            const data = await res.json();
-            const el = document.getElementById('arcadeCurrentXP');
-            if (el) el.innerText = data.arcade_xp || 0;
-        } catch(e) {}
-    }
-});
 
 document.addEventListener('DOMContentLoaded', () => { window.V10Expansion.init(); });
