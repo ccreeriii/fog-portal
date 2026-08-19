@@ -36,7 +36,7 @@
             </div>
         </div>
         <button id="hamburgerBtn" class="hamburger-btn" onclick="openSidebar()" style="display: none;">☰</button>
-        </div>
+    </div>
 </header>
 
 <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
@@ -135,10 +135,10 @@
                 <div id="myProfileAvatar" class="avatar-circle" style="width: 130px; height: 130px; font-size: 3.5rem;"></div>
                 <div>
                     <h2 id="myProfileName" style="color: var(--primary); font-size: 1.8rem; margin: 0 0 8px 0; border: none; padding: 0;"></h2>
-                    
+
                     <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start;">
                         <p id="myProfileCode" class="badge badge-orange" style="font-size: 1rem; margin: 0; padding: 8px 12px;"></p>
-                        
+
                         <div id="myGamificationBadges" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; display: none;">
                             <p class="badge" style="background: #FEF3C7; color: #D97706; font-size: 0.85rem; margin: 0; padding: 6px 10px;">⭐ <span id="myPointsValue">0</span> Overall XP</p>
                             <p class="badge" style="background: #E0E7FF; color: #2563EB; font-size: 0.75rem; margin: 0; padding: 6px 10px;">🎮 <span id="myArcadeXp">0</span> Arcade</p>
@@ -146,7 +146,7 @@
                             <p class="badge" style="background: #F3E8FF; color: #DB2777; font-size: 0.75rem; margin: 0; padding: 6px 10px;">🎫 <span id="myEventXp">0</span> Events</p>
                         </div>
                     </div>
-                    
+
                 </div>
             </div>
             <div class="profile-header-right" style="display: flex; flex-direction: column; align-items: center; gap: 12px; background: var(--bg-light); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color);">
@@ -201,7 +201,7 @@
                     <div id="notifSubtext" style="font-size: 0.75rem; color:var(--text-muted);">Please wait.</div>
                 </div>
                 <button id="notifToggleBtn" class="btn btn-primary btn-sm" onclick="V4Communications.togglePush()">Enable</button>
-                </div>
+            </div>
             <p id="iosWarning" style="display:none; font-size: 0.75rem; color: #F59E0B; margin-top: 10px;">📱 <strong>iPhone Users:</strong> You must tap "Share" and "Add to Home Screen" first for notifications to work!</p>
         </div>
 
@@ -267,6 +267,39 @@
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Upload & Apply Images</button>
             </form>
+
+            <hr style="margin: 25px 0; border: none; border-top: 1px solid var(--border-color);">
+
+            <h2 style="color: #8B5CF6;">Featured Games Control</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Select which games should be highlighted at the top of the Arcade and Growth tabs.</p>
+            <form id="featuredGamesForm" onsubmit="V10Expansion.saveFeaturedGames(event)">
+                <div class="form-group">
+                    <label>Featured Arcade Game</label>
+                    <select id="setFeaturedArcade" class="form-control">
+                        <option value="None">None</option>
+                        <option value="David's Slingshot">David's Slingshot</option>
+                        <option value="Noah's Ark: Rescue">Noah's Ark: Rescue</option>
+                        <option value="Moses' Red Sea Dash">Moses' Red Sea Dash</option>
+                        <option value="Peter's Leap of Faith">Peter's Leap of Faith</option>
+                        <option value="Jonah's Deep Sea Dive">Jonah's Deep Sea Dive</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Featured Growth Game</label>
+                    <select id="setFeaturedGrowth" class="form-control">
+                        <option value="None">None</option>
+                        <option value="Catechism Clash">Catechism Clash</option>
+                        <option value="Would You Rather">Would You Rather</option>
+                        <option value="Who Am I?">Who Am I?</option>
+                        <option value="Daily Manna Scramble">Daily Manna Scramble</option>
+                        <option value="Emoji Sermon Translator">Emoji Sermon Translator</option>
+                        <option value="The Narrow Gate">The Narrow Gate</option>
+                        <option value="Shield of Faith: Reflex Tap">Shield of Faith: Reflex Tap</option>
+                        <option value="Verse Chain">Verse Chain</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; background: #8B5CF6; border: none;">Save Featured Games</button>
+            </form>
         </div>
 
         <div id="adminBackupCard" class="card" style="display: none; border-color: var(--danger); margin-top: 20px;">
@@ -306,8 +339,11 @@
 
             <div id="arcadeGamesList" style="padding: 20px;">
                 <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">Play minigames to earn XP, level up, and boost your standing in the Arcade!</p>
-                <div class="arcade-grid">
-                    <div class="arcade-game-tile" onclick="V8Slingshot.mountGameUI()">
+                
+                <div id="featuredArcadeGameContainer" style="margin-bottom: 20px;"></div>
+
+                <div class="arcade-grid" id="arcadeGridItems">
+                    <div class="arcade-game-tile" data-game-name="David's Slingshot">
                         <div class="game-tile-icon">🪨</div>
                         <div class="game-tile-info">
                             <h3 style="color: var(--text-main);">David's Slingshot</h3>
@@ -316,7 +352,7 @@
                         <div class="game-tile-action">PLAY</div>
                     </div>
 
-                    <div class="arcade-game-tile" onclick="V8NoahsArk.mountGameUI()">
+                    <div class="arcade-game-tile" data-game-name="Noah's Ark: Rescue">
                         <div class="game-tile-icon">🚢</div>
                         <div class="game-tile-info">
                             <h3 style="color: var(--text-main);">Noah's Ark: Rescue</h3>
@@ -325,7 +361,7 @@
                         <div class="game-tile-action" style="background: #10B981;">PLAY</div>
                     </div>
 
-                    <div class="arcade-game-tile" onclick="V8RedSea.mountGameUI()">
+                    <div class="arcade-game-tile" data-game-name="Moses' Red Sea Dash">
                         <div class="game-tile-icon">🌊</div>
                         <div class="game-tile-info">
                             <h3 style="color: var(--text-main);">Moses' Red Sea Dash</h3>
@@ -334,7 +370,7 @@
                         <div class="game-tile-action" style="background: #3B82F6;">PLAY</div>
                     </div>
 
-                    <div class="arcade-game-tile" onclick="V8PetersLeap.mountGameUI()">
+                    <div class="arcade-game-tile" data-game-name="Peter's Leap of Faith">
                         <div class="game-tile-icon">🚶‍♂️</div>
                         <div class="game-tile-info">
                             <h3 style="color: var(--text-main);">Peter's Leap of Faith</h3>
@@ -343,7 +379,7 @@
                         <div class="game-tile-action" style="background: #8B5CF6;">PLAY</div>
                     </div>
 
-                    <div class="arcade-game-tile" onclick="V8JonahsDive.mountGameUI()">
+                    <div class="arcade-game-tile" data-game-name="Jonah's Deep Sea Dive">
                         <div class="game-tile-icon">🐋</div>
                         <div class="game-tile-info">
                             <h3 style="color: var(--text-main);">Jonah's Deep Sea Dive</h3>
@@ -362,8 +398,7 @@
             <div id="arcadeActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
         </div>
     </div>
-
-    <div id="communicationsAdminTab" class="tab-content">
+	<div id="communicationsAdminTab" class="tab-content">
         <div class="card">
             <h2 style="color: #3B82F6;">📢 Broadcast Engine</h2>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Send targeted announcements and push notifications to specific groups or the entire congregation.</p>
@@ -375,7 +410,7 @@
                         <select id="bcTargetSelect" class="form-control" required>
                             <option value="All">All Registered Members</option>
                             <option value="Leaders">All Leaders & Admins</option>
-                            </select>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label>Announcement Title *</label>
@@ -536,9 +571,11 @@
 
             <div id="gamTabGames" style="display: none; animation: fadeIn 0.3s ease-out;">
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Play games and earn Growth XP!</p>
-                
+
+                <div id="featuredGrowthGameContainer" style="margin-bottom: 20px; display: none;"></div>
+
                 <div class="arcade-grid" id="growthGamesGrid">
-                    <div class="arcade-game-tile" onclick="V9GrowthGames.mountCatechismClash()">
+                    <div class="arcade-game-tile" data-game-name="Catechism Clash">
                         <div class="game-tile-icon">⏱️</div>
                         <div class="game-tile-info">
                             <h3 style="color: var(--text-main);">Catechism Clash</h3>
@@ -546,14 +583,77 @@
                         </div>
                         <div class="game-tile-action" style="background: #059669;">PLAY NOW</div>
                     </div>
-                    
-                    <div class="arcade-game-tile" onclick="V9GrowthGames.mountWouldYouRather()">
+
+                    <div class="arcade-game-tile" data-game-name="Daily Manna Scramble">
+                        <div class="game-tile-icon">🧩</div>
+                        <div class="game-tile-info">
+                            <h3 style="color: var(--text-main);">Daily Manna Scramble</h3>
+                            <p style="color: var(--text-muted);">Unscramble the daily verse to earn Growth XP!</p>
+                        </div>
+                        <div class="game-tile-action" style="background: #14B8A6;">PLAY NOW</div>
+                    </div>
+
+                    <div class="arcade-game-tile" data-game-name="Emoji Sermon Translator">
+                        <div class="game-tile-icon">😀</div>
+                        <div class="game-tile-info">
+                            <h3 style="color: var(--text-main);">Emoji Sermon Translator</h3>
+                            <p style="color: var(--text-muted);">Decode the biblical story from emojis. 15 Stories available!</p>
+                        </div>
+                        <div class="game-tile-action" style="background: #F59E0B;">PLAY NOW</div>
+                    </div>
+
+                    <div class="arcade-game-tile" data-game-name="The Narrow Gate">
+                        <div class="game-tile-icon">🚪</div>
+                        <div class="game-tile-info">
+                            <h3 style="color: var(--text-main);">The Narrow Gate</h3>
+                            <p style="color: var(--text-muted);">Hardcore Trivia. How long can you keep your streak alive?</p>
+                        </div>
+                        <div class="game-tile-action" style="background: #6366F1;">PLAY NOW</div>
+                    </div>
+
+                    <div class="arcade-game-tile" data-game-name="Shield of Faith: Reflex Tap">
+                        <div class="game-tile-icon">🛡️</div>
+                        <div class="game-tile-info">
+                            <h3 style="color: var(--text-main);">Shield of Faith: Reflex Tap</h3>
+                            <p style="color: var(--text-muted);">Memorize the Armor of God and tap them before time runs out!</p>
+                        </div>
+                        <div class="game-tile-action" style="background: #EC4899;">PLAY NOW</div>
+                    </div>
+
+                    <div class="arcade-game-tile" data-game-name="Who Am I?">
+                        <div class="game-tile-icon">🕵️‍♂️</div>
+                        <div class="game-tile-info">
+                            <h3 style="color: var(--text-main);">Who Am I?</h3>
+                            <p style="color: var(--text-muted);">Progressive clues. Guess early for max XP!</p>
+                        </div>
+                        <div class="game-tile-action" style="background: #8B5CF6;">PLAY NOW</div>
+                    </div>
+
+                    <div class="arcade-game-tile" data-game-name="Would You Rather" onclick="V9GrowthGames.mountWouldYouRather()">
                         <div class="game-tile-icon">⚖️</div>
                         <div class="game-tile-info">
                             <h3 style="color: var(--text-main);">Would You Rather</h3>
                             <p style="color: var(--text-muted);">Daily Faith & Life Poll. Instant +5 Growth XP.</p>
                         </div>
                         <div class="game-tile-action" style="background: #8B5CF6;">VOTE</div>
+                    </div>
+
+                    <div class="arcade-game-tile" data-game-name="Verse Chain" onclick="V9GrowthGames.mountVerseChain()">
+                        <div class="game-tile-icon">🔗</div>
+                        <div class="game-tile-info">
+                            <h3 style="color: var(--text-main);">Verse Chain</h3>
+                            <p style="color: var(--text-muted);">Cooperative puzzle! Solve the missing words with your small group.</p>
+                        </div>
+                        <div class="game-tile-action" style="background: #3B82F6;">CO-OP</div>
+                    </div>
+
+                    <div class="arcade-game-tile" data-game-name="Cell Group Clash" onclick="V9GrowthGames.mountGroupClash()">
+                        <div class="game-tile-icon">⚔️</div>
+                        <div class="game-tile-info">
+                            <h3 style="color: var(--text-main);">Cell Group Clash</h3>
+                            <p style="color: var(--text-muted);">Check your Small Group's standing on the global leaderboard!</p>
+                        </div>
+                        <div class="game-tile-action" style="background: #DC2626;">RANKS</div>
                     </div>
                 </div>
 
@@ -598,6 +698,39 @@
         <div class="card">
             <h2>Small Groups / Connect Groups</h2>
             <div id="smallGroupsContainer"></div>
+        </div>
+    </div>
+
+    <div id="leaderboardsHubTab" class="tab-content">
+        <div class="card" style="padding: 0; overflow: hidden; border-color: var(--primary);">
+            <div style="padding: 15px 20px; background: linear-gradient(135deg, #2563EB, #4F46E5); color: #FFF; display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="margin:0; border:none; padding:0; color: #FFF; font-weight: 800; display:flex; align-items:center; gap:10px;">
+                    <span style="font-size: 1.5rem;">🏆</span> GLOBAL RANKS
+                </h2>
+            </div>
+            <div class="sub-nav" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); margin-bottom: 0; padding: 10px 15px;">
+                <button id="btnLdrOverall" class="sub-nav-btn active" onclick="V10Expansion.switchLeaderboardTab('overall')">⭐ Overall</button>
+                <button id="btnLdrGrowth" class="sub-nav-btn" onclick="V10Expansion.switchLeaderboardTab('growth')">🌱 Growth</button>
+                <button id="btnLdrArcade" class="sub-nav-btn" onclick="V10Expansion.switchLeaderboardTab('arcade')">🎮 Arcade</button>
+            </div>
+            <div id="ldrOverallView" style="padding: 20px; display: block;">
+                <h3 style="color: #D97706; margin-bottom: 15px;">Top Overall Leaders (All Time)</h3>
+                <div id="ldrOverallContainer"></div>
+                <h3 style="color: #D97706; margin-bottom: 15px; margin-top: 25px;">Top Overall (This Month)</h3>
+                <div id="ldrOverallMonthContainer"></div>
+            </div>
+            <div id="ldrGrowthView" style="padding: 20px; display: none;">
+                <h3 style="color: #059669; margin-bottom: 15px;">Top Growth Leaders (All Time)</h3>
+                <div id="ldrGrowthContainer"></div>
+                <h3 style="color: #059669; margin-bottom: 15px; margin-top: 25px;">Top Growth (This Month)</h3>
+                <div id="ldrGrowthMonthContainer"></div>
+            </div>
+            <div id="ldrArcadeView" style="padding: 20px; display: none;">
+                <h3 style="color: #2563EB; margin-bottom: 15px;">Top Arcade Players (All Time)</h3>
+                <div id="ldrArcadeContainer"></div>
+                <h3 style="color: #2563EB; margin-bottom: 15px; margin-top: 25px;">Top Arcade (This Month)</h3>
+                <div id="ldrArcadeMonthContainer"></div>
+            </div>
         </div>
     </div>
 
@@ -888,9 +1021,7 @@
         </div>
     </div>
 
-</div>
-
-<div id="confirmModal" class="modal" style="z-index: 9999;">
+</div> <div id="confirmModal" class="modal" style="z-index: 9999;">
     <div class="modal-content" style="max-width: 400px; text-align: center;">
         <div class="modal-drag-handle"></div>
         <h2 style="color: var(--danger); border-bottom: none; margin-bottom: 10px;">⚠️ Confirm Action</h2>
@@ -1397,6 +1528,7 @@
 <script src="/js/v8-jonahs-dive.js"></script>
 
 <script src="/js/v9-growth-games.js"></script>
+<script src="/js/v10-expansion.js"></script>
 
 </body>
 </html>
