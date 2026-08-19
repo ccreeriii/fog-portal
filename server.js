@@ -409,9 +409,9 @@ function pushToUser(youthId, title, message) {
 // ==============================================================================
 function awardPoints(youthId, type, amount, actor, gameName = null) {
     const amt = parseInt(amount) || 0;
-    
+
     // 1. Insert into the immutable ledger
-    db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at) VALUES (?, ?, ?, ?, ?)`, 
+    db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at) VALUES (?, ?, ?, ?, ?)`,
         [youthId, type, gameName, amt, getManilaTime()]);
 
     // 2. Sum the entire ledger to ensure 100% mathematical accuracy forever
@@ -832,8 +832,8 @@ app.post('/api/communications/broadcast', (req, res) => {
     db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', getManilaTime()], function(err) {
             const announcementId = this.lastID;
             let targetQuery = `SELECT id, qr_code FROM youth`; let targetParams = [];
-            if (target === 'Leaders') { targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`; } 
-            else if (target.startsWith('Ministry:')) { targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`; targetParams.push(target.split(':')[1]); } 
+            if (target === 'Leaders') { targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`; }
+            else if (target.startsWith('Ministry:')) { targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`; targetParams.push(target.split(':')[1]); }
             else if (target.startsWith('Group:')) { targetQuery = `SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?`; targetParams.push(target.split(':')[1]); }
 
             db.all(targetQuery, targetParams, (err, youths) => {
@@ -876,7 +876,7 @@ app.get('/api/communications/inbox', (req, res) => {
     });
 });
 app.delete('/api/communications/inbox/:id', (req, res) => {
-    if (req.body.username === 'celsocreeriii@gmail.com') { db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]); logActivity(req.body.actor, 'DELETE_INBOX_MSG', `Admin deleted global broadcast ID ${req.params.id}`); res.json({ success: true }); }); } 
+    if (req.body.username === 'celsocreeriii@gmail.com') { db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]); logActivity(req.body.actor, 'DELETE_INBOX_MSG', `Admin deleted global broadcast ID ${req.params.id}`); res.json({ success: true }); }); }
     else { db.run(`DELETE FROM user_notifications WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); }
 });
 
@@ -887,7 +887,7 @@ app.get('/api/leaderboards/:type/:timeframe', (req, res) => {
     const { type, timeframe } = req.params;
     let dateCondition = ""; let params = [];
     const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    
+
     if (timeframe === 'month') {
         const firstDay = new Date(d.getFullYear(), d.getMonth(), 1);
         dateCondition = "AND pt.created_at >= ?";
@@ -961,6 +961,16 @@ app.post('/api/gamification/challenges/:id/complete', (req, res) => {
     });
 });
 app.post('/api/gamification/challenges', (req, res) => { db.run(`INSERT INTO weekly_challenges (title, description, points, created_at) VALUES (?, ?, ?, ?)`, [req.body.title, req.body.description, req.body.points, getManilaTime()], function(err) { logActivity(req.body.actor, 'CREATE_CHALLENGE', `Created new challenge '${req.body.title}' for ${req.body.points} points`); res.json({ success: true, id: this.lastID }); }); });
+
+
+// 🛡️ THE NEW UNIVERSAL GAMES API FOR MISSION 1
+app.post('/api/games/universal-submit', (req, res) => {
+    const { youth_id, game_name, score, type, actor } = req.body;
+    const gameType = type || 'growth'; 
+    awardPoints(youth_id, gameType, score, actor || 'System', game_name || 'Mini Game');
+    res.json({ success: true, pointsAwarded: score });
+});
+
 
 app.post('/api/arcade/submit', (req, res) => {
     const { youth_id, game_name, score, actor } = req.body;

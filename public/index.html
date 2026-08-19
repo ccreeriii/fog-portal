@@ -38,7 +38,7 @@
             </div>
         </div>
         <button id="hamburgerBtn" class="hamburger-btn" onclick="openSidebar()" style="display: none;">☰</button>
-    </div>
+        </div>
 </header>
 
 <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
@@ -340,8 +340,11 @@
             </div>
 
             <div id="arcadeGamesList" style="padding: 20px;">
-                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">Play minigames to earn XP, level up, and boost your standing in the Arcade!</p>
-                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">Play minigames to earn XP!</p>
+                    <button class="btn btn-outline btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="font-weight: bold; background: white; padding: 4px 8px;">🔄 Refresh Ranks</button>
+                </div>
+
                 <div id="featuredArcadeGameContainer" style="margin-bottom: 20px;"></div>
 
                 <div class="arcade-grid" id="arcadeGridItems">
@@ -393,7 +396,10 @@
             </div>
 
             <div id="arcadeLeaderboardView" style="display: none; padding: 20px;">
-                <h3 style="color: #F59E0B; margin-bottom: 15px;">Top Arcade Players</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="color: #F59E0B; margin: 0;">Top Arcade Players</h3>
+                    <button class="btn btn-outline btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="font-weight: bold; background: white; padding: 4px 8px;">🔄 Refresh Ranks</button>
+                </div>
                 <div id="arcadeLeaderboardContainer"></div>
             </div>
 
@@ -554,8 +560,8 @@
             </form>
         </div>
     </div>
-	<div id="discipleshipTab" class="tab-content">
-        
+        <div id="discipleshipTab" class="tab-content">
+
         <div id="growthSubHome" class="growth-sub-tab active">
             <div id="verseOfDayContainer"></div>
             <div id="nextStepContainer"></div>
@@ -574,12 +580,20 @@
                 </div>
 
                 <div id="gamTabGames" style="display: none; animation: fadeIn 0.3s ease-out;">
-                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Play games and earn Growth XP!</p>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -10px; margin-bottom: 15px;">
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Play games and earn Growth XP!</p>
+                        <button class="btn btn-outline btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="font-weight: bold; background: white; padding: 4px 8px;">🔄 Refresh Ranks</button>
+                    </div>
+
+                                        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                        <button id="btnGrowthIndiv" class="btn btn-primary btn-sm" style="flex: 1;" onclick="if(window.V10Expansion && V10Expansion.filterGrowthGames) V10Expansion.filterGrowthGames('indiv')">👤 Individual</button>
+                        <button id="btnGrowthGroups" class="btn btn-outline btn-sm" style="flex: 1;" onclick="if(window.V10Expansion && V10Expansion.filterGrowthGames) V10Expansion.filterGrowthGames('groups')">👥 Groups</button>
+                    </div>
 
                     <div id="featuredGrowthGameContainer" style="margin-bottom: 20px; display: none;"></div>
 
                     <div class="arcade-grid" id="growthGamesGrid">
-                        <div class="arcade-game-tile" data-game-name="Catechism Clash">
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Catechism Clash">
                             <div class="game-tile-icon">⏱️</div>
                             <div class="game-tile-info">
                                 <h3 style="color: var(--text-main);">Catechism Clash</h3>
@@ -588,7 +602,7 @@
                             <div class="game-tile-action" style="background: #059669;">PLAY NOW</div>
                         </div>
 
-                        <div class="arcade-game-tile" data-game-name="Daily Manna Scramble">
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Daily Manna Scramble">
                             <div class="game-tile-icon">🧩</div>
                             <div class="game-tile-info">
                                 <h3 style="color: var(--text-main);">Daily Manna Scramble</h3>
@@ -597,7 +611,7 @@
                             <div class="game-tile-action" style="background: #14B8A6;">PLAY NOW</div>
                         </div>
 
-                        <div class="arcade-game-tile" data-game-name="Emoji Sermon Translator">
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Emoji Sermon Translator">
                             <div class="game-tile-icon">😀</div>
                             <div class="game-tile-info">
                                 <h3 style="color: var(--text-main);">Emoji Sermon Translator</h3>
@@ -606,7 +620,7 @@
                             <div class="game-tile-action" style="background: #F59E0B;">PLAY NOW</div>
                         </div>
 
-                        <div class="arcade-game-tile" data-game-name="The Narrow Gate">
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="The Narrow Gate">
                             <div class="game-tile-icon">🚪</div>
                             <div class="game-tile-info">
                                 <h3 style="color: var(--text-main);">The Narrow Gate</h3>
@@ -615,7 +629,7 @@
                             <div class="game-tile-action" style="background: #6366F1;">PLAY NOW</div>
                         </div>
 
-                        <div class="arcade-game-tile" data-game-name="Shield of Faith: Reflex Tap">
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Shield of Faith: Reflex Tap">
                             <div class="game-tile-icon">🛡️</div>
                             <div class="game-tile-info">
                                 <h3 style="color: var(--text-main);">Shield of Faith: Reflex Tap</h3>
@@ -624,7 +638,7 @@
                             <div class="game-tile-action" style="background: #EC4899;">PLAY NOW</div>
                         </div>
 
-                        <div class="arcade-game-tile" data-game-name="Who Am I?">
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Who Am I?">
                             <div class="game-tile-icon">🕵️‍♂️</div>
                             <div class="game-tile-info">
                                 <h3 style="color: var(--text-main);">Who Am I?</h3>
@@ -633,7 +647,7 @@
                             <div class="game-tile-action" style="background: #8B5CF6;">PLAY NOW</div>
                         </div>
 
-                        <div class="arcade-game-tile" data-game-name="Would You Rather" onclick="V9GrowthGames.mountWouldYouRather()">
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Would You Rather" onclick="V9GrowthGames.mountWouldYouRather()">
                             <div class="game-tile-icon">⚖️</div>
                             <div class="game-tile-info">
                                 <h3 style="color: var(--text-main);">Would You Rather</h3>
@@ -642,7 +656,7 @@
                             <div class="game-tile-action" style="background: #8B5CF6;">VOTE</div>
                         </div>
 
-                        <div class="arcade-game-tile" data-game-name="Verse Chain" onclick="V9GrowthGames.mountVerseChain()">
+                        <div class="arcade-game-tile growth-game-groups" data-game-name="Verse Chain" onclick="V9GrowthGames.mountVerseChain()">
                             <div class="game-tile-icon">🔗</div>
                             <div class="game-tile-info">
                                 <h3 style="color: var(--text-main);">Verse Chain</h3>
@@ -651,7 +665,7 @@
                             <div class="game-tile-action" style="background: #3B82F6;">CO-OP</div>
                         </div>
 
-                        <div class="arcade-game-tile" data-game-name="Cell Group Clash" onclick="V9GrowthGames.mountGroupClash()">
+                        <div class="arcade-game-tile growth-game-groups" data-game-name="Cell Group Clash" onclick="V9GrowthGames.mountGroupClash()">
                             <div class="game-tile-icon">⚔️</div>
                             <div class="game-tile-info">
                                 <h3 style="color: var(--text-main);">Cell Group Clash</h3>
@@ -665,6 +679,10 @@
                 </div>
 
                 <div id="gamTabLeaderboard" style="display: none; animation: fadeIn 0.3s ease-out;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="color: #059669; margin: 0;">Top Growth Players</h3>
+                        <button class="btn btn-outline btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="font-weight: bold; background: white; padding: 4px 8px;">🔄 Refresh Ranks</button>
+                    </div>
                     <div id="gamLeaderboardList"></div>
                 </div>
             </div>
@@ -720,6 +738,7 @@
                 <h2 style="margin:0; border:none; padding:0; color: #FFF; font-weight: 800; display:flex; align-items:center; gap:10px;">
                     <span style="font-size: 1.5rem;">🏆</span> GLOBAL RANKS
                 </h2>
+                <button class="btn btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="background: rgba(255,255,255,0.2); color: #FFF; border: none; font-weight: bold;">🔄 Refresh Ranks</button>
             </div>
             <div class="sub-nav" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); margin-bottom: 0; padding: 10px 15px;">
                 <button id="btnLdrOverall" class="sub-nav-btn active" onclick="V10Expansion.switchLeaderboardTab('overall')">⭐ Overall</button>
@@ -1280,7 +1299,7 @@
                 </select>
                 <input type="text" id="minSubRoleInput" class="form-control" placeholder="Sub-Role (e.g. Drummer)" style="flex: 1; min-width: 150px;">
                 <button class="btn btn-primary" onclick="assignMinistryRole()" style="flex: 1;">Assign</button>
-            </div>
+                </div>
         </div>
 
         <div id="ministryRosterContainer" style="max-height: 350px; overflow-y: auto; padding-right: 5px;"></div>

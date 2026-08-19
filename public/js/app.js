@@ -149,7 +149,6 @@ window.buildNav = function() {
         bottomNav.style.webkitOverflowScrolling = 'touch';
     }
 
-    // Safely handles sub-navigation routing
     const addBottomBtn = (target, icon, text, onclickStr, isSub = false) => {
         let isActive = false;
         if (isSub) {
@@ -165,7 +164,8 @@ window.buildNav = function() {
 
     bottomHtml += addBottomBtn('profileTab', '👤', 'Profile', "switchTab('profileTab')");
 
-    // Dynamic Icon Swapping
+    // 🛡️ CRITICAL FIX FOR MISSION 3: STRICT 6-ICON NAVIGATION
+    // We completely overwrite any injected HTML from legacy modules.
     if (currentTab === 'discipleshipTab') {
         bottomHtml += addBottomBtn('growthSubHome', '🌱', 'Growth', "switchGrowthSubTab('Home')", true);
         bottomHtml += addBottomBtn('growthSubMilestones', '🗺️', 'Milestone', "switchGrowthSubTab('Milestones')", true);
@@ -179,8 +179,11 @@ window.buildNav = function() {
     }
 
     bottomHtml += `<button class="bottom-nav-btn" style="flex: 1 1 auto; width: auto; min-width: 60px; padding: 10px 2px;" onclick="handleLogout()"><div class="icon">🚪</div><span style="white-space:nowrap; font-size:0.65rem;">Logout</span></button>`;
-    
-    if(bottomNav) bottomNav.innerHTML = bottomHtml;
+
+    if(bottomNav) {
+        // Enforce the strict rewrite so other files cannot append to it.
+        bottomNav.innerHTML = bottomHtml;
+    }
 
     if (isAdmin) {
         if(hamburger) hamburger.style.display = 'block';
