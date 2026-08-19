@@ -100,7 +100,6 @@ window.V10Expansion = {
     // --------------------------------------------------------------------------
     loadTopScorers: async function() {
         try {
-            // Iterative fetching allows fallback for missing bulk API route
             this.bulkDataCache = {};
             const games = ["David's Slingshot", "Noah's Ark: Rescue", "Moses' Red Sea Dash", "Peter's Leap of Faith", "Jonah's Deep Sea Dive", "Catechism Clash", "Daily Manna Scramble", "Emoji Sermon Translator", "The Narrow Gate", "Shield of Faith: Reflex Tap"];
             
@@ -273,7 +272,6 @@ window.V10Expansion = {
             let pointsAwarded = score;
             let success = true;
             
-            // Only save to DB if it's a real logged-in youth and they scored points
             if (!isPreview && score > 0) {
                 let url = type === 'arcade' ? '/api/arcade/submit' : '/api/growth-games/trivia/submit';
                 let payload = type === 'arcade' 
@@ -442,7 +440,7 @@ window.V10Expansion = {
     nextEM: async function() {
         if(this.emState.i >= 15) return this.submitUniversalScore("Emoji Sermon Translator", "growth", this.emState.s);
         
-        // Pass dummy ID for admins if needed, though Emoji fetch handles empty gracefully
+        // Pass dummy ID for admins if needed
         const safeId = (typeof currentMember !== 'undefined' && currentMember && currentMember.id) ? currentMember.id : 0;
         
         const r = await fetch(`/api/growth-games/emoji?youth_id=${safeId}`);
@@ -551,6 +549,7 @@ window.V10Expansion = {
         } catch(e) {}
     },
     
+    // UI REDESIGN: Sleeker, smaller layout removing redundant labels
     renderFeaturedSlot: async function(gridId, containerId, gameName, isGrowth) {
         const container = document.getElementById(containerId); const grid = document.getElementById(gridId);
         if (!container || !grid) return;
@@ -575,26 +574,25 @@ window.V10Expansion = {
                     topHtml = `<div style="display:flex; gap:6px; margin-bottom:12px; background:rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 8px; width: fit-content;">`;
                     topP.forEach((p,i) => {
                         const m = i===0?'🥇':i===1?'🥈':'🥉';
-                        const a = p.profile_picture ? `<img src="${p.profile_picture}" title="${p.name} - ${p.high_score}XP" style="width:24px; height:24px; border-radius:50%; border:1px solid #FFF; object-fit:cover;">` : `<div title="${p.name} - ${p.high_score}XP" style="width:24px; height:24px; border-radius:50%; background:#E2E8F0; color:#0F172A; display:flex; align-items:center; justify-content:center; font-size:0.6rem; font-weight:bold; border:1px solid #FFF;">${p.name.charAt(0)}</div>`;
+                        const a = p.profile_picture ? `<img src="${p.profile_picture}" title="${p.name} - ${p.high_score}XP" style="width:20px; height:20px; border-radius:50%; border:1px solid #FFF; object-fit:cover;">` : `<div title="${p.name} - ${p.high_score}XP" style="width:20px; height:20px; border-radius:50%; background:#E2E8F0; color:#0F172A; display:flex; align-items:center; justify-content:center; font-size:0.5rem; font-weight:bold; border:1px solid #FFF;">${p.name.charAt(0)}</div>`;
                         topHtml += `<div style="position:relative;">${a}<span style="position:absolute; bottom:-4px; right:-4px; font-size:0.6rem;">${m}</span></div>`;
                     });
                     topHtml += `</div>`;
                 }
             } catch(e){}
 
-            // Output the beautiful featured container formatting using strictly existing CSS classes
+            // Output the beautiful featured container with injected smaller padding/font-sizes
             container.innerHTML = `
-                <h3 style="color: var(--text-main); font-size: 1.1rem; font-weight: 800; margin-bottom: 12px; border: none; padding: 0;">⭐ Featured Game</h3>
-                <div class="arcade-featured-game" id="hero-${containerId}">
-                    <div class="featured-banner">
-                        <div class="featured-badge">⭐ FEATURED ${isGrowth ? 'GROWTH' : 'ARCADE'}</div>
-                        <div style="font-size: 4rem; margin-top: 15px;">${icon}</div>
+                <div class="arcade-featured-game" id="hero-${containerId}" style="max-height: 350px;">
+                    <div class="featured-banner" style="padding: 15px 0;">
+                        <div class="featured-badge" style="top: 10px; left: 10px; font-size: 0.7rem; padding: 4px 8px;">⭐ FEATURED GAME</div>
+                        <div style="font-size: 3rem; margin-top: 5px;">${icon}</div>
                     </div>
-                    <div class="featured-info">
-                        <h3>${title}</h3>
-                        <p>${desc}</p>
+                    <div class="featured-info" style="padding: 15px;">
+                        <h3 style="font-size: 1.25rem; margin-bottom: 4px;">${title}</h3>
+                        <p style="font-size: 0.85rem; margin-bottom: 10px;">${desc}</p>
                         ${topHtml}
-                        <div class="featured-action">PLAY NOW</div>
+                        <div class="featured-action" style="padding: 10px 20px; font-size: 0.85rem;">PLAY NOW</div>
                     </div>
                 </div>
             `;
@@ -646,5 +644,58 @@ window.V10Expansion = {
         await fetchAndRender('month', `ldr${typeCap}MonthContainer`);
     }
 };
+
+// ==============================================================================
+// V8 ARCADE RE-INJECTION FOR TAB ROUTING & LEADERBOARD FIX
+// ==============================================================================
+window.V8Arcade = Object.assign(window.V8Arcade || {}, {
+    switchTab: function(tab) {
+        const list = document.getElementById('arcadeGamesList');
+        const ldr = document.getElementById('arcadeLeaderboardView');
+        if(list) list.style.display = tab === 'games' ? 'block' : 'none';
+        if(ldr) ldr.style.display = tab === 'leaderboard' ? 'block' : 'none';
+
+        const gamesBtn = document.getElementById('btnArcadeGames');
+        if (gamesBtn) gamesBtn.classList.toggle('active', tab === 'games');
+        const ldrBtn = document.getElementById('btnArcadeLeaderboard');
+        if (ldrBtn) ldrBtn.classList.toggle('active', tab === 'leaderboard');
+
+        const area = document.getElementById('arcadeActiveGameArea');
+        if(area) area.style.display = 'none';
+
+        if (tab === 'leaderboard') this.loadLeaderboard();
+    },
+    
+    // FIX: Re-routed to the correct V10 endpoint instead of the dead legacy route
+    loadLeaderboard: async function() {
+        const container = document.getElementById('arcadeLeaderboardContainer');
+        if (!container) return;
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Loading ranks...</p>';
+        try {
+            const res = await fetch('/api/leaderboards/arcade/all_time');
+            if(!res.ok) throw new Error("API Route missing");
+            const data = await res.json();
+            if (data.length === 0) return container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Leaderboard is empty. Play games to rank up! 🎮</div>';
+            container.innerHTML = data.map((user, index) => {
+                let rankIcon = `<span style="color: #64748B; font-weight: bold;">#${index + 1}</span>`;
+                if (index === 0) rankIcon = '🥇'; if (index === 1) rankIcon = '🥈'; if (index === 2) rankIcon = '🥉';
+                const avatarHtml = user.profile_picture ? `<img src="${user.profile_picture}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">` : `<div style="width: 40px; height: 40px; border-radius: 50%; background: #F3F4F6; color: #4B5563; display: flex; align-items: center; justify-content: center; font-weight: bold;">${(user.name||'U').charAt(0).toUpperCase()}</div>`;
+                return `<div style="${index===0?'background: #FFFBEB; border-color: #FDE68A;':'background: #FFFFFF; border-color: #E5E7EB;'} border-style: solid; border-width: 1px; border-radius: 12px; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 15px;"><div style="width: 30px; text-align: center;">${rankIcon}</div>${avatarHtml}<strong style="color: #0F172A; font-size: 1.05rem;">${user.name}</strong></div>
+                    <div style="font-weight: 900; color: #2563EB; font-size: 1.15rem;">🎮 ${user.points || user.arcade_xp || 0} XP</div>
+                </div>`;
+            }).join('');
+        } catch (e) { container.innerHTML = '<p style="color:red; text-align:center;">Network error loading ranks. Check your server connection.</p>'; }
+    },
+    updateTotalXP: async function() {
+        if (!currentMember || !currentMember.id) return;
+        try {
+            const res = await fetch(`/api/gamification/points/${currentMember.id}`);
+            const data = await res.json();
+            const el = document.getElementById('arcadeCurrentXP');
+            if (el) el.innerText = data.arcade_xp || 0;
+        } catch(e) {}
+    }
+});
 
 document.addEventListener('DOMContentLoaded', () => { window.V10Expansion.init(); });
