@@ -9,10 +9,10 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-    <link rel="stylesheet" href="/css/styles.css">
-    <link rel="stylesheet" href="/css/v2-styles.css">
-    <link rel="stylesheet" href="/css/v3-styles.css">
-    <link rel="stylesheet" href="/css/v4-styles.css">
+    <link rel="stylesheet" href="/css/styles.css?v=12.2">
+    <link rel="stylesheet" href="/css/v2-styles.css?v=12.2">
+    <link rel="stylesheet" href="/css/v3-styles.css?v=12.2">
+    <link rel="stylesheet" href="/css/v4-styles.css?v=12.2">
     <style>
         .ai-chat-box { display: flex; flex-direction: column; gap: 15px; max-height: 450px; overflow-y: auto; padding: 15px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin-bottom: 15px; }
         .chat-msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; font-size: 0.95rem; line-height: 1.4; }
@@ -20,6 +20,8 @@
         .chat-ai { align-self: flex-start; background: #E2E8F0; color: #0F172A; border-bottom-left-radius: 2px; }
         .ai-pill-btn { background: #FFF; border: 1px solid #10B981; color: #10B981; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; transition: 0.2s; white-space: nowrap; }
         .ai-pill-btn:hover { background: #10B981; color: #FFF; }
+        .growth-sub-tab { display: none; animation: fadeIn 0.3s ease-out; }
+        .growth-sub-tab.active { display: block; }
     </style>
 </head>
 <body>
@@ -398,7 +400,8 @@
             <div id="arcadeActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
         </div>
     </div>
-	<div id="communicationsAdminTab" class="tab-content">
+
+    <div id="communicationsAdminTab" class="tab-content">
         <div class="card">
             <h2 style="color: #3B82F6;">📢 Broadcast Engine</h2>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Send targeted announcements and push notifications to specific groups or the entire congregation.</p>
@@ -540,7 +543,7 @@
             </div>
 
             <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 5px;">
-                <button class="ai-pill-btn" onclick="V7AIAssistant.setPrompt('Who hasn\'t attended recently?')">Who is missing?</button>
+                <button class="ai-pill-btn" onclick="V7AIAssistant.setPrompt('Who hasn\\'t attended recently?')">Who is missing?</button>
                 <button class="ai-pill-btn" onclick="V7AIAssistant.setPrompt('How many members do we have total?')">Directory Size</button>
                 <button class="ai-pill-btn" onclick="V7AIAssistant.setPrompt('Show me recent prayer requests.')">Recent Prayers</button>
             </div>
@@ -551,153 +554,163 @@
             </form>
         </div>
     </div>
+	<div id="discipleshipTab" class="tab-content">
+        
+        <div id="growthSubHome" class="growth-sub-tab active">
+            <div id="verseOfDayContainer"></div>
+            <div id="nextStepContainer"></div>
 
-    <div id="discipleshipTab" class="tab-content">
-        <div id="verseOfDayContainer"></div>
-        <div id="nextStepContainer"></div>
-
-        <div class="card" style="border-top: 4px solid #059669;">
-            <h2 style="color: #047857; display:flex; align-items:center; gap:8px;">🌱 Spiritual Growth & Challenges</h2>
-            <div class="sub-nav" style="margin-bottom: 15px;">
-                <button id="btnGamTabChallenges" class="sub-nav-btn active" onclick="V6Gamification.switchTab('challenges')">🎯 Weekly Tasks</button>
-                <button id="btnGamTabGames" class="sub-nav-btn" onclick="V6Gamification.switchTab('games')">🧠 Games</button>
-                <button id="btnGamTabLeaderboard" class="sub-nav-btn" onclick="V6Gamification.switchTab('leaderboard')">🏅 Leaderboard</button>
-            </div>
-
-            <div id="gamTabChallenges" style="display: block; animation: fadeIn 0.3s ease-out;">
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Complete tasks to earn Growth XP and rank up!</p>
-                <div id="gamActiveChallengesList"></div>
-            </div>
-
-            <div id="gamTabGames" style="display: none; animation: fadeIn 0.3s ease-out;">
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Play games and earn Growth XP!</p>
-
-                <div id="featuredGrowthGameContainer" style="margin-bottom: 20px; display: none;"></div>
-
-                <div class="arcade-grid" id="growthGamesGrid">
-                    <div class="arcade-game-tile" data-game-name="Catechism Clash">
-                        <div class="game-tile-icon">⏱️</div>
-                        <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Catechism Clash</h3>
-                            <p style="color: var(--text-muted);">60-Second Sprint! Answer fast to earn massive multipliers.</p>
-                        </div>
-                        <div class="game-tile-action" style="background: #059669;">PLAY NOW</div>
-                    </div>
-
-                    <div class="arcade-game-tile" data-game-name="Daily Manna Scramble">
-                        <div class="game-tile-icon">🧩</div>
-                        <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Daily Manna Scramble</h3>
-                            <p style="color: var(--text-muted);">Unscramble the daily verse to earn Growth XP!</p>
-                        </div>
-                        <div class="game-tile-action" style="background: #14B8A6;">PLAY NOW</div>
-                    </div>
-
-                    <div class="arcade-game-tile" data-game-name="Emoji Sermon Translator">
-                        <div class="game-tile-icon">😀</div>
-                        <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Emoji Sermon Translator</h3>
-                            <p style="color: var(--text-muted);">Decode the biblical story from emojis. 15 Stories available!</p>
-                        </div>
-                        <div class="game-tile-action" style="background: #F59E0B;">PLAY NOW</div>
-                    </div>
-
-                    <div class="arcade-game-tile" data-game-name="The Narrow Gate">
-                        <div class="game-tile-icon">🚪</div>
-                        <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">The Narrow Gate</h3>
-                            <p style="color: var(--text-muted);">Hardcore Trivia. How long can you keep your streak alive?</p>
-                        </div>
-                        <div class="game-tile-action" style="background: #6366F1;">PLAY NOW</div>
-                    </div>
-
-                    <div class="arcade-game-tile" data-game-name="Shield of Faith: Reflex Tap">
-                        <div class="game-tile-icon">🛡️</div>
-                        <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Shield of Faith: Reflex Tap</h3>
-                            <p style="color: var(--text-muted);">Memorize the Armor of God and tap them before time runs out!</p>
-                        </div>
-                        <div class="game-tile-action" style="background: #EC4899;">PLAY NOW</div>
-                    </div>
-
-                    <div class="arcade-game-tile" data-game-name="Who Am I?">
-                        <div class="game-tile-icon">🕵️‍♂️</div>
-                        <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Who Am I?</h3>
-                            <p style="color: var(--text-muted);">Progressive clues. Guess early for max XP!</p>
-                        </div>
-                        <div class="game-tile-action" style="background: #8B5CF6;">PLAY NOW</div>
-                    </div>
-
-                    <div class="arcade-game-tile" data-game-name="Would You Rather" onclick="V9GrowthGames.mountWouldYouRather()">
-                        <div class="game-tile-icon">⚖️</div>
-                        <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Would You Rather</h3>
-                            <p style="color: var(--text-muted);">Daily Faith & Life Poll. Instant +5 Growth XP.</p>
-                        </div>
-                        <div class="game-tile-action" style="background: #8B5CF6;">VOTE</div>
-                    </div>
-
-                    <div class="arcade-game-tile" data-game-name="Verse Chain" onclick="V9GrowthGames.mountVerseChain()">
-                        <div class="game-tile-icon">🔗</div>
-                        <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Verse Chain</h3>
-                            <p style="color: var(--text-muted);">Cooperative puzzle! Solve the missing words with your small group.</p>
-                        </div>
-                        <div class="game-tile-action" style="background: #3B82F6;">CO-OP</div>
-                    </div>
-
-                    <div class="arcade-game-tile" data-game-name="Cell Group Clash" onclick="V9GrowthGames.mountGroupClash()">
-                        <div class="game-tile-icon">⚔️</div>
-                        <div class="game-tile-info">
-                            <h3 style="color: var(--text-main);">Cell Group Clash</h3>
-                            <p style="color: var(--text-muted);">Check your Small Group's standing on the global leaderboard!</p>
-                        </div>
-                        <div class="game-tile-action" style="background: #DC2626;">RANKS</div>
-                    </div>
+            <div class="card" style="border-top: 4px solid #059669;">
+                <h2 style="color: #047857; display:flex; align-items:center; gap:8px;">🌱 Spiritual Growth & Challenges</h2>
+                <div class="sub-nav" style="margin-bottom: 15px;">
+                    <button id="btnGamTabChallenges" class="sub-nav-btn active" onclick="V6Gamification.switchTab('challenges')">🎯 Weekly Tasks</button>
+                    <button id="btnGamTabGames" class="sub-nav-btn" onclick="V6Gamification.switchTab('games')">🧠 Games</button>
+                    <button id="btnGamTabLeaderboard" class="sub-nav-btn" onclick="V6Gamification.switchTab('leaderboard')">🏅 Leaderboard</button>
                 </div>
 
-                <div id="growthActiveGameArea" style="display:none; width: 100%; position: relative; margin-top: 15px;"></div>
-            </div>
-
-            <div id="gamTabLeaderboard" style="display: none; animation: fadeIn 0.3s ease-out;">
-                <div id="gamLeaderboardList"></div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Discipleship Pathways & Milestones</h2>
-            <div id="pathwaysListContainer"></div>
-        </div>
-
-        <div class="card">
-            <h2>Private Spiritual Journal</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Record your personal reflections, prayers, and walk with God securely.</p>
-            <form id="journalForm" onsubmit="V2Discipleship.saveJournal(event)">
-                <div class="form-group"><label>Title *</label><input type="text" id="journalTitle" class="form-control" placeholder="e.g. Morning Devotion on Grace" required></div>
-                <div style="display:flex; gap:15px;">
-                    <div class="form-group" style="flex:1;"><label>Mood / State</label><select id="journalMood" class="form-control"><option value="Blessed">Blessed & Grateful</option><option value="Seeking">Seeking Guidance</option><option value="Joyful">Joyful</option><option value="Reflective">Reflective</option></select></div>
+                <div id="gamTabChallenges" style="display: block; animation: fadeIn 0.3s ease-out;">
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Complete tasks to earn Growth XP and rank up!</p>
+                    <div id="gamActiveChallengesList"></div>
                 </div>
-                <div class="form-group"><label>Journal Content *</label><textarea id="journalContent" class="form-control" rows="4" placeholder="Write your thoughts..." required></textarea></div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Save Journal Entry</button>
-            </form>
-            <div id="journalsContainer" style="margin-top: 25px;"></div>
+
+                <div id="gamTabGames" style="display: none; animation: fadeIn 0.3s ease-out;">
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Play games and earn Growth XP!</p>
+
+                    <div id="featuredGrowthGameContainer" style="margin-bottom: 20px; display: none;"></div>
+
+                    <div class="arcade-grid" id="growthGamesGrid">
+                        <div class="arcade-game-tile" data-game-name="Catechism Clash">
+                            <div class="game-tile-icon">⏱️</div>
+                            <div class="game-tile-info">
+                                <h3 style="color: var(--text-main);">Catechism Clash</h3>
+                                <p style="color: var(--text-muted);">60-Second Sprint! Answer fast to earn massive multipliers.</p>
+                            </div>
+                            <div class="game-tile-action" style="background: #059669;">PLAY NOW</div>
+                        </div>
+
+                        <div class="arcade-game-tile" data-game-name="Daily Manna Scramble">
+                            <div class="game-tile-icon">🧩</div>
+                            <div class="game-tile-info">
+                                <h3 style="color: var(--text-main);">Daily Manna Scramble</h3>
+                                <p style="color: var(--text-muted);">Unscramble the daily verse to earn Growth XP!</p>
+                            </div>
+                            <div class="game-tile-action" style="background: #14B8A6;">PLAY NOW</div>
+                        </div>
+
+                        <div class="arcade-game-tile" data-game-name="Emoji Sermon Translator">
+                            <div class="game-tile-icon">😀</div>
+                            <div class="game-tile-info">
+                                <h3 style="color: var(--text-main);">Emoji Sermon Translator</h3>
+                                <p style="color: var(--text-muted);">Decode the biblical story from emojis. 15 Stories available!</p>
+                            </div>
+                            <div class="game-tile-action" style="background: #F59E0B;">PLAY NOW</div>
+                        </div>
+
+                        <div class="arcade-game-tile" data-game-name="The Narrow Gate">
+                            <div class="game-tile-icon">🚪</div>
+                            <div class="game-tile-info">
+                                <h3 style="color: var(--text-main);">The Narrow Gate</h3>
+                                <p style="color: var(--text-muted);">Hardcore Trivia. How long can you keep your streak alive?</p>
+                            </div>
+                            <div class="game-tile-action" style="background: #6366F1;">PLAY NOW</div>
+                        </div>
+
+                        <div class="arcade-game-tile" data-game-name="Shield of Faith: Reflex Tap">
+                            <div class="game-tile-icon">🛡️</div>
+                            <div class="game-tile-info">
+                                <h3 style="color: var(--text-main);">Shield of Faith: Reflex Tap</h3>
+                                <p style="color: var(--text-muted);">Memorize the Armor of God and tap them before time runs out!</p>
+                            </div>
+                            <div class="game-tile-action" style="background: #EC4899;">PLAY NOW</div>
+                        </div>
+
+                        <div class="arcade-game-tile" data-game-name="Who Am I?">
+                            <div class="game-tile-icon">🕵️‍♂️</div>
+                            <div class="game-tile-info">
+                                <h3 style="color: var(--text-main);">Who Am I?</h3>
+                                <p style="color: var(--text-muted);">Progressive clues. Guess early for max XP!</p>
+                            </div>
+                            <div class="game-tile-action" style="background: #8B5CF6;">PLAY NOW</div>
+                        </div>
+
+                        <div class="arcade-game-tile" data-game-name="Would You Rather" onclick="V9GrowthGames.mountWouldYouRather()">
+                            <div class="game-tile-icon">⚖️</div>
+                            <div class="game-tile-info">
+                                <h3 style="color: var(--text-main);">Would You Rather</h3>
+                                <p style="color: var(--text-muted);">Daily Faith & Life Poll. Instant +5 Growth XP.</p>
+                            </div>
+                            <div class="game-tile-action" style="background: #8B5CF6;">VOTE</div>
+                        </div>
+
+                        <div class="arcade-game-tile" data-game-name="Verse Chain" onclick="V9GrowthGames.mountVerseChain()">
+                            <div class="game-tile-icon">🔗</div>
+                            <div class="game-tile-info">
+                                <h3 style="color: var(--text-main);">Verse Chain</h3>
+                                <p style="color: var(--text-muted);">Cooperative puzzle! Solve the missing words with your small group.</p>
+                            </div>
+                            <div class="game-tile-action" style="background: #3B82F6;">CO-OP</div>
+                        </div>
+
+                        <div class="arcade-game-tile" data-game-name="Cell Group Clash" onclick="V9GrowthGames.mountGroupClash()">
+                            <div class="game-tile-icon">⚔️</div>
+                            <div class="game-tile-info">
+                                <h3 style="color: var(--text-main);">Cell Group Clash</h3>
+                                <p style="color: var(--text-muted);">Check your Small Group's standing on the global leaderboard!</p>
+                            </div>
+                            <div class="game-tile-action" style="background: #DC2626;">RANKS</div>
+                        </div>
+                    </div>
+
+                    <div id="growthActiveGameArea" style="display:none; width: 100%; position: relative; margin-top: 15px;"></div>
+                </div>
+
+                <div id="gamTabLeaderboard" style="display: none; animation: fadeIn 0.3s ease-out;">
+                    <div id="gamLeaderboardList"></div>
+                </div>
+            </div>
         </div>
 
-        <div class="card">
-            <h2>Community Prayer Center</h2>
-            <form id="prayerForm" onsubmit="V2Discipleship.submitPrayer(event)">
-                <div class="form-group"><label>Prayer Title *</label><input type="text" id="prayerTitle" class="form-control" required></div>
-                <div class="form-group"><label>Prayer Request / Praise Report *</label><textarea id="prayerContent" class="form-control" rows="3" required></textarea></div>
-                <div class="form-group" style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="prayerAnonymous" style="width:18px;height:18px;"><label for="prayerAnonymous" style="margin:0;">Post Anonymously</label></div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Submit Prayer Request</button>
-            </form>
-            <div id="prayerWallContainer" class="prayer-wall-grid"></div>
+        <div id="growthSubMilestones" class="growth-sub-tab">
+            <div class="card">
+                <h2>Discipleship Pathways & Milestones</h2>
+                <div id="pathwaysListContainer"></div>
+            </div>
         </div>
 
-        <div class="card">
-            <h2>Small Groups / Connect Groups</h2>
-            <div id="smallGroupsContainer"></div>
+        <div id="growthSubJournal" class="growth-sub-tab">
+            <div class="card">
+                <h2>Private Spiritual Journal</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Record your personal reflections, prayers, and walk with God securely.</p>
+                <form id="journalForm" onsubmit="V2Discipleship.saveJournal(event)">
+                    <div class="form-group"><label>Title *</label><input type="text" id="journalTitle" class="form-control" placeholder="e.g. Morning Devotion on Grace" required></div>
+                    <div style="display:flex; gap:15px;">
+                        <div class="form-group" style="flex:1;"><label>Mood / State</label><select id="journalMood" class="form-control"><option value="Blessed">Blessed & Grateful</option><option value="Seeking">Seeking Guidance</option><option value="Joyful">Joyful</option><option value="Reflective">Reflective</option></select></div>
+                    </div>
+                    <div class="form-group"><label>Journal Content *</label><textarea id="journalContent" class="form-control" rows="4" placeholder="Write your thoughts..." required></textarea></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Save Journal Entry</button>
+                </form>
+                <div id="journalsContainer" style="margin-top: 25px;"></div>
+            </div>
+        </div>
+
+        <div id="growthSubPrayer" class="growth-sub-tab">
+            <div class="card">
+                <h2>Community Prayer Center</h2>
+                <form id="prayerForm" onsubmit="V2Discipleship.submitPrayer(event)">
+                    <div class="form-group"><label>Prayer Title *</label><input type="text" id="prayerTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Prayer Request / Praise Report *</label><textarea id="prayerContent" class="form-control" rows="3" required></textarea></div>
+                    <div class="form-group" style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="prayerAnonymous" style="width:18px;height:18px;"><label for="prayerAnonymous" style="margin:0;">Post Anonymously</label></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Submit Prayer Request</button>
+                </form>
+                <div id="prayerWallContainer" class="prayer-wall-grid"></div>
+            </div>
+        </div>
+
+        <div id="growthSubGroups" class="growth-sub-tab">
+            <div class="card">
+                <h2>Small Groups / Connect Groups</h2>
+                <div id="smallGroupsContainer"></div>
+            </div>
         </div>
     </div>
 
@@ -819,7 +832,7 @@
             <div class="form-group" style="margin-bottom: 15px;">
                 <label>Select Active Event to Check-In</label>
                 <select id="activeEventDropdown" class="form-control" onchange="updateActiveEventBanner()"></select>
-                </div>
+            </div>
 
             <div id="checkinCounters" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 25px;">
                 <div style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px; border-radius: 8px; text-align: center;">
@@ -1514,21 +1527,22 @@
         });
     }
 </script>
-<script src="/js/app.js"></script>
-<script src="/js/v2-discipleship.js"></script>
-<script src="/js/v3-worship.js"></script>
-<script src="/js/v4-communications.js"></script>
-<script src="/js/v6-gamification.js"></script>
-<script src="/js/v7-ai-assistant.js"></script>
 
-<script src="/js/v8-slingshot.js"></script>
-<script src="/js/v8-noahs-ark.js"></script>
-<script src="/js/v8-red-sea.js"></script>
-<script src="/js/v8-peters-leap.js"></script>
-<script src="/js/v8-jonahs-dive.js"></script>
+<script src="/js/app.js?v=12.2"></script>
+<script src="/js/v2-discipleship.js?v=12.2"></script>
+<script src="/js/v3-worship.js?v=12.2"></script>
+<script src="/js/v4-communications.js?v=12.2"></script>
+<script src="/js/v6-gamification.js?v=12.2"></script>
+<script src="/js/v7-ai-assistant.js?v=12.2"></script>
 
-<script src="/js/v9-growth-games.js"></script>
-<script src="/js/v10-expansion.js"></script>
+<script src="/js/v8-slingshot.js?v=12.2"></script>
+<script src="/js/v8-noahs-ark.js?v=12.2"></script>
+<script src="/js/v8-red-sea.js?v=12.2"></script>
+<script src="/js/v8-peters-leap.js?v=12.2"></script>
+<script src="/js/v8-jonahs-dive.js?v=12.2"></script>
+
+<script src="/js/v9-growth-games.js?v=12.2"></script>
+<script src="/js/v10-expansion.js?v=12.2"></script>
 
 </body>
 </html>

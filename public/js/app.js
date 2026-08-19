@@ -1,3 +1,5 @@
+// ========== public/js/app.js ==========
+
 let currentUser = null; let currentMember = null; let userPermissions = []; let eventsData = []; let youthData = []; let allUsersList = []; let cachedAttendanceLogs = []; let cachedActivityLogs = []; let ministriesData = []; let pendingAction = null; let eventViewMode = 'list'; let calCurrentDate = new Date(); let qrScanner = null; let currentAnalyticsData = null; let checkedInYouthIds = new Set(); let currentPreregEventId = null; let currentRosterFilter = 'all'; let currentPreRegYouthIds = new Set(); let currentMinistryId = null; let currentDirPage = 1; let dirPerPage = 10; let filteredDir = []; let currentAttPage = 1; let attPerPage = 10; let filteredAtt = []; let currentActPage = 1; let actPerPage = 10; let filteredAct = []; let modalRolesData = []; let modalRolesPage = 1; let modalAttData = []; let modalAttPage = 1;
 
 const _originalFetch = window.fetch;
@@ -125,7 +127,7 @@ window.handleLogout = async function() {
 };
 
 // ==========================================
-// V11 DYNAMIC CONTEXTUAL BOTTOM NAVIGATION
+// V12.3 DYNAMIC BOTTOM NAVIGATION ENGINE
 // ==========================================
 window.buildNav = function() {
     const sidebar = document.getElementById('sidebarNav');
@@ -142,40 +144,42 @@ window.buildNav = function() {
     if(bottomNav) {
         bottomNav.style.display = 'flex';
         bottomNav.style.overflowX = 'auto';
-        bottomNav.style.justifyContent = 'flex-start';
+        bottomNav.style.justifyContent = 'space-around';
+        bottomNav.style.flexWrap = 'nowrap';
         bottomNav.style.webkitOverflowScrolling = 'touch';
     }
 
+    // Safely handles sub-navigation routing
     const addBottomBtn = (target, icon, text, onclickStr, isSub = false) => {
         let isActive = false;
-        if (isSub) isActive = currentTab === 'discipleshipTab' && document.getElementById(target)?.classList.contains('active');
-        else isActive = currentTab === target;
-        return `<button class="bottom-nav-btn ${isActive ? 'active' : ''}" style="flex: 0 0 auto; min-width: 65px;" onclick="${onclickStr}">
+        if (isSub) {
+            const targetEl = document.getElementById(target);
+            isActive = (currentTab === 'discipleshipTab') && targetEl && targetEl.classList.contains('active');
+        } else {
+            isActive = (currentTab === target);
+        }
+        return `<button class="bottom-nav-btn ${isActive ? 'active' : ''}" style="flex: 1 1 auto; width: auto; min-width: 60px; padding: 10px 2px;" onclick="${onclickStr}">
             <div class="icon">${icon}</div><span style="white-space:nowrap; font-size:0.65rem;">${text}</span>
         </button>`;
     };
 
     bottomHtml += addBottomBtn('profileTab', '👤', 'Profile', "switchTab('profileTab')");
 
+    // Dynamic Icon Swapping
     if (currentTab === 'discipleshipTab') {
         bottomHtml += addBottomBtn('growthSubHome', '🌱', 'Growth', "switchGrowthSubTab('Home')", true);
-        bottomHtml += addBottomBtn('leaderboardsHubTab', '🏆', 'Ranks', "switchTab('leaderboardsHubTab')");
         bottomHtml += addBottomBtn('growthSubMilestones', '🗺️', 'Milestone', "switchGrowthSubTab('Milestones')", true);
         bottomHtml += addBottomBtn('growthSubJournal', '📓', 'Journal', "switchGrowthSubTab('Journal')", true);
-        bottomHtml += addBottomBtn('growthSubPrayer', '🙏', 'Praying', "switchGrowthSubTab('Prayer')", true);
+        bottomHtml += addBottomBtn('growthSubPrayer', '🙏', 'Prayer', "switchGrowthSubTab('Prayer')", true);
         bottomHtml += addBottomBtn('growthSubGroups', '👥', 'Groups', "switchGrowthSubTab('Groups')", true);
-    } else if (currentTab === 'arcadeTab' || currentTab === 'leaderboardsHubTab') {
-        bottomHtml += addBottomBtn('inboxTab', '🔔', 'Inbox', "switchTab('inboxTab')");
-        bottomHtml += addBottomBtn('arcadeTab', '🎯', 'Arcade', "switchTab('arcadeTab')");
-        bottomHtml += addBottomBtn('discipleshipTab', '🌱', 'Grow', "switchTab('discipleshipTab')");
-        bottomHtml += addBottomBtn('leaderboardsHubTab', '🏆', 'Ranks', "switchTab('leaderboardsHubTab')");
     } else {
         bottomHtml += addBottomBtn('inboxTab', '🔔', 'Inbox', "switchTab('inboxTab')");
         bottomHtml += addBottomBtn('arcadeTab', '🎯', 'Arcade', "switchTab('arcadeTab')");
         bottomHtml += addBottomBtn('discipleshipTab', '🌱', 'Grow', "switchTab('discipleshipTab')");
     }
 
-    bottomHtml += `<button class="bottom-nav-btn" style="flex: 0 0 auto; min-width: 65px;" onclick="handleLogout()"><div class="icon">🚪</div><span style="white-space:nowrap; font-size:0.65rem;">Logout</span></button>`;
+    bottomHtml += `<button class="bottom-nav-btn" style="flex: 1 1 auto; width: auto; min-width: 60px; padding: 10px 2px;" onclick="handleLogout()"><div class="icon">🚪</div><span style="white-space:nowrap; font-size:0.65rem;">Logout</span></button>`;
+    
     if(bottomNav) bottomNav.innerHTML = bottomHtml;
 
     if (isAdmin) {
@@ -204,10 +208,16 @@ window.buildNav = function() {
 };
 
 window.switchGrowthSubTab = function(tabName) {
-    document.querySelectorAll('.growth-sub-tab').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.growth-sub-tab').forEach(el => {
+        el.classList.remove('active');
+        el.style.display = 'none';
+    });
     const target = document.getElementById('growthSub' + tabName);
-    if(target) target.classList.add('active');
-    window.buildNav(); 
+    if(target) {
+        target.classList.add('active');
+        target.style.display = 'block';
+    }
+    window.buildNav();
 };
 
 window.switchTab = function(tabId) {
@@ -220,15 +230,21 @@ window.switchTab = function(tabId) {
 
     const targetTab = document.getElementById(tabId);
     if (targetTab) targetTab.classList.add('active');
-    
+
     if (tabId === 'discipleshipTab') {
-        document.querySelectorAll('.growth-sub-tab').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.growth-sub-tab').forEach(el => {
+            el.classList.remove('active');
+            el.style.display = 'none';
+        });
         const homeTab = document.getElementById('growthSubHome');
-        if(homeTab) homeTab.classList.add('active');
+        if(homeTab) {
+            homeTab.classList.add('active');
+            homeTab.style.display = 'block';
+        }
     }
 
-    window.buildNav(); 
-    
+    window.buildNav();
+
     if (tabId !== 'checkinTab' && typeof qrScanner !== 'undefined' && qrScanner) { qrScanner.clear().catch(e => console.log(e)); qrScanner = null; }
     if (tabId === 'checkinTab' && typeof window.switchCheckinMode === 'function') { window.switchCheckinMode('scanner'); window.updateActiveEventBanner(); }
     if (tabId === 'directoryTab' && typeof window.loadDirectory === 'function') window.loadDirectory();
@@ -244,7 +260,7 @@ window.switchTab = function(tabId) {
 
     if (tabId === 'profileTab' && currentUser === 'celsocreeriii@gmail.com') {
         const backupCard = document.getElementById('adminBackupCard');
-        if(backupCard) backupCard.style.display = 'block'; 
+        if(backupCard) backupCard.style.display = 'block';
         if (typeof window.loadBackups === 'function') window.loadBackups();
     } else {
         const backupCard = document.getElementById('adminBackupCard');
