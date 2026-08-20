@@ -424,3 +424,59 @@ window.closeAssignPermissionModal = function() { const modal = document.getEleme
 window.handleSavePermissionsFromModal = function() { const idElem = document.getElementById('modalPermUserId'); if(!idElem) return; const userId = idElem.value; const selectedPerms = []; document.querySelectorAll('.permCheckModal:checked').forEach(chk => { selectedPerms.push(chk.value); }); window.triggerActionConfirmation(`Confirm updating permission set?`, async () => { try { const res = await fetch(`/api/youth/${userId}/permissions`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permissions: selectedPerms, actor: currentUser }) }); if(!res.ok) throw new Error("HTTP error " + res.status); const data = await res.json(); if (data.success) { alert('Permissions updated successfully!'); window.closeAssignPermissionModal(); window.resetPermUserList(); youthData = []; await window.loadDirectory(); } } catch(e) {} }); };
 
 document.addEventListener('DOMContentLoaded', () => { setInterval(() => { const dropdown = document.querySelector('select[name="event_id"]') || document.querySelector('#checkinEventSelect'); if (dropdown && !dropdown.dataset.leewayApplied) { dropdown.dataset.leewayApplied = "true"; const targetDate = new Date(); targetDate.setHours(targetDate.getHours() - 5); const cutoffStr = targetDate.toISOString().split('T')[0]; Array.from(dropdown.options).forEach(opt => { const match = opt.innerText.match(/(\d{4}-\d{2}-\d{2})/); if (match && match[1] < cutoffStr) opt.remove(); }); } }, 1000); });
+
+// --- PROFILE RENDER LOGIC ---
+document.addEventListener('click', (e) => {
+    if (e.target.closest('#overallXpBadgeToggle')) {
+        const tooltip = document.getElementById('xpTooltip');
+        if (tooltip) {
+            tooltip.style.display = tooltip.style.display === 'none' ? 'flex' : 'none';
+        }
+    }
+});
+
+window.renderModalRoles = function() {
+    const container = document.getElementById('myMinistriesHistory');
+    if(!container) return;
+    if(typeof modalRolesData === 'undefined' || modalRolesData.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No ministry or event roles assigned yet.</p>';
+        return;
+    }
+    let html = '';
+    modalRolesData.forEach(r => {
+        let badge = r.type === 'ministry' ? '<span class="badge badge-blue">🏛️ Ministry</span>' : '<span class="badge badge-orange">📅 Event</span>';
+        let title = r.type === 'ministry' ? r.ministry_name : r.event_name;
+        let roleStr = r.role || r.role_name;
+        let subStr = r.sub_role ? ' | ' + r.sub_role : '';
+        let dateStr = r.type === 'event' && r.event_date ? ' <small style="color:var(--text-muted);">(' + r.event_date + ')</small>' : '';
+        html += '<div style="padding:15px; border-bottom:1px solid var(--border-color); background: #FFF; border-radius: 8px; margin-bottom: 8px;">' +
+            '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
+                '<strong style="color: var(--primary); font-size: 1.05rem;">' + (title || 'Unknown') + dateStr + '</strong>' +
+                badge +
+            '</div>' +
+            '<div style="color:var(--text-main); font-size:0.95rem;"><strong>Role:</strong> ' + roleStr + subStr + '</div>' +
+        '</div>';
+    });
+    container.innerHTML = html;
+};
+
+window.renderModalAttendance = function() {
+    const container = document.getElementById('myAttendanceHistory');
+    if(!container) return;
+    if(typeof modalAttData === 'undefined' || modalAttData.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No attendance logs found.</p>';
+        return;
+    }
+    let html = '';
+    modalAttData.forEach(a => {
+        let status = a.is_walkin ? '<span class="badge badge-orange">Walk-in</span>' : '<span class="badge badge-green">Pre-Reg</span>';
+        html += '<div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; background: #FFF; border-radius: 8px; margin-bottom: 8px;">' +
+            '<div>' +
+                '<strong style="color: var(--primary); font-size: 1.05rem;">' + (a.event_name || 'Event') + '</strong><br>' +
+                '<small style="color:var(--text-muted);">' + (a.checked_in_at || '') + '</small>' +
+            '</div>' +
+            status +
+        '</div>';
+    });
+    container.innerHTML = html;
+};
