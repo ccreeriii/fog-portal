@@ -15,6 +15,7 @@ function urlBase64ToUint8Array(base64String) {
 
 window.V4Communications = {
     init: function() {
+        this.populateDynamicTargets();
         // Only load status if user is logged in
         if (currentUser) {
             setTimeout(() => {
@@ -135,6 +136,32 @@ window.V4Communications = {
         }
     },
 
+    
+    populateDynamicTargets: async function() {
+        const targetSelect = document.getElementById('bcTargetSelect');
+        if(!targetSelect) return;
+        
+        try {
+            const res = await fetch('/api/ministries');
+            const ministries = await res.json();
+            
+            let html = '<option value="All">All Registered Members</option>';
+            html += '<option value="Leaders">All Leaders & Admins</option>';
+            html += '<option value="Groups">All Small Group Members</option>';
+            
+            if(ministries && ministries.length > 0) {
+                html += '<optgroup label="Specific Ministries">';
+                ministries.forEach(m => {
+                    html += `<option value="Ministry:${m.id}">${m.name}</option>`;
+                });
+                html += '</optgroup>';
+            }
+            
+            targetSelect.innerHTML = html;
+        } catch(e) {
+            console.error('Failed to populate broadcast targets', e);
+        }
+    },
     sendBroadcast: async function(e) {
         e.preventDefault();
         const targetSelect = document.getElementById('bcTargetSelect');

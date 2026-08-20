@@ -591,3 +591,34 @@ body.modal-open #bottomNav {
         padding-bottom: 20px;
     }
 }
+
+/* --- CRITICAL MODAL SCROLL & ALIGNMENT FIXES --- */
+body.modal-open {
+    overflow: hidden !important;
+    touch-action: none;
+    overscroll-behavior: none;
+}
+
+#viewProfileModal {
+    overscroll-behavior: none;
+}
+
+#viewProfileModal .modal-content {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+}
+
+@media (max-width: 768px) {
+    /* Override bottom-sheet behavior for View Profile so it centers and scrolls cleanly */
+    #viewProfileModal {
+        align-items: center !important;
+        padding: 15px !important;
+    }
+    #viewProfileModal .modal-content {
+        max-height: 85vh !important;
+        border-radius: 16px !important;
+        transform: none !important; /* Kills the slide animation that breaks touch scrolling */
+    }
+}

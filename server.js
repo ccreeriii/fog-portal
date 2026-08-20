@@ -571,16 +571,76 @@ app.post('/api/small-groups/:id/join', (req, res) => {
 
 app.post('/api/ai/chat', (req, res) => {
     const { prompt, persona, is_private, actor } = req.body;
-    const q = (prompt || '').toLowerCase();
+    const q = (prompt || '').toLowerCase().trim();
     const finalizeChat = (reply) => {
-        if (!is_private) db.run(`INSERT INTO ai_chat_logs (username, persona, prompt, response, is_private, created_at) VALUES (?, ?, ?, ?, 0, ?)`, [actor || 'System', persona || 'General Assistant', prompt, reply, getManilaTime()]);
+        if (!is_private) db.run(`INSERT INTO ai_chat_logs (username, persona, prompt, response, is_private, created_at) VALUES (?, ?, ?, ?, 0, ?)`, [actor || 'System', 'Silas', prompt, reply, getManilaTime()]);
         setTimeout(() => { res.json({ response: reply }); }, 600);
     };
-    if (q.includes('missing') || q.includes('absent')) {
-        db.all(`SELECT y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id ORDER BY last_seen ASC LIMIT 10`, [], (err, rows) => { let msg = "Haven't checked in recently:<br>"; rows.forEach(r => msg += `• ${r.name}<br>`); finalizeChat(msg); }); return;
+
+    // 1. Minis Logic
+    if (q === 'how many are minis' || q === 'how many minis' || q.includes('count minis')) {
+        db.get(`SELECT COUNT(*) as cnt FROM youth WHERE age <= 12`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.cnt} Minis</strong> (age 12 and below). <br><br>💡 <em>Tip: You can ask "show minis list" to see their names and ages.</em>`); }); return;
     }
-    if (q.includes('how many member') || q.includes('total member')) { db.get(`SELECT count(*) as total FROM youth`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.total} members</strong>.`); }); return; }
-    finalizeChat(`Hello! I am your <strong>FOG Ministry AI Assistant</strong>. [Persona: ${persona || 'General Assistant'}]${is_private ? ' 🔏 (Incognito Mode Active)' : ''}`);
+    if (q === 'show minis list' || q.includes('list of minis') || q.includes('who are the minis')) {
+        db.all(`SELECT name, age FROM youth WHERE age <= 12 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows.length===0) return finalizeChat("No minis found in the database."); let msg = `<strong>👶 List of Minis:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
+    }
+
+    // 2. Youth Logic
+    if (q === 'how many are youth' || q === 'how many youth' || q.includes('count youth')) {
+        db.get(`SELECT COUNT(*) as cnt FROM youth WHERE age >= 13 AND age <= 21`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.cnt} Youth</strong> (ages 13-21). <br><br>💡 <em>Tip: You can ask "show youth list" to see their names and ages.</em>`); }); return;
+    }
+    if (q === 'show youth list' || q.includes('list of youth') || q.includes('who are the youth')) {
+        db.all(`SELECT name, age FROM youth WHERE age >= 13 AND age <= 21 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows.length===0) return finalizeChat("No youth found in the database."); let msg = `<strong>🔥 List of Youth:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
+    }
+
+    // 3. Adults Logic
+    if (q === 'how many are adults' || q === 'how many adults' || q.includes('count adults')) {
+        db.get(`SELECT COUNT(*) as cnt FROM youth WHERE age >= 22`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.cnt} Adults</strong> (ages 22+). <br><br>💡 <em>Tip: You can ask "show adult list" to see their names.</em>`); }); return;
+    }
+    if (q === 'show adult list' || q.includes('list of adults') || q.includes('who are the adults')) {
+        db.all(`SELECT name, age FROM youth WHERE age >= 22 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows.length===0) return finalizeChat("No adults found in the database."); let msg = `<strong>👥 List of Adults:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
+    }
+
+    // 4. Custom Roles Parser ("who has role core", "how many users have role usher")
+    if (q.includes('role')) {
+         let matchStr = q.split('role')[1];
+         if (matchStr) {
+             // Extract the clean role keyword
+             let roleName = matchStr.replace(/^(:|-|=|of|in)\s+/i, '').replace(/\?/g, '').trim();
+             if(roleName) {
+                 db.all(`SELECT y.name, m.name as min_name, mm.role FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id JOIN ministries m ON mm.ministry_id = m.id WHERE LOWER(mm.role) LIKE ? OR LOWER(mm.sub_role) LIKE ?`, [`%${roleName}%`, `%${roleName}%`], (err, rows1) => {
+                     db.all(`SELECT y.name, e.name as evt_name, er.role_name FROM event_roles er JOIN youth y ON er.youth_id = y.id JOIN events e ON er.event_id = e.id WHERE LOWER(er.role_name) LIKE ? OR LOWER(er.sub_role) LIKE ?`, [`%${roleName}%`, `%${roleName}%`], (err, rows2) => {
+                         let total = (rows1?rows1.length:0) + (rows2?rows2.length:0);
+                         if (total === 0) return finalizeChat(`I couldn't find anyone in the directory with the role "<strong>${roleName}</strong>".`);
+                         let msg = `Found <strong>${total}</strong> user(s) with a role matching "${roleName}":<br><br>`;
+                         if(rows1 && rows1.length>0) { msg += `<strong>Ministry Roles:</strong><br>`; rows1.forEach(r => msg += `• ${r.name} (${r.role} - ${r.min_name})<br>`); }
+                         if(rows2 && rows2.length>0) { msg += `<br><strong>Event Roles:</strong><br>`; rows2.forEach(r => msg += `• ${r.name} (${r.role_name} - ${r.evt_name})<br>`); }
+                         finalizeChat(msg);
+                     });
+                 });
+                 return;
+             }
+         }
+    }
+
+    // 5. General Community Analytics
+    if (q.includes('how many member') || q.includes('total member') || q === 'how many users') { 
+        db.get(`SELECT count(*) as total FROM youth`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.total} registered members</strong> in the community.`); }); return; 
+    }
+    if (q.includes('missing') || q.includes('absent')) {
+        db.all(`SELECT y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id ORDER BY last_seen ASC LIMIT 10`, [], (err, rows) => { 
+            let msg = "<strong>⚠️ Haven't checked in recently:</strong><br>"; rows.forEach(r => msg += `• ${r.name}<br>`); finalizeChat(msg); 
+        }); return;
+    }
+    if (q.includes('top points') || q.includes('highest points') || q.includes('leaderboard')) {
+        db.all(`SELECT y.name, gp.points FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id ORDER BY gp.points DESC LIMIT 5`, [], (err, rows) => {
+            let msg = `<strong>🏆 Top 5 Overall XP Leaders:</strong><br>`; rows.forEach((r, i) => msg += `${i+1}. ${r.name} (${r.points} XP)<br>`); finalizeChat(msg);
+        }); return;
+    }
+
+    // 6. Default Silas Greeting
+    const greeting = `Hello! I am <strong>Silas</strong>, your FOG Ministry AI Assistant. [Persona: ${persona || 'General Assistant'}]${is_private ? ' 🔏 (Incognito Mode Active)' : ''}<br><br>I am connected directly to your community database. You can ask me things like:<br>• "How many are minis?"<br>• "Show youth list"<br>• "Who has the role core?"<br>• "Who has the highest points?"<br>• "Who is absent?"`;
+    finalizeChat(greeting);
 });
 
 app.get('/api/worship/songs', (req, res) => { db.all(`SELECT * FROM songs ORDER BY title ASC`, [], (err, rows) => { res.json(rows); }); });
@@ -604,10 +664,17 @@ app.post('/api/communications/broadcast', (req, res) => {
     db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', getManilaTime()], function(err) {
             const announcementId = this.lastID;
             let targetQuery = `SELECT id, qr_code FROM youth`; let targetParams = [];
-            if (target === 'Leaders') { targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`; }
-            else if (target.startsWith('Ministry:')) { targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`; targetParams.push(target.split(':')[1]); }
-            else if (target.startsWith('Group:')) { targetQuery = `SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?`; targetParams.push(target.split(':')[1]); }
-
+            if (target === 'Leaders') { 
+                targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`; 
+            } else if (target === 'Groups') { 
+                targetQuery = `SELECT DISTINCT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id`; 
+            } else if (target.startsWith('Ministry:')) { 
+                targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`; 
+                targetParams.push(target.split(':')[1]); 
+            } else if (target.startsWith('Group:')) { 
+                targetQuery = `SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?`; 
+                targetParams.push(target.split(':')[1]); 
+            }
             db.all(targetQuery, targetParams, (err, youths) => {
                 const usernames = ['celsocreeriii@gmail.com'];
                 if (youths && youths.length > 0) {

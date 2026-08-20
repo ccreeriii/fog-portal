@@ -327,11 +327,11 @@ window.populateProfileTab = async function(member) {
         const ministries = await minRes.json(); const eventRoles = await evtRes.json();
         modalRolesData = []; ministries.forEach(m => modalRolesData.push({type: 'ministry', ...m})); eventRoles.forEach(er => modalRolesData.push({type: 'event', ...er}));
         modalRolesData.sort((a,b) => { if (a.type === 'ministry' && b.type === 'event') return -1; if (a.type === 'event' && b.type === 'ministry') return 1; const dateA = new Date(a.assigned_at || a.event_date || 0); const dateB = new Date(b.assigned_at || b.event_date || 0); return dateB - dateA; });
-        modalRolesPage = 1; window.renderModalRoles(); window.loadMySchedule(member.id);
+        modalRolesPage = 1; window.renderMyProfileRoles(); window.loadMySchedule(member.id);
     } catch(e) {}
     try {
         const safeFetch = window.fetch.bind(window); const res = await safeFetch(`/api/youth/${member.id}/history`);
-        modalAttData = await res.json(); modalAttPage = 1; window.renderModalAttendance();
+        modalAttData = await res.json(); modalAttPage = 1; window.renderMyProfileAttendance();
     } catch(e) {}
     window.switchMyProfileTab('roles');
 };
@@ -727,3 +727,75 @@ document.addEventListener('click', (e) => {
         if (aGame) aGame.style.display = 'none';
     }
 });
+
+// --- V8 OVERRIDE: FIX MODAL TAB RENDERING ---
+window.renderModalRoles = function() {
+    const container = document.getElementById('modalMinistriesHistory'); // Corrected ID
+    if(!container) return;
+    if(typeof modalRolesData === 'undefined' || modalRolesData.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No ministry or event roles assigned yet.</p>';
+        return;
+    }
+    let html = '';
+    modalRolesData.forEach(r => {
+        let badge = r.type === 'ministry' ? '<span class="badge badge-blue">🏛️ Ministry</span>' : '<span class="badge badge-orange">📅 Event</span>';
+        let title = r.type === 'ministry' ? r.ministry_name : r.event_name;
+        let roleStr = r.role || r.role_name;
+        let subStr = r.sub_role ? ' | ' + r.sub_role : '';
+        let dateStr = r.type === 'event' && r.event_date ? ' <small style="color:var(--text-muted);">(' + r.event_date + ')</small>' : '';
+        html += '<div style="padding:15px; border-bottom:1px solid var(--border-color); background: #FFF; border-radius: 8px; margin-bottom: 8px;">' +
+            '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
+                '<strong style="color: var(--primary); font-size: 1.05rem;">' + (title || 'Unknown') + dateStr + '</strong>' +
+                badge +
+            '</div>' +
+            '<div style="color:var(--text-main); font-size:0.95rem;"><strong>Role:</strong> ' + roleStr + subStr + '</div>' +
+        '</div>';
+    });
+    container.innerHTML = html;
+};
+
+window.renderModalAttendance = function() {
+    const container = document.getElementById('modalAttendanceHistory'); // Corrected ID
+    if(!container) return;
+    if(typeof modalAttData === 'undefined' || modalAttData.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No participation logs found.</p>';
+        return;
+    }
+    let html = '';
+    modalAttData.forEach(a => {
+        let status = a.is_walkin ? '<span class="badge badge-orange">Walk-in</span>' : '<span class="badge badge-green">Pre-Reg</span>';
+        html += '<div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; background: #FFF; border-radius: 8px; margin-bottom: 8px;">' +
+            '<div>' +
+                '<strong style="color: var(--primary); font-size: 1.05rem;">' + (a.event_name || 'Event') + '</strong><br>' +
+                '<small style="color:var(--text-muted);">' + (a.checked_in_at || '') + '</small>' +
+            '</div>' +
+            status +
+        '</div>';
+    });
+    container.innerHTML = html;
+};
+
+// --- V9: MY PROFILE RENDERERS ---
+window.renderMyProfileRoles = function() { 
+    const container = document.getElementById('myMinistriesHistory'); 
+    if(!container) return; 
+    if(typeof modalRolesData === 'undefined' || modalRolesData.length === 0) { container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No ministry or event roles assigned yet.</p>'; return; } 
+    let html = ''; 
+    modalRolesData.forEach(r => { 
+        let badge = r.type === 'ministry' ? '<span class="badge badge-blue">🏛️ Ministry</span>' : '<span class="badge badge-orange">📅 Event</span>'; 
+        let title = r.type === 'ministry' ? r.ministry_name : r.event_name; 
+        let roleStr = r.role || r.role_name; let subStr = r.sub_role ? ' | ' + r.sub_role : ''; 
+        let dateStr = r.type === 'event' && r.event_date ? ' <small style="color:var(--text-muted);">(' + r.event_date + ')</small>' : ''; 
+        html += '<div style="padding:15px; border-bottom:1px solid var(--border-color); background: #FFF; border-radius: 8px; margin-bottom: 8px;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;"><strong style="color: var(--primary); font-size: 1.05rem;">' + (title || 'Unknown') + dateStr + '</strong>' + badge + '</div><div style="color:var(--text-main); font-size:0.95rem;"><strong>Role:</strong> ' + roleStr + subStr + '</div></div>'; 
+    }); container.innerHTML = html; 
+}; 
+window.renderMyProfileAttendance = function() { 
+    const container = document.getElementById('myAttendanceHistory'); 
+    if(!container) return; 
+    if(typeof modalAttData === 'undefined' || modalAttData.length === 0) { container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No participation logs found.</p>'; return; } 
+    let html = ''; 
+    modalAttData.forEach(a => { 
+        let status = a.is_walkin ? '<span class="badge badge-orange">Walk-in</span>' : '<span class="badge badge-green">Pre-Reg</span>'; 
+        html += '<div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; background: #FFF; border-radius: 8px; margin-bottom: 8px;"><div><strong style="color: var(--primary); font-size: 1.05rem;">' + (a.event_name || 'Event') + '</strong><br><small style="color:var(--text-muted);">' + (a.checked_in_at || '') + '</small></div>' + status + '</div>'; 
+    }); container.innerHTML = html; 
+};

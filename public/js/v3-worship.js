@@ -42,7 +42,7 @@ window.V3Worship = {
             const logoutBtn = sidebar.querySelector('.text-danger');
             let v3SidebarHtml = '';
             if (window.hasPerm && window.hasPerm('access_worship')) {
-                v3SidebarHtml = `<button id="navBtnWorship" class="nav-btn" data-target="worshipTab" onclick="switchTab('worshipTab')">🎸 Worship Hub</button>`;
+                v3SidebarHtml = ''; // Neutered: app.js natively handles this now.
             }
             if (logoutBtn && v3SidebarHtml) logoutBtn.insertAdjacentHTML('beforebegin', v3SidebarHtml);
         }
@@ -355,7 +355,7 @@ window.V3Worship = {
                     <strong style="color: var(--text-main); font-size: 0.95rem;">${s.title}</strong>
                     <br><small style="color: var(--text-muted);">Key: ${s.song_key || 'N/A'}</small>
                 </div>
-                <button class="btn btn-danger btn-sm" onclick="V3Worship.removeSongFromSetlist(${setlistId}, ${s.mapping_id})">🗑️ Remove</button>
+                <button class="btn btn-danger btn-sm" style="flex-shrink: 0;" onclick="V3Worship.removeSongFromSetlist(${setlistId}, ${s.mapping_id})">🗑️ Remove</button>
             </div>
         `).join('');
     },
