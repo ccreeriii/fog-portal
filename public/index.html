@@ -1116,5 +1116,30 @@
         </div>
     </div>
 </div>
+
+<div id="groupVaultModal" class="modal">
+    <div class="modal-content" style="max-width: 600px; padding: 0; background: #F8FAFC; display: flex; flex-direction: column; max-height: 85vh;">
+        <div style="background: #FFF; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); z-index: 10;">
+            <h2 id="groupVaultTitle" style="margin: 0; color: #2563EB; border: none; font-size: 1.2rem; font-weight: 800;">🎥 Video Vault</h2>
+            <span class="close-modal" onclick="closeGroupVault()" style="font-size: 28px; cursor: pointer;">&times;</span>
+        </div>
+        
+        <div style="padding: 15px; overflow-y: auto; flex: 1;">
+            <div id="vaultLeaderControls" style="display: none; background: #DBEAFE; padding: 15px; border-radius: 8px; border: 1px solid #BFDBFE; margin-bottom: 20px;">
+                <h3 style="font-size: 1rem; color: #1E3A8A; margin-bottom: 10px;">➕ Schedule Google Meet</h3>
+                <form onsubmit="scheduleGroupSession(event)" style="display: flex; flex-direction: column; gap: 10px;">
+                    <input type="hidden" id="vaultGroupId">
+                    <input type="text" id="vaultSessionTitle" class="form-control" placeholder="Session Title (e.g., Alpha Week 1)" required>
+                    <input type="datetime-local" id="vaultSessionDate" class="form-control" required>
+                    <input type="url" id="vaultSessionMeet" class="form-control" placeholder="Google Meet URL (https://meet.google.com/...)" required>
+                    <button type="submit" class="btn btn-primary" style="background: #2563EB;">Schedule Session</button>
+                </form>
+            </div>
+
+            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 10px; border-bottom: 2px solid var(--border-color); padding-bottom: 5px;">Sessions & Recordings</h3>
+            <div id="vaultListContainer"></div>
+        </div>
+    </div>
+</div>
 </body>
 </html>

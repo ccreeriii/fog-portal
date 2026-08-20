@@ -67,6 +67,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS prayer_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, title TEXT, request TEXT, is_anonymous INTEGER DEFAULT 0, status TEXT DEFAULT 'Open', created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS prayer_intercessions (id INTEGER PRIMARY KEY AUTOINCREMENT, prayer_id INTEGER, youth_id INTEGER, prayed_at DATETIME, UNIQUE(prayer_id, youth_id))`);
     db.run(`CREATE TABLE IF NOT EXISTS small_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, leader_id INTEGER, meeting_schedule TEXT, venue TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS group_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, title TEXT, scheduled_at DATETIME, meet_link TEXT, recording_url TEXT, notified INTEGER DEFAULT 0, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS small_group_chats (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, message TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS small_group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, joined_at DATETIME, UNIQUE(group_id, youth_id))`);
 
@@ -338,6 +339,31 @@ app.post('/api/settings/images', (req, res) => {
         logActivity(actor, 'UPDATE_BRANDING', 'Updated global site logo and PWA app icons');
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: 'Failed to write files to disk: ' + err.message }); }
+});
+
+
+cron.schedule('*/5 * * * *', () => {
+    console.log('[CRON] Checking for upcoming group sessions...');
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const nowMs = d.getTime();
+    
+    db.all(`SELECT s.*, g.name as group_name FROM group_sessions s JOIN small_groups g ON s.group_id = g.id WHERE s.notified = 0`, [], (err, sessions) => {
+        if (!sessions) return;
+        sessions.forEach(r => {
+            const schedMs = new Date(r.scheduled_at).getTime();
+            const diffMins = (schedMs - nowMs) / 60000;
+            
+            // If the meeting is between 0 and 20 minutes away, trigger the alert!
+            if (diffMins > 0 && diffMins <= 20) {
+                db.run(`UPDATE group_sessions SET notified = 1 WHERE id = ?`, [r.id]);
+                db.all(`SELECT youth_id FROM small_group_members WHERE group_id = ?`, [r.group_id], (err, members) => {
+                    if(members) {
+                        members.forEach(m => pushToUser(m.youth_id, "🎥 " + r.title + " is starting!", "Your group's Google Meet begins in a few minutes. Tap to join."));
+                    }
+                });
+            }
+        });
+    });
 });
 
 cron.schedule('0 9 * * 1', () => {
@@ -649,6 +675,34 @@ app.get('/api/small-groups', (req, res) => { db.all(`SELECT g.*, y.name as leade
 app.post('/api/small-groups', (req, res) => { db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, points, logo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, getManilaTime()], function(err) { res.json({ success: true }); }); });
 app.put('/api/small-groups/:id', (req, res) => { db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=?, points=?, logo=? WHERE id=?`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, req.params.id], function(err) { res.json({ success: true }); }); });
 app.delete('/api/small-groups/:id', (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
+
+
+app.get('/api/small-groups/:id/sessions', (req, res) => {
+    db.all(`SELECT * FROM group_sessions WHERE group_id = ? ORDER BY scheduled_at DESC`, [req.params.id], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+app.post('/api/small-groups/:id/sessions', (req, res) => {
+    const { title, scheduled_at, meet_link } = req.body;
+    db.run(`INSERT INTO group_sessions (group_id, title, scheduled_at, meet_link, created_at) VALUES (?, ?, ?, ?, ?)`, 
+        [req.params.id, title, scheduled_at, meet_link, getManilaTime()], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({ success: true });
+    });
+});
+
+app.put('/api/small-groups/sessions/:session_id', (req, res) => {
+    db.run(`UPDATE group_sessions SET recording_url = ? WHERE id = ?`, [req.body.recording_url, req.params.session_id], function(err) {
+        res.json({ success: true });
+    });
+});
+
+app.delete('/api/small-groups/sessions/:session_id', (req, res) => {
+    db.run(`DELETE FROM group_sessions WHERE id = ?`, [req.params.session_id], function(err) {
+        res.json({ success: true });
+    });
+});
 
 app.get('/api/small-groups/:id/chat', (req, res) => {
     const lastId = parseInt(req.query.last_id) || 0;

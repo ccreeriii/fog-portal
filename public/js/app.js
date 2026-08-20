@@ -901,3 +901,109 @@ window.sendGroupMessage = async function(e) {
         alert('You appear to be offline. Message queued!');
     }
 };
+
+// --- V14 GOOGLE MEET VIDEO VAULT ENGINE ---
+window.openGroupVault = function(groupId, groupName) {
+    document.getElementById('vaultGroupId').value = groupId;
+    document.getElementById('groupVaultTitle').innerText = '🎥 ' + groupName + ' Vault';
+    document.getElementById('groupVaultModal').classList.add('active');
+    
+    // Only users with 'edit_entries' permission can schedule new meets
+    document.getElementById('vaultLeaderControls').style.display = window.hasPerm('edit_entries') ? 'block' : 'none';
+    
+    window.loadGroupVault(groupId);
+};
+
+window.closeGroupVault = function() {
+    document.getElementById('groupVaultModal').classList.remove('active');
+};
+
+window.loadGroupVault = async function(groupId) {
+    try {
+        const res = await fetch(`/api/small-groups/${groupId}/sessions`);
+        const sessions = await res.json();
+        const container = document.getElementById('vaultListContainer');
+        const now = new Date();
+        
+        if(sessions.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); margin-top:20px;">No sessions scheduled yet.</p>';
+            return;
+        }
+
+        container.innerHTML = sessions.map(s => {
+            const sched = new Date(s.scheduled_at);
+            const isFuture = sched > now;
+            let actionHtml = '';
+            
+            if (isFuture) {
+                // Future Event: Show Join Meet Button
+                actionHtml = `<a href="${s.meet_link}" target="_blank" class="btn btn-primary btn-sm" style="width: 100%; background: #2563EB; font-weight:bold;">🌐 Join Google Meet</a>`;
+            } else {
+                // Past Event: Show Recording or Leader Upload Input
+                if (s.recording_url) {
+                    // We parse G-Drive links automatically to make them watchable
+                    const watchUrl = window.V3Worship ? window.V3Worship.formatMediaUrl(s.recording_url) : s.recording_url;
+                    actionHtml = `<a href="${watchUrl}" target="_blank" class="btn btn-outline btn-sm" style="width: 100%; color: #059669; border-color: #059669; background: #D1FAE5; font-weight:bold;">▶️ Watch Recording</a>`;
+                } else if (window.hasPerm('edit_entries')) {
+                    actionHtml = `
+                    <div style="display:flex; gap: 5px; margin-top: 5px;">
+                        <input type="url" id="rec_link_${s.id}" class="form-control" placeholder="Paste G-Drive Video Link..." style="padding: 6px; min-height: 35px; font-size: 0.8rem; flex: 1;">
+                        <button class="btn btn-primary btn-sm" style="background:#059669;" onclick="saveRecordingUrl(${s.id}, ${groupId})">Save</button>
+                    </div>`;
+                } else {
+                    actionHtml = `<span style="font-size: 0.8rem; color: var(--text-muted); display:block; text-align:center; padding: 5px; background: var(--bg-light); border-radius: 6px;">Processing Recording...</span>`;
+                }
+            }
+            
+            const delBtn = window.hasPerm('delete_entries') ? `<button style="background:none; border:none; color:var(--danger); font-size:1.2rem; cursor:pointer;" onclick="deleteGroupSession(${s.id}, ${groupId})">&times;</button>` : '';
+
+            const dateStr = sched.toLocaleString([], {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+
+            return `
+            <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items:flex-start; margin-bottom: 5px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${s.title}</strong>
+                    ${delBtn}
+                </div>
+                <div style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px;">📅 ${dateStr}</div>
+                ${actionHtml}
+            </div>
+            `;
+        }).join('');
+    } catch(e) { console.error(e); }
+};
+
+window.scheduleGroupSession = async function(e) {
+    e.preventDefault();
+    const groupId = document.getElementById('vaultGroupId').value;
+    const payload = {
+        title: document.getElementById('vaultSessionTitle').value,
+        scheduled_at: document.getElementById('vaultSessionDate').value,
+        meet_link: document.getElementById('vaultSessionMeet').value
+    };
+    try {
+        const res = await fetch(`/api/small-groups/${groupId}/sessions`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        if (res.ok) {
+            e.target.reset();
+            window.loadGroupVault(groupId);
+        }
+    } catch(err) {}
+};
+
+window.saveRecordingUrl = async function(sessionId, groupId) {
+    const url = document.getElementById('rec_link_' + sessionId).value;
+    if (!url) return;
+    try {
+        const res = await fetch(`/api/small-groups/sessions/${sessionId}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ recording_url: url }) });
+        if (res.ok) window.loadGroupVault(groupId);
+    } catch(err) {}
+};
+
+window.deleteGroupSession = async function(sessionId, groupId) {
+    window.triggerActionConfirmation('Delete this session permanently?', async () => {
+        try {
+            const res = await fetch(`/api/small-groups/sessions/${sessionId}`, { method: 'DELETE' });
+            if (res.ok) window.loadGroupVault(groupId);
+        } catch(err) {}
+    });
+};
