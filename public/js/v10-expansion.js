@@ -5,7 +5,6 @@ window.V10Expansion = {
     bulkDataCache: {},
 
     init: function() {
-        console.log("🚀 V11 Expansion Module Initialized");
         this.hookNavigation();
         this.loadFeaturedGames();
         setTimeout(() => this.applyLandingPages(), 800);
@@ -63,11 +62,6 @@ window.V10Expansion = {
                     const worshipBtn = document.getElementById('navBtnWorship') || sidebar.querySelector('.text-danger');
                     if (worshipBtn) worshipBtn.insertAdjacentHTML('beforebegin', `<button id="navBtnLeaderboards" class="nav-btn" data-target="leaderboardsHubTab" onclick="switchTab('leaderboardsHubTab')">🏆 Leaderboards</button>`);
                 }
-                const bottomNav = document.getElementById('bottomNav');
-                if (bottomNav && !document.getElementById('bottomNavLeaderboards')) {
-                    const lastBtn = bottomNav.lastElementChild;
-                    if (lastBtn) lastBtn.insertAdjacentHTML('beforebegin', `<button id="bottomNavLeaderboards" class="bottom-nav-btn" data-target="leaderboardsHubTab" onclick="switchTab('leaderboardsHubTab')"><div class="icon">🏆</div>Ranks</button>`);
-                }
             };
             if (typeof currentUser !== 'undefined' && currentUser) window.buildNav();
         }
@@ -121,89 +115,6 @@ window.V10Expansion = {
         if(gameName === 'The Narrow Gate') return 'V10Expansion.playNG()';
         if(gameName === 'Shield of Faith: Reflex Tap') return 'V10Expansion.playRX()';
         return '';
-    },
-    loadAdminFeaturedSettings: async function() {
-        if (!document.getElementById('setFeaturedArcade')) return;
-        try {
-            const res = await fetch('/api/settings/featured');
-            const data = await res.json();
-            if(data.featured_arcade) document.getElementById('setFeaturedArcade').value = data.featured_arcade;
-            if(data.featured_growth) document.getElementById('setFeaturedGrowth').value = data.featured_growth;
-        } catch(e) {}
-    },
-    saveFeaturedGames: async function(e) {
-        e.preventDefault();
-        window.triggerActionConfirmation('Save these as the featured games?', async () => {
-            try {
-                const res = await fetch('/api/settings/featured', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ featured_arcade: document.getElementById('setFeaturedArcade').value, featured_growth: document.getElementById('setFeaturedGrowth').value, actor: currentUser })
-                });
-                if(res.ok) { alert('Featured games updated!'); window.V10Expansion.loadFeaturedGames(); }
-            } catch(e) { alert("Network Error"); }
-        });
-    },
-    loadFeaturedGames: async function() {
-        try {
-            const res = await fetch('/api/settings/featured');
-            const data = await res.json();
-            this.renderFeaturedSlot('arcadeGridItems', 'featuredArcadeGameContainer', data.featured_arcade || "David's Slingshot", false);
-            this.renderFeaturedSlot('growthGamesGrid', 'featuredGrowthGameContainer', data.featured_growth || "Catechism Clash", true);
-
-            setTimeout(() => {
-                const btnIndiv = document.getElementById('btnGrowthIndiv');
-                if(btnIndiv && btnIndiv.classList.contains('btn-primary')) this.filterGrowthGames('indiv');
-                else if (btnIndiv) this.filterGrowthGames('groups');
-            }, 100);
-        } catch(e) {}
-    },
-    renderFeaturedSlot: async function(gridId, containerId, gameName, isGrowth) {
-        const container = document.getElementById(containerId); const grid = document.getElementById(gridId);
-        if (!container || !grid) return;
-
-        grid.querySelectorAll('.arcade-game-card, .arcade-game-tile').forEach(t => t.style.display = 'flex');
-        if (!gameName || gameName === "None") return container.innerHTML = '';
-
-        const tile = grid.querySelector(`[data-game-name="${gameName}"]`);
-        if (tile) {
-            tile.style.display = 'none'; // Hide from lower grid
-            const icon = tile.querySelector('.game-icon') ? tile.querySelector('.game-icon').innerText : (tile.querySelector('.game-tile-icon') ? tile.querySelector('.game-tile-icon').innerText : '🎮');
-            const title = tile.querySelector('h3') ? tile.querySelector('h3').innerText : gameName;
-            const desc = tile.querySelector('p') ? tile.querySelector('p').innerText.replace(/"/g, "'").replace(/\n/g, " ") : 'Play our featured game!';
-
-            const type = isGrowth ? 'growth' : 'arcade';
-            const playFn = this.getPlayFunction(gameName);
-
-            let topHtml = '';
-            try {
-                const topP = this.bulkDataCache ? this.bulkDataCache[gameName] : [];
-                if(topP && topP.length > 0) {
-                    topHtml = `<div style="display:flex; gap:6px; margin-bottom:12px; background:rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 8px; width: fit-content;">`;
-                    topP.forEach((p,i) => {
-                        const m = i===0?'🥇':i===1?'🥈':'🥉';
-                        const a = p.profile_picture ? `<img src="${p.profile_picture}" title="${p.name} - ${p.high_score}XP" style="width:20px; height:20px; border-radius:50%; border:1px solid #FFF; object-fit:cover;">` : `<div title="${p.name} - ${p.high_score}XP" style="width:20px; height:20px; border-radius:50%; background:#E2E8F0; color:#0F172A; display:flex; align-items:center; justify-content:center; font-size:0.5rem; font-weight:bold; border:1px solid #FFF;">${p.name.charAt(0)}</div>`;
-                        topHtml += `<div style="position:relative;">${a}<span style="position:absolute; bottom:-4px; right:-4px; font-size:0.6rem;">${m}</span></div>`;
-                    });
-                    topHtml += `</div>`;
-                }
-            } catch(e){}
-
-            container.innerHTML = `
-                <div class="arcade-featured-game" id="hero-${containerId}" style="max-height: 350px;">
-                    <div class="featured-banner" style="padding: 15px 0;">
-                        <div class="featured-badge" style="top: 10px; left: 10px; font-size: 0.7rem; padding: 4px 8px;">⭐ FEATURED GAME</div>
-                        <div style="font-size: 3rem; margin-top: 5px;">${icon}</div>
-                    </div>
-                    <div class="featured-info" style="padding: 15px;">
-                        <h3 style="font-size: 1.25rem; margin-bottom: 4px;">${title}</h3>
-                        <p style="font-size: 0.85rem; margin-bottom: 10px;">${desc}</p>
-                        ${topHtml}
-                        <div class="featured-action" style="padding: 10px 20px; font-size: 0.85rem;">PLAY NOW</div>
-                    </div>
-                </div>
-            `;
-            setTimeout(() => { const heroCard = document.getElementById(`hero-${containerId}`); if (heroCard) heroCard.onclick = () => window.V10Expansion.openGameLanding(gameName, type, playFn, desc, icon); }, 50);
-        }
     },
     loadTopScorers: async function() {
         try {
@@ -373,6 +284,93 @@ window.V10Expansion = {
             else if (activeIndiv) this.filterGrowthGames('groups');
         }, 50);
     },
+    loadAdminFeaturedSettings: async function() {
+        if (!document.getElementById('setFeaturedArcade')) return;
+        try {
+            const res = await fetch('/api/settings/featured');
+            const data = await res.json();
+            if(data.featured_arcade) document.getElementById('setFeaturedArcade').value = data.featured_arcade;
+            if(data.featured_growth) document.getElementById('setFeaturedGrowth').value = data.featured_growth;
+        } catch(e) {}
+    },
+
+    saveFeaturedGames: async function(e) {
+        e.preventDefault();
+        window.triggerActionConfirmation('Save these as the featured games?', async () => {
+            try {
+                const res = await fetch('/api/settings/featured', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ featured_arcade: document.getElementById('setFeaturedArcade').value, featured_growth: document.getElementById('setFeaturedGrowth').value, actor: currentUser })
+                });
+                if(res.ok) { alert('Featured games updated!'); window.V10Expansion.loadFeaturedGames(); }
+            } catch(e) { alert("Network Error"); }
+        });
+    },
+
+    loadFeaturedGames: async function() {
+        try {
+            const res = await fetch('/api/settings/featured');
+            const data = await res.json();
+            this.renderFeaturedSlot('arcadeGridItems', 'featuredArcadeGameContainer', data.featured_arcade || "David's Slingshot", false);
+            this.renderFeaturedSlot('growthGamesGrid', 'featuredGrowthGameContainer', data.featured_growth || "Catechism Clash", true);
+
+            setTimeout(() => {
+                const btnIndiv = document.getElementById('btnGrowthIndiv');
+                if(btnIndiv && btnIndiv.classList.contains('btn-primary')) this.filterGrowthGames('indiv');
+                else if (btnIndiv) this.filterGrowthGames('groups');
+            }, 100);
+        } catch(e) {}
+    },
+
+    renderFeaturedSlot: async function(gridId, containerId, gameName, isGrowth) {
+        const container = document.getElementById(containerId); const grid = document.getElementById(gridId);
+        if (!container || !grid) return;
+
+        grid.querySelectorAll('.arcade-game-card, .arcade-game-tile').forEach(t => t.style.display = 'flex');
+        if (!gameName || gameName === "None") return container.innerHTML = '';
+
+        const tile = grid.querySelector(`[data-game-name="${gameName}"]`);
+        if (tile) {
+            tile.style.display = 'none'; // Hide from lower grid
+            const icon = tile.querySelector('.game-icon') ? tile.querySelector('.game-icon').innerText : (tile.querySelector('.game-tile-icon') ? tile.querySelector('.game-tile-icon').innerText : '🎮');
+            const title = tile.querySelector('h3') ? tile.querySelector('h3').innerText : gameName;
+            const desc = tile.querySelector('p') ? tile.querySelector('p').innerText.replace(/"/g, "'").replace(/\n/g, " ") : 'Play our featured game!';
+
+            const type = isGrowth ? 'growth' : 'arcade';
+            const playFn = this.getPlayFunction(gameName);
+
+            let topHtml = '';
+            try {
+                const topP = this.bulkDataCache ? this.bulkDataCache[gameName] : [];
+                if(topP && topP.length > 0) {
+                    topHtml = `<div style="display:flex; gap:6px; margin-bottom:12px; background:rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 8px; width: fit-content;">`;
+                    topP.forEach((p,i) => {
+                        const m = i===0?'🥇':i===1?'🥈':'🥉';
+                        const a = p.profile_picture ? `<img src="${p.profile_picture}" title="${p.name} - ${p.high_score}XP" style="width:20px; height:20px; border-radius:50%; border:1px solid #FFF; object-fit:cover;">` : `<div title="${p.name} - ${p.high_score}XP" style="width:20px; height:20px; border-radius:50%; background:#E2E8F0; color:#0F172A; display:flex; align-items:center; justify-content:center; font-size:0.5rem; font-weight:bold; border:1px solid #FFF;">${p.name.charAt(0)}</div>`;
+                        topHtml += `<div style="position:relative;">${a}<span style="position:absolute; bottom:-4px; right:-4px; font-size:0.6rem;">${m}</span></div>`;
+                    });
+                    topHtml += `</div>`;
+                }
+            } catch(e){}
+
+            container.innerHTML = `
+                <div class="arcade-featured-game" id="hero-${containerId}" style="max-height: 350px;">
+                    <div class="featured-banner" style="padding: 15px 0;">
+                        <div class="featured-badge" style="top: 10px; left: 10px; font-size: 0.7rem; padding: 4px 8px;">⭐ FEATURED GAME</div>
+                        <div style="font-size: 3rem; margin-top: 5px;">${icon}</div>
+                    </div>
+                    <div class="featured-info" style="padding: 15px;">
+                        <h3 style="font-size: 1.25rem; margin-bottom: 4px;">${title}</h3>
+                        <p style="font-size: 0.85rem; margin-bottom: 10px;">${desc}</p>
+                        ${topHtml}
+                        <div class="featured-action" style="padding: 10px 20px; font-size: 0.85rem;">PLAY NOW</div>
+                    </div>
+                </div>
+            `;
+            setTimeout(() => { const heroCard = document.getElementById(`hero-${containerId}`); if (heroCard) heroCard.onclick = () => window.V10Expansion.openGameLanding(gameName, type, playFn, desc, icon); }, 50);
+        }
+    },
+
     switchLeaderboardTab: function(tab) {
         document.getElementById('ldrOverallView').style.display = tab === 'overall' ? 'block' : 'none';
         document.getElementById('ldrGrowthView').style.display = tab === 'growth' ? 'block' : 'none';
