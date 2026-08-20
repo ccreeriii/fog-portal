@@ -742,13 +742,13 @@
                 </div>
                 <div id="eventRoleAssignControls" style="display: none; background: var(--bg-light); padding: 15px; margin-bottom: 15px;">
                     <h4>Assign Member</h4>
-                    <div style="display: flex; gap: 10px;">
-                        <div style="flex: 2; position: relative;"><input type="text" id="evtRoleSearchInput" class="form-control" placeholder="Search..." onkeyup="filterEventRoleSearch()"><div id="evtRoleSearchDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; z-index:100;"></div></div>
-                        <input type="hidden" id="evtRoleSelectedUserId">
-                        <input type="text" id="evtRoleNameInput" class="form-control" placeholder="Role (e.g. Food)">
-                        <input type="text" id="evtRoleSubRoleInput" class="form-control" placeholder="Sub-Role">
-                        <button class="btn btn-primary" onclick="assignEventRole()">Assign</button>
-                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+        <div style="flex: 1 1 100%; position: relative;"><input type="text" id="evtRoleSearchInput" class="form-control" placeholder="Search Member..." onkeyup="filterEventRoleSearch()"><div id="evtRoleSearchDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border: 1px solid var(--border-color); max-height: 200px; overflow-y: auto; z-index:100;"></div></div>
+        <input type="hidden" id="evtRoleSelectedUserId">
+        <input type="text" id="evtRoleNameInput" class="form-control" placeholder="Role (e.g. Food)" style="flex: 1 1 45%;">
+        <input type="text" id="evtRoleSubRoleInput" class="form-control" placeholder="Sub-Role" style="flex: 1 1 45%;">
+        <button class="btn btn-primary" onclick="assignEventRole()" style="flex: 1 1 100%;">Assign Role</button>
+    </div>
                 </div>
                 <h3>Event Team</h3>
                 <div id="eventRolesContainer" style="max-height: 300px; overflow-y: auto;"></div>
@@ -816,13 +816,13 @@
         </div>
         <h3>Roster</h3>
         <div id="ministryAssignControls" style="display: none; background: var(--bg-light); padding: 15px; margin-bottom: 15px;">
-            <div style="display: flex; gap: 10px;">
-                <div style="flex: 2; position: relative;"><input type="text" id="minSearchInput" class="form-control" placeholder="Search..." onkeyup="filterMinistrySearch()"><div id="minSearchDropdown" style="display:none; position:absolute; background:#FFF; width:100%; z-index:100;"></div></div>
-                <input type="hidden" id="minSelectedUserId">
-                <select id="minRoleSelect" class="form-control"><option value="Member">Member</option><option value="Ministry Head">Ministry Head</option></select>
-                <input type="text" id="minSubRoleInput" class="form-control" placeholder="Sub-Role">
-                <button class="btn btn-primary" onclick="assignMinistryRole()">Assign</button>
-            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+        <div style="flex: 1 1 100%; position: relative;"><input type="text" id="minSearchInput" class="form-control" placeholder="Search Member..." onkeyup="filterMinistrySearch()"><div id="minSearchDropdown" style="display:none; position:absolute; background:#FFF; width:100%; border: 1px solid var(--border-color); max-height: 200px; overflow-y: auto; z-index:100;"></div></div>
+        <input type="hidden" id="minSelectedUserId">
+        <select id="minRoleSelect" class="form-control" style="flex: 1 1 45%;"><option value="Member">Member</option><option value="Ministry Head">Ministry Head</option></select>
+        <input type="text" id="minSubRoleInput" class="form-control" placeholder="Sub-Role" style="flex: 1 1 45%;">
+        <button class="btn btn-primary" onclick="assignMinistryRole()" style="flex: 1 1 100%;">Assign Role</button>
+    </div>
         </div>
         <div id="ministryRosterContainer" style="max-height: 350px; overflow-y: auto;"></div>
     </div>
@@ -1015,5 +1015,65 @@
 <script src="/js/v9-growth-games.js?v=12.2"></script>
 <script src="/js/v10-expansion.js?v=12.2"></script>
 
+
+<div id="viewProfileModal" class="modal">
+    <div class="modal-content" style="max-width: 600px; padding: 0; overflow: hidden;">
+        <span class="close-modal" onclick="closeViewProfileModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer; z-index: 10;">&times;</span>
+        <div style="background: var(--bg-light); padding: 30px 20px; text-align: center; position: relative;">
+            <div id="viewModalProfileAvatar" class="avatar-circle" style="width: 100px; height: 100px; font-size: 2.5rem; margin: 0 auto 15px auto;"></div>
+            <h2 id="modalProfileName" style="margin: 0; border: none; padding: 0;"></h2>
+            <p id="modalProfileCode" class="badge badge-orange" style="margin-top: 10px;"></p>
+        </div>
+        <div style="padding: 20px;">
+            <div id="modalBioSummary" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6;"></div>
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button class="btn btn-outline btn-sm active" id="btnModalTabRoles" onclick="switchProfileModalTab('roles')" style="flex:1;">Roles</button>
+                <button class="btn btn-outline btn-sm" id="btnModalTabAttendance" onclick="switchProfileModalTab('attendance')" style="flex:1;">Attendance</button>
+            </div>
+            <div id="modalTabRoles">
+                <div id="modalMinistriesHistory"></div>
+                <div id="modalRolesPagination" style="display:none;"></div>
+            </div>
+            <div id="modalTabAttendance" style="display:none;">
+                <div id="modalAttendanceHistory"></div>
+                <div id="modalAttPagination" style="display:none;"></div>
+            </div>
+        </div>
+        <div id="modalQrContainer" style="text-align: center; padding: 20px; background: var(--bg-light); border-top: 1px solid var(--border-color);"></div>
+        <div style="padding: 15px; text-align: center;">
+            <a id="modalDownloadQrBtn" class="btn btn-primary" download="Pass.png" style="width: 100%;">📥 Download Pass</a>
+        </div>
+    </div>
+</div>
+
+<div id="editMemberModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeEditMemberModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Member</h2>
+        <form id="editMemberForm" onsubmit="event.preventDefault(); saveMemberEditWithConfirm();">
+            <input type="hidden" id="editMemberId">
+            <div class="form-group"><label>Profile Picture</label><input type="file" id="editMemberProfilePic" class="form-control" accept="image/*"></div>
+            <div class="form-group"><label>Name *</label><input type="text" id="editMemberName" class="form-control" required></div>
+            <div style="display:flex; gap:15px;"><div class="form-group" style="flex:1;"><label>Age</label><input type="number" id="editMemberAge" class="form-control"></div><div class="form-group" style="flex:1;"><label>Birthday</label><input type="date" id="editMemberBirthday" class="form-control"></div></div>
+            <div class="form-group"><label>Email</label><input type="email" id="editMemberEmail" class="form-control"></div>
+            <div class="form-group"><label>Social Media</label><input type="text" id="editMemberSocial" class="form-control"></div>
+            <div class="form-group"><label>Parents/Guardian</label><input type="text" id="editMemberParents" class="form-control"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
+        </form>
+    </div>
+</div>
+
+<div id="editMinistryModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeEditMinistryModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Ministry</h2>
+        <form onsubmit="event.preventDefault(); saveMinistryEdit();">
+            <div class="form-group"><label>Name *</label><input type="text" id="editMinName" class="form-control" required></div>
+            <div class="form-group"><label>Logo</label><input type="file" id="editMinLogo" class="form-control" accept="image/*"></div>
+            <div class="form-group"><label>Description</label><textarea id="editMinDesc" class="form-control" rows="3"></textarea></div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Save Changes</button>
+        </form>
+    </div>
+</div>
 </body>
 </html>

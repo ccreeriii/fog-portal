@@ -549,3 +549,46 @@ window.renderModalAttendance = function() {
     });
     container.innerHTML = html;
 };
+
+
+window.switchEventSubTab = function(tab) {
+    document.getElementById('subTabEventList').classList.toggle('active', tab === 'list');
+    document.getElementById('subTabEventCreate').classList.toggle('active', tab === 'create');
+    document.getElementById('btnSubEventList').classList.toggle('active', tab === 'list');
+    document.getElementById('btnSubEventCreate').classList.toggle('active', tab === 'create');
+    if (tab === 'list') window.loadEvents();
+};
+
+window.switchMinistrySubTab = function(tab) {
+    document.getElementById('subTabMinistryList').classList.toggle('active', tab === 'list');
+    document.getElementById('subTabMinistryCreate').classList.toggle('active', tab === 'create');
+    document.getElementById('btnSubMinistryList').classList.toggle('active', tab === 'list');
+    document.getElementById('btnSubMinistryCreate').classList.toggle('active', tab === 'create');
+    if (tab === 'list') window.loadMinistries();
+};
+
+window.switchAnalyticsSubTab = function(tab) {
+    const o = document.getElementById('analyticsTabOverview'); if(o) o.style.display = (tab === 'overview') ? 'block' : 'none';
+    const r = document.getElementById('analyticsTabRoles'); if(r) r.style.display = (tab === 'roles') ? 'block' : 'none';
+    const bo = document.getElementById('btnAnalyticsTabOverview'); if(bo) bo.classList.toggle('active', tab === 'overview');
+    const br = document.getElementById('btnAnalyticsTabRoles'); if(br) br.classList.toggle('active', tab === 'roles');
+};
+
+window.switchProfileModalTab = function(tab) {
+    const mtr = document.getElementById('modalTabRoles'); if(mtr) mtr.style.display = (tab === 'roles') ? 'block' : 'none';
+    const mta = document.getElementById('modalTabAttendance'); if(mta) mta.style.display = (tab === 'attendance') ? 'block' : 'none';
+    const bmr = document.getElementById('btnModalTabRoles'); if(bmr) bmr.classList.toggle('active', tab === 'roles');
+    const bma = document.getElementById('btnModalTabAttendance'); if(bma) bma.classList.toggle('active', tab === 'attendance');
+};
+
+// Safe Modal State Poller (Zero Infinite Loop Risk)
+setInterval(() => {
+    const hasActiveModal = document.querySelector('.modal.active') !== null;
+    const bodyHasClass = document.body.classList.contains('modal-open');
+    
+    if (hasActiveModal && !bodyHasClass) {
+        document.body.classList.add('modal-open');
+    } else if (!hasActiveModal && bodyHasClass) {
+        document.body.classList.remove('modal-open');
+    }
+}, 250);

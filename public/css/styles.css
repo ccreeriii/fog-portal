@@ -575,3 +575,18 @@ body.is-offline header { top: 34px; }
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     }
 }
+
+
+/* --- UI Polishing Fixes --- */
+body.modal-open #bottomNav {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    #analyticsRosterContainer, #ministryRosterContainer, #eventRolesContainer {
+        max-height: none !important;
+        overflow-y: visible !important;
+        height: auto !important;
+        padding-bottom: 20px;
+    }
+}
