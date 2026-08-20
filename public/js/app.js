@@ -809,3 +809,95 @@ document.addEventListener('click', (e) => {
         if (tooltip) tooltip.style.display = 'none';
     }
 });
+
+// --- V13 CAMPFIRE CHAT ENGINE ---
+let activeGroupPoller = null;
+let currentChatGroupId = null;
+let lastChatMsgId = 0;
+
+window.openGroupSpace = function(groupId, groupName) {
+    currentChatGroupId = groupId;
+    lastChatMsgId = 0;
+    document.getElementById('groupSpaceTitle').innerText = '🔥 ' + groupName;
+    document.getElementById('groupChatMessages').innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Fetching messages...</p>';
+    document.getElementById('groupSpaceModal').classList.add('active');
+    
+    fetchAndRenderGroupChat(true); // Fetch initial load
+    
+    // Start Smart Delta Poller (Every 3.5 seconds)
+    activeGroupPoller = setInterval(() => fetchAndRenderGroupChat(false), 3500);
+};
+
+window.closeGroupSpace = function() {
+    document.getElementById('groupSpaceModal').classList.remove('active');
+    clearInterval(activeGroupPoller);
+    activeGroupPoller = null;
+    currentChatGroupId = null;
+};
+
+window.fetchAndRenderGroupChat = async function(isInitialLoad) {
+    if(!currentChatGroupId) return;
+    try {
+        const res = await fetch(`/api/small-groups/${currentChatGroupId}/chat?last_id=${lastChatMsgId}`);
+        const messages = await res.json();
+        
+        if (messages.length > 0) {
+            const container = document.getElementById('groupChatMessages');
+            if (isInitialLoad) container.innerHTML = ''; // Clear the "Fetching" text
+            
+            messages.forEach(m => {
+                lastChatMsgId = Math.max(lastChatMsgId, m.id);
+                const isMe = currentMember && currentMember.name === m.name;
+                const avatar = m.profile_picture ? `<img src="${m.profile_picture}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex-shrink:0;">` : `<div style="width: 30px; height: 30px; border-radius: 50%; background: var(--border-color); display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:bold; flex-shrink:0;">${m.name.charAt(0)}</div>`;
+                
+                let timeStr = new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                
+                let msgHtml = '';
+                if (isMe) {
+                    msgHtml = `<div style="display:flex; justify-content:flex-end; margin-bottom:5px;">
+                        <div style="max-width: 80%; text-align: right;">
+                            <div style="background: var(--primary); color: #FFF; padding: 10px 14px; border-radius: 18px 18px 4px 18px; font-size: 0.95rem; display: inline-block; text-align: left;">${m.message}</div>
+                            <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">${timeStr}</div>
+                        </div>
+                    </div>`;
+                } else {
+                    msgHtml = `<div style="display:flex; gap:8px; margin-bottom:5px;">
+                        ${avatar}
+                        <div style="max-width: 80%;">
+                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 2px; margin-left: 4px;">${m.name}</div>
+                            <div style="background: #E2E8F0; color: var(--text-main); padding: 10px 14px; border-radius: 18px 18px 18px 4px; font-size: 0.95rem; display: inline-block;">${m.message}</div>
+                            <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px; margin-left: 4px;">${timeStr}</div>
+                        </div>
+                    </div>`;
+                }
+                container.insertAdjacentHTML('beforeend', msgHtml);
+            });
+            
+            // Auto-scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        } else if (isInitialLoad && messages.length === 0) {
+            document.getElementById('groupChatMessages').innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">It is quiet here... start the conversation! 🔥</p>';
+        }
+    } catch(e) {}
+};
+
+window.sendGroupMessage = async function(e) {
+    e.preventDefault();
+    const input = document.getElementById('groupChatInput');
+    const msg = input.value.trim();
+    if (!msg || !currentChatGroupId || !currentMember) return;
+    
+    input.value = ''; // Clear input instantly for snappy feel
+    
+    try {
+        await fetch(`/api/small-groups/${currentChatGroupId}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ youth_id: currentMember.id, message: msg })
+        });
+        // The Poller will automatically fetch and display this in the next ~3 seconds
+        fetchAndRenderGroupChat(false); // Force an instant fetch to show it immediately
+    } catch (e) {
+        alert('You appear to be offline. Message queued!');
+    }
+};

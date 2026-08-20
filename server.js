@@ -46,6 +46,8 @@ setInterval(runDatabaseBackup, 1000 * 60 * 60);
 const db = new sqlite3.Database('./fog_community.db', (err) => {
     if (err) console.error('Database connection error:', err.message);
     else console.log('Connected to local SQLite database: fog_community.db');
+    db.run('PRAGMA journal_mode = WAL;');
+    console.log('[SCALABILITY] WAL Mode Activated for High Concurrency.');
 });
 
 db.serialize(() => {
@@ -65,6 +67,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS prayer_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, title TEXT, request TEXT, is_anonymous INTEGER DEFAULT 0, status TEXT DEFAULT 'Open', created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS prayer_intercessions (id INTEGER PRIMARY KEY AUTOINCREMENT, prayer_id INTEGER, youth_id INTEGER, prayed_at DATETIME, UNIQUE(prayer_id, youth_id))`);
     db.run(`CREATE TABLE IF NOT EXISTS small_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, leader_id INTEGER, meeting_schedule TEXT, venue TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS small_group_chats (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, message TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS small_group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, joined_at DATETIME, UNIQUE(group_id, youth_id))`);
 
     db.run(`CREATE TABLE IF NOT EXISTS songs (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, artist TEXT, song_key TEXT, bpm TEXT, audio_url TEXT, youtube_url TEXT, chord_chart_url TEXT, created_at DATETIME)`);
@@ -646,6 +649,22 @@ app.get('/api/small-groups', (req, res) => { db.all(`SELECT g.*, y.name as leade
 app.post('/api/small-groups', (req, res) => { db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, points, logo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, getManilaTime()], function(err) { res.json({ success: true }); }); });
 app.put('/api/small-groups/:id', (req, res) => { db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=?, points=?, logo=? WHERE id=?`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, req.params.id], function(err) { res.json({ success: true }); }); });
 app.delete('/api/small-groups/:id', (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
+
+app.get('/api/small-groups/:id/chat', (req, res) => {
+    const lastId = parseInt(req.query.last_id) || 0;
+    db.all(`SELECT c.id, c.message, c.created_at, y.name, y.profile_picture FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? AND c.id > ? ORDER BY c.id ASC`, [req.params.id, lastId], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+app.post('/api/small-groups/:id/chat', (req, res) => {
+    const { youth_id, message } = req.body;
+    db.run(`INSERT INTO small_group_chats (group_id, youth_id, message, created_at) VALUES (?, ?, ?, ?)`, [req.params.id, youth_id, message, getManilaTime()], function(err) {
+        if(err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, id: this.lastID });
+    });
+});
+
 app.post('/api/small-groups/:id/join', (req, res) => {
     db.run(`INSERT INTO small_group_members (group_id, youth_id, joined_at) VALUES (?, ?, ?)`, [req.params.id, req.body.youth_id, getManilaTime()], function(err) {
         if (err) return res.json({ success: true }); // already joined
