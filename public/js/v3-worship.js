@@ -5,7 +5,7 @@
 window.V3Worship = {
     _audioPlayer: null,
     _cachedSongs: [],
-    
+
     init: function() {
         console.log('[V3 Engine] Initializing Worship Media Hub...');
         this.hookIntoLifecycle();
@@ -22,11 +22,11 @@ window.V3Worship = {
         if (typeof window.buildNav === 'function') {
             const originalBuildNav = window.buildNav;
             window.buildNav = function() {
-                originalBuildNav(); 
-                V3Worship.injectNavButtons(); 
+                originalBuildNav();
+                V3Worship.injectNavButtons();
             };
         }
-        
+
         if (typeof window.switchTab === 'function') {
             const origSwitchTab = window.switchTab;
             window.switchTab = function(tabId) {
@@ -46,20 +46,7 @@ window.V3Worship = {
             }
             if (logoutBtn && v3SidebarHtml) logoutBtn.insertAdjacentHTML('beforebegin', v3SidebarHtml);
         }
-
-        const bottomNav = document.getElementById('bottomNav');
-        if (bottomNav && !document.getElementById('bottomNavWorship')) {
-            const logoutBtn = bottomNav.lastElementChild;
-            let v3BottomHtml = '';
-            if (window.hasPerm && window.hasPerm('access_worship')) {
-                v3BottomHtml = `
-                    <button id="bottomNavWorship" class="bottom-nav-btn" data-target="worshipTab" onclick="switchTab('worshipTab')">
-                        <div class="icon">🎸</div>Worship
-                    </button>
-                `;
-            }
-            if (logoutBtn && v3BottomHtml) logoutBtn.insertAdjacentHTML('beforebegin', v3BottomHtml);
-        }
+        // Bottom Nav Injection REMOVED.
     },
 
     switchWorshipSubTab: function(tab) {
@@ -67,7 +54,7 @@ window.V3Worship = {
         document.getElementById('subTabWorshipSetlists').style.display = tab === 'setlists' ? 'block' : 'none';
         document.getElementById('btnSubWorshipLibrary').classList.toggle('active', tab === 'library');
         document.getElementById('btnSubWorshipSetlists').classList.toggle('active', tab === 'setlists');
-        
+
         if (tab === 'library') this.loadSongs();
         if (tab === 'setlists') this.loadSetlists();
     },
@@ -92,9 +79,6 @@ window.V3Worship = {
         return url;
     },
 
-    // ==========================================
-    // DUAL AUDIO / YOUTUBE PLAYER LOGIC
-    // ==========================================
     playSong: function(title, artist, rawUrl, ytUrl) {
         const playerDiv = document.getElementById('worshipAudioPlayer');
         const titleElem = document.getElementById('wpTitle');
@@ -105,19 +89,16 @@ window.V3Worship = {
         titleElem.innerText = title;
         artistElem.innerText = artist || 'Unknown Artist';
 
-        // Reset both players
         audioElem.pause();
         audioElem.src = "";
         ytContainer.innerHTML = "";
 
         if (ytUrl) {
-            // Extract the YouTube Video ID
             const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
             const match = ytUrl.match(ytRegex);
-            
+
             if (match && match[1]) {
                 const vidId = match[1];
-                // Inject the YouTube IFrame
                 ytContainer.innerHTML = `<iframe src="https://www.youtube.com/embed/${vidId}?autoplay=1&rel=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
                 ytContainer.style.display = 'block';
                 audioElem.style.display = 'none';
@@ -126,13 +107,12 @@ window.V3Worship = {
                 return;
             }
         } else if (rawUrl) {
-            // Use standard HTML5 Audio Player
             const streamUrl = this.formatMediaUrl(rawUrl);
             audioElem.src = streamUrl;
-            audioElem.load(); 
+            audioElem.load();
             audioElem.style.display = 'block';
             ytContainer.style.display = 'none';
-            
+
             const playPromise = audioElem.play();
             if (playPromise !== undefined) {
                 playPromise.catch(e => {
@@ -143,7 +123,7 @@ window.V3Worship = {
             alert("No playable media (Audio or YouTube) was found for this song.");
             return;
         }
-        
+
         playerDiv.style.display = 'flex';
     },
 
@@ -151,22 +131,19 @@ window.V3Worship = {
         const playerDiv = document.getElementById('worshipAudioPlayer');
         const audioElem = document.getElementById('wpAudio');
         const ytContainer = document.getElementById('wpYoutubeContainer');
-        
+
         audioElem.pause();
         audioElem.src = "";
-        ytContainer.innerHTML = ""; // Destroys the iframe to stop YT playback
+        ytContainer.innerHTML = "";
         playerDiv.style.display = 'none';
     },
 
-    // ==========================================
-    // SONG LIBRARY MANAGEMENT
-    // ==========================================
     loadSongs: async function() {
         try {
             const res = await fetch('/api/worship/songs');
             const songs = await res.json();
-            this._cachedSongs = songs; // Cache for easy editing
-            
+            this._cachedSongs = songs;
+
             const container = document.getElementById('worshipLibraryList');
             if (!container) return;
 
@@ -195,7 +172,7 @@ window.V3Worship = {
 
             const dropdown = document.getElementById('wsSetlistAddSongSelect');
             if (dropdown) {
-                dropdown.innerHTML = `<option value="">-- Select a Song to Add --</option>` + 
+                dropdown.innerHTML = `<option value="">-- Select a Song to Add --</option>` +
                     songs.map(s => `<option value="${s.id}">${s.title} (${s.song_key || 'N/A'})</option>`).join('');
             }
         } catch (e) { console.error('Failed to load songs', e); }
@@ -220,7 +197,6 @@ window.V3Worship = {
         }
     },
 
-    // NEW: EDIT SONG LOGIC
     openEditSongModal: function(id) {
         const s = this._cachedSongs.find(song => song.id === id);
         if (!s) return;
@@ -269,9 +245,6 @@ window.V3Worship = {
         });
     },
 
-    // ==========================================
-    // SETLIST MANAGEMENT
-    // ==========================================
     loadSetlists: async function() {
         try {
             const res = await fetch('/api/worship/setlists');
@@ -363,14 +336,14 @@ window.V3Worship = {
 
     closeSetlistManager: function() {
         document.getElementById('worshipSetlistModal').classList.remove('active');
-        this.loadSetlists(); 
+        this.loadSetlists();
     },
 
     loadSetlistManagerSongs: async function(setlistId) {
         const res = await fetch(`/api/worship/setlists/${setlistId}/songs`);
         const songs = await res.json();
         const container = document.getElementById('wsModalSongsList');
-        
+
         if (songs.length === 0) {
             container.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No songs in this setlist.</p>`;
             return;
@@ -392,10 +365,10 @@ window.V3Worship = {
         const songId = document.getElementById('wsSetlistAddSongSelect').value;
         if (!setlistId || !songId) return alert('Please select a song.');
 
-        const res = await fetch(`/api/worship/setlists/${setlistId}/songs`, { 
-            method: 'POST', 
-            headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify({song_id: songId}) 
+        const res = await fetch(`/api/worship/setlists/${setlistId}/songs`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({song_id: songId})
         });
         if (res.ok) {
             document.getElementById('wsSetlistAddSongSelect').value = '';
