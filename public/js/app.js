@@ -1076,6 +1076,7 @@ window.switchDashTab = function(tab) {
     document.getElementById('dashTabOverview').style.display = tab === 'overview' ? 'block' : 'none';
     document.getElementById('dashTabMembers').style.display = tab === 'members' ? 'block' : 'none';
     document.getElementById('dashTabPrayers').style.display = tab === 'prayers' ? 'block' : 'none';
+    if (tab === 'prayers' && currentDashboardGroupId) window.loadGroupPrayers(currentDashboardGroupId);
     
     document.getElementById('btnDashOverview').classList.toggle('active', tab === 'overview');
     document.getElementById('btnDashMembers').classList.toggle('active', tab === 'members');
@@ -1087,4 +1088,98 @@ window.launchDashCampfire = function() {
 };
 window.launchDashVault = function() {
     if(currentDashboardGroupId) openGroupVault(currentDashboardGroupId, currentDashboardGroupName);
+};
+
+// --- V16 PRIVATE GROUP PRAYER ENGINE ---
+window.openGroupPrayerModal = function() {
+    document.getElementById('groupPrayerModal').classList.add('active');
+};
+window.closeGroupPrayerModal = function() {
+    document.getElementById('groupPrayerModal').classList.remove('active');
+};
+
+window.submitGroupPrayer = async function(e) {
+    e.preventDefault();
+    if(!currentDashboardGroupId || !currentMember) return;
+    const payload = {
+        youth_id: currentMember.id,
+        title: document.getElementById('gpTitle').value,
+        request: document.getElementById('gpRequest').value,
+        is_anonymous: document.getElementById('gpAnonymous').checked
+    };
+    try {
+        const res = await fetch(`/api/small-groups/${currentDashboardGroupId}/prayers`, {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+        });
+        if(res.ok) {
+            e.target.reset();
+            closeGroupPrayerModal();
+            loadGroupPrayers(currentDashboardGroupId);
+            if(window.V6Gamification) window.V6Gamification.loadMyPoints(); // Award XP
+        }
+    } catch(err) {}
+};
+
+window.loadGroupPrayers = async function(groupId) {
+    try {
+        const res = await fetch(`/api/small-groups/${groupId}/prayers`);
+        const prayers = await res.json();
+        const container = document.getElementById('dashPrayersList');
+        if(prayers.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); margin-top:20px;">No private prayers shared in this group yet.</p>';
+            return;
+        }
+        
+        container.innerHTML = prayers.map(p => {
+            const author = p.is_anonymous ? 'Anonymous' : p.author_name;
+            const isMe = currentMember && currentMember.id === p.youth_id;
+            const answeredBadge = p.is_answered ? `<span class="badge badge-green">🎉 Answered!</span>` : `<span class="badge badge-orange">🙏 Praying</span>`;
+            
+            let actionHtml = '';
+            if (!p.is_answered) {
+                actionHtml += `<button class="btn btn-outline btn-sm" style="border-color: #8B5CF6; color: #8B5CF6; font-weight:bold;" onclick="intercedeGroupPrayer(${p.id}, ${p.youth_id})">🙏 I prayed</button>`;
+                if (isMe || window.hasPerm('edit_entries')) {
+                    actionHtml += `<button class="btn btn-outline btn-sm" style="margin-left: 10px; border-color: #10B981; color: #10B981; font-weight:bold;" onclick="markGroupPrayerAnswered(${p.id}, '${p.title.replace(/'/g, "\\'")}')">✅ Mark Answered</button>`;
+                }
+            }
+            
+            return `
+            <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items:flex-start; margin-bottom: 8px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${p.title}</strong>
+                    ${answeredBadge}
+                </div>
+                <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 10px;">By: ${author} • ${p.created_at}</div>
+                <p style="font-size: 0.95rem; color: var(--text-main); margin-bottom: 15px; white-space: pre-wrap;">${p.request}</p>
+                <div>${actionHtml}</div>
+            </div>`;
+        }).join('');
+    } catch(err) {}
+};
+
+window.intercedeGroupPrayer = async function(prayerId, authorId) {
+    if(!currentMember) return;
+    try {
+        const res = await fetch(`/api/small-groups/prayers/${prayerId}/intercede`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ youth_id: currentMember.id, author_id: authorId, group_name: currentDashboardGroupName })
+        });
+        if(res.ok) {
+            alert('Prayer logged! The author has been notified.');
+        } else {
+            alert('You already prayed for this request today!');
+        }
+    } catch(err) {}
+};
+
+window.markGroupPrayerAnswered = async function(prayerId, title) {
+    window.triggerActionConfirmation('Mark this prayer as answered? The whole group will be notified of the Praise Report!', async () => {
+        try {
+            const res = await fetch(`/api/small-groups/prayers/${prayerId}/answered`, {
+                method: 'PUT', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ group_id: currentDashboardGroupId, group_name: currentDashboardGroupName, title: title })
+            });
+            if(res.ok) window.loadGroupPrayers(currentDashboardGroupId);
+        } catch(err) {}
+    });
 };

@@ -1185,7 +1185,7 @@
 
             <div id="dashTabPrayers" style="display: none;">
                 <div style="text-align: center; margin-bottom: 15px;">
-                    <button class="btn btn-outline btn-sm" style="border-color: #8B5CF6; color: #8B5CF6; background: #F3E8FF;" onclick="alert('Private group prayers coming in Phase 2!')">➕ Post Private Prayer</button>
+                    <button class="btn btn-outline btn-sm" style="border-color: #8B5CF6; color: #8B5CF6; background: #F3E8FF;" onclick="openGroupPrayerModal()">➕ Post Private Prayer</button>
                 </div>
                 <div id="dashPrayersList">
                     <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-top:20px;">Group prayer wall locking mechanisms will be unlocked in the next patch!</p>
@@ -1193,6 +1193,28 @@
             </div>
 
         </div>
+    </div>
+</div>
+
+<div id="groupPrayerModal" class="modal">
+    <div class="modal-content" style="max-width: 500px; background: #F8FAFC;">
+        <span class="close-modal" onclick="closeGroupPrayerModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2 style="color: #8B5CF6; border: none; margin-bottom: 15px; font-weight: 800;">➕ Post Group Prayer</h2>
+        <form onsubmit="submitGroupPrayer(event)">
+            <div class="form-group">
+                <label>Title *</label>
+                <input type="text" id="gpTitle" class="form-control" placeholder="E.g., Pray for my exams" required>
+            </div>
+            <div class="form-group">
+                <label>Prayer Request *</label>
+                <textarea id="gpRequest" class="form-control" rows="4" placeholder="Share your heart with the group..." required></textarea>
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="gpAnonymous" style="width: 18px; height: 18px;"> 
+                <label for="gpAnonymous" style="margin:0;">Post Anonymously</label>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; background: #8B5CF6; font-weight: bold;">Share with Group</button>
+        </form>
     </div>
 </div>
 </body>

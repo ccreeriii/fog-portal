@@ -622,3 +622,6 @@ body.modal-open {
         transform: none !important; /* Kills the slide animation that breaks touch scrolling */
     }
 }
+
+/* --- Elevate Group Sub-Modals over Dashboard --- */
+#groupSpaceModal, #groupVaultModal, #groupPrayerModal { z-index: 1050 !important; }

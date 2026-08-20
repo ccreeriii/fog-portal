@@ -700,6 +700,45 @@ app.post('/api/prayers/:id/intercede', (req, res) => { db.run(`INSERT OR IGNORE 
 
 // NEW SMALL GROUPS API (WITH POINTS)
 
+
+app.get('/api/small-groups/:id/prayers', (req, res) => {
+    db.all(`SELECT p.*, y.name as author_name FROM prayer_requests p JOIN youth y ON p.youth_id = y.id WHERE p.group_id = ? ORDER BY p.created_at DESC`, [req.params.id], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+app.post('/api/small-groups/:id/prayers', (req, res) => {
+    const { youth_id, title, request, is_anonymous } = req.body;
+    db.run(`INSERT INTO prayer_requests (group_id, youth_id, title, request, is_anonymous, created_at) VALUES (?, ?, ?, ?, ?, ?)`, 
+    [req.params.id, youth_id, title, request, is_anonymous ? 1 : 0, getManilaTime()], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({success: true});
+    });
+});
+
+app.post('/api/small-groups/prayers/:prayer_id/intercede', (req, res) => {
+    const { youth_id, author_id, group_name } = req.body;
+    db.run(`INSERT OR IGNORE INTO prayer_intercessions (prayer_id, youth_id, prayed_at) VALUES (?, ?, ?)`, [req.params.prayer_id, youth_id, getManilaTime()], function(err) {
+        // Only send push if it's a new intercession AND you aren't clicking your own prayer
+        if (this.changes > 0 && author_id !== youth_id) {
+            pushToUser(author_id, "🙏 Someone prayed for you!", `Someone in ${group_name || 'your group'} just prayed for your request.`);
+        }
+        res.json({success: true});
+    });
+});
+
+app.put('/api/small-groups/prayers/:prayer_id/answered', (req, res) => {
+    const { group_id, group_name, title } = req.body;
+    db.run(`UPDATE prayer_requests SET is_answered = 1 WHERE id = ?`, [req.params.prayer_id], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        // Notify the whole group of the Praise Report!
+        db.all(`SELECT youth_id FROM small_group_members WHERE group_id = ?`, [group_id], (err, members) => {
+            if(members) members.forEach(m => pushToUser(m.youth_id, "🎉 Praise Report!", `A prayer in ${group_name} was just answered: ${title}`));
+        });
+        res.json({success: true});
+    });
+});
+
 app.get('/api/small-groups/:id/roster-status', (req, res) => {
     // Fetches group members and calculates their 'last active' status using activity_logs
     db.all(`SELECT y.id, y.name, y.profile_picture, 
