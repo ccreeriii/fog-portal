@@ -47,7 +47,7 @@
             <img id="headerLogo" src="/img/logo.png" alt="Logo" class="fog-header-logo" onerror="this.style.display='none'">
             <div class="fog-header-titles">
                 <h1><span>FIRE OF GOD</span> MINISTRIES</h1>
-                <p>Community Portal & Discipleship Engine</p>
+                <p>Community Portal</p>
             </div>
         </div>
         <button id="hamburgerBtn" class="hamburger-btn" onclick="openSidebar()" style="display: none;">☰</button>
@@ -168,10 +168,15 @@
             </div>
         </div>
 
+        
+        <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 20px;">
+            <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 10px; border-bottom: 2px solid var(--bg-light); padding-bottom: 5px;">Personal Details</h3>
+            <div id="myBioSummary" style="font-size: 0.95rem; color: var(--text-muted); line-height: 1.6; text-align: left;">Loading details...</div>
+        </div>
         <div class="sub-nav" style="margin-bottom: 15px;">
             <button id="btnMyProfileTabRoles" class="sub-nav-btn active" onclick="switchMyProfileTab('roles')">🎭 Roles</button>
-            <button id="btnMyProfileTabSchedule" class="sub-nav-btn" onclick="switchMyProfileTab('schedule')">📅 Schedule</button>
             <button id="btnMyProfileTabAttendance" class="sub-nav-btn" onclick="switchMyProfileTab('attendance')">📋 Participation</button>
+            <button id="btnMyProfileTabSchedule" class="sub-nav-btn" onclick="switchMyProfileTab('schedule')">📅 Schedule</button>
         </div>
 
         <div id="myProfileTabRoles" style="display: block; animation: fadeIn 0.3s ease-out;">
@@ -489,7 +494,26 @@
                 <h2>Private Journal</h2>
                 <form id="journalForm" onsubmit="V2Discipleship.saveJournal(event)">
                     <div class="form-group"><label>Title *</label><input type="text" id="journalTitle" class="form-control" required></div>
-                    <div class="form-group"><label>Mood</label><select id="journalMood" class="form-control"><option value="Blessed">Blessed</option><option value="Seeking">Seeking</option><option value="Joyful">Joyful</option></select></div>
+                    
+        <div style="display:flex; gap:15px;">
+            <div class="form-group" style="flex:1;">
+                <label>Framework</label>
+                <select id="journalType" class="form-control" onchange="V2Discipleship.applyJournalTemplate()">
+                    <option value="Freehand">Freehand (Blank)</option>
+                    <option value="Lectio Divina">📖 Lectio Divina</option>
+                    <option value="Examen">🌙 Daily Examen</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label>Mood</label>
+                <select id="journalMood" class="form-control">
+                    <option value="Blessed">Blessed</option>
+                    <option value="Seeking">Seeking</option>
+                    <option value="Joyful">Joyful</option>
+                    <option value="Reflective">Reflective</option>
+                </select>
+            </div>
+        </div>
                     <div class="form-group"><label>Content *</label><textarea id="journalContent" class="form-control" rows="4" required></textarea></div>
                     <button type="submit" class="btn btn-primary" style="width: 100%;">Save</button>
                 </form>

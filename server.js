@@ -375,6 +375,33 @@ cron.schedule('*/5 * * * *', () => {
 });
 
 
+
+// 🤫 Secret Prayer Pals Algorithm (Runs every Monday at 9:00 AM)
+cron.schedule('0 9 * * 1', () => {
+    console.log('[CRON] Silas is assigning Secret Prayer Pals...');
+    db.all(`SELECT id, name FROM small_groups`, [], (err, groups) => {
+        if(!groups) return;
+        groups.forEach(g => {
+            // Get all approved members of this group
+            db.all(`SELECT y.id, y.name FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ? AND sgm.status='Approved'`, [g.id], (err, members) => {
+                if(!members || members.length < 2) return; // Need at least 2 people to pair
+                
+                // Shuffle the array of members randomly
+                let shuffled = members.map(value => ({ value, sort: Math.random() })).sort((a, b) => a.sort - b.sort).map(({ value }) => value);
+                
+                // Create a circular prayer chain (A prays for B, B prays for C, C prays for A)
+                for(let i = 0; i < shuffled.length; i++) {
+                    let intercessor = shuffled[i];
+                    let target = shuffled[(i + 1) % shuffled.length];
+                    
+                    const msg = `Your Secret Prayer Pal this week in ${g.name} is ${target.name}! 🙏 Reach out, ask how they are doing, and keep them in your daily prayers.`;
+                    pushToUser(intercessor.id, "🤫 Secret Prayer Pal!", msg);
+                }
+            });
+        });
+    });
+}, { scheduled: true, timezone: "Asia/Manila" });
+
 cron.schedule('0 8 * * *', () => { // Runs daily at 8:00 AM
     console.log('[CRON] Silas is checking for group birthdays...');
     const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));

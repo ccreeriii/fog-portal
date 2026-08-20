@@ -153,6 +153,23 @@ window.V2Discipleship = {
         });
     },
 
+    
+    applyJournalTemplate: function() {
+        const type = document.getElementById('journalType').value;
+        const contentBox = document.getElementById('journalContent');
+        const titleBox = document.getElementById('journalTitle');
+        
+        if (type === 'Lectio Divina') {
+            titleBox.value = "Lectio Divina: ";
+            contentBox.value = "📖 READ (What word or phrase stands out?):\n\n\n🤔 MEDITATE (What is God saying to you?):\n\n\n🙏 PRAY (Your response to God):\n\n\n✨ CONTEMPLATE (How will you carry this today?):\n";
+        } else if (type === 'Examen') {
+            titleBox.value = "Evening Examen";
+            contentBox.value = "🙏 GRATITUDE (What are you thankful for today?):\n\n\n🔍 REVIEW (Where did you see God today? Where did you fail?):\n\n\n💔 REPENT (Ask for forgiveness for your shortcomings):\n\n\n🌅 RESOLVE (How will you do better tomorrow?):\n";
+        } else {
+            titleBox.value = "";
+            contentBox.value = "";
+        }
+    },
     saveJournal: async function(e) {
         e.preventDefault();
         if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return alert("You must be logged in as a member.");
