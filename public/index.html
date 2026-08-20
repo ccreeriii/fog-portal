@@ -419,11 +419,12 @@
                         <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Play games and earn Growth XP!</p>
                         <button class="btn btn-outline btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="font-weight: bold;">🔄 Refresh</button>
                     </div>
+                    
+                    <div id="featuredGrowthGameContainer" style="margin-bottom: 20px;"></div>
                     <div style="display: flex; gap: 10px; margin-bottom: 20px;">
                         <button id="btnGrowthIndiv" class="btn btn-primary btn-sm" style="flex: 1;" onclick="if(window.V10Expansion) V10Expansion.filterGrowthGames('indiv')">👤 Individual</button>
                         <button id="btnGrowthGroups" class="btn btn-outline btn-sm" style="flex: 1;" onclick="if(window.V10Expansion) V10Expansion.filterGrowthGames('groups')">👥 Groups</button>
                     </div>
-                    <div id="featuredGrowthGameContainer" style="margin-bottom: 20px;"></div>
                     <div class="arcade-grid" id="growthGamesGrid">
                         <div class="arcade-game-tile growth-game-indiv" data-game-name="Catechism Clash"><div class="game-tile-icon">⏱️</div><div class="game-tile-info"><h3>Catechism Clash</h3><p>60-Second Sprint!</p></div><div class="game-tile-action" style="background:#059669;">PLAY</div></div>
                         <div class="arcade-game-tile growth-game-indiv" data-game-name="Daily Manna Scramble"><div class="game-tile-icon">🧩</div><div class="game-tile-info"><h3>Daily Manna</h3><p>Unscramble the verse!</p></div><div class="game-tile-action" style="background:#14B8A6;">PLAY</div></div>

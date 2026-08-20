@@ -1,23 +1,22 @@
 // ========== public/js/v10-expansion.js ==========
-// FIRE OF GOD MINISTRIES - V11 GAME ENGINE (LANDING PAGES, 3-TRIES, SUDDEN DEATH)
+// FIRE OF GOD MINISTRIES - V11 GAME ENGINE
 
 window.V10Expansion = {
     bulkDataCache: {},
 
     init: function() {
-        console.log("🚀 V11 Expansion Module Initialized & Server Fallbacks Applied");
+        console.log("🚀 V11 Expansion Module Initialized");
         this.hookNavigation();
         this.loadFeaturedGames();
-
         setTimeout(() => this.applyLandingPages(), 800);
         setTimeout(() => this.loadTopScorers(), 1200);
+        setTimeout(() => this.patchV8ExitHooks(), 1500);
 
         const originalSwitchTab = window.switchTab;
         if (typeof originalSwitchTab === 'function' && !window.switchTab.isV10Patched) {
             window.switchTab = function(...args) {
                 originalSwitchTab.apply(this, args);
                 const tabId = args[0];
-
                 if (tabId === 'leaderboardsHubTab') {
                     window.V10Expansion.loadSegmentedLeaderboard('overall');
                     window.V10Expansion.loadSegmentedLeaderboard('growth');
@@ -38,6 +37,20 @@ window.V10Expansion = {
             if (document.getElementById('profileTab') && document.getElementById('profileTab').classList.contains('active')) window.switchTab('profileTab');
         }
         setTimeout(() => this.loadAdminFeaturedSettings(), 1000);
+    },
+
+    patchV8ExitHooks: function() {
+        const modules = ['V8Slingshot', 'V8NoahsArk', 'V8RedSea', 'V8PetersLeap', 'V8JonahsDive'];
+        modules.forEach(mod => {
+            if (window[mod] && typeof window[mod].exitGame === 'function' && !window[mod]._v10Patched) {
+                const origExit = window[mod].exitGame.bind(window[mod]);
+                window[mod].exitGame = function() {
+                    origExit();
+                    if (window.V10Expansion) window.V10Expansion.exitGame();
+                };
+                window[mod]._v10Patched = true;
+            }
+        });
     },
 
     hookNavigation: function() {
@@ -63,23 +76,16 @@ window.V10Expansion = {
     filterGrowthGames: function(category) {
         const btnIndiv = document.getElementById('btnGrowthIndiv');
         const btnGroups = document.getElementById('btnGrowthGroups');
-        
         if (btnIndiv && btnGroups) {
             btnIndiv.className = category === 'indiv' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
             btnGroups.className = category === 'groups' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
         }
-
         const grid = document.getElementById('growthGamesGrid');
         if (!grid) return;
-
         grid.querySelectorAll('.arcade-game-tile').forEach(tile => {
-            if (category === 'indiv' && tile.classList.contains('growth-game-indiv')) {
-                tile.style.display = 'flex';
-            } else if (category === 'groups' && tile.classList.contains('growth-game-groups')) {
-                tile.style.display = 'flex';
-            } else {
-                tile.style.display = 'none';
-            }
+            if (category === 'indiv' && tile.classList.contains('growth-game-indiv')) tile.style.display = 'flex';
+            else if (category === 'groups' && tile.classList.contains('growth-game-groups')) tile.style.display = 'flex';
+            else tile.style.display = 'none';
         });
     },
 
@@ -94,9 +100,7 @@ window.V10Expansion = {
                     let clicked = false;
                     btns.forEach(b => {
                         const txt = b.innerText.toLowerCase();
-                        if(!clicked && (txt.includes('start') || txt.includes('play') || txt.includes('begin'))) {
-                            b.click(); clicked = true;
-                        }
+                        if(!clicked && (txt.includes('start') || txt.includes('play') || txt.includes('begin'))) { b.click(); clicked = true; }
                     });
                     if(!clicked && typeof mod.startGame === 'function') mod.startGame();
                 }
@@ -118,31 +122,104 @@ window.V10Expansion = {
         if(gameName === 'Shield of Faith: Reflex Tap') return 'V10Expansion.playRX()';
         return '';
     },
+    loadAdminFeaturedSettings: async function() {
+        if (!document.getElementById('setFeaturedArcade')) return;
+        try {
+            const res = await fetch('/api/settings/featured');
+            const data = await res.json();
+            if(data.featured_arcade) document.getElementById('setFeaturedArcade').value = data.featured_arcade;
+            if(data.featured_growth) document.getElementById('setFeaturedGrowth').value = data.featured_growth;
+        } catch(e) {}
+    },
+    saveFeaturedGames: async function(e) {
+        e.preventDefault();
+        window.triggerActionConfirmation('Save these as the featured games?', async () => {
+            try {
+                const res = await fetch('/api/settings/featured', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ featured_arcade: document.getElementById('setFeaturedArcade').value, featured_growth: document.getElementById('setFeaturedGrowth').value, actor: currentUser })
+                });
+                if(res.ok) { alert('Featured games updated!'); window.V10Expansion.loadFeaturedGames(); }
+            } catch(e) { alert("Network Error"); }
+        });
+    },
+    loadFeaturedGames: async function() {
+        try {
+            const res = await fetch('/api/settings/featured');
+            const data = await res.json();
+            this.renderFeaturedSlot('arcadeGridItems', 'featuredArcadeGameContainer', data.featured_arcade || "David's Slingshot", false);
+            this.renderFeaturedSlot('growthGamesGrid', 'featuredGrowthGameContainer', data.featured_growth || "Catechism Clash", true);
 
-    // --------------------------------------------------------------------------
-    // DYNAMIC LANDING PAGE WRAPPER & TOP 3 SCORERS
-    // --------------------------------------------------------------------------
+            setTimeout(() => {
+                const btnIndiv = document.getElementById('btnGrowthIndiv');
+                if(btnIndiv && btnIndiv.classList.contains('btn-primary')) this.filterGrowthGames('indiv');
+                else if (btnIndiv) this.filterGrowthGames('groups');
+            }, 100);
+        } catch(e) {}
+    },
+    renderFeaturedSlot: async function(gridId, containerId, gameName, isGrowth) {
+        const container = document.getElementById(containerId); const grid = document.getElementById(gridId);
+        if (!container || !grid) return;
+
+        grid.querySelectorAll('.arcade-game-card, .arcade-game-tile').forEach(t => t.style.display = 'flex');
+        if (!gameName || gameName === "None") return container.innerHTML = '';
+
+        const tile = grid.querySelector(`[data-game-name="${gameName}"]`);
+        if (tile) {
+            tile.style.display = 'none'; // Hide from lower grid
+            const icon = tile.querySelector('.game-icon') ? tile.querySelector('.game-icon').innerText : (tile.querySelector('.game-tile-icon') ? tile.querySelector('.game-tile-icon').innerText : '🎮');
+            const title = tile.querySelector('h3') ? tile.querySelector('h3').innerText : gameName;
+            const desc = tile.querySelector('p') ? tile.querySelector('p').innerText.replace(/"/g, "'").replace(/\n/g, " ") : 'Play our featured game!';
+
+            const type = isGrowth ? 'growth' : 'arcade';
+            const playFn = this.getPlayFunction(gameName);
+
+            let topHtml = '';
+            try {
+                const topP = this.bulkDataCache ? this.bulkDataCache[gameName] : [];
+                if(topP && topP.length > 0) {
+                    topHtml = `<div style="display:flex; gap:6px; margin-bottom:12px; background:rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 8px; width: fit-content;">`;
+                    topP.forEach((p,i) => {
+                        const m = i===0?'🥇':i===1?'🥈':'🥉';
+                        const a = p.profile_picture ? `<img src="${p.profile_picture}" title="${p.name} - ${p.high_score}XP" style="width:20px; height:20px; border-radius:50%; border:1px solid #FFF; object-fit:cover;">` : `<div title="${p.name} - ${p.high_score}XP" style="width:20px; height:20px; border-radius:50%; background:#E2E8F0; color:#0F172A; display:flex; align-items:center; justify-content:center; font-size:0.5rem; font-weight:bold; border:1px solid #FFF;">${p.name.charAt(0)}</div>`;
+                        topHtml += `<div style="position:relative;">${a}<span style="position:absolute; bottom:-4px; right:-4px; font-size:0.6rem;">${m}</span></div>`;
+                    });
+                    topHtml += `</div>`;
+                }
+            } catch(e){}
+
+            container.innerHTML = `
+                <div class="arcade-featured-game" id="hero-${containerId}" style="max-height: 350px;">
+                    <div class="featured-banner" style="padding: 15px 0;">
+                        <div class="featured-badge" style="top: 10px; left: 10px; font-size: 0.7rem; padding: 4px 8px;">⭐ FEATURED GAME</div>
+                        <div style="font-size: 3rem; margin-top: 5px;">${icon}</div>
+                    </div>
+                    <div class="featured-info" style="padding: 15px;">
+                        <h3 style="font-size: 1.25rem; margin-bottom: 4px;">${title}</h3>
+                        <p style="font-size: 0.85rem; margin-bottom: 10px;">${desc}</p>
+                        ${topHtml}
+                        <div class="featured-action" style="padding: 10px 20px; font-size: 0.85rem;">PLAY NOW</div>
+                    </div>
+                </div>
+            `;
+            setTimeout(() => { const heroCard = document.getElementById(`hero-${containerId}`); if (heroCard) heroCard.onclick = () => window.V10Expansion.openGameLanding(gameName, type, playFn, desc, icon); }, 50);
+        }
+    },
     loadTopScorers: async function() {
         try {
             this.bulkDataCache = {};
             const games = ["David's Slingshot", "Noah's Ark: Rescue", "Moses' Red Sea Dash", "Peter's Leap of Faith", "Jonah's Deep Sea Dive", "Catechism Clash", "Daily Manna Scramble", "Emoji Sermon Translator", "The Narrow Gate", "Shield of Faith: Reflex Tap"];
-
             await Promise.all(games.map(async (g) => {
                 try {
                     const r = await fetch(`/api/gamification/game-top/${encodeURIComponent(g)}`);
                     if(r.ok) this.bulkDataCache[g] = await r.json();
                 } catch(e) {}
             }));
-
             document.querySelectorAll('.arcade-game-card, .arcade-game-tile').forEach(card => {
                 const gameName = card.getAttribute('data-game-name');
                 if (!gameName || !this.bulkDataCache[gameName] || this.bulkDataCache[gameName].length === 0) return;
-
-                // Don't duplicate inside the featured card which handles its own top scorers
                 if (card.classList.contains('arcade-featured-game')) return;
-
                 if (card.querySelector('.top-scorers-container')) card.querySelector('.top-scorers-container').remove();
-
                 const topPlayers = this.bulkDataCache[gameName];
                 let html = `<div class="top-scorers-container" style="background: rgba(0,0,0,0.02); border-top: 1px solid var(--border-color); padding: 8px; display: flex; justify-content: center; gap: 8px; margin-top: auto;">`;
                 topPlayers.forEach((p, i) => {
@@ -151,7 +228,6 @@ window.V10Expansion = {
                     html += `<div style="position: relative;">${avatar}<span style="position: absolute; bottom: -5px; right: -5px; font-size: 0.6rem;">${medal}</span></div>`;
                 });
                 html += `</div>`;
-
                 const actionBtn = card.querySelector('.game-action') || card.querySelector('.game-tile-action');
                 if (actionBtn) actionBtn.insertAdjacentHTML('beforebegin', html);
             });
@@ -161,41 +237,26 @@ window.V10Expansion = {
     applyLandingPages: function() {
         document.querySelectorAll('.arcade-game-card, .arcade-game-tile').forEach(card => {
             const gameName = card.getAttribute('data-game-name');
-            // Skip direct-execution games
             if (!gameName || gameName === 'Cell Group Clash' || gameName === 'Verse Chain' || gameName === 'Would You Rather' || gameName === 'Word Matrix') return;
-
             const type = card.closest('#growthGamesGrid') || card.classList.contains('growth-game-indiv') ? 'growth' : 'arcade';
             const icon = card.querySelector('.game-icon') ? card.querySelector('.game-icon').innerText : (card.querySelector('.game-tile-icon') ? card.querySelector('.game-tile-icon').innerText : '🎮');
             const desc = card.querySelector('p') ? card.querySelector('p').innerText.replace(/"/g, "'").replace(/\n/g, " ") : '';
             const playFn = this.getPlayFunction(gameName);
-
-            // Safe binding to trigger landing page properly
             card.onclick = () => window.V10Expansion.openGameLanding(gameName, type, playFn, desc, icon);
         });
     },
 
     openGameLanding: async function(gameName, type, playFn, desc, icon) {
-        let safeId = 0;
-        let isPreview = false;
+        let safeId = 0; let isPreview = false;
+        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) { safeId = currentMember.id; }
+        else if (typeof currentUser !== 'undefined' && currentUser) { safeId = 999999; isPreview = true; }
+        else return alert("Please log in to play!");
 
-        // Handle Missing Member ID (Admin Preview Mode functionality)
-        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
-            safeId = currentMember.id;
-        } else if (typeof currentUser !== 'undefined' && currentUser) {
-            safeId = 999999; // Dummy ID so Admin can test the UI without crashing
-            isPreview = true;
-        } else {
-            return alert("Please log in to play!");
-        }
-
-        const listId = type === 'growth' ? 'growthGamesGrid' : 'arcadeGamesList';
+        const listId = type === 'growth' ? 'growthGamesGrid' : 'arcadeGridItems';
         const fSlotId = type === 'growth' ? 'featuredGrowthGameContainer' : 'featuredArcadeGameContainer';
 
         document.getElementById(listId).style.display = 'none';
-        if (type === 'growth' && document.getElementById('btnGrowthIndiv')) {
-            document.getElementById('btnGrowthIndiv').parentElement.style.display = 'none'; // Hide filter buttons too
-        }
-
+        if (type === 'growth' && document.getElementById('btnGrowthIndiv')) document.getElementById('btnGrowthIndiv').parentElement.style.display = 'none';
         if (fSlotId && document.getElementById(fSlotId)) document.getElementById(fSlotId).style.display = 'none';
 
         const area = document.getElementById(type === 'growth' ? 'growthActiveGameArea' : 'arcadeActiveGameArea');
@@ -203,17 +264,13 @@ window.V10Expansion = {
 
         try {
             const topPlayers = this.bulkDataCache[gameName] || [];
-
             const safeKey = `fog_att_${safeId}_${gameName.replace(/\s+/g, '')}`;
             let attemptsData = { remaining: 3, highest_score: 0 };
             try {
                 const stored = JSON.parse(localStorage.getItem(safeKey) || '{}');
                 const today = new Date().toISOString().split('T')[0];
                 if (stored.date === today) attemptsData = stored;
-                else {
-                    attemptsData = { date: today, remaining: 3, highest_score: 0 };
-                    localStorage.setItem(safeKey, JSON.stringify(attemptsData));
-                }
+                else { attemptsData = { date: today, remaining: 3, highest_score: 0 }; localStorage.setItem(safeKey, JSON.stringify(attemptsData)); }
             } catch(e) {}
 
             let topHtml = `<p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 5px;">No top scorers yet. Be the first!</p>`;
@@ -222,72 +279,34 @@ window.V10Expansion = {
                 topPlayers.forEach((p, i) => {
                     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
                     const avatar = p.profile_picture ? `<img src="${p.profile_picture}" style="width:30px; height:30px; border-radius:50%; object-fit: cover;">` : `<div style="width:30px; height:30px; border-radius:50%; background:#E2E8F0; color:#0F172A; display:flex; align-items:center; justify-content:center; font-weight:bold;">${p.name.charAt(0)}</div>`;
-                    topHtml += `<div style="display: flex; align-items: center; justify-content: space-between; background: #F8FAFC; padding: 8px 15px; border-radius: 8px; border: 1px solid #E2E8F0;">
-                        <div style="display: flex; align-items: center; gap: 10px;">${medal} ${avatar} <strong style="color: #0F172A; font-size: 0.95rem;">${p.name}</strong></div>
-                        <span style="font-weight: 800; color: ${type === 'growth' ? '#059669' : '#F59E0B'};">${p.high_score} XP</span>
-                    </div>`;
+                    topHtml += `<div style="display: flex; align-items: center; justify-content: space-between; background: #F8FAFC; padding: 8px 15px; border-radius: 8px; border: 1px solid #E2E8F0;"><div style="display: flex; align-items: center; gap: 10px;">${medal} ${avatar} <strong style="color: #0F172A; font-size: 0.95rem;">${p.name}</strong></div><span style="font-weight: 800; color: ${type === 'growth' ? '#059669' : '#F59E0B'};">${p.high_score} XP</span></div>`;
                 });
                 topHtml += `</div>`;
             }
 
             const isLocked = attemptsData.remaining <= 0;
-            let playBtnHtml = isLocked
-                ? `<button class="btn btn-secondary" style="width:100%; padding:15px; font-size:1.1rem; cursor:not-allowed;" disabled>Daily Limit Reached (Check back tomorrow!)</button>`
-                : `<button class="btn btn-primary" style="width:100%; padding:15px; font-size:1.1rem; background: ${type === 'growth' ? '#059669' : '#FF6B00'};" onclick='${playFn}'>▶ PLAY NOW (${attemptsData.remaining} Tries Left)</button>`;
+            let playBtnHtml = isLocked ? `<button class="btn btn-secondary" style="width:100%; padding:15px; font-size:1.1rem; cursor:not-allowed;" disabled>Daily Limit Reached</button>` : `<button class="btn btn-primary" style="width:100%; padding:15px; font-size:1.1rem; background: ${type === 'growth' ? '#059669' : '#FF6B00'};" onclick='${playFn}'>▶ PLAY NOW (${attemptsData.remaining} Tries Left)</button>`;
+            if (isPreview) playBtnHtml = `<button class="btn btn-primary" style="width:100%; padding:15px; font-size:1.1rem; background: ${type === 'growth' ? '#059669' : '#FF6B00'};" onclick='${playFn}'>▶ ADMIN TEST PLAY</button><p style="color: #EF4444; font-size: 0.8rem; margin-top: 10px; font-weight: bold;">Note: Leader. Scores bypass database.</p>`;
 
-            // Override play button if an Admin is testing without a member profile
-            if (isPreview) {
-                playBtnHtml = `
-                    <button class="btn btn-primary" style="width:100%; padding:15px; font-size:1.1rem; background: ${type === 'growth' ? '#059669' : '#FF6B00'};" onclick='${playFn}'>▶ ADMIN TEST PLAY (Unlimited)</button>
-                    <p style="color: #EF4444; font-size: 0.8rem; margin-top: 10px; font-weight: bold;">Note: You are logged in as a Leader. Scores will not be permanently logged.</p>
-                `;
-            }
-
-            let btnParentReset = '';
-            if (type === 'growth') btnParentReset = `if (document.getElementById('btnGrowthIndiv')) document.getElementById('btnGrowthIndiv').parentElement.style.display = 'flex';`;
-
-            const returnScript = type === 'growth'
-                ? `document.getElementById('growthActiveGameArea').style.display='none'; document.getElementById('growthGamesGrid').style.display='grid'; if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display='block'; ${btnParentReset}`
-                : `document.getElementById('arcadeActiveGameArea').style.display='none'; document.getElementById('arcadeGamesList').style.display='block'; if(document.getElementById('featuredArcadeGameContainer')) document.getElementById('featuredArcadeGameContainer').style.display='block';`;
+            let btnParentReset = type === 'growth' ? `if (document.getElementById('btnGrowthIndiv')) document.getElementById('btnGrowthIndiv').parentElement.style.display = 'flex';` : '';
+            const returnScript = type === 'growth' ? `document.getElementById('growthActiveGameArea').style.display='none'; document.getElementById('growthGamesGrid').style.display='grid'; if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display='block'; ${btnParentReset}` : `document.getElementById('arcadeActiveGameArea').style.display='none'; document.getElementById('arcadeGridItems').style.display='grid'; if(document.getElementById('featuredArcadeGameContainer')) document.getElementById('featuredArcadeGameContainer').style.display='block';`;
 
             area.innerHTML = `
-                <div style="padding: 15px; background: #F8FAFC; display: flex; justify-content: space-between; align-items: center; border: 1px solid #E2E8F0; border-radius: 12px 12px 0 0;">
-                    <button class="btn btn-outline btn-sm" onclick="${returnScript}">🔙 Back to Hub</button>
-                    <div style="color: #0F172A; font-weight: bold; font-size: 0.9rem;">${icon} ${gameName}</div>
-                </div>
+                <div style="padding: 15px; background: #F8FAFC; display: flex; justify-content: space-between; align-items: center; border: 1px solid #E2E8F0; border-radius: 12px 12px 0 0;"><button class="btn btn-outline btn-sm" onclick="${returnScript}">🔙 Back to Hub</button><div style="color: #0F172A; font-weight: bold; font-size: 0.9rem;">${icon} ${gameName}</div></div>
                 <div style="background: #FFF; padding: 30px 20px; border: 1px solid #E2E8F0; border-top: none; border-radius: 0 0 12px 12px;">
-                    <div style="text-align: center; margin-bottom: 25px;">
-                        <div style="font-size: 4rem; margin-bottom: 10px;">${icon}</div>
-                        <h2 style="color: ${type === 'growth' ? '#059669' : '#FF6B00'}; font-size: 1.8rem; border: none; margin-bottom: 10px; padding: 0;">${gameName}</h2>
-                        <p style="color: #4B5563; font-size: 0.95rem; line-height: 1.5; margin: 0 auto; max-width: 400px;">${desc}</p>
-                    </div>
-                    <div style="background: #FFFBEB; border: 1px solid #FDE68A; padding: 15px; border-radius: 12px; margin-bottom: 25px;">
-                        <h3 style="color: #D97706; font-size: 1rem; margin-bottom: 15px; border-bottom: 1px solid #FDE68A; padding-bottom: 5px;">🏆 Top 3 Players</h3>
-                        ${topHtml}
-                    </div>
-                    <div style="text-align: center; margin-bottom: 15px;">
-                        <span class="badge badge-orange">Your Daily High Score: ${attemptsData.highest_score}</span>
-                    </div>
+                    <div style="text-align: center; margin-bottom: 25px;"><div style="font-size: 4rem; margin-bottom: 10px;">${icon}</div><h2 style="color: ${type === 'growth' ? '#059669' : '#FF6B00'}; font-size: 1.8rem; border: none; margin-bottom: 10px; padding: 0;">${gameName}</h2><p style="color: #4B5563; font-size: 0.95rem; line-height: 1.5; margin: 0 auto; max-width: 400px;">${desc}</p></div>
+                    <div style="background: #FFFBEB; border: 1px solid #FDE68A; padding: 15px; border-radius: 12px; margin-bottom: 25px;"><h3 style="color: #D97706; font-size: 1rem; margin-bottom: 15px; border-bottom: 1px solid #FDE68A; padding-bottom: 5px;">🏆 Top 3 Players</h3>${topHtml}</div>
+                    <div style="text-align: center; margin-bottom: 15px;"><span class="badge badge-orange">Your Daily High Score: ${attemptsData.highest_score}</span></div>
                     ${playBtnHtml}
-                </div>
-            `;
-        } catch (e) {
-            area.innerHTML = `<p style="color:red; padding: 20px;">Error loading game: ${e.message}</p>`;
-            console.error("Game Landing Error:", e);
-        }
+                </div>`;
+        } catch (e) { area.innerHTML = `<p style="color:red; padding: 20px;">Error loading game: ${e.message}</p>`; }
     },
 
-    // 🛡️ CRITICAL FIX FOR MISSION 1: Ensure all frontend scores hit the universal route
     submitUniversalScore: async function(gameName, type, score) {
-        let safeId = 0;
-        let isPreview = false;
-
-        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
-            safeId = currentMember.id;
-        } else if (typeof currentUser !== 'undefined' && currentUser) {
-            safeId = 999999;
-            isPreview = true;
-        } else return;
+        let safeId = 0; let isPreview = false;
+        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) { safeId = currentMember.id; }
+        else if (typeof currentUser !== 'undefined' && currentUser) { safeId = 999999; isPreview = true; }
+        else return;
 
         try {
             const safeKey = `fog_att_${safeId}_${gameName.replace(/\s+/g, '')}`;
@@ -295,27 +314,16 @@ window.V10Expansion = {
             if (!isPreview) stored.remaining = Math.max(0, (stored.remaining || 3) - 1);
 
             let beatHigh = false;
-            if (score > (stored.highest_score || 0)) {
-                stored.highest_score = score;
-                beatHigh = true;
-            }
+            if (score > (stored.highest_score || 0)) { stored.highest_score = score; beatHigh = true; }
             localStorage.setItem(safeKey, JSON.stringify(stored));
 
-            let pointsAwarded = score;
-            let success = true;
+            let pointsAwarded = score; let success = true;
 
             if (!isPreview && score > 0) {
-                // Pointing everything to the newly constructed universal API route in server.js
-                let url = '/api/games/universal-submit';
                 let payload = { youth_id: safeId, game_name: gameName, score: score, type: type, actor: currentUser };
-
-                const res = await fetch(url, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                const res = await fetch('/api/games/universal-submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 const data = await res.json();
-                success = data.success;
-                pointsAwarded = data.pointsAwarded !== undefined ? data.pointsAwarded : score;
+                success = data.success; pointsAwarded = data.pointsAwarded !== undefined ? data.pointsAwarded : score;
             }
 
             if (success) {
@@ -323,29 +331,20 @@ window.V10Expansion = {
                 if (!isPreview && typeof window.V8Arcade !== 'undefined' && type === 'arcade') window.V8Arcade.updateTotalXP();
 
                 const area = document.getElementById(type === 'growth' ? 'growthActiveGameArea' : 'arcadeActiveGameArea');
-                let rewardText = pointsAwarded > 0
-                    ? `<div style="font-size: 2rem; color: #10B981; font-weight: 800; margin: 20px 0;">+${pointsAwarded} ${type.toUpperCase()} XP!</div><p style="color: #64748B;">${beatHigh ? 'You beat your daily high score!' : 'Great job!'}</p>`
-                    : `<div style="font-size: 1.2rem; color: #F59E0B; font-weight: 800; margin: 20px 0;">Score: ${score}</div><p style="color: #64748B;">Didn't beat your high score of ${stored.highest_score}.</p>`;
-
+                let rewardText = pointsAwarded > 0 ? `<div style="font-size: 2rem; color: #10B981; font-weight: 800; margin: 20px 0;">+${pointsAwarded} ${type.toUpperCase()} XP!</div><p style="color: #64748B;">${beatHigh ? 'You beat your daily high score!' : 'Great job!'}</p>` : `<div style="font-size: 1.2rem; color: #F59E0B; font-weight: 800; margin: 20px 0;">Score: ${score}</div><p style="color: #64748B;">Didn't beat your high score of ${stored.highest_score}.</p>`;
                 if (isPreview) rewardText += `<p style="color: #EF4444; font-size: 0.85rem; font-weight: bold; margin-top: 10px;">(Admin Test: Score bypassed database)</p>`;
 
-                let btnParentReset = '';
-                if (type === 'growth') btnParentReset = `if (document.getElementById('btnGrowthIndiv')) document.getElementById('btnGrowthIndiv').parentElement.style.display = 'flex';`;
-
-                const returnScript = type === 'growth'
-                    ? `document.getElementById('growthActiveGameArea').style.display='none'; document.getElementById('growthGamesGrid').style.display='grid'; if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display='block'; ${btnParentReset}`
-                    : `document.getElementById('arcadeActiveGameArea').style.display='none'; document.getElementById('arcadeGamesList').style.display='block'; if(document.getElementById('featuredArcadeGameContainer')) document.getElementById('featuredArcadeGameContainer').style.display='block';`;
+                let btnParentReset = type === 'growth' ? `if (document.getElementById('btnGrowthIndiv')) document.getElementById('btnGrowthIndiv').parentElement.style.display = 'flex';` : '';
+                const returnScript = type === 'growth' ? `document.getElementById('growthActiveGameArea').style.display='none'; document.getElementById('growthGamesGrid').style.display='grid'; if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display='block'; ${btnParentReset}` : `document.getElementById('arcadeActiveGameArea').style.display='none'; document.getElementById('arcadeGridItems').style.display='grid'; if(document.getElementById('featuredArcadeGameContainer')) document.getElementById('featuredArcadeGameContainer').style.display='block';`;
 
                 area.innerHTML = `
                     <div style="background: #FFF; padding: 40px 20px; border-radius: 12px; text-align: center; border: 1px solid #E2E8F0;">
-                        <h2 style="color: #0F172A; border: none;">Run Completed</h2>
-                        ${rewardText}
+                        <h2 style="color: #0F172A; border: none;">Run Completed</h2>${rewardText}
                         ${!isPreview ? `<p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 25px;">You have ${stored.remaining} attempts left today.</p>` : ''}
                         <button class="btn btn-outline" style="width: 100%; max-width: 250px;" onclick="${returnScript}">Return to Hub</button>
-                    </div>
-                `;
+                    </div>`;
             } else { alert("Failed to save score."); }
-        } catch(e) { alert("Network Error."); console.error(e); }
+        } catch(e) {}
     },
 
     exitGame: function() {
@@ -358,20 +357,58 @@ window.V10Expansion = {
         if(growthGrid) growthGrid.style.display = 'grid';
         if(document.getElementById('featuredGrowthGameContainer')) document.getElementById('featuredGrowthGameContainer').style.display = 'block';
 
-        if (document.getElementById('btnGrowthIndiv')) {
-            document.getElementById('btnGrowthIndiv').parentElement.style.display = 'flex';
-        }
+        if (document.getElementById('btnGrowthIndiv')) document.getElementById('btnGrowthIndiv').parentElement.style.display = 'flex';
 
         const arcadeArea = document.getElementById('arcadeActiveGameArea');
         if(arcadeArea) { arcadeArea.style.display = 'none'; arcadeArea.innerHTML = ''; }
-        const arcadeList = document.getElementById('arcadeGamesList');
-        if(arcadeList) arcadeList.style.display = 'block';
+        
+        const arcadeGrid = document.getElementById('arcadeGridItems');
+        if(arcadeGrid) arcadeGrid.style.display = 'grid';
+
         if(document.getElementById('featuredArcadeGameContainer')) document.getElementById('featuredArcadeGameContainer').style.display = 'block';
+
+        setTimeout(() => {
+            const activeIndiv = document.getElementById('btnGrowthIndiv');
+            if(activeIndiv && activeIndiv.classList.contains('btn-primary')) this.filterGrowthGames('indiv');
+            else if (activeIndiv) this.filterGrowthGames('groups');
+        }, 50);
+    },
+    switchLeaderboardTab: function(tab) {
+        document.getElementById('ldrOverallView').style.display = tab === 'overall' ? 'block' : 'none';
+        document.getElementById('ldrGrowthView').style.display = tab === 'growth' ? 'block' : 'none';
+        document.getElementById('ldrArcadeView').style.display = tab === 'arcade' ? 'block' : 'none';
+        document.getElementById('btnLdrOverall').classList.toggle('active', tab === 'overall');
+        document.getElementById('btnLdrGrowth').classList.toggle('active', tab === 'growth');
+        document.getElementById('btnLdrArcade').classList.toggle('active', tab === 'arcade');
     },
 
-    // --------------------------------------------------------------------------
-    // THE 15-SLIDE SUDDEN DEATH GAME ENGINES
-    // --------------------------------------------------------------------------
+    loadSegmentedLeaderboard: async function(type) {
+        const fetchAndRender = async (timeframe, containerId) => {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            try {
+                const res = await fetch(`/api/leaderboards/${type}/${timeframe}`);
+                const data = await res.json();
+                if (data.length === 0) return container.innerHTML = '<p style="text-align: center; color: var(--text-muted); font-size: 0.9rem;">No points earned in this period.</p>';
+                container.innerHTML = data.map((u, i) => {
+                    let rI = `<span style="color: #64748B; font-weight: bold;">#${i+1}</span>`;
+                    if(i===0) rI='🥇'; if(i===1) rI='🥈'; if(i===2) rI='🥉';
+                    const av = u.profile_picture ? `<img src="${u.profile_picture}" style="width:34px; height:34px; border-radius:50%; object-fit:cover;">` : `<div style="width:34px; height:34px; border-radius:50%; background:#E2E8F0; display:flex; align-items:center; justify-content:center; font-size:0.9rem; font-weight:bold;">${u.name.charAt(0)}</div>`;
+                    let sT = type === 'overall' ? `⭐ ${u.points}` : type === 'growth' ? `🌱 ${u.growth_xp}` : `🎮 ${u.arcade_xp}`;
+                    const hc = type === 'overall' ? '#D97706' : type === 'growth' ? '#059669' : '#2563EB';
+                    return `<div style="background: ${i===0?'#FEF3C7':'#FFFFFF'}; border: 1px solid #E2E8F0; border-radius: 12px; padding: 10px 14px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 12px;"><div style="width: 25px; text-align: center; font-size: 1.1rem;">${rI}</div>${av}<strong style="color: #0F172A; font-size: 1rem;">${u.name}</strong></div>
+                        <div style="font-weight: 900; color: ${hc}; font-size: 1.1rem;">${sT}</div>
+                    </div>`;
+                }).join('');
+            } catch(e) { container.innerHTML = '<p style="color:red;">Error.</p>'; }
+        };
+        const typeCap = type.charAt(0).toUpperCase() + type.slice(1);
+        await fetchAndRender('all_time', `ldr${typeCap}Container`);
+        await fetchAndRender('last_week', `ldr${typeCap}LastWeekContainer`);
+        await fetchAndRender('month', `ldr${typeCap}MonthContainer`);
+    },
+
     playCC: async function() {
         const data = await fetch('/api/growth-games/narrow-gate').then(r=>r.json());
         this.ccState = { q: data, i: 0, s: 0, t: 60 };
@@ -401,20 +438,13 @@ window.V10Expansion = {
         }
     },
 
-    playWAI: async function() {
-        this.waiState = { i: 0, s: 0, clues: 1, currentQ: null };
-        this.nextWAI();
-    },
+    playWAI: async function() { this.waiState = { i: 0, s: 0, clues: 1, currentQ: null }; this.nextWAI(); },
     nextWAI: async function() {
         if(this.waiState.i >= 10) return this.submitUniversalScore("Who Am I?", "growth", this.waiState.s);
-        const r = await fetch('/api/growth-games/whoami');
-        this.waiState.currentQ = await r.json();
-        this.waiState.clues = 1;
-        this.renderWAI();
+        const r = await fetch('/api/growth-games/whoami'); this.waiState.currentQ = await r.json(); this.waiState.clues = 1; this.renderWAI();
     },
     renderWAI: function() {
-        const q = this.waiState.currentQ;
-        let pts = this.waiState.clues === 1 ? 15 : this.waiState.clues === 2 ? 10 : 5;
+        const q = this.waiState.currentQ; let pts = this.waiState.clues === 1 ? 15 : this.waiState.clues === 2 ? 10 : 5;
         let h = `<div style="display:flex; justify-content:space-between; margin-bottom:15px; font-weight:bold;"><span>Score: ${this.waiState.s}</span><span>${this.waiState.i+1}/10</span></div>`;
         h += `<div style="background:#FFFBEB; padding:15px; border-radius:8px; margin-bottom:10px;"><strong>Clue 1:</strong> ${q.clue1}</div>`;
         if(this.waiState.clues >= 2) h += `<div style="background:#FFFBEB; padding:15px; border-radius:8px; margin-bottom:10px;"><strong>Clue 2:</strong> ${q.clue2}</div>`;
@@ -436,18 +466,13 @@ window.V10Expansion = {
         }
     },
 
-    playVS: async function() {
-        this.vsState = { i: 0, s: 0, cur: [], words: [], currentQ: null };
-        this.nextVS();
-    },
+    playVS: async function() { this.vsState = { i: 0, s: 0, cur: [], words: [], currentQ: null }; this.nextVS(); },
     nextVS: async function() {
         if(this.vsState.i >= 10) return this.submitUniversalScore("Daily Manna Scramble", "growth", this.vsState.s);
-        const r = await fetch('/api/growth-games/verse-scramble');
-        this.vsState.currentQ = await r.json();
+        const r = await fetch('/api/growth-games/verse-scramble'); this.vsState.currentQ = await r.json();
         this.vsState.correctOrder = this.vsState.currentQ.verse_text.split(' ');
         this.vsState.words = [...this.vsState.correctOrder].sort(()=>Math.random()-0.5);
-        this.vsState.cur = [];
-        this.renderVS();
+        this.vsState.cur = []; this.renderVS();
     },
     renderVS: function() {
         const q = this.vsState.currentQ;
@@ -471,21 +496,13 @@ window.V10Expansion = {
         }
     },
 
-    playEM: async function() {
-        this.emState = { i: 0, s: 0, currentQ: null };
-        this.nextEM();
-    },
+    playEM: async function() { this.emState = { i: 0, s: 0, currentQ: null }; this.nextEM(); },
     nextEM: async function() {
         if(this.emState.i >= 15) return this.submitUniversalScore("Emoji Sermon Translator", "growth", this.emState.s);
-
-        // Pass dummy ID for admins if needed
         const safeId = (typeof currentMember !== 'undefined' && currentMember && currentMember.id) ? currentMember.id : 0;
-
-        const r = await fetch(`/api/growth-games/emoji?youth_id=${safeId}`);
-        const data = await r.json();
+        const r = await fetch(`/api/growth-games/emoji?youth_id=${safeId}`); const data = await r.json();
         if(data.limit_reached || data.exhausted || !data.question) return this.submitUniversalScore("Emoji Sermon Translator", "growth", this.emState.s);
-        this.emState.currentQ = data.question;
-        this.renderEM();
+        this.emState.currentQ = data.question; this.renderEM();
     },
     renderEM: function() {
         const q = this.emState.currentQ; let opts = JSON.parse(q.options);
@@ -552,140 +569,28 @@ window.V10Expansion = {
             if(this.rxState.step >= 3) { this.rxState.s += 15; this.rxState.i++; this.startRXRound(); }
             else document.querySelector('#growthActiveGameArea h3').innerText = `Tap Item #${this.rxState.step+1}!`;
         } else this.submitUniversalScore("Shield of Faith: Reflex Tap", "growth", this.rxState.s);
-    },
-
-    // --------------------------------------------------------------------------
-    // ADMIN CONFIGURATIONS & LEADERBOARDS
-    // --------------------------------------------------------------------------
-    loadAdminFeaturedSettings: async function() {
-        if (!document.getElementById('setFeaturedArcade')) return;
-        try {
-            const res = await fetch('/api/settings/featured');
-            const data = await res.json();
-            if(data.featured_arcade) document.getElementById('setFeaturedArcade').value = data.featured_arcade;
-            if(data.featured_growth) document.getElementById('setFeaturedGrowth').value = data.featured_growth;
-        } catch(e) {}
-    },
-    saveFeaturedGames: async function(e) {
-        e.preventDefault();
-        window.triggerActionConfirmation('Save these as the featured games?', async () => {
-            try {
-                const res = await fetch('/api/settings/featured', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ featured_arcade: document.getElementById('setFeaturedArcade').value, featured_growth: document.getElementById('setFeaturedGrowth').value, actor: currentUser })
-                });
-                if(res.ok) { alert('Featured games updated!'); window.V10Expansion.loadFeaturedGames(); }
-            } catch(e) { alert("Network Error"); }
-        });
-    },
-    loadFeaturedGames: async function() {
-        try {
-            const res = await fetch('/api/settings/featured');
-            const data = await res.json();
-            this.renderFeaturedSlot('arcadeGridItems', 'featuredArcadeGameContainer', data.featured_arcade || "David's Slingshot", false);
-            this.renderFeaturedSlot('growthGamesGrid', 'featuredGrowthGameContainer', data.featured_growth || "Catechism Clash", true);
-        } catch(e) {}
-    },
-
-    // UI REDESIGN: Sleeker, smaller layout removing redundant labels
-    renderFeaturedSlot: async function(gridId, containerId, gameName, isGrowth) {
-        const container = document.getElementById(containerId); const grid = document.getElementById(gridId);
-        if (!container || !grid) return;
-
-        grid.querySelectorAll('.arcade-game-card, .arcade-game-tile').forEach(t => t.style.display = 'flex');
-        if (!gameName || gameName === "None") return container.innerHTML = '';
-
-        const tile = grid.querySelector(`[data-game-name="${gameName}"]`);
-        if (tile) {
-            tile.style.display = 'none'; // Hide from lower grid
-            const icon = tile.querySelector('.game-icon') ? tile.querySelector('.game-icon').innerText : (tile.querySelector('.game-tile-icon') ? tile.querySelector('.game-tile-icon').innerText : '🎮');
-            const title = tile.querySelector('h3') ? tile.querySelector('h3').innerText : gameName;
-            const desc = tile.querySelector('p') ? tile.querySelector('p').innerText.replace(/"/g, "'").replace(/\n/g, " ") : 'Play our featured game!';
-
-            const type = isGrowth ? 'growth' : 'arcade';
-            const playFn = this.getPlayFunction(gameName);
-
-            let topHtml = '';
-            try {
-                const topP = this.bulkDataCache ? this.bulkDataCache[gameName] : [];
-                if(topP && topP.length > 0) {
-                    topHtml = `<div style="display:flex; gap:6px; margin-bottom:12px; background:rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 8px; width: fit-content;">`;
-                    topP.forEach((p,i) => {
-                        const m = i===0?'🥇':i===1?'🥈':'🥉';
-                        const a = p.profile_picture ? `<img src="${p.profile_picture}" title="${p.name} - ${p.high_score}XP" style="width:20px; height:20px; border-radius:50%; border:1px solid #FFF; object-fit:cover;">` : `<div title="${p.name} - ${p.high_score}XP" style="width:20px; height:20px; border-radius:50%; background:#E2E8F0; color:#0F172A; display:flex; align-items:center; justify-content:center; font-size:0.5rem; font-weight:bold; border:1px solid #FFF;">${p.name.charAt(0)}</div>`;
-                        topHtml += `<div style="position:relative;">${a}<span style="position:absolute; bottom:-4px; right:-4px; font-size:0.6rem;">${m}</span></div>`;
-                    });
-                    topHtml += `</div>`;
-                }
-            } catch(e){}
-
-            // Output the beautiful featured container with injected smaller padding/font-sizes
-            container.innerHTML = `
-                <div class="arcade-featured-game" id="hero-${containerId}" style="max-height: 350px;">
-                    <div class="featured-banner" style="padding: 15px 0;">
-                        <div class="featured-badge" style="top: 10px; left: 10px; font-size: 0.7rem; padding: 4px 8px;">⭐ FEATURED GAME</div>
-                        <div style="font-size: 3rem; margin-top: 5px;">${icon}</div>
-                    </div>
-                    <div class="featured-info" style="padding: 15px;">
-                        <h3 style="font-size: 1.25rem; margin-bottom: 4px;">${title}</h3>
-                        <p style="font-size: 0.85rem; margin-bottom: 10px;">${desc}</p>
-                        ${topHtml}
-                        <div class="featured-action" style="padding: 10px 20px; font-size: 0.85rem;">PLAY NOW</div>
-                    </div>
-                </div>
-            `;
-
-            // Wait for DOM to register HTML injection, then bind the click safely
-            setTimeout(() => {
-                const heroCard = document.getElementById(`hero-${containerId}`);
-                if (heroCard) {
-                    heroCard.onclick = () => window.V10Expansion.openGameLanding(gameName, type, playFn, desc, icon);
-                }
-            }, 50);
-        }
-    },
-
-    switchLeaderboardTab: function(tab) {
-        document.getElementById('ldrOverallView').style.display = tab === 'overall' ? 'block' : 'none';
-        document.getElementById('ldrGrowthView').style.display = tab === 'growth' ? 'block' : 'none';
-        document.getElementById('ldrArcadeView').style.display = tab === 'arcade' ? 'block' : 'none';
-        document.getElementById('btnLdrOverall').classList.toggle('active', tab === 'overall');
-        document.getElementById('btnLdrGrowth').classList.toggle('active', tab === 'growth');
-        document.getElementById('btnLdrArcade').classList.toggle('active', tab === 'arcade');
-    },
-
-    loadSegmentedLeaderboard: async function(type) {
-        const fetchAndRender = async (timeframe, containerId) => {
-            const container = document.getElementById(containerId);
-            if (!container) return;
-            try {
-                const res = await fetch(`/api/leaderboards/${type}/${timeframe}`);
-                const data = await res.json();
-                if (data.length === 0) return container.innerHTML = '<p style="text-align: center; color: var(--text-muted); font-size: 0.9rem;">No points earned in this period.</p>';
-
-                container.innerHTML = data.map((u, i) => {
-                    let rI = `<span style="color: #64748B; font-weight: bold;">#${i+1}</span>`;
-                    if(i===0) rI='🥇'; if(i===1) rI='🥈'; if(i===2) rI='🥉';
-                    const av = u.profile_picture ? `<img src="${u.profile_picture}" style="width:34px; height:34px; border-radius:50%; object-fit:cover;">` : `<div style="width:34px; height:34px; border-radius:50%; background:#E2E8F0; display:flex; align-items:center; justify-content:center; font-size:0.9rem; font-weight:bold;">${u.name.charAt(0)}</div>`;
-                    let sT = type === 'overall' ? `⭐ ${u.points}` : type === 'growth' ? `🌱 ${u.growth_xp}` : `🎮 ${u.arcade_xp}`;
-                    const hc = type === 'overall' ? '#D97706' : type === 'growth' ? '#059669' : '#2563EB';
-                    return `<div style="background: ${i===0?'#FEF3C7':'#FFFFFF'}; border: 1px solid #E2E8F0; border-radius: 12px; padding: 10px 14px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
-                        <div style="display: flex; align-items: center; gap: 12px;"><div style="width: 25px; text-align: center; font-size: 1.1rem;">${rI}</div>${av}<strong style="color: #0F172A; font-size: 1rem;">${u.name}</strong></div>
-                        <div style="font-weight: 900; color: ${hc}; font-size: 1.1rem;">${sT}</div>
-                    </div>`;
-                }).join('');
-            } catch(e) { container.innerHTML = '<p style="color:red; text-align:center;">Error loading leaderboard.</p>'; }
-        };
-        const typeCap = type.charAt(0).toUpperCase() + type.slice(1);
-        await fetchAndRender('all_time', `ldr${typeCap}Container`);
-        await fetchAndRender('last_week', `ldr${typeCap}LastWeekContainer`);
-        await fetchAndRender('month', `ldr${typeCap}MonthContainer`);
     }
 };
 
-// ==============================================================================
-// V8 ARCADE RE-INJECTION FOR TAB ROUTING & LEADERBOARD FIX
-// ==============================================================================
+window.refreshAllRanks = function() {
+    const activeBtns = document.querySelectorAll('button[onclick*="refreshAllRanks"]');
+    activeBtns.forEach(btn => {
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '⏳ Refreshing...';
+        btn.disabled = true;
+        setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 800);
+    });
+
+    if (window.V8Arcade && typeof window.V8Arcade.loadLeaderboard === 'function') window.V8Arcade.loadLeaderboard();
+    if (window.V6Gamification && typeof window.V6Gamification.loadLeaderboard === 'function') window.V6Gamification.loadLeaderboard();
+    if (window.V10Expansion && typeof window.V10Expansion.loadSegmentedLeaderboard === 'function') {
+        window.V10Expansion.loadSegmentedLeaderboard('overall');
+        window.V10Expansion.loadSegmentedLeaderboard('growth');
+        window.V10Expansion.loadSegmentedLeaderboard('arcade');
+    }
+    if (window.V10Expansion && typeof window.V10Expansion.loadTopScorers === 'function') window.V10Expansion.loadTopScorers();
+};
+
 window.V8Arcade = Object.assign(window.V8Arcade || {}, {
     switchTab: function(tab) {
         const list = document.getElementById('arcadeGamesList');
@@ -703,8 +608,6 @@ window.V8Arcade = Object.assign(window.V8Arcade || {}, {
 
         if (tab === 'leaderboard') this.loadLeaderboard();
     },
-
-    // FIX: Re-routed to the correct V10 endpoint instead of the dead legacy route
     loadLeaderboard: async function() {
         const container = document.getElementById('arcadeLeaderboardContainer');
         if (!container) return;
@@ -723,7 +626,7 @@ window.V8Arcade = Object.assign(window.V8Arcade || {}, {
                     <div style="font-weight: 900; color: #2563EB; font-size: 1.15rem;">🎮 ${user.points || user.arcade_xp || 0} XP</div>
                 </div>`;
             }).join('');
-        } catch (e) { container.innerHTML = '<p style="color:red; text-align:center;">Network error loading ranks. Check your server connection.</p>'; }
+        } catch (e) { container.innerHTML = '<p style="color:red; text-align:center;">Network error loading ranks.</p>'; }
     },
     updateTotalXP: async function() {
         if (!currentMember || !currentMember.id) return;
@@ -735,36 +638,5 @@ window.V8Arcade = Object.assign(window.V8Arcade || {}, {
         } catch(e) {}
     }
 });
-
-// 🛡️ CRITICAL FIX FOR MISSION 4: Global UI Async Refresher Engine
-window.refreshAllRanks = function() {
-    // 1. Give instant UI feedback by changing the button to a spinner temporarily
-    const activeBtns = document.querySelectorAll('button[onclick*="refreshAllRanks"]');
-    activeBtns.forEach(btn => {
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '⏳ Refreshing...';
-        btn.disabled = true;
-        setTimeout(() => {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-        }, 800);
-    });
-
-    // 2. Cascade down to all relevant leaderboard fetching functions silently
-    if (window.V8Arcade && typeof window.V8Arcade.loadLeaderboard === 'function') {
-        window.V8Arcade.loadLeaderboard();
-    }
-    if (window.V6Gamification && typeof window.V6Gamification.loadLeaderboard === 'function') {
-        window.V6Gamification.loadLeaderboard();
-    }
-    if (window.V10Expansion && typeof window.V10Expansion.loadSegmentedLeaderboard === 'function') {
-        window.V10Expansion.loadSegmentedLeaderboard('overall');
-        window.V10Expansion.loadSegmentedLeaderboard('growth');
-        window.V10Expansion.loadSegmentedLeaderboard('arcade');
-    }
-    if (window.V10Expansion && typeof window.V10Expansion.loadTopScorers === 'function') {
-        window.V10Expansion.loadTopScorers();
-    }
-};
 
 document.addEventListener('DOMContentLoaded', () => { window.V10Expansion.init(); });
