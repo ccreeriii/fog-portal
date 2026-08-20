@@ -151,6 +151,93 @@ db.serialize(() => {
         }
     });
 
+    
+    db.get(`SELECT COUNT(*) as cnt FROM brain_trivia_questions`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            console.log('[INIT] Seeding Database with 75 Unique Bible Trivia Questions...');
+            const qList = [
+                ["How many days and nights did it rain during the flood?", '["40", "7", "30", "12"]', 0],
+                ["Who was swallowed by a great fish?", '["Moses", "Jonah", "Peter", "David"]', 1],
+                ["What is the first book of the New Testament?", '["Genesis", "Mark", "Matthew", "John"]', 2],
+                ["Who defeated Goliath?", '["Samson", "Saul", "Jonathan", "David"]', 3],
+                ["What did Jesus turn water into at the wedding in Cana?", '["Wine", "Blood", "Milk", "Honey"]', 0],
+                ["Who parted the Red Sea?", '["Joshua", "Moses", "Aaron", "Elijah"]', 1],
+                ["What was the name of the garden where Adam and Eve lived?", '["Gethsemane", "Babylon", "Eden", "Zion"]', 2],
+                ["How many disciples did Jesus choose?", '["10", "12", "7", "40"]', 1],
+                ["Who built the Ark?", '["Noah", "Abraham", "Lot", "Job"]', 0],
+                ["Who was Jesus' earthly father?", '["John", "Zacharias", "Joseph", "James"]', 2],
+                ["What animal tempted Eve?", '["Lion", "Serpent", "Eagle", "Dragon"]', 1],
+                ["Who was thrown into the lion's den?", '["Shadrach", "Meshach", "Daniel", "Abednego"]', 2],
+                ["Which apostle denied Jesus three times?", '["Judas", "Thomas", "John", "Peter"]', 3],
+                ["What sea did Jesus walk on?", '["Red Sea", "Dead Sea", "Sea of Galilee", "Mediterranean Sea"]', 2],
+                ["Who received the Ten Commandments?", '["Moses", "Aaron", "Joshua", "David"]', 0],
+                ["Who was the first man created?", '["Noah", "Adam", "Enoch", "Seth"]', 1],
+                ["What food did God provide the Israelites in the desert?", '["Bread", "Manna", "Fruit", "Fish"]', 1],
+                ["Who betrayed Jesus?", '["Peter", "Thomas", "Judas Iscariot", "Matthew"]', 2],
+                ["What is the longest book in the Bible?", '["Genesis", "Isaiah", "Psalms", "Jeremiah"]', 2],
+                ["Who was the giant killed by a sling and stone?", '["Samson", "Goliath", "Og", "Anak"]', 1],
+                ["What day did God rest during creation?", '["Sixth", "Seventh", "First", "Third"]', 1],
+                ["Who was sold into slavery by his brothers?", '["Benjamin", "Reuben", "Joseph", "Judah"]', 2],
+                ["What did David use to kill Goliath?", '["Sword", "Spear", "Sling", "Bow"]', 2],
+                ["Who baptized Jesus?", '["John the Baptist", "Peter", "James", "Matthew"]', 0],
+                ["What bird brought an olive branch to Noah?", '["Raven", "Dove", "Eagle", "Sparrow"]', 1],
+                ["Who was the wisest king of Israel?", '["David", "Saul", "Solomon", "Hezekiah"]', 2],
+                ["Where was Jesus born?", '["Nazareth", "Jerusalem", "Bethlehem", "Jericho"]', 2],
+                ["How many plagues did God send on Egypt?", '["7", "10", "12", "40"]', 1],
+                ["Who was the mother of Jesus?", '["Elizabeth", "Martha", "Mary", "Sarah"]', 2],
+                ["What sign did God give to promise no more global floods?", '["Cloud", "Dove", "Star", "Rainbow"]', 3],
+                ["Who interpreted Pharaoh's dreams?", '["Moses", "Joseph", "Daniel", "Jacob"]', 1],
+                ["What was Matthew's profession before following Jesus?", '["Fisherman", "Carpenter", "Tax Collector", "Tentmaker"]', 2],
+                ["Who climbed a sycamore tree to see Jesus?", '["Zacchaeus", "Nicodemus", "Bartimaeus", "Lazarus"]', 0],
+                ["What did Jesus feed the 5,000 with?", '["Bread and Wine", "5 Loaves and 2 Fish", "7 Loaves", "Manna"]', 1],
+                ["Who wore a coat of many colors?", '["David", "Joseph", "Jacob", "Esau"]', 1],
+                ["Who was blinded on the road to Damascus?", '["Peter", "Saul (Paul)", "Stephen", "Barnabas"]', 1],
+                ["What flowed from Jesus' side on the cross?", '["Blood and Water", "Tears", "Wine", "Oil"]', 0],
+                ["What type of wood was the Ark made of?", '["Cedar", "Gopher", "Oak", "Acacia"]', 1],
+                ["How many stones did David pick up to fight Goliath?", '["1", "3", "5", "7"]', 2],
+                ["Who lived to be 969 years old?", '["Noah", "Adam", "Enoch", "Methuselah"]', 3],
+                ["What was the name of Abraham's promised son?", '["Ishmael", "Isaac", "Jacob", "Esau"]', 1],
+                ["Who led the Israelites after Moses died?", '["Aaron", "Caleb", "Joshua", "Gideon"]', 2],
+                ["What weapon did Samson use to slay 1,000 Philistines?", '["Sword", "Jawbone of an ass", "Spear", "Club"]', 1],
+                ["Who washed the disciples' feet?", '["Peter", "John", "Jesus", "Mary"]', 2],
+                ["What is the last book of the Bible?", '["Jude", "Revelation", "Acts", "Hebrews"]', 1],
+                ["What insect did Jesus say John the Baptist ate?", '["Beetles", "Locusts", "Ants", "Moths"]', 1],
+                ["Who was known as the beloved physician?", '["Matthew", "Mark", "Luke", "John"]', 2],
+                ["How many days was Jesus in the tomb?", '["1", "2", "3", "4"]', 2],
+                ["Who was the first king of Israel?", '["David", "Solomon", "Saul", "Samuel"]', 2],
+                ["What river was Jesus baptized in?", '["Nile", "Tigris", "Euphrates", "Jordan"]', 3],
+                ["Who recognized Jesus as the Messiah as a baby in the temple?", '["Simeon", "Zechariah", "Nicodemus", "Herod"]', 0],
+                ["What did the Israelites worship while Moses was on Mount Sinai?", '["Golden Calf", "Baal", "Asherah", "Bronze Serpent"]', 0],
+                ["Who killed Abel?", '["Seth", "Enoch", "Cain", "Lamech"]', 2],
+                ["Where did Jesus pray before his arrest?", '["Mount Sinai", "Mount of Olives", "Gethsemane", "Golgotha"]', 2],
+                ["What happened to Lot's wife?", '["Turned to stone", "Turned to a pillar of salt", "Swallowed by the earth", "Struck by lightning"]', 1],
+                ["What was the profession of Peter and Andrew?", '["Carpenters", "Tax Collectors", "Fishermen", "Shepherds"]', 2],
+                ["Who wrote the book of Revelation?", '["Paul", "Peter", "James", "John"]', 3],
+                ["Who survived the fiery furnace?", '["Daniel", "Shadrach, Meshach, Abednego", "Elijah", "Jeremiah"]', 1],
+                ["What instrument did David play for Saul?", '["Flute", "Harp (Lyre)", "Trumpet", "Cymbals"]', 1],
+                ["What did Judas receive for betraying Jesus?", '["30 pieces of silver", "100 denarii", "A gold chain", "A purple robe"]', 0],
+                ["Who helped carry Jesus' cross?", '["Simon of Cyrene", "Joseph of Arimathea", "Nicodemus", "John"]', 0],
+                ["What was Paul's original name?", '["Silas", "Saul", "Stephen", "Simeon"]', 1],
+                ["What bird crowed after Peter denied Jesus?", '["Dove", "Raven", "Rooster", "Eagle"]', 2],
+                ["Who was the sister of Moses and Aaron?", '["Miriam", "Zipporah", "Jochebed", "Sarah"]', 0],
+                ["What did God create on the first day?", '["Land", "Light", "Animals", "Sun and Moon"]', 1],
+                ["Who was David's best friend?", '["Saul", "Abner", "Jonathan", "Joab"]', 2],
+                ["What town did Mary, Martha, and Lazarus live in?", '["Bethany", "Jerusalem", "Nazareth", "Capernaum"]', 0],
+                ["How many tribes of Israel were there?", '["10", "12", "7", "40"]', 1],
+                ["Who asked Pilate for Jesus' body?", '["Peter", "John", "Joseph of Arimathea", "Nicodemus"]', 2],
+                ["What language was the Old Testament mostly written in?", '["Greek", "Aramaic", "Latin", "Hebrew"]', 3],
+                ["What language was the New Testament mostly written in?", '["Hebrew", "Greek", "Latin", "Aramaic"]', 1],
+                ["Who cut Samson's hair?", '["Jezebel", "Delilah", "Ruth", "Esther"]', 1],
+                ["Who led the Israelites to rebuild the walls of Jerusalem?", '["Ezra", "Nehemiah", "Zerubbabel", "Haggai"]', 1],
+                ["What fell from the sky to feed Israel in the desert?", '["Apples", "Manna", "Locusts", "Corn"]', 1],
+                ["Who was the first Christian martyr?", '["James", "Peter", "Paul", "Stephen"]', 3]
+            ];
+            const stmt = db.prepare(`INSERT INTO brain_trivia_questions (question, options, correct_index, category, created_at) VALUES (?, ?, ?, 'Bible', ?)`);
+            qList.forEach(q => stmt.run([q[0], q[1], q[2], getManilaTime()]));
+            stmt.finalize();
+        }
+    });
+
     db.get(`SELECT COUNT(*) as cnt FROM weekly_challenges`, [], (err, row) => {
         if (row && row.cnt === 0) {
             const stmt = db.prepare(`INSERT INTO weekly_challenges (title, description, points, created_at) VALUES (?, ?, ?, ?)`);
@@ -639,7 +726,7 @@ app.post('/api/ai/chat', (req, res) => {
     }
 
     // 6. Default Silas Greeting
-    const greeting = `Hello! I am <strong>Silas</strong>, your FOG Ministry AI Assistant. [Persona: ${persona || 'General Assistant'}]${is_private ? ' 🔏 (Incognito Mode Active)' : ''}<br><br>I am connected directly to your community database. You can ask me things like:<br>• "How many are minis?"<br>• "Show youth list"<br>• "Who has the role core?"<br>• "Who has the highest points?"<br>• "Who is absent?"`;
+    const greeting = `Hello, I am Silas, your FOG ministry assistant.<br><br>I am connected directly to your community database. You can ask me things like:<br>• "How many are minis?"<br>• "Show youth list"<br>• "Who has the role core?"<br>• "Who has the highest points?"<br>• "Who is absent?"`;
     finalizeChat(greeting);
 });
 

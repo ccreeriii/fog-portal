@@ -426,7 +426,7 @@
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
                 <h2 style="color: #10B981; margin: 0;">🤖 AI Ministry Assistant</h2>
-                <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="display: none; align-items: center; gap: 15px;">
                     <select id="aiPersonaSelect" class="form-control" style="width: auto; margin: 0; padding: 5px 10px;">
                         <option value="General Assistant">General</option>
                         <option value="Youth Pastor">Youth Pastor</option>
@@ -435,7 +435,7 @@
                     <div style="display:flex; align-items:center; gap:5px;"><input type="checkbox" id="aiPrivateToggle"><label for="aiPrivateToggle">Incognito</label></div>
                 </div>
             </div>
-            <div id="aiChatHistory" class="ai-chat-box"><div class="chat-msg chat-ai">Hello! I am your FOG Ministry Assistant.</div></div>
+            <div id="aiChatHistory" class="ai-chat-box"><div class="chat-msg chat-ai">Hello, I am Silas, your FOG ministry assistant.</div></div>
             <form style="display: flex; gap: 10px;" onsubmit="V7AIAssistant.sendMessage(event)">
                 <input type="text" id="aiChatInput" class="form-control" required style="flex: 1;">
                 <button type="submit" class="btn btn-primary" style="background: #10B981;">Send</button>
@@ -1026,7 +1026,15 @@
             <h2 id="modalProfileName" style="margin: 0; border: none; padding: 0; font-size: 1.8rem; color: var(--primary); font-weight: 800;"></h2>
             
             <div style="margin-top: 12px;">
-                <p id="modalProfileXP" class="badge" style="background: #FEF3C7; color: #D97706; font-size: 1.1rem; padding: 8px 16px; border: 1px solid #FDE68A;">🎮 0 Total XP</p>
+                
+            <div style="position: relative; display: inline-block;">
+                <p id="modalProfileXP" class="badge" style="background: #FEF3C7; color: #D97706; font-size: 1.1rem; padding: 8px 16px; border: 1px solid #FDE68A; cursor: pointer; font-weight: bold; transition: 0.2s; margin: 0;">⭐ 0 Overall XP 🖱️</p>
+                <div id="modalXpTooltip" style="display: none; background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100; flex-direction: row; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 5px; position: absolute; left: 50%; transform: translateX(-50%); min-width: 250px;">
+                    <p class="badge" style="background: #E0E7FF; color: #2563EB; font-size: 0.85rem; margin: 0; padding: 6px 12px;">🎮 <span id="modalArcadeXp">0</span> Arcade</p>
+                    <p class="badge" style="background: #D1FAE5; color: #059669; font-size: 0.85rem; margin: 0; padding: 6px 12px;">🌱 <span id="modalGrowthXp">0</span> Growth</p>
+                    <p class="badge" style="background: #F3E8FF; color: #DB2777; font-size: 0.85rem; margin: 0; padding: 6px 12px;">🎫 <span id="modalEventXp">0</span> Events</p>
+                </div>
+            </div>
             </div>
             
             <p id="modalProfileCode" class="badge badge-orange" style="margin-top: 10px; display: none;"></p>

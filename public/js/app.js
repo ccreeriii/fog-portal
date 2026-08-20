@@ -440,19 +440,18 @@ window.openViewProfileModal = async function(youthId) {
         if(qrSection) qrSection.style.display = 'none';
     }
 
-    let xpElem = document.getElementById('modalProfileXP');
-    if (xpElem) xpElem.innerText = '🎮 Loading XP...';
+    
     try {
         const xpRes = await fetch('/api/gamification/points/' + youthId);
         if(xpRes.ok) {
             const xpData = await xpRes.json();
-            if(xpElem) xpElem.innerText = '🎮 ' + (xpData.points || 0) + ' Total XP';
-        } else {
-            if(xpElem) xpElem.innerText = '🎮 0 Total XP';
+            const total = xpData.points || 0;
+            if(document.getElementById('modalProfileXP')) document.getElementById('modalProfileXP').innerText = '⭐ ' + total + ' Overall XP 🖱️';
+            if(document.getElementById('modalArcadeXp')) document.getElementById('modalArcadeXp').innerText = xpData.arcade_xp || 0;
+            if(document.getElementById('modalGrowthXp')) document.getElementById('modalGrowthXp').innerText = xpData.growth_xp || 0;
+            if(document.getElementById('modalEventXp')) document.getElementById('modalEventXp').innerText = xpData.event_xp || 0;
         }
-    } catch(e) {
-        if(xpElem) xpElem.innerText = '🎮 0 Total XP';
-    }
+    } catch(e) {}
 
     document.getElementById('modalBioSummary').innerHTML = '<strong>Email:</strong> ' + (member.email || 'N/A') + '<br><strong>Age:</strong> ' + (member.age || 'N/A') + '<br><strong>Birthday:</strong> ' + (member.birthday || 'N/A') + '<br><strong>Social:</strong> ' + (member.social_media || 'N/A') + '<br><strong>Guardian:</strong> ' + (member.parents_name || 'N/A');
     
@@ -799,3 +798,14 @@ window.renderMyProfileAttendance = function() {
         html += '<div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; background: #FFF; border-radius: 8px; margin-bottom: 8px;"><div><strong style="color: var(--primary); font-size: 1.05rem;">' + (a.event_name || 'Event') + '</strong><br><small style="color:var(--text-muted);">' + (a.checked_in_at || '') + '</small></div>' + status + '</div>'; 
     }); container.innerHTML = html; 
 };
+
+// Tooltip Click Listener for View Profile Modal
+document.addEventListener('click', (e) => {
+    if (e.target.closest('#modalProfileXP')) {
+        const tooltip = document.getElementById('modalXpTooltip');
+        if (tooltip) tooltip.style.display = tooltip.style.display === 'none' ? 'flex' : 'none';
+    } else if (!e.target.closest('#modalXpTooltip') && !e.target.closest('#modalProfileXP')) {
+        const tooltip = document.getElementById('modalXpTooltip');
+        if (tooltip) tooltip.style.display = 'none';
+    }
+});
