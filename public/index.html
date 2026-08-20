@@ -356,6 +356,7 @@
                 <h2>Create New Small Group</h2>
                 <form id="createSmallGroupForm" onsubmit="V2Discipleship.createSmallGroup(event)">
                     <div class="form-group"><label>Group Name *</label><input type="text" id="sgCreateName" class="form-control" required></div>
+                    <div class="form-group"><label>Group Logo (Optional)</label><input type="file" id="sgCreateLogo" class="form-control" accept="image/*"></div>
                     <div class="form-group" style="position: relative;">
                         <label>Leader</label><input type="text" id="sgLeaderSearch" class="form-control" onkeyup="V2Discipleship.filterLeaderSearch()">
                         <div id="sgLeaderDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid var(--border-color); z-index:100;"></div>
@@ -935,11 +936,40 @@
         <form onsubmit="V2Discipleship.updateSmallGroup(event)">
             <input type="hidden" id="editSgId">
             <div class="form-group"><label>Group Name *</label><input type="text" id="editSgName" class="form-control" required></div>
+            <div class="form-group"><label>Group Logo</label><input type="file" id="editSgLogo" class="form-control" accept="image/*"></div>
             <div style="display:flex; gap:15px;">
                 <div class="form-group" style="flex:1;"><label>Schedule</label><input type="text" id="editSgSchedule" class="form-control"></div>
                 <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="editSgVenue" class="form-control"></div>
             </div>
             <div class="form-group"><label>Points Awarded on Join *</label><input type="number" id="editSgPoints" class="form-control" required></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
+        </form>
+    </div>
+</div>
+
+<div id="editJournalModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="V2Discipleship.closeEditJournalModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Journal Entry</h2>
+        <form onsubmit="V2Discipleship.updateJournal(event)">
+            <input type="hidden" id="editJournalId">
+            <div class="form-group"><label>Title *</label><input type="text" id="editJournalTitle" class="form-control" required></div>
+            <div class="form-group"><label>Mood</label><select id="editJournalMood" class="form-control"><option value="Blessed">Blessed & Grateful</option><option value="Seeking">Seeking Guidance</option><option value="Joyful">Joyful</option><option value="Reflective">Reflective</option></select></div>
+            <div class="form-group"><label>Content *</label><textarea id="editJournalContent" class="form-control" rows="4" required></textarea></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
+        </form>
+    </div>
+</div>
+
+<div id="editPrayerModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="V2Discipleship.closeEditPrayerModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Prayer Request</h2>
+        <form onsubmit="V2Discipleship.updatePrayer(event)">
+            <input type="hidden" id="editPrayerId">
+            <div class="form-group"><label>Prayer Title *</label><input type="text" id="editPrayerTitle" class="form-control" required></div>
+            <div class="form-group"><label>Request *</label><textarea id="editPrayerContent" class="form-control" rows="3" required></textarea></div>
+            <div class="form-group"><input type="checkbox" id="editPrayerAnonymous"><label for="editPrayerAnonymous">Anonymous</label></div>
             <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
         </form>
     </div>

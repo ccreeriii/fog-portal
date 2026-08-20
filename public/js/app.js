@@ -134,11 +134,10 @@ window.buildNav = function() {
     const bottomNav = document.getElementById('bottomNav');
     const hamburger = document.getElementById('hamburgerBtn');
 
-    // 🛡️ GLOBAL MENU UNLOCK: Make Hamburger visible to everyone
     if(hamburger) hamburger.style.display = 'block';
 
-    let sidebarHtml = `<h2>Main Menu</h2>`;
-    let bottomHtml = ``;
+    let sidebarHtml = '<h2>Main Menu</h2>';
+    let bottomHtml = '';
 
     let currentTab = 'profileTab';
     document.querySelectorAll('.tab-content').forEach(el => { if (el.classList.contains('active')) currentTab = el.id; });
@@ -146,7 +145,7 @@ window.buildNav = function() {
     if(bottomNav) {
         bottomNav.style.display = 'flex';
         bottomNav.style.overflowX = 'auto';
-        bottomNav.style.justifyContent = 'center'; // Center justifies the 5-6 icons
+        bottomNav.style.justifyContent = 'space-evenly'; 
         bottomNav.style.gap = '4px';
         bottomNav.style.flexWrap = 'nowrap';
         bottomNav.style.webkitOverflowScrolling = 'touch';
@@ -160,33 +159,27 @@ window.buildNav = function() {
         } else {
             isActive = (currentTab === target);
         }
-        // Hard width cap ensures they stay tightly clustered in the center
-        return `<button ${btnId ? `id="${btnId}"` : ''} class="bottom-nav-btn ${isActive ? 'active' : ''}" style="flex: 0 1 70px; min-width: 60px; padding: 10px 2px;" onclick="${onclickStr}">
+        return `<button ${btnId ? 'id="'+btnId+'"' : ''} class="bottom-nav-btn ${isActive ? 'active' : ''}" style="flex: 1; min-width: 60px; padding: 10px 2px;" onclick="${onclickStr}">
             <div class="icon">${icon}</div><span style="white-space:nowrap; font-size:0.65rem;">${text}</span>
         </button>`;
     };
 
-    // 🛡️ STRICT <7 ICONS RULE FOR BOTTOM NAV
-    // We display ONLY the most commonly used items down here so it stays uncluttered.
     if (currentTab === 'discipleshipTab') {
         bottomHtml += addBottomBtn('profileTab', '👤', 'Profile', "switchTab('profileTab')");
-        bottomHtml += addBottomBtn('growthSubHome', '🌱', 'Growth', "switchGrowthSubTab('Home')", true);
-        bottomHtml += addBottomBtn('growthSubMilestones', '🗺️', 'Milestones', "switchGrowthSubTab('Milestones')", true);
+        bottomHtml += addBottomBtn('growthSubMilestones', '🗺️', 'Milestone', "switchGrowthSubTab('Milestones')", true);
         bottomHtml += addBottomBtn('growthSubJournal', '📓', 'Journal', "switchGrowthSubTab('Journal')", true);
         bottomHtml += addBottomBtn('growthSubPrayer', '🙏', 'Prayer', "switchGrowthSubTab('Prayer')", true);
         bottomHtml += addBottomBtn('growthSubGroups', '👥', 'Groups', "switchGrowthSubTab('Groups')", true);
     } else {
         bottomHtml += addBottomBtn('profileTab', '👤', 'Profile', "switchTab('profileTab')");
         bottomHtml += addBottomBtn('inboxTab', '🔔', 'Inbox', "switchTab('inboxTab')");
-        bottomHtml += addBottomBtn('arcadeTab', '🎯', 'Arcade', "switchTab('arcadeTab')");
-        bottomHtml += addBottomBtn('discipleshipTab', '🌱', 'Grow', "switchTab('discipleshipTab')");
-        bottomHtml += addBottomBtn('leaderboardsHubTab', '🏆', 'Ranks', "switchTab('leaderboardsHubTab')", false, 'bottomNavLeaderboards');
+        bottomHtml += addBottomBtn('discipleshipTab', '🌱', 'Growth', "switchTab('discipleshipTab'); setTimeout(()=>window.switchGrowthSubTab('Home'),50);");
+        bottomHtml += addBottomBtn('growthSubPrayer', '🙏', 'Prayer', "switchTab('discipleshipTab'); setTimeout(()=>window.switchGrowthSubTab('Prayer'),50);", false, 'navPrayerQuick');
+        bottomHtml += addBottomBtn('growthSubGroups', '👥', 'Groups', "switchTab('discipleshipTab'); setTimeout(()=>window.switchGrowthSubTab('Groups'),50);", false, 'navGroupsQuick');
     }
 
     if(bottomNav) bottomNav.innerHTML = bottomHtml;
 
-    // 🛡️ THE GLOBAL SIDEBAR MENU
-    // Populates dynamically for everyone. Core features show for all, Admin tools appended if permitted.
     sidebarHtml += `<button class="nav-btn ${currentTab === 'profileTab' ? 'active' : ''}" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
     sidebarHtml += `<button class="nav-btn ${currentTab === 'inboxTab' ? 'active' : ''}" data-target="inboxTab" onclick="switchTab('inboxTab')">🔔 My Inbox</button>`;
     sidebarHtml += `<button class="nav-btn ${currentTab === 'arcadeTab' ? 'active' : ''}" data-target="arcadeTab" onclick="switchTab('arcadeTab')">🎯 FOG Arcade</button>`;
@@ -204,11 +197,12 @@ window.buildNav = function() {
     if (window.hasPerm('access_attendance')) sidebarHtml += `<button class="nav-btn ${currentTab === 'attendanceTab' ? 'active' : ''}" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
     if (window.hasPerm('access_activity')) sidebarHtml += `<button class="nav-btn ${currentTab === 'activityLogsTab' ? 'active' : ''}" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
     if (window.hasPerm('access_permissions')) sidebarHtml += `<button class="nav-btn ${currentTab === 'permissionsTab' ? 'active' : ''}" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔐 Permissions</button>`;
-    
+
     sidebarHtml += `<button class="nav-btn text-danger" onclick="handleLogout()">🚪 Logout</button>`;
-    
+
     if(sidebar) sidebar.innerHTML = sidebarHtml;
 };
+
 
 window.switchGrowthSubTab = function(tabName) {
     document.querySelectorAll('.growth-sub-tab').forEach(el => {
