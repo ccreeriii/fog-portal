@@ -384,7 +384,8 @@
                         <div class="form-group" style="flex:1;"><label>Schedule</label><input type="text" id="sgCreateSchedule" class="form-control"></div>
                         <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="sgCreateVenue" class="form-control"></div>
                     </div>
-                    <div class="form-group"><label>Points Awarded on Join (Growth XP) *</label><input type="number" id="sgCreatePoints" class="form-control" value="20" required></div>
+                    <div class="form-group"><label>Privacy Level</label><select id="sgCreatePrivacy" class="form-control"><option value="Open">🌐 Open (Anyone can join)</option><option value="Approval">🔒 Approval Needed</option><option value="Invite-Only">🕵️ Secret (Invite-Only)</option></select></div>
+<div class="form-group"><label>Points Awarded on Join (Growth XP) *</label><input type="number" id="sgCreatePoints" class="form-control" value="20" required></div>
                     <button type="submit" class="btn btn-primary" style="width:100%;">Create Group</button>
                 </form>
             </div>
@@ -955,11 +956,19 @@
             <input type="hidden" id="editSgId">
             <div class="form-group"><label>Group Name *</label><input type="text" id="editSgName" class="form-control" required></div>
             <div class="form-group"><label>Group Logo</label><input type="file" id="editSgLogo" class="form-control" accept="image/*"></div>
+
+            <div class="form-group" style="position: relative;">
+                <label>Assign Leader</label>
+                <input type="text" id="editSgLeaderSearch" class="form-control" placeholder="Search name to assign leader..." onkeyup="V2Discipleship.filterEditLeaderSearch()">
+                <div id="editSgLeaderDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid var(--border-color); z-index:100; max-height:150px; overflow-y:auto; border-radius: 6px;"></div>
+                <input type="hidden" id="editSgLeaderId">
+            </div>
             <div style="display:flex; gap:15px;">
                 <div class="form-group" style="flex:1;"><label>Schedule</label><input type="text" id="editSgSchedule" class="form-control"></div>
                 <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="editSgVenue" class="form-control"></div>
             </div>
-            <div class="form-group"><label>Points Awarded on Join *</label><input type="number" id="editSgPoints" class="form-control" required></div>
+            <div class="form-group"><label>Privacy Level</label><select id="editSgPrivacy" class="form-control"><option value="Open">🌐 Open</option><option value="Approval">🔒 Approval</option><option value="Invite-Only">🕵️ Invite-Only</option></select></div>
+<div class="form-group"><label>Points Awarded on Join *</label><input type="number" id="editSgPoints" class="form-control" required></div>
             <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
         </form>
     </div>
@@ -1180,7 +1189,19 @@
 
             <div id="dashTabMembers" style="display: none;">
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">🟢 Online (Active today) | ⚪ Offline</p>
-                <div id="dashMembersList"></div>
+                
+        <div id="dashLeaderControls" style="display:none; background: #DBEAFE; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+            <h4 style="margin-top:0; color:#1E3A8A; margin-bottom: 10px;">👑 Leader Controls: Invite Member</h4>
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1; position:relative;">
+                    <input type="text" id="dashInviteSearch" class="form-control" placeholder="Search name to invite..." onkeyup="filterDashInvite()">
+                    <div id="dashInviteDropdown" style="display:none; position:absolute; background:#FFF; width:100%; border:1px solid var(--border-color); z-index:100; max-height:150px; overflow-y:auto; border-radius: 6px;"></div>
+                    <input type="hidden" id="dashInviteYouthId">
+                </div>
+                <button class="btn btn-primary btn-sm" style="background: #1E3A8A;" onclick="submitDashInvite()">Add</button>
+            </div>
+        </div>
+<div id="dashMembersList"></div>
             </div>
 
             <div id="dashTabPrayers" style="display: none;">

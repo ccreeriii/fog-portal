@@ -98,6 +98,11 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS brain_crosswords (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, grid_size INTEGER, words_json TEXT, created_at DATETIME)`);
 
     // SCHEMA AUTO-HEALING
+    db.run("ALTER TABLE small_groups ADD COLUMN privacy_level TEXT DEFAULT 'Open'", (err)=>{});
+    db.run("ALTER TABLE small_group_members ADD COLUMN status TEXT DEFAULT 'Approved'", (err)=>{});
+    db.run("ALTER TABLE prayer_requests ADD COLUMN group_id INTEGER", (err)=>{});
+    db.run("ALTER TABLE prayer_requests ADD COLUMN is_answered INTEGER DEFAULT 0", (err)=>{});
+    
     
     db.run(`ALTER TABLE prayer_requests ADD COLUMN group_id INTEGER`, () => {});
     db.run(`ALTER TABLE prayer_requests ADD COLUMN is_answered INTEGER DEFAULT 0`, () => {});
@@ -756,9 +761,17 @@ app.get('/api/small-groups/:id/recent-chat', (req, res) => {
     });
 });
 
-app.get('/api/small-groups', (req, res) => { db.all(`SELECT g.*, y.name as leader_name, (SELECT COUNT(*) FROM small_group_members WHERE group_id = g.id) as member_count FROM small_groups g LEFT JOIN youth y ON g.leader_id = y.id ORDER BY g.name ASC`, [], (err, rows) => { res.json(rows); }); });
-app.post('/api/small-groups', (req, res) => { db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, points, logo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, getManilaTime()], function(err) { res.json({ success: true }); }); });
-app.put('/api/small-groups/:id', (req, res) => { db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=?, points=?, logo=? WHERE id=?`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, req.params.id], function(err) { res.json({ success: true }); }); });
+app.get('/api/small-groups', (req, res) => {
+    const youthId = req.query.youth_id || 0;
+    db.all(`SELECT g.*, y.name as leader_name, 
+        (SELECT COUNT(*) FROM small_group_members WHERE group_id = g.id AND status='Approved') as member_count,
+        (SELECT status FROM small_group_members WHERE group_id = g.id AND youth_id = ?) as user_status 
+        FROM small_groups g LEFT JOIN youth y ON g.leader_id = y.id ORDER BY g.name ASC`, [youthId], (err, rows) => { 
+        res.json(rows || []); 
+    }); 
+});
+app.post('/api/small-groups', (req, res) => { db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, points, logo, privacy_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, getManilaTime()], function(err) { res.json({ success: true }); }); });
+app.put('/api/small-groups/:id', (req, res) => { db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=?, points=?, logo=?, privacy_level=? WHERE id=?`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, req.body.privacy_level || 'Open', req.params.id], function(err) { res.json({ success: true }); }); });
 app.delete('/api/small-groups/:id', (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
 
 
@@ -804,13 +817,47 @@ app.post('/api/small-groups/:id/chat', (req, res) => {
     });
 });
 
+
 app.post('/api/small-groups/:id/join', (req, res) => {
-    db.run(`INSERT INTO small_group_members (group_id, youth_id, joined_at) VALUES (?, ?, ?)`, [req.params.id, req.body.youth_id, getManilaTime()], function(err) {
-        if (err) return res.json({ success: true }); // already joined
-        db.get(`SELECT name, points FROM small_groups WHERE id = ?`, [req.params.id], (err2, grp) => {
-            if (grp && grp.points > 0) awardPoints(req.body.youth_id, 'growth', grp.points, 'System', `Joined Group: ${grp.name}`);
-            res.json({ success: true });
+    const { youth_id } = req.body;
+    db.get(`SELECT privacy_level, points FROM small_groups WHERE id = ?`, [req.params.id], (err, grp) => {
+        if(!grp) return res.status(404).json({error: "Group not found."});
+        if(grp.privacy_level === 'Invite-Only') return res.status(403).json({error: "This group is invite-only."});
+        
+        const status = grp.privacy_level === 'Approval' ? 'Pending' : 'Approved';
+        db.run(`INSERT INTO small_group_members (group_id, youth_id, joined_at, status) VALUES (?, ?, ?, ?)`, 
+        [req.params.id, youth_id, getManilaTime(), status], function(err) {
+            if(err) return res.status(400).json({error: "Already applied or joined."});
+            if(status === 'Approved' && grp.points > 0) awardPoints(youth_id, 'growth', grp.points, 'System', `Joined Group`);
+            res.json({success: true, status});
         });
+    });
+});
+
+app.post('/api/small-groups/:id/members/:youth_id/status', (req, res) => {
+    const { status } = req.body;
+    if (status === 'Denied') {
+        db.run(`DELETE FROM small_group_members WHERE group_id = ? AND youth_id = ?`, [req.params.id, req.params.youth_id], () => res.json({success:true}));
+    } else {
+        db.run(`UPDATE small_group_members SET status = 'Approved' WHERE group_id = ? AND youth_id = ?`, [req.params.id, req.params.youth_id], () => res.json({success:true}));
+    }
+});
+
+app.post('/api/small-groups/:id/invite', (req, res) => {
+    db.run(`INSERT INTO small_group_members (group_id, youth_id, joined_at, status) VALUES (?, ?, ?, 'Approved')`, 
+    [req.params.id, req.body.youth_id, getManilaTime()], function(err) {
+        if(err) return res.status(400).json({error: "User is already in group."});
+        res.json({success: true});
+    });
+});
+
+app.get('/api/small-groups/:id/roster-status', (req, res) => {
+    db.all(`SELECT y.id, y.name, y.profile_picture, sgm.status,
+            (SELECT MAX(created_at) FROM activity_logs WHERE username = y.qr_code) as last_active 
+            FROM small_group_members sgm 
+            JOIN youth y ON sgm.youth_id = y.id 
+            WHERE sgm.group_id = ? ORDER BY sgm.status DESC, y.name ASC`, [req.params.id], (err, rows) => {
+        res.json(rows || []);
     });
 });
 

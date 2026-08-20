@@ -261,7 +261,7 @@ window.V2Discipleship = {
         let logoBase64 = null;
         if(fileInput && fileInput.files.length > 0 && typeof window.getBase64 === 'function') logoBase64 = await window.getBase64(fileInput.files[0], 400);
 
-        const payload = { name: document.getElementById('sgCreateName').value, leader_id: document.getElementById('sgCreateLeaderId').value || null, meeting_schedule: document.getElementById('sgCreateSchedule').value, venue: document.getElementById('sgCreateVenue').value, points: parseInt(document.getElementById('sgCreatePoints').value) || 20, logo: logoBase64 };
+        const payload = { name: document.getElementById('sgCreateName').value, leader_id: document.getElementById('sgCreateLeaderId').value || null, meeting_schedule: document.getElementById('sgCreateSchedule').value, venue: document.getElementById('sgCreateVenue').value, points: parseInt(document.getElementById('sgCreatePoints').value) || 20, logo: logoBase64, privacy_level: document.getElementById('sgCreatePrivacy').value };
         window.triggerActionConfirmation(`Create Small Group '${payload.name}'?`, async () => {
             const res = await fetch('/api/small-groups', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
             if (res.ok) { document.getElementById('createSmallGroupForm').reset(); document.getElementById('sgCreateLeaderId').value = ''; V2Discipleship.loadSmallGroups(); }
@@ -270,7 +270,10 @@ window.V2Discipleship = {
 
     openEditSmallGroupModal: function(id) {
         const g = this.groupsData.find(x => x.id === id); if (!g) return;
-        document.getElementById('editSgId').value = g.id; document.getElementById('editSgName').value = g.name; document.getElementById('editSgSchedule').value = g.meeting_schedule || ''; document.getElementById('editSgVenue').value = g.venue || ''; document.getElementById('editSgPoints').value = g.points !== undefined ? g.points : 20;
+        document.getElementById('editSgId').value = g.id; document.getElementById('editSgName').value = g.name;
+        const lSearch = document.getElementById('editSgLeaderSearch'); if (lSearch) lSearch.value = g.leader_name || '';
+        const lId = document.getElementById('editSgLeaderId'); if (lId) lId.value = g.leader_id || ''; document.getElementById('editSgSchedule').value = g.meeting_schedule || ''; document.getElementById('editSgVenue').value = g.venue || ''; document.getElementById('editSgPoints').value = g.points !== undefined ? g.points : 20;
+        document.getElementById('editSgPrivacy').value = g.privacy_level || 'Open';
         document.getElementById('editSmallGroupModal').classList.add('active');
     },
 
@@ -283,9 +286,10 @@ window.V2Discipleship = {
         let logoBase64 = undefined;
         if(fileInput && fileInput.files.length > 0 && typeof window.getBase64 === 'function') logoBase64 = await window.getBase64(fileInput.files[0], 400);
 
-        const payload = { name: document.getElementById('editSgName').value, meeting_schedule: document.getElementById('editSgSchedule').value, venue: document.getElementById('editSgVenue').value, points: parseInt(document.getElementById('editSgPoints').value) || 20 };
+        const payload = { name: document.getElementById('editSgName').value, meeting_schedule: document.getElementById('editSgSchedule').value, venue: document.getElementById('editSgVenue').value, points: parseInt(document.getElementById('editSgPoints').value) || 20, privacy_level: document.getElementById('editSgPrivacy').value };
         if(logoBase64 !== undefined) payload.logo = logoBase64;
         
+        if(document.getElementById('editSgLeaderId')) payload.leader_id = document.getElementById('editSgLeaderId').value;
         window.triggerActionConfirmation('Update this small group?', async () => {
             const res = await fetch(`/api/small-groups/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
             if (res.ok) { V2Discipleship.closeEditSmallGroupModal(); V2Discipleship.loadSmallGroups(); }
@@ -303,13 +307,14 @@ window.V2Discipleship = {
         if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return alert("You must be logged in as a member to join a group.");
         window.triggerActionConfirmation('Request to join this Small Group?', async () => {
             const res = await fetch(`/api/small-groups/${id}/join`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ youth_id: currentMember.id }) });
-            if (res.ok) { alert("You have been added to the group!"); V2Discipleship.loadSmallGroups(); if(window.V6Gamification) window.V6Gamification.loadMyPoints(); }
+            if (res.ok) { const data = await res.json(); alert(data.status === 'Pending' ? 'Your request to join has been sent to the leader for approval!' : 'You have been added to the group!'); V2Discipleship.loadSmallGroups(); if(window.V6Gamification) window.V6Gamification.loadMyPoints(); }
         });
     },
 
     loadSmallGroups: async function() {
         try {
-            const res = await fetch('/api/small-groups'); this.groupsData = await res.json();
+            const currentId = (typeof currentMember !== 'undefined' && currentMember) ? currentMember.id : 0;
+            const res = await fetch('/api/small-groups?youth_id=' + currentId); this.groupsData = await res.json();
             const adminList = document.getElementById('adminSmallGroupsList');
             if (adminList) {
                 if (this.groupsData.length === 0) adminList.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No small groups established.</p>`;
@@ -322,19 +327,43 @@ window.V2Discipleship = {
             }
             const userList = document.getElementById('smallGroupsContainer');
             if (userList) {
-                if (this.groupsData.length === 0) return userList.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No small groups available right now.</p>`;
-                userList.innerHTML = this.groupsData.map(g => {
+                if (this.groupsData.length === 0) return userList.innerHTML = '<p style="color:var(--text-muted); text-align:center;">No small groups available right now.</p>';
+                
+                const myGroups = this.groupsData.filter(g => g.user_status === 'Approved');
+                const pendingGroups = this.groupsData.filter(g => g.user_status === 'Pending');
+                const discoverGroups = this.groupsData.filter(g => !g.user_status && g.privacy_level !== 'Invite-Only');
+                
+                const renderCard = (g, mode) => {
                     const logoHtml = g.logo ? `<img src="${g.logo}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; flex-shrink:0;">` : `<div style="width: 50px; height: 50px; background: var(--bg-light); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink:0;">👥</div>`;
+                    let btnHtml = '';
+                    if (mode === 'Enter') btnHtml = `<button class="btn btn-primary btn-sm" style="width:100%; box-shadow: 0 4px 6px rgba(255,107,0,0.2);" onclick="openGroupDashboard(${g.id}, '${g.name.replace(/'/g, "\\'")}', '${g.logo}', '${(g.leader_name||'').replace(/'/g, "\\'")}', ${g.leader_id})">🚪 Enter Dashboard</button>`;
+                    else if (mode === 'Pending') btnHtml = `<button class="btn btn-secondary btn-sm" disabled style="width:100%;">⏳ Request Pending...</button>`;
+                    else btnHtml = `<button class="btn btn-outline btn-sm" style="width:100%; border-color:var(--primary); color:var(--primary);" onclick="V2Discipleship.joinSmallGroup(${g.id})">${g.privacy_level === 'Approval' ? 'Request to Join' : 'Join Group'}</button>`;
                     
                     return `<div style="background:#FFF; border: 1px solid var(--border-color); padding: 15px; margin-bottom: 15px; border-radius: 8px; display:flex; gap:15px; align-items:center;">
                         ${logoHtml}
                         <div style="flex:1;">
-                            <h3 style="color:var(--primary); margin-bottom:5px;">${g.name}</h3>
-                            <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:12px;">📅 ${g.meeting_schedule || 'TBA'} <br>📍 ${g.venue || 'TBA'} <br>👤 Leader: ${g.leader_name || 'TBA'}</p>
-                            <button class="btn btn-primary btn-sm" style="width:100%; box-shadow: 0 4px 6px rgba(255,107,0,0.2);" onclick="openGroupDashboard(${g.id}, '${g.name.replace(/'/g, "\\'")}', '${g.logo}', '${(g.leader_name||'').replace(/'/g, "\\'")}')">🚪 Enter Dashboard</button>
+                            <h3 style="color:var(--primary); margin-bottom:5px;">${g.name} ${g.privacy_level==='Approval'?'🔒':''}</h3>
+                            <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:12px;">📅 ${g.meeting_schedule || 'TBA'} <br>👤 Leader: ${g.leader_name || 'TBA'}</p>
+                            ${btnHtml}
                         </div>
                     </div>`;
-                }).join('');
+                };
+
+                let html = '';
+                if(myGroups.length > 0) {
+                    html += '<h3 style="color:var(--text-main); margin-bottom: 10px;">My Groups</h3>';
+                    html += myGroups.map(g => renderCard(g, 'Enter')).join('');
+                }
+                if(pendingGroups.length > 0) {
+                    html += '<h3 style="color:var(--text-muted); margin-top: 20px; margin-bottom: 10px;">Pending Approvals</h3>';
+                    html += pendingGroups.map(g => renderCard(g, 'Pending')).join('');
+                }
+                if(discoverGroups.length > 0) {
+                    html += '<h3 style="color:var(--text-main); margin-top: 20px; margin-bottom: 10px;">Discover Groups</h3>';
+                    html += discoverGroups.map(g => renderCard(g, 'Join')).join('');
+                }
+                userList.innerHTML = html;
             }
         } catch(e) {}
     },
@@ -352,3 +381,26 @@ window.V2Discipleship = {
 };
 
 document.addEventListener('DOMContentLoaded', () => { V2Discipleship.init(); });
+
+
+// --- V17: EDIT LEADER SEARCH ---
+window.V2Discipleship.filterEditLeaderSearch = function() {
+    const q = document.getElementById('editSgLeaderSearch').value.toLowerCase().trim();
+    const dropdown = document.getElementById('editSgLeaderDropdown');
+    if (q.length < 2) { dropdown.style.display = 'none'; return; }
+    if (typeof youthData !== 'undefined' && youthData.length > 0) {
+        const matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q));
+        if (matches.length > 0) {
+            dropdown.innerHTML = matches.map(y => `<div style="padding:10px; cursor:pointer; border-bottom:1px solid #E2E8F0;" onclick="V2Discipleship.selectEditLeader(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')"><strong style="color:var(--text-main);">${y.name}</strong></div>`).join('');
+            dropdown.style.display = 'block';
+        } else {
+            dropdown.innerHTML = '<div style="padding:10px; color:var(--text-muted);">No matches</div>';
+            dropdown.style.display = 'block';
+        }
+    }
+};
+window.V2Discipleship.selectEditLeader = function(id, name) {
+    document.getElementById('editSgLeaderId').value = id;
+    document.getElementById('editSgLeaderSearch').value = name;
+    document.getElementById('editSgLeaderDropdown').style.display = 'none';
+};

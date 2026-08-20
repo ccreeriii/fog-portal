@@ -1012,7 +1012,7 @@ window.deleteGroupSession = async function(sessionId, groupId) {
 let currentDashboardGroupId = null;
 let currentDashboardGroupName = '';
 
-window.openGroupDashboard = async function(groupId, groupName, groupLogo, leaderName) {
+window.openGroupDashboard = async function(groupId, groupName, groupLogo, leaderName, leaderId) {
     currentDashboardGroupId = groupId;
     currentDashboardGroupName = groupName;
     
@@ -1044,25 +1044,38 @@ window.openGroupDashboard = async function(groupId, groupName, groupLogo, leader
         const container = document.getElementById('dashMembersList');
         
         const now = new Date().getTime();
+        
+        const isLeader = window.hasPerm('edit_entries') || (currentMember && currentMember.id == leaderId);
+        const lControls = document.getElementById('dashLeaderControls');
+        if (lControls) lControls.style.display = isLeader ? 'block' : 'none';
+
         container.innerHTML = roster.map(m => {
             const avatar = m.profile_picture ? `<img src="${m.profile_picture}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">` : `<div style="width:40px; height:40px; border-radius:50%; background:var(--bg-light); display:flex; align-items:center; justify-content:center; font-weight:bold;">${m.name.charAt(0)}</div>`;
-            
-            // Check if active in last 24 hours
             let isOnline = false;
             if (m.last_active) {
-                const last = new Date(m.last_active).getTime();
-                if ((now - last) < (24 * 60 * 60 * 1000)) isOnline = true;
+                if ((now - new Date(m.last_active).getTime()) < (24 * 60 * 60 * 1000)) isOnline = true;
             }
-            
             const dot = isOnline ? `<span style="color: #10B981; font-size: 0.8rem;">🟢</span>` : `<span style="color: #CBD5E1; font-size: 0.8rem;">⚪</span>`;
             
+            let statusBtn = '';
+            if (m.status === 'Pending') {
+                if (isLeader) {
+                    statusBtn = `<div style="display:flex; gap:5px;"><button class="btn btn-primary btn-sm" style="padding:2px 8px; font-size:0.75rem;" onclick="updateGroupMemberStatus(${m.id}, 'Approved')">Approve</button><button class="btn btn-outline btn-sm" style="color:var(--danger); border-color:var(--danger); padding:2px 8px; font-size:0.75rem;" onclick="updateGroupMemberStatus(${m.id}, 'Denied')">Deny</button></div>`;
+                } else {
+                    statusBtn = `<span class="badge badge-orange">Pending</span>`;
+                }
+            } else {
+                const removeBtn = isLeader ? `<button class="btn btn-outline btn-sm" style="color:var(--danger); border-color:var(--danger); padding:2px 8px; font-size:0.7rem; margin-left: 10px;" onclick="removeGroupMember(${m.id}, '${m.name.replace(/'/g, "\\'")}')">Remove</button>` : '';
+                statusBtn = `<div style="display:flex; align-items:center;">${dot} ${removeBtn}</div>`;
+            }
+
             return `
             <div style="display:flex; align-items:center; justify-content:space-between; padding: 12px; border-bottom: 1px solid var(--border-color); background: #FFF; border-radius: 8px; margin-bottom: 8px;">
                 <div style="display:flex; align-items:center; gap: 10px;">
                     ${avatar}
                     <strong style="color:var(--text-main); font-size:1.05rem;">${m.name}</strong>
                 </div>
-                <div>${dot}</div>
+                ${statusBtn}
             </div>`;
         }).join('');
     } catch(e) {}
@@ -1100,7 +1113,7 @@ window.closeGroupPrayerModal = function() {
 
 window.submitGroupPrayer = async function(e) {
     e.preventDefault();
-    if(!currentDashboardGroupId || !currentMember) return;
+    if(!currentDashboardGroupId || !currentMember) return alert("Missing group context.");
     const payload = {
         youth_id: currentMember.id,
         title: document.getElementById('gpTitle').value,
@@ -1111,13 +1124,19 @@ window.submitGroupPrayer = async function(e) {
         const res = await fetch(`/api/small-groups/${currentDashboardGroupId}/prayers`, {
             method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
         });
-        if(res.ok) {
+        const data = await res.json();
+        if(res.ok && data.success) {
             e.target.reset();
-            closeGroupPrayerModal();
-            loadGroupPrayers(currentDashboardGroupId);
-            if(window.V6Gamification) window.V6Gamification.loadMyPoints(); // Award XP
+            window.closeGroupPrayerModal();
+            window.loadGroupPrayers(currentDashboardGroupId);
+            if(window.V6Gamification) window.V6Gamification.loadMyPoints();
+            alert("Prayer successfully shared with the group!");
+        } else {
+            alert(data.error || "Failed to post prayer.");
         }
-    } catch(err) {}
+    } catch(err) {
+        alert("Network error processing your prayer.");
+    }
 };
 
 window.loadGroupPrayers = async function(groupId) {
@@ -1182,4 +1201,75 @@ window.markGroupPrayerAnswered = async function(prayerId, title) {
             if(res.ok) window.loadGroupPrayers(currentDashboardGroupId);
         } catch(err) {}
     });
+};
+
+
+window.removeGroupMember = async function(youthId, name) {
+    if(!currentDashboardGroupId) return;
+    window.triggerActionConfirmation(`Are you sure you want to remove ${name} from the group?`, async () => {
+        try {
+            // We reuse the 'Denied' status route because it cleanly deletes the mapping from the database
+            const res = await fetch(`/api/small-groups/${currentDashboardGroupId}/members/${youthId}/status`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ status: 'Denied' })
+            });
+            if(res.ok) {
+                // Refresh the dashboard automatically
+                window.openGroupDashboard(currentDashboardGroupId, currentDashboardGroupName, '', '', 0); 
+            }
+        } catch(e) {}
+    });
+};
+window.updateGroupMemberStatus = async function(youthId, status) {
+    if(!currentDashboardGroupId) return;
+    window.triggerActionConfirmation(`Are you sure you want to ${status} this request?`, async () => {
+        try {
+            const res = await fetch(`/api/small-groups/${currentDashboardGroupId}/members/${youthId}/status`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ status })
+            });
+            if(res.ok) {
+                // re-open dashboard to refresh the list cleanly
+                window.openGroupDashboard(currentDashboardGroupId, currentDashboardGroupName, '', '', 0);
+            }
+        } catch(e) {}
+    });
+};
+
+window.filterDashInvite = async function() {
+    const q = document.getElementById('dashInviteSearch').value.toLowerCase().trim();
+    const dropdown = document.getElementById('dashInviteDropdown');
+    if (q.length < 2) { dropdown.style.display = 'none'; return; }
+    if (typeof youthData === 'undefined' || youthData.length === 0) {
+        const res = await fetch('/api/youth'); youthData = await res.json();
+    }
+    const matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q));
+    if (matches.length > 0) {
+        dropdown.innerHTML = matches.map(y => `<div style="padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer;" onclick="selectDashInvite(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')"><strong style="color:var(--text-main);">${y.name}</strong></div>`).join('');
+        dropdown.style.display = 'block';
+    } else {
+        dropdown.innerHTML = '<div style="padding:10px; color:var(--text-muted);">No matches</div>';
+        dropdown.style.display = 'block';
+    }
+};
+
+window.selectDashInvite = function(id, name) {
+    document.getElementById('dashInviteYouthId').value = id;
+    document.getElementById('dashInviteSearch').value = name;
+    document.getElementById('dashInviteDropdown').style.display = 'none';
+};
+
+window.submitDashInvite = async function() {
+    const youthId = document.getElementById('dashInviteYouthId').value;
+    if(!youthId || !currentDashboardGroupId) return alert('Search and select a member to invite.');
+    try {
+        const res = await fetch(`/api/small-groups/${currentDashboardGroupId}/invite`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ youth_id: youthId })
+        });
+        const data = await res.json();
+        if(data.success) {
+            document.getElementById('dashInviteSearch').value = '';
+            document.getElementById('dashInviteYouthId').value = '';
+            alert('Member successfully added to the group!');
+            window.openGroupDashboard(currentDashboardGroupId, currentDashboardGroupName, '', '', 0);
+        } else { alert(data.error); }
+    } catch(e) {}
 };
