@@ -1281,3 +1281,271 @@ window.submitDashInvite = async function() {
         } else { alert(data.error); }
     } catch(e) {}
 };
+
+
+// --- V14 FULL RECOVERY LOGIC (Tabs, Chat 2.0, Deep Dives, Memories) ---
+window.switchDashTab = function(tab) {
+    const ids = ['Overview', 'Members', 'Prayers', 'DeepDive', 'Memories'];
+    ids.forEach(id => {
+        const div = document.getElementById('dashTab' + id); if(div) div.style.display = 'none';
+        const btn = document.getElementById('btnDash' + id); if(btn) btn.classList.remove('active');
+    });
+    
+    let activeId = 'Overview';
+    if (tab === 'members') activeId = 'Members';
+    if (tab === 'prayers') activeId = 'Prayers';
+    if (tab === 'deepdive') activeId = 'DeepDive';
+    if (tab === 'memories') activeId = 'Memories';
+
+    const actDiv = document.getElementById('dashTab' + activeId); if(actDiv) actDiv.style.display = 'block';
+    const actBtn = document.getElementById('btnDash' + activeId); if(actBtn) actBtn.classList.add('active');
+
+    if (tab === 'prayers' && currentDashboardGroupId) window.loadGroupPrayers(currentDashboardGroupId);
+    if (tab === 'deepdive' && currentDashboardGroupId) window.loadGroupThreads(currentDashboardGroupId);
+    if (tab === 'memories' && currentDashboardGroupId) window.loadGroupMemories(currentDashboardGroupId);
+};
+
+window.fetchAndRenderGroupChat = async function(isInitialLoad) {
+    if(!currentChatGroupId) return;
+    try {
+        const res = await fetch(`/api/small-groups/${currentChatGroupId}/chat?last_id=${lastChatMsgId}`);
+        const messages = await res.json();
+        
+        if (messages.length > 0) {
+            const container = document.getElementById('groupChatMessages');
+            if (isInitialLoad) container.innerHTML = ''; 
+            
+            messages.forEach(m => {
+                lastChatMsgId = Math.max(lastChatMsgId, m.id);
+                const isMe = currentMember && currentMember.name === m.name;
+                const avatar = m.profile_picture ? `<img src="${m.profile_picture}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;">` : `<div style="width:30px;height:30px;border-radius:50%;background:var(--border-color);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:bold;color:var(--text-main);flex-shrink:0;">${m.name.charAt(0)}</div>`;
+                let timeStr = new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                
+                let msgContent = m.message;
+                const ytMatch = msgContent.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i);
+                
+                if (ytMatch && ytMatch[1]) {
+                    msgContent = msgContent.replace(ytMatch[0], `<br><iframe style="width:100%; border-radius:8px; margin-top:5px; height: 180px;" src="https://www.youtube.com/embed/${ytMatch[1]}" frameborder="0" allowfullscreen></iframe>`);
+                } else {
+                    msgContent = msgContent.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:inherit; text-decoration:underline; font-weight:bold;">$1</a>');
+                }
+
+                let reactHtml = '';
+                try {
+                    const r = JSON.parse(m.reactions || '{}');
+                    if (r['❤️']) reactHtml += `<span style="font-size:0.75rem; background:#FFF; border:1px solid rgba(255,107,0,0.3); color:var(--primary); padding:2px 6px; border-radius:10px; margin-right:4px;">❤️ ${r['❤️']}</span>`;
+                    if (r['🙏']) reactHtml += `<span style="font-size:0.75rem; background:#FFF; border:1px solid rgba(255,107,0,0.3); color:var(--primary); padding:2px 6px; border-radius:10px; margin-right:4px;">🙏 ${r['🙏']}</span>`;
+                    if (r['👍']) reactHtml += `<span style="font-size:0.75rem; background:#FFF; border:1px solid rgba(255,107,0,0.3); color:var(--primary); padding:2px 6px; border-radius:10px; margin-right:4px;">👍 ${r['👍']}</span>`;
+                    if (r['😂']) reactHtml += `<span style="font-size:0.75rem; background:#FFF; border:1px solid rgba(255,107,0,0.3); color:var(--primary); padding:2px 6px; border-radius:10px; margin-right:4px;">😂 ${r['😂']}</span>`;
+                } catch(e) {}
+
+                const reactBtn = `<div style="display:inline-flex; gap:6px; background:#FFF0E6; padding:4px 8px; border-radius:12px; margin-left:5px;">
+                    <button style="background:none;border:none;font-size:0.95rem;cursor:pointer;padding:0;" onclick="reactToMessage(${m.id}, '❤️')">❤️</button>
+                    <button style="background:none;border:none;font-size:0.95rem;cursor:pointer;padding:0;" onclick="reactToMessage(${m.id}, '🙏')">🙏</button>
+                    <button style="background:none;border:none;font-size:0.95rem;cursor:pointer;padding:0;" onclick="reactToMessage(${m.id}, '👍')">👍</button>
+                    <button style="background:none;border:none;font-size:0.95rem;cursor:pointer;padding:0;" onclick="reactToMessage(${m.id}, '😂')">😂</button>
+                </div>`;
+
+                let msgHtml = '';
+                if (isMe) {
+                    msgHtml = `<div style="display:flex; justify-content:flex-end; margin-bottom:5px;">
+                        <div style="max-width: 80%; text-align: right;">
+                            <div style="background: var(--primary); color: #FFF; padding: 10px 14px; border-radius: 18px 18px 4px 18px; font-size: 0.95rem; display: inline-block; text-align: left; box-shadow: 0 4px 6px rgba(255,107,0,0.2);">${msgContent}</div>
+                            <div style="display:flex; justify-content:flex-end; gap:5px; margin-top:4px; align-items:center;">${reactHtml} ${reactBtn} <span style="font-size:0.65rem; color:var(--text-muted);">${timeStr}</span></div>
+                        </div>
+                    </div>`;
+                } else {
+                    msgHtml = `<div style="display:flex; gap:8px; margin-bottom:5px;">
+                        ${avatar}
+                        <div style="max-width: 80%;">
+                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 2px; margin-left: 4px;">${m.name}</div>
+                            <div style="background: #FFF; border: 1px solid var(--border-color); color: var(--text-main); padding: 10px 14px; border-radius: 18px 18px 18px 4px; font-size: 0.95rem; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">${msgContent}</div>
+                            <div style="display:flex; gap:5px; margin-top:4px; align-items:center;"><span style="font-size:0.65rem; color:var(--text-muted); margin-left:4px;">${timeStr}</span> ${reactBtn} ${reactHtml}</div>
+                        </div>
+                    </div>`;
+                }
+                container.insertAdjacentHTML('beforeend', msgHtml);
+            });
+            container.scrollTop = container.scrollHeight;
+        } else if (isInitialLoad && messages.length === 0) {
+            document.getElementById('groupChatMessages').innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">It is quiet here... start the conversation! 🔥</p>';
+        }
+    } catch(e) {}
+};
+
+window.reactToMessage = async function(chatId, emoji) {
+    try {
+        await fetch(`/api/small-groups/chat/${chatId}/react`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ emoji }) });
+        const container = document.getElementById('groupChatMessages');
+        container.innerHTML = '';
+        lastChatMsgId = 0;
+        fetchAndRenderGroupChat(true); 
+    } catch(e) {}
+};
+
+window.loadGroupThreads = async function(groupId) {
+    const createSection = document.getElementById('dashCreateThreadSection');
+    if (createSection) createSection.style.display = 'block';
+
+    try {
+        const res = await fetch(`/api/small-groups/${groupId}/threads`);
+        const threads = await res.json();
+        const container = document.getElementById('dashThreadsList');
+        if (threads.length === 0) return container.innerHTML = '<p style="text-align:center; color:var(--text-muted); margin-top:20px;">No deep dives or discussions posted yet.</p>';
+
+        container.innerHTML = threads.map(t => {
+            const avatarHtml = t.profile_picture ? `<img src="${t.profile_picture}" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">` : `<div style="width:35px;height:35px;border-radius:50%;background:var(--bg-light);display:flex;align-items:center;justify-content:center;font-weight:bold;">${t.author_name.charAt(0)}</div>`;
+            const snippet = t.content.length > 100 ? t.content.substring(0, 100) + '...' : t.content;
+            return `
+            <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 15px; cursor: pointer;" onclick="openThreadView(${t.id}, '${t.title.replace(/'/g, "\\'")}', '${encodeURIComponent(t.content)}', '${t.author_name.replace(/'/g, "\\'")}', '${t.created_at}', '${t.profile_picture || ''}')">
+                <div style="display:flex; gap:12px; align-items:flex-start;">
+                    ${avatarHtml}
+                    <div style="flex:1;">
+                        <h4 style="margin:0 0 4px 0; color:var(--primary); font-size:1.1rem;">${t.title}</h4>
+                        <p style="margin:0 0 8px 0; font-size:0.9rem; color:var(--text-muted);">${snippet}</p>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <small style="color:var(--text-muted); font-size:0.75rem;">Posted by ${t.author_name}</small>
+                            <span class="badge badge-orange">${t.reply_count} Replies</span>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(err) {}
+};
+
+window.submitGroupThread = async function(e) {
+    e.preventDefault();
+    if(!currentDashboardGroupId) return alert("No active group.");
+    const youthId = (typeof currentMember !== 'undefined' && currentMember) ? currentMember.id : 0;
+    const payload = { youth_id: youthId, title: document.getElementById('threadTitle').value, content: document.getElementById('threadContent').value };
+    try {
+        const res = await fetch(`/api/small-groups/${currentDashboardGroupId}/threads`, {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            e.target.reset();
+            window.loadGroupThreads(currentDashboardGroupId);
+            alert("✅ Discussion posted successfully!");
+        } else { alert("Failed to post discussion."); }
+    } catch(err) { alert("Network error."); }
+};
+
+window.openThreadView = function(threadId, title, contentEncoded, author, date, pic) {
+    document.getElementById('replyThreadId').value = threadId;
+    document.getElementById('viewThreadTitle').innerText = title;
+    document.getElementById('viewThreadContent').innerText = decodeURIComponent(contentEncoded);
+    document.getElementById('viewThreadAuthor').innerText = author;
+    document.getElementById('viewThreadDate').innerText = date;
+    const avatar = document.getElementById('viewThreadAvatar');
+    if(pic && pic !== 'null') avatar.innerHTML = `<img src="${pic}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+    else avatar.innerHTML = author.charAt(0);
+    document.getElementById('groupThreadModal').classList.add('active');
+    window.loadThreadReplies(threadId);
+};
+
+window.closeThreadView = function() {
+    document.getElementById('groupThreadModal').classList.remove('active');
+    if(currentDashboardGroupId) window.loadGroupThreads(currentDashboardGroupId);
+};
+
+window.loadThreadReplies = async function(threadId) {
+    try {
+        const res = await fetch(`/api/small-groups/threads/${threadId}/replies`);
+        const replies = await res.json();
+        const container = document.getElementById('threadRepliesList');
+        if (replies.length === 0) return container.innerHTML = '<span style="color:var(--text-muted); font-size:0.85rem;">Be the first to reply!</span>';
+        container.innerHTML = replies.map(r => {
+            const avatarHtml = r.profile_picture ? `<img src="${r.profile_picture}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : `<div style="width:28px;height:28px;border-radius:50%;background:var(--border-color);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:bold;">${r.author_name.charAt(0)}</div>`;
+            const timeStr = new Date(r.created_at).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+            return `
+            <div style="background:#FFF; padding:12px; border-radius:8px; border:1px solid var(--bg-light);">
+                <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:6px;">
+                    ${avatarHtml}
+                    <div>
+                        <strong style="color:var(--text-main); font-size:0.85rem;">${r.author_name}</strong>
+                        <span style="color:var(--text-muted); font-size:0.7rem; margin-left:6px;">${timeStr}</span>
+                    </div>
+                </div>
+                <p style="margin:0 0 0 38px; font-size:0.95rem; color:var(--text-main); white-space:pre-wrap;">${r.reply_text}</p>
+            </div>`;
+        }).join('');
+    } catch(err) {}
+};
+
+window.submitThreadReply = async function(e) {
+    e.preventDefault();
+    const threadId = document.getElementById('replyThreadId').value;
+    const text = document.getElementById('replyThreadInput').value;
+    const youthId = (typeof currentMember !== 'undefined' && currentMember) ? currentMember.id : 0;
+    const authorName = (typeof currentMember !== 'undefined' && currentMember) ? currentMember.name : "Admin";
+    if(!threadId || !text.trim()) return;
+    try {
+        const res = await fetch(`/api/small-groups/threads/${threadId}/replies`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ youth_id: youthId, reply_text: text, author_name: authorName })
+        });
+        if(res.ok) {
+            document.getElementById('replyThreadInput').value = '';
+            window.loadThreadReplies(threadId);
+        }
+    } catch(err) {}
+};
+
+window.loadGroupMemories = async function(groupId) {
+    try {
+        const res = await fetch(`/api/small-groups/${groupId}/memories`);
+        const memories = await res.json();
+        const container = document.getElementById('dashMemoriesGrid');
+        if(memories.length === 0) return container.innerHTML = '<p style="grid-column: span 2; text-align:center; color:var(--text-muted);">No memories shared yet. Be the first!</p>';
+        container.innerHTML = memories.map(m => `
+        <div style="background: #FFF; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.05); position: relative;">
+            <img src="${m.image_data}" style="width: 100%; height: 160px; object-fit: cover; cursor: pointer;" onclick="openImageViewer(this.src)">
+            <div style="padding: 10px;">
+                <p style="margin: 0; font-size: 0.85rem; color: var(--text-main); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${m.caption}</p>
+                <small style="color: var(--text-muted); font-size: 0.7rem;">${m.author_name}</small>
+            </div>
+        </div>`).join('');
+    } catch(e) {}
+};
+
+window.submitGroupMemory = function(e) {
+    e.preventDefault();
+    if(!currentDashboardGroupId) return;
+    const fileInput = document.getElementById('memoryImageInput');
+    const caption = document.getElementById('memoryCaptionInput').value;
+    if(fileInput.files.length === 0) return;
+    
+    const youthId = (typeof currentMember !== 'undefined' && currentMember) ? currentMember.id : 0;
+    
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = event => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = async () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 600;
+            let width = img.width;
+            let height = img.height;
+            if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            const base64Compressed = canvas.toDataURL('image/jpeg', 0.6);
+            
+            try {
+                const res = await fetch(`/api/small-groups/${currentDashboardGroupId}/memories`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ youth_id: youthId, image_data: base64Compressed, caption: caption })
+                });
+                if (res.ok) {
+                    e.target.reset();
+                    window.loadGroupMemories(currentDashboardGroupId);
+                }
+            } catch(err) {}
+        };
+    };
+};

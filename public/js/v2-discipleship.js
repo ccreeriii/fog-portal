@@ -35,6 +35,7 @@ window.V2Discipleship = {
         this.loadPrayers();
         this.loadSmallGroups();
         this.loadPathways();
+        this.loadLiturgicalData();
     },
 
     loadAdminData: async function() {
@@ -135,6 +136,27 @@ window.V2Discipleship = {
         } catch(e) {}
     },
 
+    
+    loadLiturgicalData: async function() {
+        const container = document.getElementById('liturgicalCard');
+        if(!container) return;
+        try {
+            const res = await fetch('/api/liturgical/today');
+            const data = await res.json();
+            let bgColor = '#10B981'; 
+            const color = (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].colour : data.season_color || 'green';
+            if (color === 'red') bgColor = '#DC2626'; 
+            else if (color === 'violet' || color === 'purple') bgColor = '#7C3AED'; 
+            else if (color === 'white' || color === 'gold') bgColor = '#F59E0B'; 
+            else if (color === 'rose' || color === 'pink') bgColor = '#F472B6'; 
+            
+            container.style.background = `linear-gradient(135deg, ${bgColor}, #111)`;
+            container.style.display = 'block';
+            document.getElementById('liturgicalSeason').innerText = (data.season || 'Ordinary').toUpperCase() + ' TIME';
+            document.getElementById('liturgicalFeast').innerText = (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].title : "Daily Mass";
+            document.getElementById('liturgicalGospel').innerText = data.daily_gospel || "I am the bread of life... (John 6:35)";
+        } catch(e) {}
+    },
     loadNextStep: async function() {
         if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
         const container = document.getElementById('nextStepContainer'); if (!container) return;

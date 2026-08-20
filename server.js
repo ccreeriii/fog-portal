@@ -71,6 +71,12 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS small_group_chats (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, message TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS small_group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, joined_at DATETIME, UNIQUE(group_id, youth_id))`);
 
+    db.run(`CREATE TABLE IF NOT EXISTS group_threads (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, title TEXT, content TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS group_thread_replies (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER, youth_id INTEGER, reply_text TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS group_memories (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, image_data TEXT, caption TEXT, created_at DATETIME)`);
+    db.run(`ALTER TABLE small_group_chats ADD COLUMN reactions TEXT DEFAULT '{}'`, (err)=>{});
+    
+
     db.run(`CREATE TABLE IF NOT EXISTS songs (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, artist TEXT, song_key TEXT, bpm TEXT, audio_url TEXT, youtube_url TEXT, chord_chart_url TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS setlists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, scheduled_date TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS setlist_songs (id INTEGER PRIMARY KEY AUTOINCREMENT, setlist_id INTEGER, song_id INTEGER, sort_order INTEGER, UNIQUE(setlist_id, song_id))`);
@@ -962,6 +968,46 @@ app.post('/api/ai/chat', (req, res) => {
     finalizeChat(greeting);
 });
 
+
+app.get('/api/liturgical/today', (req, res) => {
+    const today = getManilaTime().split(' ')[0];
+    const gospels = ["I am the bread of life... (John 6:35)", "Blessed are the poor in spirit... (Matthew 5:3)", "I am the light of the world... (John 8:12)", "Come to me, all you who are weary... (Matthew 11:28)"];
+    const dailyGospel = gospels[parseInt(today.split('-')[2], 10) % gospels.length];
+    require('https').get('https://calapi.inadiutorium.cz/api/v0/en/calendars/default/today', (resp) => {
+        let data = ''; resp.on('data', chunk => data += chunk);
+        resp.on('end', () => {
+            try { const p = JSON.parse(data); p.daily_gospel = dailyGospel; res.json(p); } 
+            catch(e) { res.json({ season: "ordinary", colour: "green", daily_gospel: dailyGospel }); }
+        });
+    }).on("error", () => res.json({ season: "ordinary", colour: "green", daily_gospel: dailyGospel }));
+});
+app.get('/api/small-groups/:id/threads', (req, res) => {
+    db.all(`SELECT t.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture, (SELECT COUNT(*) FROM group_thread_replies WHERE thread_id = t.id) as reply_count FROM group_threads t LEFT JOIN youth y ON t.youth_id = y.id WHERE t.group_id = ? ORDER BY t.created_at DESC`, [req.params.id], (err, rows) => { res.json(rows || []); });
+});
+app.post('/api/small-groups/:id/threads', (req, res) => {
+    db.run(`INSERT INTO group_threads (group_id, youth_id, title, content, created_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.title, req.body.content, getManilaTime()], function(err) { res.json({success: true}); });
+});
+app.get('/api/small-groups/threads/:thread_id/replies', (req, res) => {
+    db.all(`SELECT r.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_thread_replies r LEFT JOIN youth y ON r.youth_id = y.id WHERE r.thread_id = ? ORDER BY r.created_at ASC`, [req.params.thread_id], (err, rows) => { res.json(rows || []); });
+});
+app.post('/api/small-groups/threads/:thread_id/replies', (req, res) => {
+    db.run(`INSERT INTO group_thread_replies (thread_id, youth_id, reply_text, created_at) VALUES (?, ?, ?, ?)`, [req.params.thread_id, req.body.youth_id, req.body.reply_text, getManilaTime()], function(err) { res.json({success: true}); });
+});
+app.get('/api/small-groups/:id/memories', (req, res) => {
+    db.all(`SELECT m.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_memories m LEFT JOIN youth y ON m.youth_id = y.id WHERE m.group_id = ? ORDER BY m.created_at DESC LIMIT 50`, [req.params.id], (err, rows) => { res.json(rows || []); });
+});
+app.post('/api/small-groups/:id/memories', (req, res) => {
+    db.run(`INSERT INTO group_memories (group_id, youth_id, image_data, caption, created_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.image_data, req.body.caption, getManilaTime()], function(err) { res.json({success: true}); });
+});
+app.post('/api/small-groups/chat/:chat_id/react', (req, res) => {
+    db.get(`SELECT reactions FROM small_group_chats WHERE id = ?`, [req.params.chat_id], (err, row) => {
+        if(!row) return res.json({success: false});
+        let reactions = {}; try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
+        reactions[req.body.emoji] = (reactions[req.body.emoji] || 0) + 1;
+        db.run(`UPDATE small_group_chats SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), req.params.chat_id], () => res.json({success: true}));
+    });
+});
+
 app.get('/api/worship/songs', (req, res) => { db.all(`SELECT * FROM songs ORDER BY title ASC`, [], (err, rows) => { res.json(rows); }); });
 app.post('/api/worship/songs', (req, res) => { db.run(`INSERT INTO songs (title, artist, song_key, bpm, audio_url, youtube_url, chord_chart_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.title, req.body.artist, req.body.song_key, req.body.bpm, req.body.audio_url, req.body.youtube_url, req.body.chord_chart_url, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
 app.put('/api/worship/songs/:id', (req, res) => { db.run(`UPDATE songs SET title=?, artist=?, song_key=?, bpm=?, audio_url=?, youtube_url=?, chord_chart_url=? WHERE id=?`, [req.body.title, req.body.artist, req.body.song_key, req.body.bpm, req.body.audio_url, req.body.youtube_url, req.body.chord_chart_url, req.params.id], function(err) { res.json({ success: true }); }); });
@@ -1162,3 +1208,40 @@ app.get('/api/growth-games/verse-chain', (req, res) => { const { group_id } = re
 app.post('/api/growth-games/verse-chain/submit', (req, res) => { const { youth_id, group_id, verse_id, word_index, guessed_word, actor } = req.body; if (!group_id) return res.status(400).json({error: "You must be in a small group to play this."}); db.run(`INSERT INTO brain_verse_contributions (group_id, verse_id, youth_id, word_index, guessed_word, created_at) VALUES (?, ?, ?, ?, ?, ?)`, [group_id, verse_id, youth_id, word_index, guessed_word, getManilaTime()], function(err) { if (err) return res.status(400).json({error: "Word already solved by your group!"}); awardPoints(youth_id, 'growth', 10, actor || 'System', 'Verse Chain'); res.json({ success: true, pointsAwarded: 10 }); }); });
 
 app.listen(PORT, () => { console.log(`Server running safely on Port ${PORT}`); });
+
+app.get('/api/small-groups/:id/threads', (req, res) => {
+    db.all(`SELECT t.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture, (SELECT COUNT(*) FROM group_thread_replies WHERE thread_id = t.id) as reply_count FROM group_threads t LEFT JOIN youth y ON t.youth_id = y.id WHERE t.group_id = ? ORDER BY t.created_at DESC`, [req.params.id], (err, rows) => { res.json(rows || []); });
+});
+app.post('/api/small-groups/:id/threads', (req, res) => {
+    db.run(`INSERT INTO group_threads (group_id, youth_id, title, content, created_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.title, req.body.content, getManilaTime()], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({success: true});
+    });
+});
+app.get('/api/small-groups/threads/:thread_id/replies', (req, res) => {
+    db.all(`SELECT r.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_thread_replies r LEFT JOIN youth y ON r.youth_id = y.id WHERE r.thread_id = ? ORDER BY r.created_at ASC`, [req.params.thread_id], (err, rows) => { res.json(rows || []); });
+});
+app.post('/api/small-groups/threads/:thread_id/replies', (req, res) => {
+    db.run(`INSERT INTO group_thread_replies (thread_id, youth_id, reply_text, created_at) VALUES (?, ?, ?, ?)`, [req.params.thread_id, req.body.youth_id, req.body.reply_text, getManilaTime()], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({success: true});
+    });
+});
+app.get('/api/small-groups/:id/memories', (req, res) => {
+    db.all(`SELECT m.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_memories m LEFT JOIN youth y ON m.youth_id = y.id WHERE m.group_id = ? ORDER BY m.created_at DESC LIMIT 50`, [req.params.id], (err, rows) => { res.json(rows || []); });
+});
+app.post('/api/small-groups/:id/memories', (req, res) => {
+    db.run(`INSERT INTO group_memories (group_id, youth_id, image_data, caption, created_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.image_data, req.body.caption, getManilaTime()], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({success: true});
+    });
+});
+app.post('/api/small-groups/chat/:chat_id/react', (req, res) => {
+    db.get(`SELECT reactions FROM small_group_chats WHERE id = ?`, [req.params.chat_id], (err, row) => {
+        if(!row) return res.json({success: false});
+        let reactions = {};
+        try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
+        reactions[req.body.emoji] = (reactions[req.body.emoji] || 0) + 1;
+        db.run(`UPDATE small_group_chats SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), req.params.chat_id], () => res.json({success: true}));
+    });
+});
