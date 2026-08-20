@@ -709,7 +709,7 @@
         </div>
 
         <div class="sub-nav" style="background: #FFF; border-radius: 8px; padding: 5px; margin-bottom: 20px;">
-            <button id="btnAnalyticsTabOverview" class="sub-nav-btn active" onclick="switchAnalyticsSubTab('overview')">📊 Roster</button>
+            <button id="btnAnalyticsTabOverview" class="sub-nav-btn active" onclick="switchAnalyticsSubTab('overview')">📊 List</button>
             <button id="btnAnalyticsTabRoles" class="sub-nav-btn" onclick="switchAnalyticsSubTab('roles')">🎭 Roles</button>
         </div>
 
@@ -723,7 +723,7 @@
 
             <div style="background: #FFF; border-radius: 12px; padding: 15px;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-                    <h3 style="margin: 0; border: none;">Roster</h3><button id="addEntryAnalyticsBtn" class="btn btn-primary btn-sm" style="display:none;" onclick="openAddAttendeeModal()">➕ Add</button>
+                    <h3 style="margin: 0; border: none;">List</h3><button id="addEntryAnalyticsBtn" class="btn btn-primary btn-sm" style="display:none;" onclick="openAddAttendeeModal()">➕ Add</button>
                 </div>
                 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                     <input type="text" id="attSearchNative" placeholder="Search..." class="form-control" oninput="filterAnalyticsRoster()">
@@ -738,7 +738,7 @@
         <div id="analyticsTabRoles" style="display: none;">
             <div style="background: #FFF; border-radius: 12px; padding: 15px;">
                 <div id="eventRolesRestrictedSection" style="display: none; background: #FEF3C7; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                    <h3>🔒 Leaders' Notes</h3><textarea id="eventRolesDetailNotes" class="form-control" rows="3"></textarea><button class="btn btn-sm" style="background: #D97706; color: #FFF; margin-top: 10px;" onclick="saveEventRolesNotes()">Save Notes</button>
+                    <h3>🔒 Leaders' Notes</h3><textarea id="eventRolesDetailNotes" class="form-control" rows="8" style="resize: vertical; min-height: 150px; padding: 10px;"></textarea><button class="btn btn-sm" style="background: #D97706; color: #FFF; margin-top: 10px;" onclick="saveEventRolesNotes()">Save Notes</button>
                 </div>
                 <div id="eventRoleAssignControls" style="display: none; background: var(--bg-light); padding: 15px; margin-bottom: 15px;">
                     <h4>Assign Member</h4>
@@ -814,7 +814,7 @@
         <div id="ministryRestrictedSection" style="display: none; background: #FEF3C7; padding: 15px; border-radius: 8px; margin-bottom: 25px;">
             <h3>🔒 Notes</h3><textarea id="ministryDetailNotes" class="form-control" rows="4"></textarea><button class="btn btn-sm" style="background: #D97706; color: #FFF; margin-top: 10px;" onclick="saveMinistryNotes()">Save</button>
         </div>
-        <h3>Roster</h3>
+        <h3>List</h3>
         <div id="ministryAssignControls" style="display: none; background: var(--bg-light); padding: 15px; margin-bottom: 15px;">
             <div style="display: flex; flex-wrap: wrap; gap: 10px;">
         <div style="flex: 1 1 100%; position: relative;"><input type="text" id="minSearchInput" class="form-control" placeholder="Search Member..." onkeyup="filterMinistrySearch()"><div id="minSearchDropdown" style="display:none; position:absolute; background:#FFF; width:100%; border: 1px solid var(--border-color); max-height: 200px; overflow-y: auto; z-index:100;"></div></div>
@@ -1016,32 +1016,47 @@
 <script src="/js/v10-expansion.js?v=12.2"></script>
 
 
+
 <div id="viewProfileModal" class="modal">
-    <div class="modal-content" style="max-width: 600px; padding: 0; overflow: hidden;">
+    <div class="modal-content" style="max-width: 600px; padding: 0; overflow: hidden; background: #F8FAFC;">
         <span class="close-modal" onclick="closeViewProfileModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer; z-index: 10;">&times;</span>
-        <div style="background: var(--bg-light); padding: 30px 20px; text-align: center; position: relative;">
-            <div id="viewModalProfileAvatar" class="avatar-circle" style="width: 100px; height: 100px; font-size: 2.5rem; margin: 0 auto 15px auto;"></div>
-            <h2 id="modalProfileName" style="margin: 0; border: none; padding: 0;"></h2>
-            <p id="modalProfileCode" class="badge badge-orange" style="margin-top: 10px;"></p>
-        </div>
-        <div style="padding: 20px;">
-            <div id="modalBioSummary" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6;"></div>
-            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <button class="btn btn-outline btn-sm active" id="btnModalTabRoles" onclick="switchProfileModalTab('roles')" style="flex:1;">Roles</button>
-                <button class="btn btn-outline btn-sm" id="btnModalTabAttendance" onclick="switchProfileModalTab('attendance')" style="flex:1;">Attendance</button>
+        
+        <div style="background: #FFF; padding: 35px 20px 20px 20px; text-align: center; border-bottom: 1px solid var(--border-color);">
+            <div id="viewModalProfileAvatar" class="avatar-circle" style="width: 120px; height: 120px; font-size: 3rem; margin: 0 auto 15px auto;"></div>
+            <h2 id="modalProfileName" style="margin: 0; border: none; padding: 0; font-size: 1.8rem; color: var(--primary); font-weight: 800;"></h2>
+            
+            <div style="margin-top: 12px;">
+                <p id="modalProfileXP" class="badge" style="background: #FEF3C7; color: #D97706; font-size: 1.1rem; padding: 8px 16px; border: 1px solid #FDE68A;">🎮 0 Total XP</p>
             </div>
+            
+            <p id="modalProfileCode" class="badge badge-orange" style="margin-top: 10px; display: none;"></p>
+        </div>
+
+        <div style="padding: 20px;">
+            <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 10px; border-bottom: 2px solid var(--bg-light); padding-bottom: 5px;">Personal Details</h3>
+            <div id="modalBioSummary" style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 25px; line-height: 1.6; background: #FFF; padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); text-align: left;"></div>
+            
+            <div class="sub-nav" style="margin-bottom: 15px; justify-content: center; background: #FFF; padding: 5px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <button class="sub-nav-btn active" id="btnModalTabRoles" onclick="switchProfileModalTab('roles')" style="flex:1;">🎭 Roles</button>
+                <button class="sub-nav-btn" id="btnModalTabAttendance" onclick="switchProfileModalTab('attendance')" style="flex:1;">📋 Participation</button>
+            </div>
+            
             <div id="modalTabRoles">
                 <div id="modalMinistriesHistory"></div>
-                <div id="modalRolesPagination" style="display:none;"></div>
+                <div id="modalRolesPagination" style="display:none; text-align: center; margin-top: 15px;"></div>
             </div>
             <div id="modalTabAttendance" style="display:none;">
                 <div id="modalAttendanceHistory"></div>
-                <div id="modalAttPagination" style="display:none;"></div>
+                <div id="modalAttPagination" style="display:none; text-align: center; margin-top: 15px;"></div>
             </div>
         </div>
-        <div id="modalQrContainer" style="text-align: center; padding: 20px; background: var(--bg-light); border-top: 1px solid var(--border-color);"></div>
-        <div style="padding: 15px; text-align: center;">
-            <a id="modalDownloadQrBtn" class="btn btn-primary" download="Pass.png" style="width: 100%;">📥 Download Pass</a>
+        
+        <div id="modalQrSectionWrapper" style="display: none; padding: 20px; background: var(--bg-light); border-top: 1px solid var(--border-color); text-align: center;">
+            <h3 style="font-size: 1rem; margin-bottom: 10px; color: var(--text-muted);">Secure QR Pass</h3>
+            <div id="modalQrContainer" style="display: inline-block; padding: 10px; background: #FFF; border-radius: 8px; border: 1px solid var(--border-color);"></div>
+            <div style="margin-top: 15px;">
+                <a id="modalDownloadQrBtn" class="btn btn-primary" download="Pass.png" style="width: 100%;">📥 Download QR Pass</a>
+            </div>
         </div>
     </div>
 </div>

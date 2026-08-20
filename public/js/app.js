@@ -401,7 +401,96 @@ window.openAddMemberModal = function() { document.getElementById('addMemberForm'
 window.submitNewMember = async function(e) { e.preventDefault(); const fileInput = document.getElementById('addMemberProfilePic'); let picBase64 = null; if (fileInput && fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400); const payload = { name: document.getElementById('addMemberName').value, age: document.getElementById('addMemberAge').value, birthday: document.getElementById('addMemberBirthday').value, email: document.getElementById('addMemberEmail').value, mobile: document.getElementById('addMemberMobile').value, social_media: document.getElementById('addMemberSocial').value, parents_name: document.getElementById('addMemberParents').value, profile_picture: picBase64, actor: currentUser }; window.triggerActionConfirmation(`Register ${payload.name} into the directory?`, async () => { try { const res = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await res.json(); if (data.id) { alert(`Successfully registered ${payload.name}!\nUnique Pass ID: ${data.qr_code}`); window.closeAddMemberModal(); youthData = []; window.loadDirectory(); } else { alert(data.error || 'Failed to create member.'); } } catch (err) { alert("Network error."); } }); };
 window.openEditMemberModal = function(youthId) { const m = youthData.find(y => y.id == youthId); if (!m) return; document.getElementById('editMemberId').value = m.id; document.getElementById('editMemberName').value = m.name || ''; document.getElementById('editMemberEmail').value = m.email || ''; document.getElementById('editMemberAge').value = m.age || ''; document.getElementById('editMemberBirthday').value = m.birthday || ''; document.getElementById('editMemberSocial').value = m.social_media || ''; document.getElementById('editMemberParents').value = m.parents_name || ''; document.getElementById('editMemberProfilePic').value = ''; document.getElementById('editMemberModal').classList.add('active'); }; window.closeEditMemberModal = function() { document.getElementById('editMemberModal').classList.remove('active'); };
 window.saveMemberEditWithConfirm = async function() { const form = document.getElementById('editMemberModal').querySelector('form'); if(!form.checkValidity()) { form.reportValidity(); return; } const id = document.getElementById('editMemberId').value; const fileInput = document.getElementById('editMemberProfilePic'); let picBase64 = undefined; if (fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400); const payload = { name: document.getElementById('editMemberName').value, email: document.getElementById('editMemberEmail').value, age: document.getElementById('editMemberAge').value, birthday: document.getElementById('editMemberBirthday').value, social_media: document.getElementById('editMemberSocial').value, parents_name: document.getElementById('editMemberParents').value, password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, profile_picture: picBase64, actor: currentUser }; window.triggerActionConfirmation(`Confirm updating member profile for '${payload.name}'?`, async () => { await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); window.closeEditMemberModal(); youthData = []; window.loadDirectory(); }); };
-window.openViewProfileModal = async function(youthId) { const member = youthData.find(y => y.id == youthId); if (!member) return; const safeName = member.name || 'Unknown'; document.getElementById('modalProfileName').innerText = safeName; const isOwner = currentMember && currentMember.id == youthId; const isSuperAdmin = currentUser === 'celsocreeriii@gmail.com'; const passIdElem = document.getElementById('modalProfileCode'); const rightPanel = document.querySelector('#viewProfileModal .profile-header-right'); if (isOwner || isSuperAdmin) { passIdElem.innerText = `Unique Pass ID: ${member.qr_code || ''}`; passIdElem.style.display = 'inline-block'; if (rightPanel) rightPanel.style.display = 'flex'; document.getElementById('modalQrContainer').innerHTML = ''; if(member.qr_code) { QRCode.toDataURL(member.qr_code, { width: 180 }, function (err, url) { if(!err) { const img = document.createElement('img'); img.src = url; document.getElementById('modalQrContainer').appendChild(img); const dlBtn = document.getElementById('modalDownloadQrBtn'); if(dlBtn) dlBtn.href = url; } }); } } else { passIdElem.style.display = 'none'; if (rightPanel) rightPanel.style.display = 'none'; } document.getElementById('modalBioSummary').innerHTML = `<strong>Email Address:</strong> ${member.email || 'N/A'}<br><strong>Age / Birthday:</strong> ${member.age || 'N/A'} (${member.birthday || 'N/A'})<br><strong>Social Media:</strong> ${member.social_media || 'N/A'}<br><strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}`; const avatar = document.getElementById('viewModalProfileAvatar'); if (member.profile_picture) { avatar.innerHTML = `<img src="${member.profile_picture}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`; } else { avatar.innerHTML = safeName.charAt(0).toUpperCase(); } try { const [minRes, evtRes] = await Promise.all([ fetch(`/api/youth/${youthId}/ministries`), fetch(`/api/youth/${youthId}/event_roles`) ]); const ministries = await minRes.json(); const eventRoles = await evtRes.json(); modalRolesData = []; ministries.forEach(m => modalRolesData.push({type: 'ministry', ...m})); eventRoles.forEach(er => modalRolesData.push({type: 'event', ...er})); modalRolesData.sort((a,b) => { const dateA = new Date(a.assigned_at || a.event_date || 0); const dateB = new Date(b.assigned_at || b.event_date || 0); return dateB - dateA; }); modalRolesPage = 1; window.renderModalRoles(); } catch(e) {} try { const safeFetch = window.fetch.bind(window); const res = await safeFetch(`/api/youth/${youthId}/history`); modalAttData = await res.json(); modalAttPage = 1; window.renderModalAttendance(); } catch(e) {} window.switchProfileModalTab('roles'); const modal = document.getElementById('viewProfileModal'); if(modal) modal.classList.add('active'); };
+window.openViewProfileModal = async function(youthId) {
+    const member = youthData.find(y => y.id == youthId);
+    if (!member) return;
+    const safeName = member.name || 'Unknown';
+    document.getElementById('modalProfileName').innerText = safeName;
+    
+    // Strict Auth
+    const isOwner = currentMember && currentMember.id == youthId;
+    const isSuperAdmin = currentUser === 'celsocreeriii@gmail.com';
+    const isAuthorized = isOwner || isSuperAdmin; 
+    
+    const passIdElem = document.getElementById('modalProfileCode');
+    const qrSection = document.getElementById('modalQrSectionWrapper');
+    const qrContainer = document.getElementById('modalQrContainer');
+    const dlBtn = document.getElementById('modalDownloadQrBtn');
+
+    if (isAuthorized) {
+        if(passIdElem) {
+            passIdElem.innerText = 'Unique Pass ID: ' + (member.qr_code || '');
+            passIdElem.style.display = 'inline-block';
+        }
+        if(qrSection) qrSection.style.display = 'block';
+        if(qrContainer) {
+            qrContainer.innerHTML = '';
+            if(member.qr_code) {
+                QRCode.toDataURL(member.qr_code, { width: 180 }, function (err, url) {
+                    if(!err) {
+                        const img = document.createElement('img'); img.src = url;
+                        qrContainer.appendChild(img);
+                        if(dlBtn) dlBtn.href = url;
+                    }
+                });
+            }
+        }
+    } else {
+        if(passIdElem) passIdElem.style.display = 'none';
+        if(qrSection) qrSection.style.display = 'none';
+    }
+
+    let xpElem = document.getElementById('modalProfileXP');
+    if (xpElem) xpElem.innerText = '🎮 Loading XP...';
+    try {
+        const xpRes = await fetch('/api/gamification/points/' + youthId);
+        if(xpRes.ok) {
+            const xpData = await xpRes.json();
+            if(xpElem) xpElem.innerText = '🎮 ' + (xpData.points || 0) + ' Total XP';
+        } else {
+            if(xpElem) xpElem.innerText = '🎮 0 Total XP';
+        }
+    } catch(e) {
+        if(xpElem) xpElem.innerText = '🎮 0 Total XP';
+    }
+
+    document.getElementById('modalBioSummary').innerHTML = '<strong>Email:</strong> ' + (member.email || 'N/A') + '<br><strong>Age:</strong> ' + (member.age || 'N/A') + '<br><strong>Birthday:</strong> ' + (member.birthday || 'N/A') + '<br><strong>Social:</strong> ' + (member.social_media || 'N/A') + '<br><strong>Guardian:</strong> ' + (member.parents_name || 'N/A');
+    
+    const avatar = document.getElementById('viewModalProfileAvatar');
+    if (member.profile_picture) {
+        avatar.innerHTML = '<img src="' + member.profile_picture + '" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">';
+    } else {
+        avatar.innerHTML = safeName.charAt(0).toUpperCase();
+    }
+
+    try {
+        const [minRes, evtRes] = await Promise.all([ fetch('/api/youth/' + youthId + '/ministries'), fetch('/api/youth/' + youthId + '/event_roles') ]);
+        const ministries = await minRes.json();
+        const eventRoles = await evtRes.json();
+        modalRolesData = [];
+        ministries.forEach(m => modalRolesData.push({type: 'ministry', ...m}));
+        eventRoles.forEach(er => modalRolesData.push({type: 'event', ...er}));
+        modalRolesData.sort((a,b) => {
+            const dateA = new Date(a.assigned_at || a.event_date || 0);
+            const dateB = new Date(b.assigned_at || b.event_date || 0);
+            return dateB - dateA;
+        });
+        modalRolesPage = 1;
+        window.renderModalRoles();
+    } catch(e) {}
+
+    try {
+        const safeFetch = window.fetch.bind(window);
+        const res = await safeFetch('/api/youth/' + youthId + '/history');
+        modalAttData = await res.json();
+        modalAttPage = 1;
+        window.renderModalAttendance();
+    } catch(e) {}
+
+    window.switchProfileModalTab('roles');
+    const modal = document.getElementById('viewProfileModal');
+    if(modal) modal.classList.add('active');
+};
 window.closeViewProfileModal = function() { document.getElementById('viewProfileModal').classList.remove('active'); };
 
 window.loadMinistries = async function() { try { const res = await fetch('/api/ministries'); ministriesData = await res.json(); const container = document.getElementById('ministryListContainer'); if (ministriesData.length === 0) { container.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding: 20px;">No ministries created yet.</p>`; return; } container.innerHTML = ministriesData.map(m => { const logoHtml = m.logo ? `<img src="${m.logo}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">` : `<div style="background: var(--bg-light); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 1.5rem;">🏛️</div>`; return `<div class="ministry-card" onclick="openMinistryDetailsModal(${m.id})"><div style="display: flex; gap: 15px; margin-bottom: 15px;"><div style="width: 50px; height: 50px; flex-shrink: 0; border: 1px solid var(--border-color); border-radius: 8px;">${logoHtml}</div><div><h3 style="color: var(--primary); font-size: 1.2rem; margin-bottom: 2px;">${m.name}</h3><p style="color: var(--text-muted); font-size: 0.85rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${m.description || 'No description provided'}</p></div></div><div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 10px;"><span class="badge badge-blue">👥 ${m.member_count || 0} Members</span><span style="font-size: 0.8rem; color: var(--primary); font-weight: bold;">View Team →</span></div></div>`; }).join(''); } catch(e) {} };
@@ -417,7 +506,34 @@ window.assignMinistryRole = async function() { const youthId = document.getEleme
 window.openEditMinistryRoleModal = function(mappingId, role, subRole) { document.getElementById('editMinRoleMappingId').value = mappingId; document.getElementById('editMinRoleSelect').value = role; document.getElementById('editMinSubRoleInput').value = subRole; document.getElementById('editMinistryRoleModal').classList.add('active'); }; window.closeEditMinistryRoleModal = function() { document.getElementById('editMinistryRoleModal').classList.remove('active'); };
 window.saveMinistryRoleEdit = async function() { const mappingId = document.getElementById('editMinRoleMappingId').value; const payload = { role: document.getElementById('editMinRoleSelect').value, sub_role: document.getElementById('editMinSubRoleInput').value, actor: currentUser }; try { const res = await fetch(`/api/ministries/${currentMinistryId}/members/${mappingId}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) }); if(res.ok) { window.closeEditMinistryRoleModal(); window.loadMinistryRoster(currentMinistryId); window.loadMinistries(); } } catch(e) {} };
 window.removeMinistryRole = function(mappingId, name) { window.triggerActionConfirmation(`Remove ${name} from this ministry?`, async () => { try { const res = await fetch(`/api/ministries/${currentMinistryId}/members/${mappingId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) }); if (res.ok) { window.loadMinistryRoster(currentMinistryId); window.loadMinistries(); } } catch(err) {} }); };
-window.openPreregSettings = function(eventId) { const e = eventsData.find(ev => ev.id == eventId); if (!e) return; document.getElementById('preregSetEventId').value = e.id; document.getElementById('preregSetTitle').value = e.prereg_title || e.name || ''; document.getElementById('preregSetInfo').value = e.prereg_info || ''; document.getElementById('preregSetBanner').value = ''; document.getElementById('preregSetBottomBanner').value = ''; document.getElementById('preregSettingsModal').classList.add('active'); }; window.closePreregSettingsModal = function() { document.getElementById('preregSettingsModal').classList.remove('active'); };
+window.openPreregSettings = function(eventId) {
+    console.log("Triggered openPreregSettings for event:", eventId);
+    const e = eventsData.find(ev => ev.id == eventId);
+    if (!e) return alert('Event data not found!');
+    
+    const idElem = document.getElementById('preregSetEventId');
+    if(idElem) idElem.value = e.id;
+    
+    const titleElem = document.getElementById('preregSetTitle');
+    if(titleElem) titleElem.value = e.prereg_title || e.name || '';
+    
+    const infoElem = document.getElementById('preregSetInfo');
+    if(infoElem) infoElem.value = e.prereg_info || '';
+    
+    const banElem = document.getElementById('preregSetBanner');
+    if(banElem) banElem.value = '';
+    
+    const botElem = document.getElementById('preregSetBottomBanner');
+    if(botElem) botElem.value = '';
+    
+    const modal = document.getElementById('preregSettingsModal');
+    if(modal) {
+        modal.classList.add('active');
+    } else {
+        alert('Settings Modal missing from DOM!');
+    }
+};
+window.closePreregSettingsModal = function() { document.getElementById('preregSettingsModal').classList.remove('active'); };
 window.savePreregSettings = async function(e) { e.preventDefault(); const id = document.getElementById('preregSetEventId').value; const title = document.getElementById('preregSetTitle').value; const info = document.getElementById('preregSetInfo').value; const fileInput = document.getElementById('preregSetBanner'); const fileInputBottom = document.getElementById('preregSetBottomBanner'); let bannerBase64 = null; if (fileInput.files.length > 0) bannerBase64 = await window.getBase64(fileInput.files[0], 1200); let bottomBannerBase64 = null; if (fileInputBottom.files.length > 0) bottomBannerBase64 = await window.getBase64(fileInputBottom.files[0], 1200); window.triggerActionConfirmation('Save Pre-Registration Page Settings?', async () => { const res = await fetch(`/api/events/${id}/prereg-settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ banner: bannerBase64, bottom_banner: bottomBannerBase64, title, info, actor: currentUser }) }); if(res.ok) { alert('Settings saved successfully!'); window.closePreregSettingsModal(); window.loadEvents(); } }); };
 window.openPublicPreregFromSettings = async function() { const id = document.getElementById('preregSetEventId').value; window.closePreregSettingsModal(); window.launchPublicPrereg(id); };
 window.launchPublicPrereg = async function(eventId) { currentPreregEventId = eventId; document.getElementById('mainContainer').style.display = 'block'; const urlParams = new URLSearchParams(window.location.search); if (urlParams.get('event') !== String(eventId)) window.history.pushState(null, '', '?event=' + eventId); try { const prRes = await fetch(`/api/events/${eventId}/preregs`); const prData = await prRes.json(); currentPreRegYouthIds = new Set(prData); } catch(e) { currentPreRegYouthIds = new Set(); } if(eventsData.length === 0) { const res = await fetch('/api/events'); eventsData = await res.json(); } const e = eventsData.find(ev => ev.id == eventId); if (e) { document.getElementById('preregPublicTitle').innerText = e.prereg_title || e.name; document.getElementById('preregPublicInfo').innerText = e.prereg_info || `Date: ${e.event_date} | Venue: ${e.venue || 'TBA'}`; const banner = document.getElementById('preregPublicBanner'); if (e.prereg_banner) { banner.src = e.prereg_banner; banner.style.display = 'block'; } else if (e.poster) { banner.src = e.poster; banner.style.display = 'block'; } else { banner.style.display = 'none'; } const bottomBanner = document.getElementById('preregPublicBottomBanner'); if (e.prereg_bottom_banner) { bottomBanner.src = e.prereg_bottom_banner; bottomBanner.style.display = 'block'; } else { bottomBanner.style.display = 'none'; } } if(youthData.length === 0) { const yRes = await fetch('/api/youth'); youthData = await yRes.json(); } window.switchTab('preregPublicTab'); window.showPreregStep(1); };
@@ -481,7 +597,7 @@ window.openEditEventRoleModal = function(mappingId, roleName, subRole) { documen
 window.saveEventRoleEdit = async function() { const mappingId = document.getElementById('editEvtRoleMappingId').value; const eventId = currentAnalyticsData.event.id; const payload = { role_name: document.getElementById('editEvtRoleNameInput').value, sub_role: document.getElementById('editEvtSubRoleInput').value, actor: currentUser }; try { const res = await fetch(`/api/events/${eventId}/roles/${mappingId}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) }); if(res.ok) { window.closeEditEventRoleModal(); window.loadEventRoles(eventId); } } catch(e) {} };
 window.removeEventRole = function(mappingId, name) { window.triggerActionConfirmation(`Remove ${name}'s role from this event?`, async () => { try { const eventId = currentAnalyticsData.event.id; const res = await fetch(`/api/events/${eventId}/roles/${mappingId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) }); if (res.ok) window.loadEventRoles(eventId); } catch(err) {} }); };
 window.openAddAttendeeModal = function() { if(!currentAnalyticsData) return; if(document.getElementById('addAttendeeSearch')) document.getElementById('addAttendeeSearch').value = ''; if(document.getElementById('addAttendeeResults')) document.getElementById('addAttendeeResults').innerHTML = ''; const modal = document.getElementById('addAttendeeModal'); if(modal) modal.classList.add('active'); if(youthData.length === 0) window.loadDirectory(); }; window.closeAddAttendeeModal = function() { if(document.getElementById('addAttendeeModal')) document.getElementById('addAttendeeModal').classList.remove('active'); };
-window.filterAddAttendeeSearch = function() { const searchInput = document.getElementById('addAttendeeSearch'); const container = document.getElementById('addAttendeeResults'); if (!searchInput || !container) return; const q = searchInput.value.toLowerCase().trim(); if (q.length < 2) { container.innerHTML = ''; return; } const matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q)); const existingIds = currentAnalyticsData.roster.map(r => r.youth_id); container.innerHTML = matches.map(y => { const safeName = y.name || 'Unknown'; const isExisting = existingIds.includes(y.id); const buttons = isExisting ? `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold;">Already In Roster</span>` : `<button type="button" class="btn btn-primary btn-sm" onclick="submitAddAttendee(${y.id}, 0, '${safeName.replace(/'/g, "\\'")}')">Add Pre-Reg</button><button type="button" class="btn btn-outline btn-sm" onclick="submitAddAttendee(${y.id}, 1, '${safeName.replace(/'/g, "\\'")}')">Add Walk-in</button>`; return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border-color);"><div><strong style="color:var(--text-main);">${safeName}</strong></div><div style="display: flex; gap: 5px;">${buttons}</div></div>`; }).join(''); };
+window.filterAddAttendeeSearch = function() { const searchInput = document.getElementById('addAttendeeSearch'); const container = document.getElementById('addAttendeeResults'); if (!searchInput || !container) return; const q = searchInput.value.toLowerCase().trim(); if (q.length < 2) { container.innerHTML = ''; return; } const matches = youthData.filter(y => (y.name || '').toLowerCase().includes(q)); const existingIds = currentAnalyticsData.roster.map(r => r.youth_id); container.innerHTML = matches.map(y => { const safeName = y.name || 'Unknown'; const isExisting = existingIds.includes(y.id); const buttons = isExisting ? `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold;">Already In List</span>` : `<button type="button" class="btn btn-primary btn-sm" onclick="submitAddAttendee(${y.id}, 0, '${safeName.replace(/'/g, "\\'")}')">Add Pre-Reg</button><button type="button" class="btn btn-outline btn-sm" onclick="submitAddAttendee(${y.id}, 1, '${safeName.replace(/'/g, "\\'")}')">Add Walk-in</button>`; return `<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border-color);"><div><strong style="color:var(--text-main);">${safeName}</strong></div><div style="display: flex; gap: 5px;">${buttons}</div></div>`; }).join(''); };
 window.submitAddAttendee = async function(youthId, isWalkin, name) { const eventId = currentAnalyticsData.event.id; try { const res = await fetch('/api/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youth_id: youthId, event_id: eventId, is_walkin: isWalkin, actor: currentUser }) }); const data = await res.json(); if (data.success) { alert(`Added ${name} to the event!`); window.closeAddAttendeeModal(); window.openAnalyticsModal(eventId); } else alert(data.error || 'Failed to add attendee.'); } catch(e) {} };
 window.triggerDeletePreReg = function(eventId, youthId, memberName) { window.triggerActionConfirmation(`Remove pre-registration for '${memberName}'?`, async () => { try { const res = await fetch(`/api/events/${eventId}/preregs/${youthId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor: currentUser }) }); const data = await res.json(); if (data.success) { if (currentAnalyticsData) window.openAnalyticsModal(eventId); } } catch(e) {} }); };
 window.exportAnalyticsCSV = function() { if (!currentAnalyticsData) return; let sourceList = []; let isExpectedView = (currentRosterFilter === 'prereg'); if (isExpectedView) sourceList = currentAnalyticsData.preRegList || []; else if (currentRosterFilter === 'walkin') sourceList = (currentAnalyticsData.roster || []).filter(r => r.is_walkin === 1); else sourceList = currentAnalyticsData.roster || []; const rows = [['Member Name', 'Unique Pass ID / Email', 'Status / Timestamp']]; sourceList.forEach(r => { const identifier = r.email ? r.email : r.qr_code; let status = ''; if (isExpectedView) { const arrived = (currentAnalyticsData.roster || []).find(a => a.youth_id === r.youth_id); status = arrived ? `Arrived at ${arrived.checked_in_at}` : 'Expected (Not Arrived)'; } else { status = r.is_walkin ? `Walk-in (${r.checked_in_at})` : `Pre-Reg (${r.checked_in_at})`; } rows.push([`"${r.name || 'Unknown'}"`, `"${identifier}"`, `"${status}"`]); }); window.downloadCSV(rows, `Roster_${(currentAnalyticsData.event.name || 'Event').replace(/\s+/g, '_')}.csv`); };
@@ -592,3 +708,22 @@ setInterval(() => {
         document.body.classList.remove('modal-open');
     }
 }, 250);
+
+// FOG Arcade Hardened Routing
+document.addEventListener('click', (e) => {
+    if (e.target.closest('#btnArcadeGames')) {
+        const gList = document.getElementById('arcadeGamesList');
+        const lView = document.getElementById('arcadeLeaderboardView');
+        const aGame = document.getElementById('arcadeActiveGameArea');
+        if (gList) gList.style.display = 'block';
+        if (lView) lView.style.display = 'none';
+        if (aGame) aGame.style.display = 'none';
+    } else if (e.target.closest('#btnArcadeLeaderboard')) {
+        const gList = document.getElementById('arcadeGamesList');
+        const lView = document.getElementById('arcadeLeaderboardView');
+        const aGame = document.getElementById('arcadeActiveGameArea');
+        if (gList) gList.style.display = 'none';
+        if (lView) lView.style.display = 'block';
+        if (aGame) aGame.style.display = 'none';
+    }
+});

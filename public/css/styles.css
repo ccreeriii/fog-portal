@@ -413,7 +413,8 @@ header {
 #editMinistryModal,
 #editMinistryRoleModal,
 #editEventRoleModal,
-#editAttendanceModal {
+#editAttendanceModal,
+#preregSettingsModal {
     z-index: 1050 !important;
 }
 
