@@ -333,6 +333,7 @@
             <button id="btnSubAdminPathways" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('pathways')">🗺️ Pathway Builder</button>
             <button id="btnSubAdminGroups" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('groups')">👥 Small Groups</button>
             <button id="btnSubAdminGamification" class="sub-nav-btn" onclick="V6Gamification.switchAdminTab('gamification')">🎯 Gamification</button>
+            <button id="btnSubAdminHabits" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('habits')">📖 Daily Habits</button>
         </div>
         <div id="subTabAdminAnalytics" class="discipleship-admin-sub-tab active">
             <div class="card"><h2>Congregation Spiritual Stages</h2><div class="chart-wrapper"><canvas id="spiritualStagesChart"></canvas></div></div>
@@ -344,6 +345,7 @@
                     <div class="form-group"><label>Milestone Title *</label><input type="text" id="pathCreateTitle" class="form-control" required></div>
                     <div class="form-group"><label>Description *</label><textarea id="pathCreateDesc" class="form-control" rows="2" required></textarea></div>
                     <div class="form-group"><label>Step Order (Number) *</label><input type="number" id="pathCreateOrder" class="form-control" required></div>
+                    <div class="form-group"><label>Points Awarded (Growth XP) *</label><input type="number" id="pathCreatePoints" class="form-control" value="50" required></div>
                     <button type="submit" class="btn btn-primary" style="width:100%;">Create Milestone</button>
                 </form>
             </div>
@@ -363,12 +365,32 @@
                         <div class="form-group" style="flex:1;"><label>Schedule</label><input type="text" id="sgCreateSchedule" class="form-control"></div>
                         <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="sgCreateVenue" class="form-control"></div>
                     </div>
+                    <div class="form-group"><label>Points Awarded on Join (Growth XP) *</label><input type="number" id="sgCreatePoints" class="form-control" value="20" required></div>
                     <button type="submit" class="btn btn-primary" style="width:100%;">Create Group</button>
                 </form>
             </div>
             <div class="card"><h2>Active Small Groups</h2><div id="adminSmallGroupsList"></div></div>
         </div>
-        <div id="subTabAdminGamification" class="discipleship-admin-sub-tab" style="display:none;">
+        <div id="subTabAdminHabits" class="discipleship-admin-sub-tab" style="display:none;">
+            <div class="card">
+                <h2 style="color:#10B981;">📖 Daily Habit Rewards</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Set the Growth XP members earn for daily spiritual habits (awarded once per day).</p>
+                <form id="habitSettingsForm" onsubmit="V2Discipleship.saveHabitSettings(event)">
+                    <div style="display:flex; gap:15px;">
+                        <div class="form-group" style="flex:1;">
+                            <label>Journal Points (Daily) *</label>
+                            <input type="number" id="habitJournalPts" class="form-control" required>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label>Prayer Points (Daily) *</label>
+                            <input type="number" id="habitPrayerPts" class="form-control" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%; background: #10B981; border: none;">Save Habit Settings</button>
+                </form>
+            </div>
+        </div>
+<div id="subTabAdminGamification" class="discipleship-admin-sub-tab" style="display:none;">
             <div class="card">
                 <h2 style="color:#D97706;">Create Weekly Challenge</h2>
                 <form id="createChallengeForm" onsubmit="V6Gamification.createChallenge(event)">
@@ -885,6 +907,40 @@
                 <label style="color:var(--danger);"><input type="checkbox" class="permCheckModal" value="delete_entries"> 🗑️ Delete Entries</label>
             </div>
             <button type="submit" class="btn btn-primary" style="width:100%; margin-top:20px;">Save Permissions</button>
+        </form>
+    </div>
+</div>
+
+<div id="editPathwayModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="V2Discipleship.closeEditPathwayModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Milestone</h2>
+        <form onsubmit="V2Discipleship.updatePathway(event)">
+            <input type="hidden" id="editPathId">
+            <div class="form-group"><label>Milestone Title *</label><input type="text" id="editPathTitle" class="form-control" required></div>
+            <div class="form-group"><label>Description *</label><textarea id="editPathDesc" class="form-control" rows="2" required></textarea></div>
+            <div style="display:flex; gap:15px;">
+                <div class="form-group" style="flex:1;"><label>Step Order *</label><input type="number" id="editPathOrder" class="form-control" required></div>
+                <div class="form-group" style="flex:1;"><label>Points Awarded *</label><input type="number" id="editPathPoints" class="form-control" required></div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
+        </form>
+    </div>
+</div>
+
+<div id="editSmallGroupModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="V2Discipleship.closeEditSmallGroupModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Small Group</h2>
+        <form onsubmit="V2Discipleship.updateSmallGroup(event)">
+            <input type="hidden" id="editSgId">
+            <div class="form-group"><label>Group Name *</label><input type="text" id="editSgName" class="form-control" required></div>
+            <div style="display:flex; gap:15px;">
+                <div class="form-group" style="flex:1;"><label>Schedule</label><input type="text" id="editSgSchedule" class="form-control"></div>
+                <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="editSgVenue" class="form-control"></div>
+            </div>
+            <div class="form-group"><label>Points Awarded on Join *</label><input type="number" id="editSgPoints" class="form-control" required></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
         </form>
     </div>
 </div>
