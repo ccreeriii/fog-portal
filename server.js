@@ -98,7 +98,10 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS brain_crosswords (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, grid_size INTEGER, words_json TEXT, created_at DATETIME)`);
 
     // SCHEMA AUTO-HEALING
-    db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
+    
+    db.run(`ALTER TABLE prayer_requests ADD COLUMN group_id INTEGER`, () => {});
+    db.run(`ALTER TABLE prayer_requests ADD COLUMN is_answered INTEGER DEFAULT 0`, () => {});
+db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN materials_url TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_banner TEXT`, () => {});
@@ -365,6 +368,31 @@ cron.schedule('*/5 * * * *', () => {
         });
     });
 });
+
+
+cron.schedule('0 8 * * *', () => { // Runs daily at 8:00 AM
+    console.log('[CRON] Silas is checking for group birthdays...');
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const matchStr = `-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    
+    db.all(`SELECT id, name, qr_code FROM youth WHERE birthday LIKE ?`, [`%${matchStr}`], (err, users) => {
+        if(!users) return;
+        users.forEach(u => {
+            db.all(`SELECT group_id FROM small_group_members WHERE youth_id = ?`, [u.id], (err, groups) => {
+                if(!groups) return;
+                groups.forEach(g => {
+                    const msg = `🎉 Happy Birthday to ${u.name}! 🎂 Let's shower them with blessings today!`;
+                    // Silas sends message to group chat (youth_id 0 represents System/Silas)
+                    db.run(`INSERT INTO small_group_chats (group_id, youth_id, message, created_at) VALUES (?, 0, ?, ?)`, [g.group_id, msg, getManilaTime()]);
+                    // Push Notification to the whole group
+                    db.all(`SELECT youth_id FROM small_group_members WHERE group_id = ?`, [g.group_id], (err, members) => {
+                        if(members) members.forEach(m => pushToUser(m.youth_id, "🎂 Birthday Alert!", msg));
+                    });
+                });
+            });
+        });
+    });
+}, { scheduled: true, timezone: "Asia/Manila" });
 
 cron.schedule('0 9 * * 1', () => {
     console.log('[CRON] Running Weekly Absence Detection & AI Push Drafts...');
@@ -671,6 +699,24 @@ app.put('/api/prayers/:id', (req, res) => { db.run(`UPDATE prayer_requests SET t
 app.post('/api/prayers/:id/intercede', (req, res) => { db.run(`INSERT OR IGNORE INTO prayer_intercessions (prayer_id, youth_id, prayed_at) VALUES (?, ?, ?)`, [req.params.id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
 
 // NEW SMALL GROUPS API (WITH POINTS)
+
+app.get('/api/small-groups/:id/roster-status', (req, res) => {
+    // Fetches group members and calculates their 'last active' status using activity_logs
+    db.all(`SELECT y.id, y.name, y.profile_picture, 
+            (SELECT MAX(created_at) FROM activity_logs WHERE username = y.qr_code) as last_active 
+            FROM small_group_members sgm 
+            JOIN youth y ON sgm.youth_id = y.id 
+            WHERE sgm.group_id = ?`, [req.params.id], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+app.get('/api/small-groups/:id/recent-chat', (req, res) => {
+    db.get(`SELECT c.message, y.name FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? ORDER BY c.id DESC LIMIT 1`, [req.params.id], (err, row) => {
+        res.json(row || null);
+    });
+});
+
 app.get('/api/small-groups', (req, res) => { db.all(`SELECT g.*, y.name as leader_name, (SELECT COUNT(*) FROM small_group_members WHERE group_id = g.id) as member_count FROM small_groups g LEFT JOIN youth y ON g.leader_id = y.id ORDER BY g.name ASC`, [], (err, rows) => { res.json(rows); }); });
 app.post('/api/small-groups', (req, res) => { db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, points, logo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, getManilaTime()], function(err) { res.json({ success: true }); }); });
 app.put('/api/small-groups/:id', (req, res) => { db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=?, points=?, logo=? WHERE id=?`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, req.params.id], function(err) { res.json({ success: true }); }); });

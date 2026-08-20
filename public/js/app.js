@@ -1007,3 +1007,84 @@ window.deleteGroupSession = async function(sessionId, groupId) {
         } catch(err) {}
     });
 };
+
+// --- V15 CONNECT GROUP DASHBOARD ---
+let currentDashboardGroupId = null;
+let currentDashboardGroupName = '';
+
+window.openGroupDashboard = async function(groupId, groupName, groupLogo, leaderName) {
+    currentDashboardGroupId = groupId;
+    currentDashboardGroupName = groupName;
+    
+    document.getElementById('dashGroupName').innerText = groupName;
+    document.getElementById('dashGroupMeta').innerText = 'Leader: ' + (leaderName || 'TBA');
+    
+    const logoHtml = groupLogo && groupLogo !== 'null' ? `<img src="${groupLogo}" style="width:100%; height:100%; object-fit:cover; border-radius:12px;">` : '👥';
+    document.getElementById('dashGroupLogo').innerHTML = logoHtml;
+    
+    document.getElementById('groupDashboardModal').classList.add('active');
+    window.switchDashTab('overview');
+    
+    // Fetch Recent Chat
+    try {
+        const chatRes = await fetch(`/api/small-groups/${groupId}/recent-chat`);
+        const chatData = await chatRes.json();
+        const chatElem = document.getElementById('dashRecentChat');
+        if (chatData && chatData.message) {
+            chatElem.innerHTML = `<strong>${chatData.name}:</strong> "${chatData.message}"`;
+        } else {
+            chatElem.innerHTML = "No recent messages.";
+        }
+    } catch(e) {}
+    
+    // Fetch Roster with Online Status
+    try {
+        const rosRes = await fetch(`/api/small-groups/${groupId}/roster-status`);
+        const roster = await rosRes.json();
+        const container = document.getElementById('dashMembersList');
+        
+        const now = new Date().getTime();
+        container.innerHTML = roster.map(m => {
+            const avatar = m.profile_picture ? `<img src="${m.profile_picture}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">` : `<div style="width:40px; height:40px; border-radius:50%; background:var(--bg-light); display:flex; align-items:center; justify-content:center; font-weight:bold;">${m.name.charAt(0)}</div>`;
+            
+            // Check if active in last 24 hours
+            let isOnline = false;
+            if (m.last_active) {
+                const last = new Date(m.last_active).getTime();
+                if ((now - last) < (24 * 60 * 60 * 1000)) isOnline = true;
+            }
+            
+            const dot = isOnline ? `<span style="color: #10B981; font-size: 0.8rem;">🟢</span>` : `<span style="color: #CBD5E1; font-size: 0.8rem;">⚪</span>`;
+            
+            return `
+            <div style="display:flex; align-items:center; justify-content:space-between; padding: 12px; border-bottom: 1px solid var(--border-color); background: #FFF; border-radius: 8px; margin-bottom: 8px;">
+                <div style="display:flex; align-items:center; gap: 10px;">
+                    ${avatar}
+                    <strong style="color:var(--text-main); font-size:1.05rem;">${m.name}</strong>
+                </div>
+                <div>${dot}</div>
+            </div>`;
+        }).join('');
+    } catch(e) {}
+};
+
+window.closeGroupDashboard = function() {
+    document.getElementById('groupDashboardModal').classList.remove('active');
+};
+
+window.switchDashTab = function(tab) {
+    document.getElementById('dashTabOverview').style.display = tab === 'overview' ? 'block' : 'none';
+    document.getElementById('dashTabMembers').style.display = tab === 'members' ? 'block' : 'none';
+    document.getElementById('dashTabPrayers').style.display = tab === 'prayers' ? 'block' : 'none';
+    
+    document.getElementById('btnDashOverview').classList.toggle('active', tab === 'overview');
+    document.getElementById('btnDashMembers').classList.toggle('active', tab === 'members');
+    document.getElementById('btnDashPrayers').classList.toggle('active', tab === 'prayers');
+};
+
+window.launchDashCampfire = function() {
+    if(currentDashboardGroupId) openGroupSpace(currentDashboardGroupId, currentDashboardGroupName);
+};
+window.launchDashVault = function() {
+    if(currentDashboardGroupId) openGroupVault(currentDashboardGroupId, currentDashboardGroupName);
+};

@@ -1141,5 +1141,59 @@
         </div>
     </div>
 </div>
+
+<div id="groupDashboardModal" class="modal">
+    <div class="modal-content" style="max-width: 600px; padding: 0; background: #F8FAFC; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
+        <span class="close-modal" onclick="closeGroupDashboard()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer; z-index: 10; color: #FFF;">&times;</span>
+        
+        <div style="background: linear-gradient(135deg, var(--primary), #D97706); padding: 30px 20px 20px 20px; text-align: center; color: #FFF;">
+            <div id="dashGroupLogo" style="width: 80px; height: 80px; margin: 0 auto 15px auto; border-radius: 12px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 2rem;">👥</div>
+            <h2 id="dashGroupName" style="margin: 0; border: none; font-size: 1.8rem; font-weight: 800; color: #FFF;">Group Name</h2>
+            <p id="dashGroupMeta" style="font-size: 0.9rem; opacity: 0.9; margin-top: 5px;">Loading...</p>
+        </div>
+
+        <div class="sub-nav" style="margin: 0; padding: 10px; background: #FFF; border-bottom: 1px solid var(--border-color); justify-content: center;">
+            <button class="sub-nav-btn active" id="btnDashOverview" onclick="switchDashTab('overview')">🏠 Hub</button>
+            <button class="sub-nav-btn" id="btnDashMembers" onclick="switchDashTab('members')">👥 Members</button>
+            <button class="sub-nav-btn" id="btnDashPrayers" onclick="switchDashTab('prayers')">🙏 Prayers</button>
+        </div>
+
+        <div style="padding: 15px; overflow-y: auto; flex: 1;">
+            
+            <div id="dashTabOverview" style="display: block;">
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button class="btn btn-primary" style="flex: 1; padding: 15px; font-size: 1.1rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(255,107,0,0.2);" onclick="launchDashCampfire()"><span style="font-size: 1.5rem; display:block;">🔥</span> Open Chat</button>
+                    <button class="btn btn-outline" style="flex: 1; padding: 15px; font-size: 1.1rem; border-radius: 12px; border-color: #3B82F6; color: #2563EB; background: #EFF6FF;" onclick="launchDashVault()"><span style="font-size: 1.5rem; display:block;">🎥</span> Video Vault</button>
+                </div>
+                
+                <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 15px;">
+                    <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">💬 Latest from the Campfire</h3>
+                    <div id="dashRecentChat" style="font-size: 1.05rem; color: var(--text-main); font-style: italic;">Loading...</div>
+                </div>
+
+                <div style="background: linear-gradient(135deg, #10B981, #059669); padding: 15px; border-radius: 12px; color: #FFF; text-align: center; box-shadow: 0 4px 6px rgba(16,185,129,0.2);">
+                    <h3 style="font-size: 1.1rem; color: #FFF; border: none; margin-bottom: 5px;">⚔️ Co-Op Discipleship Streak</h3>
+                    <p style="font-size: 0.85rem; opacity: 0.9; margin-bottom: 10px;">If 100% of members play a Growth Game today, the whole group gets bonus XP!</p>
+                    <div id="dashStreakStatus" style="background: rgba(255,255,255,0.2); padding: 8px; border-radius: 8px; font-weight: bold;">Tracking coming soon...</div>
+                </div>
+            </div>
+
+            <div id="dashTabMembers" style="display: none;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">🟢 Online (Active today) | ⚪ Offline</p>
+                <div id="dashMembersList"></div>
+            </div>
+
+            <div id="dashTabPrayers" style="display: none;">
+                <div style="text-align: center; margin-bottom: 15px;">
+                    <button class="btn btn-outline btn-sm" style="border-color: #8B5CF6; color: #8B5CF6; background: #F3E8FF;" onclick="alert('Private group prayers coming in Phase 2!')">➕ Post Private Prayer</button>
+                </div>
+                <div id="dashPrayersList">
+                    <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-top:20px;">Group prayer wall locking mechanisms will be unlocked in the next patch!</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
 </body>
 </html>
