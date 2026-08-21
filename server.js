@@ -104,6 +104,10 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS brain_crosswords (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, grid_size INTEGER, words_json TEXT, created_at DATETIME)`);
 
     // SCHEMA AUTO-HEALING
+
+    db.run("ALTER TABLE prayer_requests ADD COLUMN reactions TEXT DEFAULT '{}'", ()=>{});
+    db.run("ALTER TABLE group_memories ADD COLUMN reactions TEXT DEFAULT '{}'", ()=>{});
+    
     db.run("ALTER TABLE small_groups ADD COLUMN privacy_level TEXT DEFAULT 'Open'", (err)=>{});
     db.run("ALTER TABLE small_group_members ADD COLUMN status TEXT DEFAULT 'Approved'", (err)=>{});
     db.run("ALTER TABLE prayer_requests ADD COLUMN group_id INTEGER", (err)=>{});
@@ -1008,6 +1012,49 @@ app.post('/api/small-groups/chat/:chat_id/react', (req, res) => {
     });
 });
 
+
+app.post('/api/small-groups/react-v2', (req, res) => {
+    const { type, id, emoji, user_name } = req.body;
+    let table = '';
+    if(type === 'chat') table = 'small_group_chats';
+    else if(type === 'prayer') table = 'prayer_requests';
+    else if(type === 'memory') table = 'group_memories';
+    else return res.json({success:false});
+
+    db.get(`SELECT reactions FROM ${table} WHERE id = ?`, [id], (err, row) => {
+        if(!row) return res.json({success: false});
+        let reactions = {}; 
+        try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
+        
+        // 1. Enforce Mutual Exclusivity: Remove user from ALL emojis first
+        let removedFromSameEmoji = false;
+        Object.keys(reactions).forEach(e => {
+            if(typeof reactions[e] === 'number') reactions[e] = Array(reactions[e]).fill('Anonymous');
+            if(!Array.isArray(reactions[e])) reactions[e] = [];
+            
+            const idx = reactions[e].indexOf(user_name);
+            if(idx > -1) {
+                reactions[e].splice(idx, 1);
+                if (e === emoji) removedFromSameEmoji = true; // Toggle Off logic
+            }
+        });
+        
+        // 2. Add the new reaction (unless they were just turning it off)
+        if(!removedFromSameEmoji) {
+            if(!reactions[emoji]) reactions[emoji] = [];
+            reactions[emoji].push(user_name);
+        }
+        
+        // 3. Clean up empty arrays to keep database light
+        Object.keys(reactions).forEach(e => {
+            if(reactions[e].length === 0) delete reactions[e];
+        });
+
+        db.run(`UPDATE ${table} SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), id], () => {
+            res.json({success: true, reactions});
+        });
+    });
+});
 app.get('/api/worship/songs', (req, res) => { db.all(`SELECT * FROM songs ORDER BY title ASC`, [], (err, rows) => { res.json(rows); }); });
 app.post('/api/worship/songs', (req, res) => { db.run(`INSERT INTO songs (title, artist, song_key, bpm, audio_url, youtube_url, chord_chart_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.title, req.body.artist, req.body.song_key, req.body.bpm, req.body.audio_url, req.body.youtube_url, req.body.chord_chart_url, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
 app.put('/api/worship/songs/:id', (req, res) => { db.run(`UPDATE songs SET title=?, artist=?, song_key=?, bpm=?, audio_url=?, youtube_url=?, chord_chart_url=? WHERE id=?`, [req.body.title, req.body.artist, req.body.song_key, req.body.bpm, req.body.audio_url, req.body.youtube_url, req.body.chord_chart_url, req.params.id], function(err) { res.json({ success: true }); }); });
@@ -1243,5 +1290,33 @@ app.post('/api/small-groups/chat/:chat_id/react', (req, res) => {
         try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
         reactions[req.body.emoji] = (reactions[req.body.emoji] || 0) + 1;
         db.run(`UPDATE small_group_chats SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), req.params.chat_id], () => res.json({success: true}));
+    });
+});
+
+app.post('/api/small-groups/react', (req, res) => {
+    const { type, id, emoji, user_name } = req.body;
+    let table = '';
+    if(type === 'chat') table = 'small_group_chats';
+    else if(type === 'prayer') table = 'prayer_requests';
+    else if(type === 'memory') table = 'group_memories';
+    else return res.json({success:false});
+
+    db.get(`SELECT reactions FROM ${table} WHERE id = ?`, [id], (err, row) => {
+        if(!row) return res.json({success: false});
+        let reactions = {}; try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
+        
+        // Handle legacy migration from numbers to arrays
+        if(typeof reactions[emoji] === 'number') reactions[emoji] = Array(reactions[emoji]).fill('Anonymous');
+        if(!Array.isArray(reactions[emoji])) reactions[emoji] = [];
+        
+        // Toggle logic (Remove if exists, add if doesn't)
+        const idx = reactions[emoji].indexOf(user_name);
+        if(idx > -1) {
+            reactions[emoji].splice(idx, 1);
+        } else {
+            reactions[emoji].push(user_name);
+        }
+        
+        db.run(`UPDATE ${table} SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), id], () => res.json({success: true}));
     });
 });

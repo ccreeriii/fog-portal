@@ -1396,5 +1396,16 @@
         </div>
     </div>
 </div>
+
+<div id="reactionListModal" class="modal" style="z-index: 2500 !important;">
+    <div class="modal-content" style="max-width: 350px; background: #FFF; padding: 0; text-align: center; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+        <div style="background: var(--bg-light); padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+            <h3 id="reactionListTitle" style="margin:0; color: var(--text-main); font-size: 1.1rem; border:none;">Reactions</h3>
+            <span class="close-modal" onclick="document.getElementById('reactionListModal').classList.remove('active')" style="font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
+        </div>
+        <div id="reactionListNames" style="padding: 10px 20px; max-height: 250px; overflow-y: auto; color: var(--text-main); font-size: 0.95rem; line-height: 1.6; text-align: left;">
+        </div>
+    </div>
+</div>
 </body>
 </html>

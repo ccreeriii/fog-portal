@@ -2197,3 +2197,298 @@ window.fetchAndRenderGroupChat = async function(isInitialLoad) {
         }
     } catch(e) {}
 };
+
+
+// =======================================================
+// V20: UNIVERSAL SUPER REACTIONS (Chat, Prayers, Memories)
+// =======================================================
+
+window.showReactionDetails = function(emoji, namesEncoded) {
+    const names = decodeURIComponent(namesEncoded).split(', ');
+    const html = names.map(n => `<div style="padding: 10px; border-bottom: 1px solid var(--bg-light); color: var(--text-main); font-weight: 600; display:flex; align-items:center; gap:10px;"><div style="background:var(--primary); color:#FFF; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.8rem;">${n.charAt(0).toUpperCase()}</div>${n}</div>`).join('');
+    document.getElementById('reactionListTitle').innerText = `${emoji} Reactions`;
+    document.getElementById('reactionListNames').innerHTML = html;
+    document.getElementById('reactionListModal').classList.add('active');
+};
+
+window.toggleReactMenu = function(type, id) {
+    // Close all other open menus
+    document.querySelectorAll('[id^="react-menu-"]').forEach(menu => {
+        if (menu.id !== 'react-menu-' + type + '-' + id) menu.style.display = 'none';
+    });
+    const menu = document.getElementById('react-menu-' + type + '-' + id);
+    if (menu) menu.style.display = (menu.style.display === 'none' || menu.style.display === '') ? 'flex' : 'none';
+};
+
+window.universalReact = async function(type, id, emoji) {
+    const menu = document.getElementById('react-menu-' + type + '-' + id);
+    if (menu) menu.style.display = 'none';
+
+    const userName = currentMember ? currentMember.name : (currentUser || 'Anonymous');
+
+    try {
+        await fetch('/api/small-groups/react', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ type, id, emoji, user_name: userName })
+        });
+
+        // Optimistic refresh
+        if (type === 'chat') {
+            const container = document.getElementById('groupChatMessages');
+            if (container) container.innerHTML = '';
+            lastChatMsgId = 0;
+            fetchAndRenderGroupChat(true);
+        } else if (type === 'prayer') {
+            loadGroupPrayers(currentDashboardGroupId);
+        } else if (type === 'memory') {
+            loadGroupMemories(currentDashboardGroupId);
+        }
+    } catch(e) { console.error('Reaction error:', e); }
+};
+
+window.buildReactionUI = function(type, id, reactionsStr) {
+    let badgesHtml = '';
+    let totalReactions = 0;
+    
+    try {
+        const r = JSON.parse(reactionsStr || '{}');
+        ['❤️','🙏','👍','😂'].forEach(emoji => {
+            if (r[emoji]) {
+                let names = Array.isArray(r[emoji]) ? r[emoji] : Array(r[emoji]).fill('Anonymous');
+                let count = names.length;
+                
+                if (count > 0) {
+                    totalReactions += count;
+                    const namesEncoded = encodeURIComponent(names.join(', '));
+                    badgesHtml += `<span onclick="window.showReactionDetails('${emoji}', '${namesEncoded}')" style="background:#FFF; border:1px solid rgba(255,107,0,0.3); border-radius:12px; padding:2px 8px; font-size:0.8rem; color:var(--primary); font-weight:bold; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:inline-flex; align-items:center; gap:4px; margin-left:4px; cursor:pointer; transition: transform 0.2s;">${emoji} ${count}</span>`;
+                }
+            }
+        });
+    } catch(e) {}
+
+    let mainText = totalReactions > 0 ? totalReactions : 'React';
+
+    return `
+    <div style="margin-top:6px; position:relative; width: 100%; display: flex; align-items: center; flex-wrap: wrap;">
+        <button style="background:#FFF0E6; border:1px solid rgba(255,107,0,0.2); border-radius:12px; padding:4px 10px; cursor:pointer; color:var(--primary); font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.05); display:inline-flex; align-items:center; gap:6px;" onclick="window.toggleReactMenu('${type}', ${id})">
+            <span style="font-size: 0.95rem;">👍</span> <span style="font-size: 0.8rem;">${mainText}</span>
+        </button>
+        
+        <div style="display:flex; align-items:center; flex-wrap:wrap;">
+            ${badgesHtml}
+        </div>
+        
+        <div id="react-menu-${type}-${id}" style="display:none; position:absolute; bottom: 110%; left: 0; z-index: 100; background:#FFF; border:1px solid var(--border-color); border-radius:20px; padding:6px 12px; box-shadow:0 4px 12px rgba(0,0,0,0.15); gap:12px; align-items:center; flex-wrap:nowrap; width: max-content;">
+            <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="window.universalReact('${type}', ${id}, '❤️')">❤️</button>
+            <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="window.universalReact('${type}', ${id}, '🙏')">🙏</button>
+            <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="window.universalReact('${type}', ${id}, '👍')">👍</button>
+            <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="window.universalReact('${type}', ${id}, '😂')">😂</button>
+        </div>
+    </div>`;
+};
+
+// --- Override Chat Render ---
+window.fetchAndRenderGroupChat = async function(isInitialLoad) {
+    if(!currentChatGroupId) return;
+    try {
+        const res = await fetch(`/api/small-groups/${currentChatGroupId}/chat?last_id=${lastChatMsgId}`);
+        const messages = await res.json();
+        
+        if (messages.length > 0) {
+            const container = document.getElementById('groupChatMessages');
+            if (isInitialLoad) container.innerHTML = ''; 
+            
+            messages.forEach(m => {
+                lastChatMsgId = Math.max(lastChatMsgId, m.id);
+                const isMe = currentMember && currentMember.name === m.name;
+                const avatar = m.profile_picture ? `<img src="${m.profile_picture}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;">` : `<div style="width:30px;height:30px;border-radius:50%;background:var(--border-color);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:bold;color:var(--text-main);flex-shrink:0;">${m.name.charAt(0)}</div>`;
+                let timeStr = new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                
+                let msgContent = m.message;
+                const ytMatch = msgContent.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i);
+                if (ytMatch && ytMatch[1]) {
+                    msgContent = msgContent.replace(ytMatch[0], `<br><iframe style="width:100%; border-radius:8px; margin-top:5px; height: 180px;" src="https://www.youtube.com/embed/${ytMatch[1]}" frameborder="0" allowfullscreen></iframe>`);
+                } else {
+                    msgContent = msgContent.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:inherit; text-decoration:underline; font-weight:bold;">$1</a>');
+                }
+
+                const reactContainerHtml = window.buildReactionUI('chat', m.id, m.reactions);
+
+                let msgHtml = '';
+                if (isMe) {
+                    msgHtml = `
+                    <div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
+                        <div style="max-width: 85%; text-align: right;">
+                            <div style="background: var(--primary); color: #FFF; padding: 10px 14px; border-radius: 18px 18px 4px 18px; font-size: 0.95rem; display: inline-block; text-align: left; box-shadow: 0 4px 6px rgba(255,107,0,0.2);">${msgContent}</div>
+                            <div style="display:flex; flex-direction:column; align-items:flex-end; margin-top:4px;">
+                                <div style="font-size:0.65rem; color:var(--text-muted); margin-bottom:2px;">${timeStr}</div>
+                                ${reactContainerHtml}
+                            </div>
+                        </div>
+                    </div>`;
+                } else {
+                    msgHtml = `
+                    <div style="display:flex; gap:8px; margin-bottom:15px;">
+                        ${avatar}
+                        <div style="max-width: 85%;">
+                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 2px; margin-left: 4px;">${m.name}</div>
+                            <div style="background: #FFF; border: 1px solid var(--border-color); color: var(--text-main); padding: 10px 14px; border-radius: 18px 18px 18px 4px; font-size: 0.95rem; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">${msgContent}</div>
+                            <div style="display:flex; flex-direction:column; align-items:flex-start; margin-top:4px; margin-left:4px;">
+                                <div style="font-size:0.65rem; color:var(--text-muted); margin-bottom:2px;">${timeStr}</div>
+                                ${reactContainerHtml}
+                            </div>
+                        </div>
+                    </div>`;
+                }
+                container.insertAdjacentHTML('beforeend', msgHtml);
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+    } catch(e) {}
+};
+
+// --- Override Prayers Render ---
+window.loadGroupPrayers = async function(groupId) {
+    try {
+        const res = await fetch(`/api/small-groups/${groupId}/prayers`);
+        const prayers = await res.json();
+        const container = document.getElementById('dashPrayersList');
+        if(prayers.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); margin-top:20px;">No private prayers shared in this group yet.</p>';
+            return;
+        }
+
+        container.innerHTML = prayers.map(p => {
+            const author = p.is_anonymous ? 'Anonymous' : p.author_name;
+            const isMe = currentMember && currentMember.id === p.youth_id;
+            const answeredBadge = p.is_answered ? `<span class="badge badge-green">🎉 Answered!</span>` : `<span class="badge badge-orange">🙏 Praying</span>`;
+
+            let actionHtml = '';
+            if (!p.is_answered && (isMe || window.hasPerm('edit_entries'))) {
+                actionHtml += `<button class="btn btn-outline btn-sm" style="border-color: #10B981; color: #10B981; font-weight:bold; margin-top:10px;" onclick="markGroupPrayerAnswered(${p.id}, '${p.title.replace(/'/g, "\\'")}')">✅ Mark Answered</button>`;
+            }
+
+            const reactUI = window.buildReactionUI('prayer', p.id, p.reactions);
+
+            return `
+            <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items:flex-start; margin-bottom: 8px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${p.title}</strong>
+                    ${answeredBadge}
+                </div>
+                <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 10px;">By: ${author} • ${p.created_at}</div>
+                <p style="font-size: 0.95rem; color: var(--text-main); margin-bottom: 15px; white-space: pre-wrap;">${p.request}</p>
+                <div style="border-top: 1px solid var(--bg-light); padding-top: 10px;">
+                    ${reactUI}
+                    ${actionHtml}
+                </div>
+            </div>`;
+        }).join('');
+    } catch(err) {}
+};
+
+// --- Override Memories Render ---
+window.loadGroupMemories = async function(groupId) {
+    try {
+        const res = await fetch(`/api/small-groups/${groupId}/memories`);
+        const memories = await res.json();
+        const container = document.getElementById('dashMemoriesGrid');
+        if(memories.length === 0) return container.innerHTML = '<p style="grid-column: span 2; text-align:center; color:var(--text-muted);">No memories shared yet. Be the first!</p>';
+        
+        container.innerHTML = memories.map(m => {
+            const reactUI = window.buildReactionUI('memory', m.id, m.reactions);
+            return `
+            <div style="background: #FFF; border-radius: 12px; overflow: visible; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column;">
+                <img src="${m.image_data}" style="width: 100%; height: 160px; object-fit: cover; cursor: pointer; border-top-left-radius: 12px; border-top-right-radius: 12px;" onclick="openImageViewer(this.src)">
+                <div style="padding: 10px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <p style="margin: 0 0 5px 0; font-size: 0.85rem; color: var(--text-main); font-weight: 600;">${m.caption}</p>
+                        <small style="color: var(--text-muted); font-size: 0.7rem;">${m.author_name}</small>
+                    </div>
+                    <div style="margin-top: 10px; border-top: 1px solid var(--bg-light); padding-top: 5px;">
+                        ${reactUI}
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) {}
+};
+
+
+// =======================================================
+// V21: EXCLUSIVE REACTIONS & ANTI-FREEZE IN-PLACE UPDATES
+// =======================================================
+window.universalReact = async function(type, id, emoji) {
+    // 1. Hide the pop-up immediately for smooth UX
+    const menu = document.getElementById('react-menu-' + type + '-' + id);
+    if (menu) menu.style.display = 'none';
+
+    const userName = currentMember ? currentMember.name : (currentUser || 'Anonymous');
+
+    try {
+        // Send to the new V2 endpoint that enforces 1 reaction per user
+        const res = await fetch('/api/small-groups/react-v2', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ type, id, emoji, user_name: userName })
+        });
+        const data = await res.json();
+        
+        // 2. In-place DOM Replacement (Zero Freezing!)
+        if (data.success && data.reactions) {
+            const wrapper = document.getElementById('reaction-wrapper-' + type + '-' + id);
+            if (wrapper) {
+                // Dynamically swaps only the button/counter area without reloading the whole chat!
+                wrapper.outerHTML = window.buildReactionUI(type, id, data.reactions);
+            }
+        }
+    } catch(e) { console.error('Reaction error:', e); }
+};
+
+window.buildReactionUI = function(type, id, reactionsData) {
+    let badgesHtml = '';
+    let totalReactions = 0;
+    let mainIcon = '👍'; // Default icon
+    
+    try {
+        const r = typeof reactionsData === 'string' ? JSON.parse(reactionsData || '{}') : (reactionsData || {});
+        let maxCount = 0;
+        
+        ['❤️','🙏','👍','😂'].forEach(emoji => {
+            if (r[emoji]) {
+                let names = Array.isArray(r[emoji]) ? r[emoji] : Array(r[emoji]).fill('Anonymous');
+                let count = names.length;
+                
+                if (count > 0) {
+                    totalReactions += count;
+                    if(count > maxCount) {
+                        maxCount = count;
+                        mainIcon = emoji; // Updates the main button icon to the highest voted emoji!
+                    }
+                    const namesEncoded = encodeURIComponent(names.join(', '));
+                    badgesHtml += `<span onclick="window.showReactionDetails('${emoji}', '${namesEncoded}')" style="background:#FFF; border:1px solid rgba(255,107,0,0.3); border-radius:12px; padding:2px 8px; font-size:0.8rem; color:var(--primary); font-weight:bold; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:inline-flex; align-items:center; gap:4px; margin-left:4px; cursor:pointer; transition: transform 0.2s;">${emoji} ${count}</span>`;
+                }
+            }
+        });
+    } catch(e) {}
+
+    let mainText = totalReactions > 0 ? totalReactions : 'React';
+
+    return `
+    <div id="reaction-wrapper-${type}-${id}" style="margin-top:6px; position:relative; width: 100%; display: flex; align-items: center; flex-wrap: wrap;">
+        <button style="background:#FFF0E6; border:1px solid rgba(255,107,0,0.2); border-radius:12px; padding:4px 10px; cursor:pointer; color:var(--primary); font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.05); display:inline-flex; align-items:center; gap:6px;" onclick="window.toggleReactMenu('${type}', ${id})">
+            <span style="font-size: 0.95rem;">${mainIcon}</span> <span style="font-size: 0.8rem;">${mainText}</span>
+        </button>
+        
+        <div style="display:flex; align-items:center; flex-wrap:wrap;">
+            ${badgesHtml}
+        </div>
+        
+        <div id="react-menu-${type}-${id}" style="display:none; position:absolute; bottom: 110%; left: 0; z-index: 100; background:#FFF; border:1px solid var(--border-color); border-radius:20px; padding:6px 12px; box-shadow:0 4px 12px rgba(0,0,0,0.15); gap:12px; align-items:center; flex-wrap:nowrap; width: max-content;">
+            <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="window.universalReact('${type}', ${id}, '❤️')">❤️</button>
+            <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="window.universalReact('${type}', ${id}, '🙏')">🙏</button>
+            <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="window.universalReact('${type}', ${id}, '👍')">👍</button>
+            <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="window.universalReact('${type}', ${id}, '😂')">😂</button>
+        </div>
+    </div>`;
+};
+
