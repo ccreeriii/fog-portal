@@ -1798,3 +1798,274 @@ window.fetchAndRenderGroupChat = async function(isInitialLoad) {
         }
     } catch(e) {}
 };
+
+
+// =======================================================
+// V17: FACEBOOK-STYLE DYNAMIC REACTIONS & COUNTERS
+// =======================================================
+window.fetchAndRenderGroupChat = async function(isInitialLoad) {
+    if(!currentChatGroupId) return;
+    try {
+        const res = await fetch(`/api/small-groups/${currentChatGroupId}/chat?last_id=${lastChatMsgId}`);
+        const messages = await res.json();
+        
+        if (messages.length > 0) {
+            const container = document.getElementById('groupChatMessages');
+            if (isInitialLoad) container.innerHTML = ''; 
+            
+            messages.forEach(m => {
+                lastChatMsgId = Math.max(lastChatMsgId, m.id);
+                const isMe = currentMember && currentMember.name === m.name;
+                const avatar = m.profile_picture ? `<img src="${m.profile_picture}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;">` : `<div style="width:30px;height:30px;border-radius:50%;background:var(--border-color);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:bold;color:var(--text-main);flex-shrink:0;">${m.name.charAt(0)}</div>`;
+                let timeStr = new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                
+                // Parse Links & YouTube
+                let msgContent = m.message;
+                const ytMatch = msgContent.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i);
+                if (ytMatch && ytMatch[1]) {
+                    msgContent = msgContent.replace(ytMatch[0], `<br><iframe style="width:100%; border-radius:8px; margin-top:5px; height: 180px;" src="https://www.youtube.com/embed/${ytMatch[1]}" frameborder="0" allowfullscreen></iframe>`);
+                } else {
+                    msgContent = msgContent.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:inherit; text-decoration:underline; font-weight:bold;">$1</a>');
+                }
+
+                // Calculate Total Reactions and Determine the "Top" Emoji
+                let mainIcon = '👍';
+                let mainText = 'React';
+                let totalReactions = 0;
+                
+                try {
+                    const r = JSON.parse(m.reactions || '{}');
+                    let maxCount = 0;
+                    ['❤️','🙏','👍','😂'].forEach(emoji => {
+                        if(r[emoji]) {
+                            totalReactions += r[emoji];
+                            if(r[emoji] > maxCount) {
+                                maxCount = r[emoji];
+                                mainIcon = emoji; // Updates the button icon to the most clicked reaction
+                            }
+                        }
+                    });
+                } catch(e) {}
+
+                // If there are any reactions, replace the word "React" with the actual counter number
+                if (totalReactions > 0) {
+                    mainText = totalReactions; 
+                }
+
+                // FB-Style Inline Picker UI
+                const reactPickerHtml = `
+                <div style="margin-top:6px; position:relative; width: 100%;">
+                    <button style="background:#FFF0E6; border:1px solid rgba(255,107,0,0.2); border-radius:12px; padding:4px 10px; cursor:pointer; color:var(--primary); font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.05); display:inline-flex; align-items:center; gap:6px;" onclick="window.toggleReactMenu(${m.id})">
+                        <span style="font-size: 0.95rem;">${mainIcon}</span> <span style="font-size: 0.8rem;">${mainText}</span>
+                    </button>
+                    
+                    <div id="react-menu-${m.id}" style="display:none; position:absolute; bottom: 110%; left: 0; z-index: 100; background:#FFF; border:1px solid var(--border-color); border-radius:20px; padding:6px 12px; box-shadow:0 4px 12px rgba(0,0,0,0.15); gap:12px; align-items:center; flex-wrap:nowrap; width: max-content;">
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '❤️')">❤️</button>
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '🙏')">🙏</button>
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '👍')">👍</button>
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '😂')">😂</button>
+                    </div>
+                </div>`;
+
+                let msgHtml = '';
+                if (isMe) {
+                    msgHtml = `<div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
+                        <div style="max-width: 85%; text-align: right;">
+                            <div style="background: var(--primary); color: #FFF; padding: 10px 14px; border-radius: 18px 18px 4px 18px; font-size: 0.95rem; display: inline-block; text-align: left; box-shadow: 0 4px 6px rgba(255,107,0,0.2);">${msgContent}</div>
+                            <div style="display:flex; flex-direction:column; align-items:flex-end; margin-top:4px;">
+                                <div style="font-size:0.65rem; color:var(--text-muted); margin-bottom:2px;">${timeStr}</div>
+                                ${reactPickerHtml}
+                            </div>
+                        </div>
+                    </div>`;
+                } else {
+                    msgHtml = `<div style="display:flex; gap:8px; margin-bottom:15px;">
+                        ${avatar}
+                        <div style="max-width: 85%;">
+                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 2px; margin-left: 4px;">${m.name}</div>
+                            <div style="background: #FFF; border: 1px solid var(--border-color); color: var(--text-main); padding: 10px 14px; border-radius: 18px 18px 18px 4px; font-size: 0.95rem; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">${msgContent}</div>
+                            <div style="display:flex; flex-direction:column; align-items:flex-start; margin-top:4px; margin-left:4px;">
+                                <div style="font-size:0.65rem; color:var(--text-muted); margin-bottom:2px;">${timeStr}</div>
+                                ${reactPickerHtml}
+                            </div>
+                        </div>
+                    </div>`;
+                }
+                container.insertAdjacentHTML('beforeend', msgHtml);
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+    } catch(e) {}
+};
+
+
+// =======================================================
+// V18: TRUE FACEBOOK-STYLE REACTIONS & COUNTERS
+// =======================================================
+window.fetchAndRenderGroupChat = async function(isInitialLoad) {
+    if(!currentChatGroupId) return;
+    try {
+        const res = await fetch(`/api/small-groups/${currentChatGroupId}/chat?last_id=${lastChatMsgId}`);
+        const messages = await res.json();
+        
+        if (messages.length > 0) {
+            const container = document.getElementById('groupChatMessages');
+            if (isInitialLoad) container.innerHTML = ''; 
+            
+            messages.forEach(m => {
+                lastChatMsgId = Math.max(lastChatMsgId, m.id);
+                const isMe = currentMember && currentMember.name === m.name;
+                const avatar = m.profile_picture ? `<img src="${m.profile_picture}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;">` : `<div style="width:30px;height:30px;border-radius:50%;background:var(--border-color);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:bold;color:var(--text-main);flex-shrink:0;">${m.name.charAt(0)}</div>`;
+                let timeStr = new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                
+                // Parse Links & YouTube
+                let msgContent = m.message;
+                const ytMatch = msgContent.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i);
+                if (ytMatch && ytMatch[1]) {
+                    msgContent = msgContent.replace(ytMatch[0], `<br><iframe style="width:100%; border-radius:8px; margin-top:5px; height: 180px;" src="https://www.youtube.com/embed/${ytMatch[1]}" frameborder="0" allowfullscreen></iframe>`);
+                } else {
+                    msgContent = msgContent.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:inherit; text-decoration:underline; font-weight:bold;">$1</a>');
+                }
+
+                // Generate Individual Emoji Counters
+                let reactionBadgesHtml = '';
+                try {
+                    const r = JSON.parse(m.reactions || '{}');
+                    ['❤️','🙏','👍','😂'].forEach(emoji => {
+                        if(r[emoji] && r[emoji] > 0) {
+                            reactionBadgesHtml += `<span style="background:#FFF; border:1px solid rgba(255,107,0,0.3); border-radius:12px; padding:2px 8px; font-size:0.8rem; color:var(--primary); font-weight:bold; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:inline-flex; align-items:center; gap:4px; margin-left:4px;">${emoji} ${r[emoji]}</span>`;
+                        }
+                    });
+                } catch(e) {}
+
+                // FB-Style Inline Picker UI (Static Button + Dynamic Badges)
+                const reactContainerHtml = `
+                <div style="margin-top:6px; position:relative; width: 100%; display: flex; align-items: center; flex-wrap: wrap;">
+                    <button style="background:#FFF0E6; border:1px solid rgba(255,107,0,0.2); border-radius:12px; padding:4px 10px; cursor:pointer; color:var(--primary); font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.05); display:inline-flex; align-items:center; gap:6px;" onclick="window.toggleReactMenu(${m.id})">
+                        <span style="font-size: 0.95rem;">👍</span> <span style="font-size: 0.8rem;">React</span>
+                    </button>
+                    
+                    ${reactionBadgesHtml}
+                    
+                    <div id="react-menu-${m.id}" style="display:none; position:absolute; bottom: 110%; left: 0; z-index: 100; background:#FFF; border:1px solid var(--border-color); border-radius:20px; padding:6px 12px; box-shadow:0 4px 12px rgba(0,0,0,0.15); gap:12px; align-items:center; flex-wrap:nowrap; width: max-content;">
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '❤️')">❤️</button>
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '🙏')">🙏</button>
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '👍')">👍</button>
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '😂')">😂</button>
+                    </div>
+                </div>`;
+
+                let msgHtml = '';
+                if (isMe) {
+                    msgHtml = `<div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
+                        <div style="max-width: 85%; text-align: right;">
+                            <div style="background: var(--primary); color: #FFF; padding: 10px 14px; border-radius: 18px 18px 4px 18px; font-size: 0.95rem; display: inline-block; text-align: left; box-shadow: 0 4px 6px rgba(255,107,0,0.2);">${msgContent}</div>
+                            <div style="display:flex; flex-direction:column; align-items:flex-end; margin-top:4px;">
+                                <div style="font-size:0.65rem; color:var(--text-muted); margin-bottom:2px;">${timeStr}</div>
+                                ${reactContainerHtml}
+                            </div>
+                        </div>
+                    </div>`;
+                } else {
+                    msgHtml = `<div style="display:flex; gap:8px; margin-bottom:15px;">
+                        ${avatar}
+                        <div style="max-width: 85%;">
+                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 2px; margin-left: 4px;">${m.name}</div>
+                            <div style="background: #FFF; border: 1px solid var(--border-color); color: var(--text-main); padding: 10px 14px; border-radius: 18px 18px 18px 4px; font-size: 0.95rem; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">${msgContent}</div>
+                            <div style="display:flex; flex-direction:column; align-items:flex-start; margin-top:4px; margin-left:4px;">
+                                <div style="font-size:0.65rem; color:var(--text-muted); margin-bottom:2px;">${timeStr}</div>
+                                ${reactContainerHtml}
+                            </div>
+                        </div>
+                    </div>`;
+                }
+                container.insertAdjacentHTML('beforeend', msgHtml);
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+    } catch(e) {}
+};
+
+
+window.fetchAndRenderGroupChat = async function(isInitialLoad) {
+    if(!currentChatGroupId) return;
+    try {
+        const res = await fetch(`/api/small-groups/${currentChatGroupId}/chat?last_id=${lastChatMsgId}`);
+        const messages = await res.json();
+        
+        if (messages.length > 0) {
+            const container = document.getElementById('groupChatMessages');
+            if (isInitialLoad) container.innerHTML = ''; 
+            
+            messages.forEach(m => {
+                lastChatMsgId = Math.max(lastChatMsgId, m.id);
+                const isMe = currentMember && currentMember.name === m.name;
+                const avatar = m.profile_picture ? `<img src="${m.profile_picture}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;">` : `<div style="width:30px;height:30px;border-radius:50%;background:var(--border-color);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:bold;color:var(--text-main);flex-shrink:0;">${m.name.charAt(0)}</div>`;
+                let timeStr = new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                
+                let msgContent = m.message;
+                const ytMatch = msgContent.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i);
+                if (ytMatch && ytMatch[1]) {
+                    msgContent = msgContent.replace(ytMatch[0], `<br><iframe style="width:100%; border-radius:8px; margin-top:5px; height: 180px;" src="https://www.youtube.com/embed/${ytMatch[1]}" frameborder="0" allowfullscreen></iframe>`);
+                } else {
+                    msgContent = msgContent.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:inherit; text-decoration:underline; font-weight:bold;">$1</a>');
+                }
+
+                // Generate Individual Emoji Counters (Facebook Style)
+                let reactionBadgesHtml = '';
+                try {
+                    const r = JSON.parse(m.reactions || '{}');
+                    ['❤️','🙏','👍','😂'].forEach(emoji => {
+                        if(r[emoji] && r[emoji] > 0) {
+                            reactionBadgesHtml += `<span style="background:#FFF; border:1px solid rgba(255,107,0,0.3); border-radius:12px; padding:2px 8px; font-size:0.8rem; color:var(--primary); font-weight:bold; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:inline-flex; align-items:center; gap:4px; margin-left:4px;">${emoji} ${r[emoji]}</span>`;
+                        }
+                    });
+                } catch(e) {}
+
+                // FB-Style Inline Picker UI (Static Button + Dynamic Badges)
+                const reactContainerHtml = `
+                <div style="margin-top:6px; position:relative; width: 100%; display: flex; align-items: center; flex-wrap: wrap;">
+                    <button style="background:#FFF0E6; border:1px solid rgba(255,107,0,0.2); border-radius:12px; padding:4px 10px; cursor:pointer; color:var(--primary); font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.05); display:inline-flex; align-items:center; gap:6px;" onclick="window.toggleReactMenu(${m.id})">
+                        <span style="font-size: 0.95rem;">👍</span> <span style="font-size: 0.8rem;">React</span>
+                    </button>
+                    
+                    ${reactionBadgesHtml}
+                    
+                    <div id="react-menu-${m.id}" style="display:none; position:absolute; bottom: 110%; left: 0; z-index: 100; background:#FFF; border:1px solid var(--border-color); border-radius:20px; padding:6px 12px; box-shadow:0 4px 12px rgba(0,0,0,0.15); gap:12px; align-items:center; flex-wrap:nowrap; width: max-content;">
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '❤️')">❤️</button>
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '🙏')">🙏</button>
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '👍')">👍</button>
+                        <button style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px; transition:transform 0.2s;" onclick="reactToMessage(${m.id}, '😂')">😂</button>
+                    </div>
+                </div>`;
+
+                let msgHtml = '';
+                if (isMe) {
+                    msgHtml = `<div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
+                        <div style="max-width: 85%; text-align: right;">
+                            <div style="background: var(--primary); color: #FFF; padding: 10px 14px; border-radius: 18px 18px 4px 18px; font-size: 0.95rem; display: inline-block; text-align: left; box-shadow: 0 4px 6px rgba(255,107,0,0.2);">${msgContent}</div>
+                            <div style="display:flex; flex-direction:column; align-items:flex-end; margin-top:4px;">
+                                <div style="font-size:0.65rem; color:var(--text-muted); margin-bottom:2px;">${timeStr}</div>
+                                ${reactContainerHtml}
+                            </div>
+                        </div>
+                    </div>`;
+                } else {
+                    msgHtml = `<div style="display:flex; gap:8px; margin-bottom:15px;">
+                        ${avatar}
+                        <div style="max-width: 85%;">
+                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 2px; margin-left: 4px;">${m.name}</div>
+                            <div style="background: #FFF; border: 1px solid var(--border-color); color: var(--text-main); padding: 10px 14px; border-radius: 18px 18px 18px 4px; font-size: 0.95rem; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">${msgContent}</div>
+                            <div style="display:flex; flex-direction:column; align-items:flex-start; margin-top:4px; margin-left:4px;">
+                                <div style="font-size:0.65rem; color:var(--text-muted); margin-bottom:2px;">${timeStr}</div>
+                                ${reactContainerHtml}
+                            </div>
+                        </div>
+                    </div>`;
+                }
+                container.insertAdjacentHTML('beforeend', msgHtml);
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+    } catch(e) {}
+};

@@ -31,12 +31,40 @@
     <div style="width: 200px; height: 6px; background: #E2E8F0; border-radius: 4px; overflow: hidden; margin-bottom: 15px;">
         <div style="width: 50%; height: 100%; background: var(--primary); border-radius: 4px; animation: loadBar 1.5s infinite ease-in-out;"></div>
     </div>
-    <p style="color: var(--text-muted); font-size: 0.95rem; font-weight: 700; letter-spacing: 0.5px;">Loading portal...</p>
+    <p style="color: var(--text-muted); font-size: 0.95rem; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 5px;">Loading portal...</p>
+    <p id="loaderPercentage" style="color: var(--primary); font-size: 1.3rem; font-weight: 900; margin: 0;">0%</p>
 </div>
 <style>
     @keyframes pulse { 0% { transform: scale(0.9); opacity: 0.7; } 50% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0.9); opacity: 0.7; } }
     @keyframes loadBar { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
 </style>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const loader = document.getElementById('globalPreloader');
+        const pctText = document.getElementById('loaderPercentage');
+        if (loader && pctText) {
+            let percent = 0;
+            const interval = setInterval(() => {
+                percent += Math.floor(Math.random() * 15) + 5;
+                if (percent >= 100) {
+                    percent = 100;
+                    clearInterval(interval);
+                    pctText.innerText = '100%';
+                    setTimeout(() => {
+                        loader.style.opacity = '0';
+                        setTimeout(() => loader.style.display = 'none', 500);
+                    }, 300);
+                } else {
+                    pctText.innerText = percent + '%';
+                }
+            }, 80);
+        }
+    });
+</script>
+
+
+
+
 
 
 <div id="offlineBanner">⚠️ You are currently offline. Changes are saved locally and will sync when reconnected.</div>
