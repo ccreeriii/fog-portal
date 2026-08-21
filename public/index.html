@@ -10,7 +10,28 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
     <link rel="stylesheet" href="/css/styles.css">
-</head>
+
+    <script>
+        // Fast-path interceptor: If an event query parameter exists, bypass portal login entirely
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('event')) {
+                document.addEventListener('DOMContentLoaded', () => {
+                    const loader = document.getElementById('globalPreloader');
+                    if (loader) loader.style.display = 'none';
+                    const mainHeader = document.getElementById('mainHeader');
+                    if (mainHeader) mainHeader.style.display = 'none';
+                    const mainContainer = document.getElementById('mainContainer');
+                    if (mainContainer) mainContainer.style.display = 'block';
+                    
+                    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+                    const preregTab = document.getElementById('preregPublicTab');
+                    if (preregTab) preregTab.classList.add('active');
+                });
+            }
+        })();
+    </script>
+    </head>
 <body>
 
 <div id="offlineBanner">⚠️ You are currently offline. Changes are saved locally and will sync when reconnected.</div>
