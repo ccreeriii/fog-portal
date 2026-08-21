@@ -1,0 +1,72 @@
+/* ==============================================================================
+   FIRE OF GOD (FOG) V4.0 - COMMUNICATIONS & ANNOUNCEMENTS STYLES
+   ============================================================================== */
+
+.notification-card {
+    background: #FFFFFF;
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--border-color);
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 12px;
+    transition: 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.notification-card.unread {
+    border-left-color: var(--primary);
+    background: rgba(255, 107, 0, 0.03);
+}
+
+.notification-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.notification-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0;
+}
+
+.notification-card.unread .notification-title {
+    color: var(--primary);
+}
+
+.notification-date {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.notification-body {
+    font-size: 0.9rem;
+    color: var(--text-main);
+    line-height: 1.5;
+    margin-bottom: 12px;
+    white-space: pre-wrap;
+}
+
+.notification-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--border-color);
+    padding-top: 10px;
+}
+
+.notification-author {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+/* Broadcast Form Styles */
+.broadcast-form-container {
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+}

@@ -1,0 +1,95 @@
+/* ==============================================================================
+   FIRE OF GOD (FOG) V3.0 - WORSHIP MEDIA HUB STYLES
+   ============================================================================== */
+
+.worship-sub-tab { display: none; animation: fadeIn 0.3s ease-out; }
+.worship-sub-tab.active { display: block; }
+
+.song-card {
+    background: #FFFFFF;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.song-card:hover {
+    border-color: #10B981;
+}
+
+/* Floating Audio Player */
+.worship-player-container {
+    position: fixed;
+    bottom: 60px; /* Sits right above the mobile bottom nav */
+    left: 0;
+    width: 100%;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(10px);
+    color: #FFF;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 1400;
+    box-shadow: 0 -4px 15px rgba(0,0,0,0.3);
+    border-top: 2px solid #10B981;
+}
+
+.worship-player-info {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    padding-right: 15px;
+}
+
+.worship-player-info strong {
+    font-size: 1rem;
+    display: block;
+    color: #10B981;
+}
+
+.worship-player-info small {
+    font-size: 0.8rem;
+    color: #CBD5E1;
+}
+
+.worship-player-controls {
+    flex-shrink: 0;
+}
+
+.worship-player-controls audio {
+    height: 36px;
+    outline: none;
+    max-width: 200px;
+}
+
+.worship-player-close {
+    background: transparent;
+    border: none;
+    color: #FFF;
+    font-size: 1.8rem;
+    margin-left: 15px;
+    cursor: pointer;
+    line-height: 1;
+    transition: 0.2s;
+}
+
+.worship-player-close:hover {
+    color: var(--danger);
+}
+
+@media (min-width: 768px) {
+    .worship-player-container {
+        bottom: 0; /* Flush to bottom on Desktop */
+    }
+    .worship-player-controls audio {
+        max-width: 400px;
+    }
+}
