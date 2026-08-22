@@ -1469,7 +1469,7 @@
                 localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
                 if (window.buildNav) window.buildNav();
                 if (window.applyGranularPermissions) window.applyGranularPermissions();
-                if (data.is_new) alert('Welcome to FOG Ministries! Your Seeker profile has been created seamlessly.');
+                if (data.is_new) alert('Welcome to FOG Ministries! Welcome to the app! Your account has been created seamlessly.');
                 if (window.loadDailyManna) window.loadDailyManna();
                 switchTab('pulseDashboardTab');
             } else { alert('Authentication failed.'); }

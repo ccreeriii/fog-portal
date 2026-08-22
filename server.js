@@ -1,4 +1,6 @@
 const express = require('express');
+const { OAuth2Client } = require('google-auth-library');
+const googleClient = new OAuth2Client('100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
@@ -51,6 +53,15 @@ const db = new sqlite3.Database('./fog_community.db', (err) => {
 });
 
 db.serialize(() => {
+
+    // AUTO-HEAL SUPERADMIN CONFLICT
+    db.get(`SELECT id FROM youth WHERE email = 'celsocreeriii@gmail.com'`, [], (err, yRow) => {
+        if (yRow) {
+            db.run(`UPDATE users SET youth_id = ? WHERE username = 'celsocreeriii@gmail.com'`, [yRow.id]);
+            db.run(`DELETE FROM users WHERE youth_id = ? AND username != 'celsocreeriii@gmail.com'`, [yRow.id]);
+        }
+    });
+
     db.run(`CREATE TABLE IF NOT EXISTS youth (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, age INTEGER, email TEXT, mobile TEXT, social_media TEXT, birthday TEXT, parents_name TEXT, qr_code TEXT UNIQUE, password TEXT, profile_picture TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, event_date TEXT, time_start TEXT, venue TEXT, poster TEXT, photos_url TEXT, materials_url TEXT, event_points INTEGER DEFAULT 10, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS attendance (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, event_id INTEGER, is_walkin INTEGER DEFAULT 0, checked_in_at DATETIME, UNIQUE(youth_id, event_id))`);
@@ -104,6 +115,9 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS brain_crosswords (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, grid_size INTEGER, words_json TEXT, created_at DATETIME)`);
 
     // SCHEMA AUTO-HEALING
+    db.run(`ALTER TABLE youth ADD COLUMN google_id TEXT`, () => {});
+    db.run(`ALTER TABLE youth ADD COLUMN facebook_id TEXT`, () => {});
+    db.run(`ALTER TABLE youth ADD COLUMN account_tier TEXT DEFAULT 'New Member'`, () => {});
 
     db.run("ALTER TABLE prayer_requests ADD COLUMN reactions TEXT DEFAULT '{}'", ()=>{});
     db.run("ALTER TABLE group_memories ADD COLUMN reactions TEXT DEFAULT '{}'", ()=>{});
@@ -515,6 +529,73 @@ app.post('/api/settings/growth-habits', (req, res) => {
     db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('prayer_points', ?)`, [prayer_points]);
     logActivity(actor, 'UPDATE_HABIT_SETTINGS', `Updated Daily Habit Points: Journal=${journal_points}, Prayer=${prayer_points}`);
     res.json({ success: true });
+});
+
+
+app.post('/api/auth/google', async (req, res) => {
+    const { token } = req.body;
+    try {
+        const ticket = await googleClient.verifyIdToken({
+            idToken: token,
+            audience: '100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com',
+        });
+        const payload = ticket.getPayload();
+        const { sub: google_id, email, name, picture } = payload;
+
+        // 1. Check if email exists in Admin/Users table first
+        db.get(`SELECT * FROM users WHERE username = ?`, [email], (err, adminUser) => {
+            if (adminUser) {
+                if (adminUser.youth_id) {
+                    db.run(`UPDATE youth SET google_id = ?, profile_picture = ? WHERE id = ?`, [google_id, picture, adminUser.youth_id]);
+                    db.get(`SELECT * FROM youth WHERE id = ?`, [adminUser.youth_id], (err, member) => {
+                        logActivity(name, 'OAUTH_LOGIN', 'Superadmin logged in via Google');
+                        return res.json({ success: true, username: adminUser.username, permissions: JSON.parse(adminUser.permissions || '[]'), member, is_admin: true });
+                    });
+                } else {
+                    db.run(`INSERT INTO youth (name, email, profile_picture, google_id, account_tier, created_at) VALUES (?, ?, ?, ?, 'Leader', ?)`, [name, email, picture, google_id, getManilaTime()], function(err) {
+                        const newYouthId = this.lastID;
+                        db.run(`UPDATE users SET youth_id = ? WHERE id = ?`, [newYouthId, adminUser.id]);
+                        db.get(`SELECT * FROM youth WHERE id = ?`, [newYouthId], (err, newMember) => {
+                            logActivity(name, 'OAUTH_LOGIN', 'Superadmin auto-linked via Google');
+                            return res.json({ success: true, username: adminUser.username, permissions: JSON.parse(adminUser.permissions || '[]'), member: newMember, is_admin: true });
+                        });
+                    });
+                }
+                return;
+            }
+
+            // 2. Standard Member Flow
+            db.get(`SELECT * FROM youth WHERE google_id = ? OR email = ?`, [google_id, email], (err, member) => {
+                if (member) {
+                    if (!member.google_id) {
+                        db.run(`UPDATE youth SET google_id = ?, profile_picture = ? WHERE id = ?`, [google_id, picture, member.id]);
+                    }
+                    db.get(`SELECT permissions FROM users WHERE youth_id = ?`, [member.id], (err, u) => {
+                        const perms = u && u.permissions ? JSON.parse(u.permissions) : [];
+                        logActivity(member.name, 'OAUTH_LOGIN', 'Logged in via Google');
+                        return res.json({ success: true, username: member.qr_code, permissions: perms, member, is_admin: perms.length > 0 });
+                    });
+                } else {
+                    // 3. Auto-provision New Member
+                    db.get(`SELECT MAX(id) as maxId FROM youth`, [], (err, row) => {
+                        const nextId = (row && row.maxId ? row.maxId : 0) + 1;
+                        const qrCode = `FOG-PASS-${String(nextId).padStart(3, '0')}`;
+                        db.run(`INSERT INTO youth (name, email, profile_picture, google_id, account_tier, qr_code, password, created_at) VALUES (?, ?, ?, ?, 'New Member', ?, ?, ?)`,
+                            [name, email, picture, google_id, qrCode, qrCode, getManilaTime()], function(err) {
+                            const newId = this.lastID;
+                            db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`, [qrCode, qrCode, newId, getManilaTime()]);
+                            logActivity('System', 'NEW_MEMBER_CREATED', `Auto-provisioned New Member '${name}' via Google`);
+                            db.get(`SELECT * FROM youth WHERE id = ?`, [newId], (err, newMember) => {
+                                res.json({ success: true, username: newMember.qr_code, permissions: [], member: newMember, is_admin: false, is_new: true });
+                            });
+                        });
+                    });
+                }
+            });
+        });
+    } catch (error) {
+        res.status(401).json({ success: false, error: 'Invalid Google Token' });
+    }
 });
 
 app.post('/api/login', (req, res) => {
