@@ -9,22 +9,64 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-    <link rel="stylesheet" href="/css/styles.css">
-    <link rel="stylesheet" href="/css/v2-styles.css">
-    <link rel="stylesheet" href="/css/v3-styles.css">
-    <link rel="stylesheet" href="/css/v4-styles.css">
+    <link rel="stylesheet" href="/css/styles.css?v=12.2">
+    <link rel="stylesheet" href="/css/v2-styles.css?v=12.2">
+    <link rel="stylesheet" href="/css/v3-styles.css?v=12.2">
+    <link rel="stylesheet" href="/css/v4-styles.css?v=12.2">
     <style>
-        /* AI Chat Bubbles CSS */
         .ai-chat-box { display: flex; flex-direction: column; gap: 15px; max-height: 450px; overflow-y: auto; padding: 15px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin-bottom: 15px; }
         .chat-msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; font-size: 0.95rem; line-height: 1.4; }
         .chat-user { align-self: flex-end; background: var(--primary); color: #FFF; border-bottom-right-radius: 2px; }
         .chat-ai { align-self: flex-start; background: #E2E8F0; color: #0F172A; border-bottom-left-radius: 2px; }
         .ai-pill-btn { background: #FFF; border: 1px solid #10B981; color: #10B981; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; transition: 0.2s; white-space: nowrap; }
         .ai-pill-btn:hover { background: #10B981; color: #FFF; }
+        .growth-sub-tab { display: none; animation: fadeIn 0.3s ease-out; }
+        .growth-sub-tab.active { display: block; }
     </style>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
+
+<div id="globalPreloader" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #F8FAFC; z-index: 999999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease-out;">
+    <img src="/img/logo.png" alt="Logo" style="width: 120px; height: 120px; object-fit: contain; margin-bottom: 30px; animation: pulse 1.5s infinite ease-in-out;">
+    <div style="width: 200px; height: 6px; background: #E2E8F0; border-radius: 4px; overflow: hidden; margin-bottom: 15px;">
+        <div style="width: 50%; height: 100%; background: var(--primary); border-radius: 4px; animation: loadBar 1.5s infinite ease-in-out;"></div>
+    </div>
+    <p style="color: var(--text-muted); font-size: 0.95rem; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 5px;">Loading portal...</p>
+    <p id="loaderPercentage" style="color: var(--primary); font-size: 1.3rem; font-weight: 900; margin: 0;">0%</p>
+</div>
+<style>
+    @keyframes pulse { 0% { transform: scale(0.9); opacity: 0.7; } 50% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0.9); opacity: 0.7; } }
+    @keyframes loadBar { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
+</style>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const loader = document.getElementById('globalPreloader');
+        const pctText = document.getElementById('loaderPercentage');
+        if (loader && pctText) {
+            let percent = 0;
+            const interval = setInterval(() => {
+                percent += Math.floor(Math.random() * 15) + 5;
+                if (percent >= 100) {
+                    percent = 100;
+                    clearInterval(interval);
+                    pctText.innerText = '100%';
+                    setTimeout(() => {
+                        loader.style.opacity = '0';
+                        setTimeout(() => loader.style.display = 'none', 500);
+                    }, 300);
+                } else {
+                    pctText.innerText = percent + '%';
+                }
+            }, 80);
+        }
+    });
+</script>
+
+
+
+
+
 
 <div id="offlineBanner">⚠️ You are currently offline. Changes are saved locally and will sync when reconnected.</div>
 
@@ -34,7 +76,7 @@
             <img id="headerLogo" src="/img/logo.png" alt="Logo" class="fog-header-logo" onerror="this.style.display='none'">
             <div class="fog-header-titles">
                 <h1><span>FIRE OF GOD</span> MINISTRIES</h1>
-                <p>Community Portal & Discipleship Engine</p>
+                <p>Community Portal</p>
             </div>
         </div>
         <button id="hamburgerBtn" class="hamburger-btn" onclick="openSidebar()" style="display: none;">☰</button>
@@ -99,16 +141,12 @@
                         </p>
                         <div id="preregSuccessQrContainer" style="display: flex; justify-content: center; margin-bottom: 5px; background: white; padding: 15px; border-radius: 12px; display: inline-block;"></div>
                         <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 15px; margin-top: 5px;">For mobile device, long press on the QR code and save it to your photos or photo gallery/album.</p>
-
                         <a id="preregSuccessQrDownload" class="btn btn-primary" download="Event-QR-Pass.png" style="width: 100%;">📥 Save to Photo Gallery</a>
                         <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 10px;">Please click the button above to download and keep a copy of your pass.</p>
-
                         <button class="btn btn-outline" style="width: 100%; margin-top: 15px; border-color: var(--primary); color: var(--primary);" onclick="sharePreRegLink()">🔗 Share/invite a friend or someone</button>
                     </div>
-
                     <button class="btn btn-outline" style="width: 100%; margin-top: 5px;" onclick="closePublicPrereg()">Close</button>
                 </div>
-
                 <img id="preregPublicBottomBanner" src="" style="width: 100%; object-fit: contain; margin-top: 30px; border-top: 1px solid var(--border-color); padding-top: 20px; display: none;">
             </div>
         </div>
@@ -134,9 +172,25 @@
                     <span style="padding: 0 10px; font-size: 0.8rem; color: var(--text-muted);">Or continue with</span>
                     <hr style="flex: 1; border: none; border-top: 1px solid var(--border-color);">
                 </div>
-                <button type="button" class="btn btn-outline" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; border-color: #E2E8F0;" onclick="initGoogleAuth()">
-                    <img src="https://www.svgrepo.com/show/475656/google-color.svg" style="width: 20px;"> Sign in with Google
-                </button>
+                
+                <!-- FOOLPROOF GOOGLE HTML API -->
+                <div id="g_id_onload"
+                     data-client_id="100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com"
+                     data-context="signin"
+                     data-ux_mode="popup"
+                     data-callback="handleGoogleCredentialResponse"
+                     data-auto_prompt="false">
+                </div>
+                <div style="display: flex; justify-content: center; width: 100%;">
+                    <div class="g_id_signin"
+                         data-type="standard"
+                         data-shape="rectangular"
+                         data-theme="outline"
+                         data-text="signin_with"
+                         data-size="large"
+                         data-logo_alignment="left">
+                    </div>
+                </div>
             </div>
             </form>
         </div>
@@ -144,7 +198,7 @@
 
     
     <div id="pulseDashboardTab" class="tab-content">
-        <div class="card" style="padding: 0; overflow: hidden; border: none; background: var(--bg-light);">
+        <div class="card" style="padding: 0; overflow: hidden; border: none; background: var(--bg-light); box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
             <div style="padding: 25px 20px; background: linear-gradient(135deg, var(--primary), #F59E0B); color: #FFF; text-align: center; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;">
                 <h2 style="margin: 0; font-size: 1.8rem; border: none; color: #FFF;">Welcome Home</h2>
                 <p id="pulseGreetingName" style="font-size: 1.1rem; opacity: 0.9; margin-top: 5px;">Fellowship First</p>
@@ -152,37 +206,72 @@
             <div style="padding: 20px; display: flex; flex-direction: column; gap: 15px; margin-top: -10px;">
                 <div style="background: #FFF; padding: 15px; border-radius: 12px; border-left: 4px solid #10B981; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
                     <h3 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">📖 Daily Manna</h3>
-                    <p id="pulseDailyGospelText" style="font-size: 1rem; color: var(--text-main); font-style: italic; margin: 0; line-height: 1.5;">"Where two or three gather in my name, there am I with them."</p>
+                    <p id="pulseDailyGospelText" style="font-size: 1rem; color: var(--text-main); font-style: italic; margin: 0; line-height: 1.5;">Loading daily verse...</p>
                 </div>
             </div>
         </div>
     </div>
 
     <div id="profileTab" class="tab-content">
-
         <div class="card profile-header-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; padding: 25px;">
-            <div class="profile-header-left" style="display: flex; align-items: center; gap: 25px; flex-wrap: wrap;">
-                <div id="myProfileAvatar" class="avatar-circle" style="width: 130px; height: 130px; font-size: 3.5rem;"></div>
-                <div>
-                    <h2 id="myProfileName" style="color: var(--primary); font-size: 1.8rem; margin: 0 0 8px 0; border: none; padding: 0;"></h2>
+            
+        
+        <div class="profile-header-left" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; width: 100%; text-align: center; margin-bottom: 20px;">
+            <div id="myProfileAvatar" class="avatar-circle" style="width: 130px; height: 130px; font-size: 3.5rem; margin: 0 auto;"></div>
+            <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+                <h2 id="myProfileName" style="color: var(--primary); font-size: 1.8rem; margin: 0 0 8px 0; border: none; padding: 0; text-align: center;"></h2>
+                <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
                     <p id="myProfileCode" class="badge badge-orange" style="font-size: 1rem; margin: 0; padding: 8px 12px;"></p>
+                    <div id="myGamificationBadges" style="position: relative; display: flex; flex-direction: column; gap: 6px; align-items: center; margin-top: 8px; display: none;">
+                        <p id="overallXpBadgeToggle" class="badge" style="background: #FEF3C7; color: #D97706; font-size: 1.1rem; margin: 0; padding: 10px 20px; cursor: pointer; font-weight: bold; border: 1px solid #FDE68A; transition: 0.2s;">⭐ <span id="myPointsValue">0</span> Overall XP 🖱️</p>
+                        
+                        <div id="xpTooltip" style="display: none; background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100; flex-direction: row; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 5px;">
+                            <p class="badge" style="background: #E0E7FF; color: #2563EB; font-size: 0.85rem; margin: 0; padding: 6px 12px;">🎮 <span id="myArcadeXp">0</span> Arcade</p>
+                            <p class="badge" style="background: #D1FAE5; color: #059669; font-size: 0.85rem; margin: 0; padding: 6px 12px;">🌱 <span id="myGrowthXp">0</span> Growth</p>
+                            <p class="badge" style="background: #F3E8FF; color: #DB2777; font-size: 0.85rem; margin: 0; padding: 6px 12px;">🎫 <span id="myEventXp">0</span> Events</p>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="profile-header-right" style="display: flex; flex-direction: column; align-items: center; gap: 12px; background: var(--bg-light); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color);">
+        </div>
+        <div class="profile-header-right" style="display: flex; flex-direction: column; align-items: center; gap: 12px; background: var(--bg-light); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color);">
                 <div id="myQrContainer" style="background: #fff; padding: 8px; border-radius: 8px;"></div>
                 <a id="myDownloadQrBtn" class="btn btn-primary btn-sm" download="My-FOG-Pass.png" style="width: 100%; font-weight: bold;">📥 Download QR Pass</a>
             </div>
         </div>
 
+        
+        <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 20px;">
+            <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 10px; border-bottom: 2px solid var(--bg-light); padding-bottom: 5px;">Personal Details</h3>
+            <div id="myBioSummary" style="font-size: 0.95rem; color: var(--text-muted); line-height: 1.6; text-align: left;">Loading details...</div>
+        </div>
         <div class="sub-nav" style="margin-bottom: 15px;">
             <button id="btnMyProfileTabRoles" class="sub-nav-btn active" onclick="switchMyProfileTab('roles')">🎭 Roles</button>
-            <button id="btnMyProfileTabAttendance" class="sub-nav-btn" onclick="switchMyProfileTab('attendance')">📋 Attendance History</button>
+            <button id="btnMyProfileTabAttendance" class="sub-nav-btn" onclick="switchMyProfileTab('attendance')">📋 Participation</button>
+            <button id="btnMyProfileTabSchedule" class="sub-nav-btn" onclick="switchMyProfileTab('schedule')">📅 Schedule</button>
         </div>
 
         <div id="myProfileTabRoles" style="display: block; animation: fadeIn 0.3s ease-out;">
             <div class="card" style="margin-bottom: 0;">
                 <div id="myMinistriesHistory" style="padding: 5px;"></div>
                 <div id="myRolesPagination" style="display: none; text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);"></div>
+            </div>
+        </div>
+
+        <div id="myProfileTabSchedule" style="display: none; animation: fadeIn 0.3s ease-out;">
+            <div class="card" style="margin-bottom: 20px;">
+                <h2 style="color: #F59E0B;">⏳ Pending Event Invites</h2>
+                <div id="myPendingInvitesList"></div>
+            </div>
+            <div class="card" style="margin-bottom: 0; border-color: var(--danger);">
+                <h2 style="color: var(--danger);">🛑 My Blockout Dates</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Add dates when you are out of town or unavailable so leaders know not to schedule you.</p>
+                <form id="addBlockoutForm" onsubmit="submitBlockoutDate(event)" style="display:flex; gap:10px; margin-bottom: 15px;">
+                    <input type="date" id="newBlockDate" class="form-control" required>
+                    <input type="text" id="newBlockReason" class="form-control" placeholder="Reason (e.g. Exams, Vacation)" required>
+                    <button type="submit" class="btn btn-primary" style="background: var(--danger);">Block Date</button>
+                </form>
+                <div id="myBlockoutsList"></div>
             </div>
         </div>
 
@@ -211,38 +300,14 @@
             <form onsubmit="handleSelfProfileUpdate(event)">
                 <input type="hidden" id="myMemberId">
                 <div class="profile-edit-grid">
-                    <div class="form-group">
-                        <label>Update Profile Picture</label>
-                        <input type="file" id="myEditProfilePic" class="form-control" accept="image/*">
-                    </div>
-                    <div class="form-group">
-                        <label>Full Name</label>
-                        <input type="text" id="myEditName" class="form-control" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Email Address</label>
-                        <input type="email" id="myEditEmail" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>Age</label>
-                        <input type="number" id="myEditAge" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>Birthday</label>
-                        <input type="date" id="myEditBirthday" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>Social Media Handle</label>
-                        <input type="text" id="myEditSocial" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>Parents / Guardian Name</label>
-                        <input type="text" id="myEditParents" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>Custom Password</label>
-                        <input type="password" id="myEditPassword" class="form-control" placeholder="Enter new password to change">
-                    </div>
+                    <div class="form-group"><label>Update Profile Picture</label><input type="file" id="myEditProfilePic" class="form-control" accept="image/*"></div>
+                    <div class="form-group"><label>Full Name</label><input type="text" id="myEditName" class="form-control" required></div>
+                    <div class="form-group"><label>Email Address</label><input type="email" id="myEditEmail" class="form-control"></div>
+                    <div class="form-group"><label>Age</label><input type="number" id="myEditAge" class="form-control"></div>
+                    <div class="form-group"><label>Birthday</label><input type="date" id="myEditBirthday" class="form-control"></div>
+                    <div class="form-group"><label>Social Media Handle</label><input type="text" id="myEditSocial" class="form-control"></div>
+                    <div class="form-group"><label>Parents / Guardian Name</label><input type="text" id="myEditParents" class="form-control"></div>
+                    <div class="form-group"><label>Custom Password</label><input type="password" id="myEditPassword" class="form-control" placeholder="Enter new password to change"></div>
                 </div>
                 <div style="text-align: right; margin-top: 20px; border-top: 1px solid var(--bg-light); padding-top: 20px;">
                     <button type="submit" class="btn btn-primary" style="min-width: 250px;">Save Profile Changes</button>
@@ -252,341 +317,408 @@
 
         <div id="adminSettingsCard" class="card" style="display: none; border-color: var(--primary); margin-top: 20px;">
             <h2 style="color: var(--primary);">Global Brand Settings</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Upload site logo and PWA app icons. Changes apply instantly across the platform.</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Upload site logo and PWA app icons.</p>
             <form onsubmit="handleUpdateSiteImages(event)">
+                <div class="form-group"><label>Main Header Logo</label><input type="file" id="siteLogoInput" class="form-control" accept="image/png, image/jpeg"></div>
+                <div class="form-group"><label>Production App Icon</label><input type="file" id="prodIconInput" class="form-control" accept="image/png, image/jpeg"></div>
+                <div class="form-group"><label>Staging App Icon</label><input type="file" id="stagingIconInput" class="form-control" accept="image/png, image/jpeg"></div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Upload & Apply</button>
+            </form>
+            <hr style="margin: 25px 0; border: none; border-top: 1px solid var(--border-color);">
+            <h2 style="color: #8B5CF6;">Featured Games Control</h2>
+            <form id="featuredGamesForm" onsubmit="V10Expansion.saveFeaturedGames(event)">
                 <div class="form-group">
-                    <label>Main Header Logo</label>
-                    <input type="file" id="siteLogoInput" class="form-control" accept="image/png, image/jpeg">
+                    <label>Featured Arcade Game</label>
+                    <select id="setFeaturedArcade" class="form-control">
+                        <option value="None">None</option>
+                        <option value="David's Slingshot">David's Slingshot</option>
+                        <option value="Noah's Ark: Rescue">Noah's Ark: Rescue</option>
+                        <option value="Moses' Red Sea Dash">Moses' Red Sea Dash</option>
+                        <option value="Peter's Leap of Faith">Peter's Leap of Faith</option>
+                        <option value="Jonah's Deep Sea Dive">Jonah's Deep Sea Dive</option>
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label>Production App Icon (512x512)</label>
-                    <input type="file" id="prodIconInput" class="form-control" accept="image/png, image/jpeg">
+                    <label>Featured Growth Game</label>
+                    <select id="setFeaturedGrowth" class="form-control">
+                        <option value="None">None</option>
+                        <option value="Catechism Clash">Catechism Clash</option>
+                        <option value="Would You Rather">Would You Rather</option>
+                        <option value="Who Am I?">Who Am I?</option>
+                        <option value="Daily Manna Scramble">Daily Manna Scramble</option>
+                        <option value="Emoji Sermon Translator">Emoji Sermon Translator</option>
+                        <option value="The Narrow Gate">The Narrow Gate</option>
+                        <option value="Shield of Faith: Reflex Tap">Shield of Faith: Reflex Tap</option>
+                        <option value="Verse Chain">Verse Chain</option>
+                    </select>
                 </div>
-                <div class="form-group">
-                    <label>Staging App Icon (512x512)</label>
-                    <input type="file" id="stagingIconInput" class="form-control" accept="image/png, image/jpeg">
-                </div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Upload & Apply Images</button>
+                <button type="submit" class="btn btn-primary" style="width: 100%; background: #8B5CF6; border: none;">Save Featured Games</button>
             </form>
         </div>
 
         <div id="adminBackupCard" class="card" style="display: none; border-color: var(--danger); margin-top: 20px;">
             <h2 style="color: var(--danger);">System Backups & Restore</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Latest 10 daily/hourly database backups. Restoring will auto-backup your current live state first.</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Latest backups.</p>
             <div id="backupListContainer"></div>
         </div>
     </div>
-
     <div id="inboxTab" class="tab-content">
         <div class="card">
             <h2>🔔 My Inbox</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Stay up to date with announcements and messages from the leadership team.</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Announcements and messages from the leadership team.</p>
             <div id="inboxContainer">
-                <div style="text-align:center; padding:40px 20px;">
-                    <p style="color:var(--text-muted);">Loading your messages...</p>
+                <div style="text-align:center; padding:40px 20px;"><p style="color:var(--text-muted);">Loading your messages...</p></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="arcadeTab" class="tab-content">
+        <div class="card arcade-hub-card" style="padding: 0; overflow: hidden; border-color: var(--primary); background: var(--card-bg);">
+            <div style="padding: 15px 20px; background: linear-gradient(135deg, #FF6B00, #F59E0B); color: #FFF; display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="margin:0; border:none; padding:0; color: #FFF; font-weight: 800; display:flex; align-items:center; gap:10px;"><span style="font-size: 1.5rem;">🎯</span> FOG ARCADE</h2>
+                <div style="background: rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 0.9rem;">TOTAL XP: <span id="arcadeCurrentXP" style="color: #FFF;">0</span></div>
+            </div>
+            <div class="sub-nav" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); margin-bottom: 0; padding: 10px 15px;">
+                <button id="btnArcadeGames" class="sub-nav-btn active" onclick="V8Arcade.switchTab('games')">🎮 Games</button>
+                <button id="btnArcadeLeaderboard" class="sub-nav-btn" onclick="V8Arcade.switchTab('leaderboard')">🏆 Arcade Leaderboard</button>
+            </div>
+            <div id="arcadeGamesList" style="padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">Play minigames to earn XP!</p>
+                    <button class="btn btn-outline btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="font-weight: bold; background: white; padding: 4px 8px;">🔄 Refresh Ranks</button>
+                </div>
+                <div id="featuredArcadeGameContainer" style="margin-bottom: 20px;"></div>
+                <div class="arcade-grid" id="arcadeGridItems">
+                    <div class="arcade-game-tile" data-game-name="David's Slingshot"><div class="game-tile-icon">🪨</div><div class="game-tile-info"><h3 style="color: var(--text-main);">David's Slingshot</h3><p style="color: var(--text-muted);">Break the blocks! 50 Levels of Physics Fun.</p></div><div class="game-tile-action">PLAY</div></div>
+                    <div class="arcade-game-tile" data-game-name="Noah's Ark: Rescue"><div class="game-tile-icon">🚢</div><div class="game-tile-info"><h3 style="color: var(--text-main);">Noah's Ark: Rescue</h3><p style="color: var(--text-muted);">Control Noah to save the animals before the flood!</p></div><div class="game-tile-action" style="background: #10B981;">PLAY</div></div>
+                    <div class="arcade-game-tile" data-game-name="Moses' Red Sea Dash"><div class="game-tile-icon">🌊</div><div class="game-tile-info"><h3 style="color: var(--text-main);">Moses' Red Sea Dash</h3><p style="color: var(--text-muted);">Dodge chariots, collect Manna in a 3-lane runner!</p></div><div class="game-tile-action" style="background: #3B82F6;">PLAY</div></div>
+                    <div class="arcade-game-tile" data-game-name="Peter's Leap of Faith"><div class="game-tile-icon">🚶‍♂️</div><div class="game-tile-info"><h3 style="color: var(--text-main);">Peter's Leap of Faith</h3><p style="color: var(--text-muted);">Bounce on waves! Keep your eyes on Jesus.</p></div><div class="game-tile-action" style="background: #8B5CF6;">PLAY</div></div>
+                    <div class="arcade-game-tile" data-game-name="Jonah's Deep Sea Dive"><div class="game-tile-icon">🐋</div><div class="game-tile-info"><h3 style="color: var(--text-main);">Jonah's Deep Sea Dive</h3><p style="color: var(--text-muted);">Hold to swim, release to sink! Survive the deep.</p></div><div class="game-tile-action" style="background: #0284C7;">PLAY</div></div>
                 </div>
             </div>
+            <div id="arcadeLeaderboardView" style="display: none; padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="color: #F59E0B; margin: 0;">Top Arcade Players</h3>
+                    <button class="btn btn-outline btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="font-weight: bold; background: white; padding: 4px 8px;">🔄 Refresh Ranks</button>
+                </div>
+                <div id="arcadeLeaderboardContainer"></div>
+            </div>
+            <div id="arcadeActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
         </div>
     </div>
 
     <div id="communicationsAdminTab" class="tab-content">
         <div class="card">
             <h2 style="color: #3B82F6;">📢 Broadcast Engine</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Send targeted announcements and push notifications to specific groups or the entire congregation.</p>
-
             <div class="broadcast-form-container">
                 <form id="broadcastForm" onsubmit="V4Communications.sendBroadcast(event)">
-                    <div class="form-group">
-                        <label>Target Audience *</label>
-                        <select id="bcTargetSelect" class="form-control" required>
-                            <option value="All">All Registered Members</option>
-                            <option value="Leaders">All Leaders & Admins</option>
-                            </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Announcement Title *</label>
-                        <input type="text" id="bcTitle" class="form-control" placeholder="e.g. Urgent Prayer Request or Event Update" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Message Body *</label>
-                        <textarea id="bcMessage" class="form-control" rows="5" placeholder="Type your message here..." required></textarea>
-                    </div>
+                    <div class="form-group"><label>Target Audience *</label><select id="bcTargetSelect" class="form-control" required><option value="All">All Registered Members</option><option value="Leaders">All Leaders & Admins</option></select></div>
+                    <div class="form-group"><label>Announcement Title *</label><input type="text" id="bcTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Message Body *</label><textarea id="bcMessage" class="form-control" rows="5" required></textarea></div>
                     <button type="submit" class="btn btn-primary" style="width:100%; background: #3B82F6;">Send Broadcast</button>
                 </form>
             </div>
         </div>
-
-        <div class="card">
-            <h2>Broadcast History</h2>
-            <div id="broadcastHistoryContainer"></div>
-        </div>
+        <div class="card"><h2>Broadcast History</h2><div id="broadcastHistoryContainer"></div></div>
     </div>
 
     <div id="discipleshipAdminTab" class="tab-content">
         <div class="sub-nav">
             <button id="btnSubAdminAnalytics" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('analytics')">📊 Analytics</button>
             <button id="btnSubAdminPathways" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('pathways')">🗺️ Pathway Builder</button>
-            <button id="btnSubAdminGroups" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('groups')">👥 Small Groups Manager</button>
+            <button id="btnSubAdminGroups" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('groups')">👥 Small Groups</button>
+            <button id="btnSubAdminGamification" class="sub-nav-btn" onclick="V6Gamification.switchAdminTab('gamification')">🎯 Gamification</button>
+            <button id="btnSubAdminHabits" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('habits')">📖 Daily Habits</button>
         </div>
-
-        <div id="subTabAdminAnalytics" class="discipleship-admin-sub-tab active" style="animation: fadeIn 0.3s ease-out;">
-            <div class="card">
-                <h2>Congregation Spiritual Stages</h2>
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px;">Visual breakdown of where active members are in their discipleship journey.</p>
-                <div class="chart-wrapper">
-                    <canvas id="spiritualStagesChart"></canvas>
-                </div>
-            </div>
+        <div id="subTabAdminAnalytics" class="discipleship-admin-sub-tab active">
+            <div class="card"><h2>Congregation Spiritual Stages</h2><div class="chart-wrapper"><canvas id="spiritualStagesChart"></canvas></div></div>
         </div>
-
-        <div id="subTabAdminPathways" class="discipleship-admin-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+        <div id="subTabAdminPathways" class="discipleship-admin-sub-tab" style="display:none;">
             <div class="card">
                 <h2>Create New Discipleship Milestone</h2>
                 <form id="createPathwayForm" onsubmit="V2Discipleship.createPathway(event)">
                     <div class="form-group"><label>Milestone Title *</label><input type="text" id="pathCreateTitle" class="form-control" required></div>
                     <div class="form-group"><label>Description *</label><textarea id="pathCreateDesc" class="form-control" rows="2" required></textarea></div>
                     <div class="form-group"><label>Step Order (Number) *</label><input type="number" id="pathCreateOrder" class="form-control" required></div>
+                    <div class="form-group"><label>Points Awarded (Growth XP) *</label><input type="number" id="pathCreatePoints" class="form-control" value="50" required></div>
                     <button type="submit" class="btn btn-primary" style="width:100%;">Create Milestone</button>
                 </form>
             </div>
-            <div class="card">
-                <h2>Active Discipleship Pathways</h2>
-                <div id="adminPathwaysList"></div>
-            </div>
+            <div class="card"><h2>Active Pathways</h2><div id="adminPathwaysList"></div></div>
         </div>
-
-        <div id="subTabAdminGroups" class="discipleship-admin-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+        <div id="subTabAdminGroups" class="discipleship-admin-sub-tab" style="display:none;">
             <div class="card">
                 <h2>Create New Small Group</h2>
                 <form id="createSmallGroupForm" onsubmit="V2Discipleship.createSmallGroup(event)">
                     <div class="form-group"><label>Group Name *</label><input type="text" id="sgCreateName" class="form-control" required></div>
+                    <div class="form-group"><label>Group Logo (Optional)</label><input type="file" id="sgCreateLogo" class="form-control" accept="image/*"></div>
                     <div class="form-group" style="position: relative;">
-                        <label>Leader (Search Directory)</label>
-                        <input type="text" id="sgLeaderSearch" class="form-control" placeholder="Search leader by name..." autocomplete="off" onkeyup="V2Discipleship.filterLeaderSearch()">
-                        <div id="sgLeaderDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid var(--border-color); border-radius:0 0 8px 8px; max-height:200px; overflow-y:auto; z-index:100; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
+                        <label>Leader</label><input type="text" id="sgLeaderSearch" class="form-control" onkeyup="V2Discipleship.filterLeaderSearch()">
+                        <div id="sgLeaderDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid var(--border-color); z-index:100;"></div>
                         <input type="hidden" id="sgCreateLeaderId">
                     </div>
                     <div style="display:flex; gap:15px;">
-                        <div class="form-group" style="flex:1;"><label>Schedule</label><input type="text" id="sgCreateSchedule" class="form-control" placeholder="e.g. Every Friday, 7PM"></div>
-                        <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="sgCreateVenue" class="form-control" placeholder="e.g. Main Hall"></div>
+                        <div class="form-group" style="flex:1;"><label>Schedule</label><input type="text" id="sgCreateSchedule" class="form-control"></div>
+                        <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="sgCreateVenue" class="form-control"></div>
                     </div>
+                    <div class="form-group"><label>Privacy Level</label><select id="sgCreatePrivacy" class="form-control"><option value="Open">🌐 Open (Anyone can join)</option><option value="Approval">🔒 Approval Needed</option><option value="Invite-Only">🕵️ Secret (Invite-Only)</option></select></div>
+<div class="form-group"><label>Points Awarded on Join (Growth XP) *</label><input type="number" id="sgCreatePoints" class="form-control" value="20" required></div>
                     <button type="submit" class="btn btn-primary" style="width:100%;">Create Group</button>
                 </form>
             </div>
+            <div class="card"><h2>Active Small Groups</h2><div id="adminSmallGroupsList"></div></div>
+        </div>
+        <div id="subTabAdminHabits" class="discipleship-admin-sub-tab" style="display:none;">
             <div class="card">
-                <h2>Active Small Groups</h2>
-                <div id="adminSmallGroupsList"></div>
+                <h2 style="color:#10B981;">📖 Daily Habit Rewards</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Set the Growth XP members earn for daily spiritual habits (awarded once per day).</p>
+                <form id="habitSettingsForm" onsubmit="V2Discipleship.saveHabitSettings(event)">
+                    <div style="display:flex; gap:15px;">
+                        <div class="form-group" style="flex:1;">
+                            <label>Journal Points (Daily) *</label>
+                            <input type="number" id="habitJournalPts" class="form-control" required>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label>Prayer Points (Daily) *</label>
+                            <input type="number" id="habitPrayerPts" class="form-control" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%; background: #10B981; border: none;">Save Habit Settings</button>
+                </form>
+            </div>
+        </div>
+<div id="subTabAdminGamification" class="discipleship-admin-sub-tab" style="display:none;">
+            <div class="card">
+                <h2 style="color:#D97706;">Create Weekly Challenge</h2>
+                <form id="createChallengeForm" onsubmit="V6Gamification.createChallenge(event)">
+                    <div class="form-group"><label>Challenge Title *</label><input type="text" id="gamCreateTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Description *</label><textarea id="gamCreateDesc" class="form-control" rows="2" required></textarea></div>
+                    <div class="form-group"><label>Growth Points *</label><input type="number" id="gamCreatePoints" class="form-control" value="50" required></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%; background: #F59E0B;">Publish Challenge</button>
+                </form>
             </div>
         </div>
     </div>
 
     <div id="aiAssistantTab" class="tab-content">
         <div class="card">
-            <h2 style="color: #10B981; display:flex; align-items:center; gap:8px;">🤖 AI Ministry Assistant</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Ask natural language questions about your congregation's data, attendance, and prayer requests.</p>
-
-            <div id="aiChatHistory" class="ai-chat-box">
-                <div class="chat-msg chat-ai">
-                    Hello! I am your FOG Ministry Assistant. How can I help you support the congregation today?
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                <h2 style="color: #10B981; margin: 0;">🤖 AI Ministry Assistant</h2>
+                <div style="display: none; align-items: center; gap: 15px;">
+                    <select id="aiPersonaSelect" class="form-control" style="width: auto; margin: 0; padding: 5px 10px;">
+                        <option value="General Assistant">General</option>
+                        <option value="Youth Pastor">Youth Pastor</option>
+                        <option value="Senior Pastor">Senior Pastor</option>
+                    </select>
+                    <div style="display:flex; align-items:center; gap:5px;"><input type="checkbox" id="aiPrivateToggle"><label for="aiPrivateToggle">Incognito</label></div>
                 </div>
             </div>
-
-            <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 5px;">
-                <button class="ai-pill-btn" onclick="V2Discipleship.setAiPrompt('Who hasn\'t attended recently?')">Who is missing?</button>
-                <button class="ai-pill-btn" onclick="V2Discipleship.setAiPrompt('How many members do we have total?')">Directory Size</button>
-                <button class="ai-pill-btn" onclick="V2Discipleship.setAiPrompt('Show me recent prayer requests.')">Recent Prayers</button>
-            </div>
-
-            <form style="display: flex; gap: 10px;" onsubmit="V2Discipleship.sendAiMessage(event)">
-                <input type="text" id="aiChatInput" class="form-control" placeholder="Type your question here..." required style="flex: 1;">
+            <div id="aiChatHistory" class="ai-chat-box"><div class="chat-msg chat-ai">Hello, I am Silas, your FOG ministry assistant.</div></div>
+            <form style="display: flex; gap: 10px;" onsubmit="V7AIAssistant.sendMessage(event)">
+                <input type="text" id="aiChatInput" class="form-control" required style="flex: 1;">
                 <button type="submit" class="btn btn-primary" style="background: #10B981;">Send</button>
             </form>
         </div>
     </div>
 
     <div id="discipleshipTab" class="tab-content">
-        <div id="verseOfDayContainer"></div>
-        <div id="nextStepContainer"></div>
+        <div id="growthSubHome" class="growth-sub-tab active">
 
-        <div class="card">
-            <h2>Discipleship Pathways & Milestones</h2>
-            <div id="pathwaysListContainer"></div>
-        </div>
-
-        <div class="card">
-            <h2>Private Spiritual Journal</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Record your personal reflections, prayers, and walk with God securely.</p>
-            <form id="journalForm" onsubmit="V2Discipleship.saveJournal(event)">
-                <div class="form-group"><label>Title *</label><input type="text" id="journalTitle" class="form-control" placeholder="e.g. Morning Devotion on Grace" required></div>
-                <div style="display:flex; gap:15px;">
-                    <div class="form-group" style="flex:1;"><label>Mood / State</label><select id="journalMood" class="form-control"><option value="Blessed">Blessed & Grateful</option><option value="Seeking">Seeking Guidance</option><option value="Joyful">Joyful</option><option value="Reflective">Reflective</option></select></div>
+            <div id="liturgicalCard" class="card" style="display:none; transition: all 0.5s ease; border: none; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                    <span id="liturgicalSeason" class="badge" style="background: rgba(255,255,255,0.25); color: #FFF; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem;">Season</span>
+                    <span id="liturgicalFeast" style="font-size:0.8rem; color:#FFF; font-weight:800; text-align: right; max-width: 60%;">Feast Day</span>
                 </div>
-                <div class="form-group"><label>Journal Content *</label><textarea id="journalContent" class="form-control" rows="4" placeholder="Write your thoughts..." required></textarea></div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Save Journal Entry</button>
-            </form>
-            <div id="journalsContainer" style="margin-top: 25px;"></div>
+                <h3 style="color:#FFF; border:none; padding:0; margin-bottom: 12px; font-size: 1.3rem;">📖 Daily Gospel</h3>
+                <p id="liturgicalGospel" style="color:#FFF; font-size:1.05rem; font-style:italic; margin-bottom: 20px; line-height:1.6; text-shadow: 0 1px 3px rgba(0,0,0,0.3);"></p>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-sm" style="background:#FFF; color:var(--text-main); font-weight:800; flex: 1; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="window.openLiturgicalReadings()">📖 Full Readings</button>
+                    <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4);" onclick="window.switchGrowthSubTab('Journal')">🙏 Reflect</button>
+                </div>
+            </div>
+            <div id="verseOfDayContainer"></div>
+            <div id="nextStepContainer"></div>
+            <div class="card" style="border-top: 4px solid #059669;">
+                <h2 style="color: #047857;">🌱 Spiritual Growth</h2>
+                <div class="sub-nav" style="margin-bottom: 15px;">
+                    <button id="btnGamTabChallenges" class="sub-nav-btn active" onclick="V6Gamification.switchTab('challenges')">🎯 Weekly Tasks</button>
+                    <button id="btnGamTabGames" class="sub-nav-btn" onclick="V6Gamification.switchTab('games')">🧠 Games</button>
+                    <button id="btnGamTabLeaderboard" class="sub-nav-btn" onclick="V6Gamification.switchTab('leaderboard')">🏅 Ranks</button>
+                </div>
+                <div id="gamTabChallenges" style="display: block;"><div id="gamActiveChallengesList"></div></div>
+                <div id="gamTabGames" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Play games and earn Growth XP!</p>
+                        <button class="btn btn-outline btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="font-weight: bold;">🔄 Refresh</button>
+                    </div>
+                    
+                    <div id="featuredGrowthGameContainer" style="margin-bottom: 20px;"></div>
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                        <button id="btnGrowthIndiv" class="btn btn-primary btn-sm" style="flex: 1;" onclick="if(window.V10Expansion) V10Expansion.filterGrowthGames('indiv')">👤 Individual</button>
+                        <button id="btnGrowthGroups" class="btn btn-outline btn-sm" style="flex: 1;" onclick="if(window.V10Expansion) V10Expansion.filterGrowthGames('groups')">👥 Groups</button>
+                    </div>
+                    <div class="arcade-grid" id="growthGamesGrid">
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Catechism Clash"><div class="game-tile-icon">⏱️</div><div class="game-tile-info"><h3>Catechism Clash</h3><p>60-Second Sprint!</p></div><div class="game-tile-action" style="background:#059669;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Daily Manna Scramble"><div class="game-tile-icon">🧩</div><div class="game-tile-info"><h3>Daily Manna</h3><p>Unscramble the verse!</p></div><div class="game-tile-action" style="background:#14B8A6;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Emoji Sermon Translator"><div class="game-tile-icon">😀</div><div class="game-tile-info"><h3>Emoji Sermon</h3><p>Decode the story.</p></div><div class="game-tile-action" style="background:#F59E0B;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="The Narrow Gate"><div class="game-tile-icon">🚪</div><div class="game-tile-info"><h3>The Narrow Gate</h3><p>Hardcore Trivia.</p></div><div class="game-tile-action" style="background:#6366F1;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Shield of Faith: Reflex Tap"><div class="game-tile-icon">🛡️</div><div class="game-tile-info"><h3>Shield of Faith</h3><p>Reflex memory game!</p></div><div class="game-tile-action" style="background:#EC4899;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Who Am I?"><div class="game-tile-icon">🕵️‍♂️</div><div class="game-tile-info"><h3>Who Am I?</h3><p>Guess the character!</p></div><div class="game-tile-action" style="background:#8B5CF6;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Would You Rather" onclick="V9GrowthGames.mountWouldYouRather()"><div class="game-tile-icon">⚖️</div><div class="game-tile-info"><h3>Would You Rather</h3><p>Daily Poll.</p></div><div class="game-tile-action" style="background:#8B5CF6;">VOTE</div></div>
+                        <div class="arcade-game-tile growth-game-groups" data-game-name="Verse Chain" onclick="V9GrowthGames.mountVerseChain()"><div class="game-tile-icon">🔗</div><div class="game-tile-info"><h3>Verse Chain</h3><p>Cooperative puzzle!</p></div><div class="game-tile-action" style="background:#3B82F6;">CO-OP</div></div>
+                        <div class="arcade-game-tile growth-game-groups" data-game-name="Cell Group Clash" onclick="V9GrowthGames.mountGroupClash()"><div class="game-tile-icon">⚔️</div><div class="game-tile-info"><h3>Group Clash</h3><p>Group leaderboards!</p></div><div class="game-tile-action" style="background:#DC2626;">RANKS</div></div>
+                    </div>
+                    <div id="growthActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
+                </div>
+                <div id="gamTabLeaderboard" style="display: none;"><div id="gamLeaderboardList"></div></div>
+            </div>
         </div>
-
-        <div class="card">
-            <h2>Community Prayer Center</h2>
-            <form id="prayerForm" onsubmit="V2Discipleship.submitPrayer(event)">
-                <div class="form-group"><label>Prayer Title *</label><input type="text" id="prayerTitle" class="form-control" required></div>
-                <div class="form-group"><label>Prayer Request / Praise Report *</label><textarea id="prayerContent" class="form-control" rows="3" required></textarea></div>
-                <div class="form-group" style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="prayerAnonymous" style="width:18px;height:18px;"><label for="prayerAnonymous" style="margin:0;">Post Anonymously</label></div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Submit Prayer Request</button>
-            </form>
-            <div id="prayerWallContainer" class="prayer-wall-grid"></div>
+        <div id="growthSubMilestones" class="growth-sub-tab"><div class="card"><h2>Milestones</h2><div id="pathwaysListContainer"></div></div></div>
+        <div id="growthSubJournal" class="growth-sub-tab">
+            <div class="card">
+                <h2>Private Journal</h2>
+                <form id="journalForm" onsubmit="V2Discipleship.saveJournal(event)">
+                    <div class="form-group"><label>Title *</label><input type="text" id="journalTitle" class="form-control" required></div>
+                    
+        <div style="display:flex; gap:15px;">
+            <div class="form-group" style="flex:1;">
+                <label>Framework</label>
+                <select id="journalType" class="form-control" onchange="V2Discipleship.applyJournalTemplate()">
+                    <option value="Freehand">Freehand (Blank)</option>
+                    <option value="Lectio Divina">📖 Lectio Divina</option>
+                    <option value="Examen">🌙 Daily Examen</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label>Mood</label>
+                <select id="journalMood" class="form-control">
+                    <option value="Blessed">Blessed</option>
+                    <option value="Seeking">Seeking</option>
+                    <option value="Joyful">Joyful</option>
+                    <option value="Reflective">Reflective</option>
+                </select>
+            </div>
         </div>
+                    <div class="form-group"><label>Content *</label><textarea id="journalContent" class="form-control" rows="6" style="overflow-y: hidden; min-height: 150px; padding: 15px; font-size: 1rem; border-radius: 12px; resize: none;" oninput="window.autoResizeBox(this)" required></textarea></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Save</button>
+                </form>
+                <div id="journalsContainer" style="margin-top:20px;"></div>
+            </div>
+        </div>
+        <div id="growthSubPrayer" class="growth-sub-tab">
+            <div class="card">
+                <h2>Prayer Center</h2>
+                <form id="prayerForm" onsubmit="V2Discipleship.submitPrayer(event)">
+                    <div class="form-group"><label>Title *</label><input type="text" id="prayerTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Request *</label><textarea id="prayerContent" class="form-control" rows="3" required></textarea></div>
+                    <div class="form-group"><input type="checkbox" id="prayerAnonymous"><label for="prayerAnonymous">Anonymous</label></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Submit</button>
+                </form>
+                <div id="prayerWallContainer"></div>
+            </div>
+        </div>
+        <div id="growthSubGroups" class="growth-sub-tab"><div class="card"><h2>Small Groups</h2><div id="smallGroupsContainer"></div></div></div>
+    </div>
 
-        <div class="card">
-            <h2>Small Groups / Connect Groups</h2>
-            <div id="smallGroupsContainer"></div>
+    <div id="leaderboardsHubTab" class="tab-content">
+        <div class="card" style="padding: 0; overflow: hidden; border-color: var(--primary);">
+            <div style="padding: 15px 20px; background: linear-gradient(135deg, #2563EB, #4F46E5); color: #FFF; display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="margin:0; border:none; padding:0; color: #FFF;"><span style="font-size: 1.5rem;">🏆</span> GLOBAL RANKS</h2>
+                <button class="btn btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="background: rgba(255,255,255,0.2); color: #FFF; border: none; font-weight: bold;">🔄 Refresh Ranks</button>
+            </div>
+            <div class="sub-nav" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); margin-bottom: 0; padding: 10px 15px;">
+                <button id="btnLdrOverall" class="sub-nav-btn active" onclick="V10Expansion.switchLeaderboardTab('overall')">⭐ Overall</button>
+                <button id="btnLdrGrowth" class="sub-nav-btn" onclick="V10Expansion.switchLeaderboardTab('growth')">🌱 Growth</button>
+                <button id="btnLdrArcade" class="sub-nav-btn" onclick="V10Expansion.switchLeaderboardTab('arcade')">🎮 Arcade</button>
+            </div>
+            <div id="ldrOverallView" style="padding: 20px; display: block;">
+                <h3 style="color: #D97706; margin-bottom: 15px;">Top Overall Leaders (All Time)</h3><div id="ldrOverallContainer"></div>
+                <h3 style="color: #D97706; margin-bottom: 15px; margin-top: 25px;">Top Overall (This Month)</h3><div id="ldrOverallMonthContainer"></div>
+            </div>
+            <div id="ldrGrowthView" style="padding: 20px; display: none;">
+                <h3 style="color: #059669; margin-bottom: 15px;">Top Growth Leaders (All Time)</h3><div id="ldrGrowthContainer"></div>
+                <h3 style="color: #059669; margin-bottom: 15px; margin-top: 25px;">Top Growth (This Month)</h3><div id="ldrGrowthMonthContainer"></div>
+            </div>
+            <div id="ldrArcadeView" style="padding: 20px; display: none;">
+                <h3 style="color: #2563EB; margin-bottom: 15px;">Top Arcade Players (All Time)</h3><div id="ldrArcadeContainer"></div>
+                <h3 style="color: #2563EB; margin-bottom: 15px; margin-top: 25px;">Top Arcade (This Month)</h3><div id="ldrArcadeMonthContainer"></div>
+            </div>
         </div>
     </div>
 
     <div id="worshipTab" class="tab-content">
         <div class="sub-nav">
-            <button id="btnSubWorshipLibrary" class="sub-nav-btn active" onclick="V3Worship.switchWorshipSubTab('library')">🎵 Song Library</button>
+            <button id="btnSubWorshipLibrary" class="sub-nav-btn active" onclick="V3Worship.switchWorshipSubTab('library')">🎵 Library</button>
             <button id="btnSubWorshipSetlists" class="sub-nav-btn" onclick="V3Worship.switchWorshipSubTab('setlists')">📋 Setlists</button>
         </div>
-
-        <div id="subTabWorshipLibrary" class="worship-sub-tab active" style="animation: fadeIn 0.3s ease-out;">
+        <div id="subTabWorshipLibrary" class="worship-sub-tab active">
             <div class="card">
-                <h2>Add New Song</h2>
+                <h2>Add Song</h2>
                 <form id="createSongForm" onsubmit="V3Worship.createSong(event)">
-                    <div class="form-group"><label>Song Title *</label><input type="text" id="wsSongTitle" class="form-control" required></div>
-                    <div class="form-group"><label>Artist / Original Writer</label><input type="text" id="wsSongArtist" class="form-control"></div>
-                    <div style="display:flex; gap:15px;">
-                        <div class="form-group" style="flex:1;"><label>Key</label><input type="text" id="wsSongKey" class="form-control" placeholder="e.g. G"></div>
-                        <div class="form-group" style="flex:1;"><label>BPM</label><input type="text" id="wsSongBPM" class="form-control" placeholder="e.g. 72"></div>
-                    </div>
-                    <div class="form-group"><label>Audio MP3/WAV Link (Drive/Dropbox)</label><input type="url" id="wsSongAudio" class="form-control" placeholder="https://..."></div>
-                    <div class="form-group"><label>YouTube Video Link</label><input type="url" id="wsSongYoutube" class="form-control" placeholder="https://youtube.com/watch?..."></div>
-                    <div class="form-group"><label>Chord Chart PDF Link</label><input type="url" id="wsSongChords" class="form-control" placeholder="https://..."></div>
-                    <button type="submit" class="btn btn-primary" style="width:100%;">Add to Library</button>
+                    <div class="form-group"><label>Title *</label><input type="text" id="wsSongTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Artist</label><input type="text" id="wsSongArtist" class="form-control"></div>
+                    <div style="display:flex; gap:15px;"><div class="form-group" style="flex:1;"><label>Key</label><input type="text" id="wsSongKey" class="form-control"></div><div class="form-group" style="flex:1;"><label>BPM</label><input type="text" id="wsSongBPM" class="form-control"></div></div>
+                    <div class="form-group"><label>Audio Link</label><input type="url" id="wsSongAudio" class="form-control"></div>
+                    <div class="form-group"><label>YouTube Link</label><input type="url" id="wsSongYoutube" class="form-control"></div>
+                    <div class="form-group"><label>Chords PDF</label><input type="url" id="wsSongChords" class="form-control"></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Add Song</button>
                 </form>
             </div>
-            <div class="card">
-                <h2>Worship Library</h2>
-                <div id="worshipLibraryList"></div>
-            </div>
+            <div class="card"><h2>Library</h2><div id="worshipLibraryList"></div></div>
         </div>
-
-        <div id="subTabWorshipSetlists" class="worship-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+        <div id="subTabWorshipSetlists" class="worship-sub-tab" style="display:none;">
             <div class="card">
-                <h2>Create New Setlist</h2>
+                <h2>Create Setlist</h2>
                 <form id="createSetlistForm" onsubmit="V3Worship.createSetlist(event)">
-                    <div class="form-group"><label>Setlist Name (Event/Service) *</label><input type="text" id="wsSetlistName" class="form-control" placeholder="e.g. Sunday Youth Service" required></div>
-                    <div class="form-group"><label>Scheduled Date</label><input type="date" id="wsSetlistDate" class="form-control"></div>
-                    <button type="submit" class="btn btn-primary" style="width:100%;">Create Setlist</button>
+                    <div class="form-group"><label>Name *</label><input type="text" id="wsSetlistName" class="form-control" required></div>
+                    <div class="form-group"><label>Date</label><input type="date" id="wsSetlistDate" class="form-control"></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Create</button>
                 </form>
             </div>
-            <div class="card">
-                <h2>Active Setlists</h2>
-                <div id="worshipSetlistsContainer"></div>
-            </div>
+            <div class="card"><h2>Setlists</h2><div id="worshipSetlistsContainer"></div></div>
         </div>
     </div>
 
     <div id="ministriesTab" class="tab-content">
         <div class="sub-nav">
-            <button id="btnSubMinistryList" class="sub-nav-btn active" onclick="switchMinistrySubTab('list')">🏛️ Ministry Directory</button>
-            <button id="btnSubMinistryCreate" class="sub-nav-btn" onclick="switchMinistrySubTab('create')" style="display:none;">➕ Create Ministry</button>
+            <button id="btnSubMinistryList" class="sub-nav-btn active" onclick="switchMinistrySubTab('list')">🏛️ Directory</button>
+            <button id="btnSubMinistryCreate" class="sub-nav-btn" onclick="switchMinistrySubTab('create')" style="display:none;">➕ Create</button>
         </div>
-
         <div id="subTabMinistryCreate" class="ministry-sub-tab">
             <div class="card">
-                <h2>Create New Ministry / Department</h2>
+                <h2>Create Ministry</h2>
                 <form onsubmit="handleCreateMinistry(event)">
-                    <div class="form-group">
-                        <label>Ministry Name *</label>
-                        <input type="text" id="minCreateName" class="form-control" placeholder="e.g. Music Ministry" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Ministry Logo (Optional)</label>
-                        <input type="file" id="minCreateLogo" class="form-control" accept="image/*">
-                    </div>
-                    <div class="form-group">
-                        <label>Description</label>
-                        <textarea id="minCreateDesc" class="form-control" rows="3" placeholder="What does this ministry do?"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">Create Ministry</button>
+                    <div class="form-group"><label>Name *</label><input type="text" id="minCreateName" class="form-control" required></div>
+                    <div class="form-group"><label>Logo</label><input type="file" id="minCreateLogo" class="form-control" accept="image/*"></div>
+                    <div class="form-group"><label>Description</label><textarea id="minCreateDesc" class="form-control" rows="3"></textarea></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Create</button>
                 </form>
             </div>
         </div>
-
         <div id="subTabMinistryList" class="ministry-sub-tab active">
-            <div class="card">
-                <h2>Active Ministries</h2>
-                <div id="ministryListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 15px;"></div>
-            </div>
+            <div class="card"><h2>Ministries</h2><div id="ministryListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;"></div></div>
         </div>
     </div>
 
     <div id="checkinTab" class="tab-content">
         <div class="card">
             <h2>Event Check-In Station</h2>
-            <div class="form-group" style="margin-bottom: 15px;">
-                <label>Select Active Event to Check-In</label>
-                <select id="activeEventDropdown" class="form-control" onchange="updateActiveEventBanner()"></select>
-            </div>
-
+            <div class="form-group" style="margin-bottom: 15px;"><label>Select Active Event</label><select id="activeEventDropdown" class="form-control" onchange="updateActiveEventBanner()"></select></div>
             <div id="checkinCounters" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 25px;">
-                <div style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px; border-radius: 8px; text-align: center;">
-                    <div id="liveTotal" style="font-size: 1.4rem; font-weight: 800; color: var(--primary);">0</div>
-                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Checked-In</div>
-                </div>
-                <div style="background: rgba(16,185,129,0.1); border: 1px solid var(--success); padding: 12px; border-radius: 8px; text-align: center;">
-                    <div id="livePreRegTotal" style="font-size: 1.4rem; font-weight: 800; color: var(--success);">0</div>
-                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Pre-Reg'd</div>
-                </div>
-                <div style="background: var(--bg-light); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; text-align: center;">
-                    <div id="livePreReg" style="font-size: 1.4rem; font-weight: 800; color: var(--text-main);">0</div>
-                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Arrived</div>
-                </div>
-                <div style="background: var(--bg-light); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; text-align: center;">
-                    <div id="liveWalkin" style="font-size: 1.4rem; font-weight: 800; color: var(--text-main);">0</div>
-                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Walk-Ins</div>
-                </div>
+                <div style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px; border-radius: 8px; text-align: center;"><div id="liveTotal" style="font-size: 1.4rem; font-weight: 800; color: var(--primary);">0</div><div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700;">CHECKED-IN</div></div>
+                <div style="background: rgba(16,185,129,0.1); border: 1px solid var(--success); padding: 12px; border-radius: 8px; text-align: center;"><div id="livePreRegTotal" style="font-size: 1.4rem; font-weight: 800; color: var(--success);">0</div><div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700;">PRE-REG'D</div></div>
+                <div style="background: var(--bg-light); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; text-align: center;"><div id="livePreReg" style="font-size: 1.4rem; font-weight: 800; color: var(--text-main);">0</div><div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700;">ARRIVED</div></div>
+                <div style="background: var(--bg-light); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; text-align: center;"><div id="liveWalkin" style="font-size: 1.4rem; font-weight: 800; color: var(--text-main);">0</div><div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700;">WALK-INS</div></div>
             </div>
-
-            <div style="display: flex; gap: 10px; border-bottom: 2px solid var(--border-color); padding-bottom: 20px; margin-bottom: 20px; flex-wrap: wrap;">
-                <button id="btnCheckinScanner" class="btn btn-outline active" onclick="switchCheckinMode('scanner')" style="flex:1;">📷 Scanner</button>
-                <button id="btnCheckinManual" class="btn btn-outline" onclick="switchCheckinMode('manual')" style="flex:1;">🔍 Search</button>
-                <button id="btnCheckinWalkin" class="btn btn-outline" onclick="switchCheckinMode('walkin')" style="flex:1; display:none;">📝 Walk-In</button>
-            </div>
-
-            <div id="checkinModeScanner" class="checkin-sub-tab active">
-                <div id="reader" style="width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 15px;"></div>
-            </div>
-
-            <div id="checkinModeManual" class="checkin-sub-tab">
-                <input type="text" id="manualSearchInput" class="form-control" placeholder="Search member by name or unique ID..." oninput="filterManualCheckin()">
-                <div id="manualCheckinResults" style="max-height: 400px; overflow-y: auto; margin-top: 15px;"></div>
-            </div>
-
+            <div style="display: flex; gap: 10px; border-bottom: 2px solid var(--border-color); padding-bottom: 20px; margin-bottom: 20px;"><button id="btnCheckinScanner" class="btn btn-outline active" onclick="switchCheckinMode('scanner')" style="flex:1;">📷 Scanner</button><button id="btnCheckinManual" class="btn btn-outline" onclick="switchCheckinMode('manual')" style="flex:1;">🔍 Search</button><button id="btnCheckinWalkin" class="btn btn-outline" onclick="switchCheckinMode('walkin')" style="flex:1; display:none;">📝 Walk-In</button></div>
+            <div id="checkinModeScanner" class="checkin-sub-tab active"><div id="reader" style="width: 100%; border-radius: 12px; overflow: hidden;"></div></div>
+            <div id="checkinModeManual" class="checkin-sub-tab"><input type="text" id="manualSearchInput" class="form-control" placeholder="Search..." oninput="filterManualCheckin()"><div id="manualCheckinResults" style="max-height: 400px; overflow-y: auto; margin-top: 15px;"></div></div>
             <div id="checkinModeWalkin" class="checkin-sub-tab">
-                <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 20px;">Instantly creates a directory profile and logs their attendance.</p>
                 <form onsubmit="handleWalkin(event)">
-                    <div class="form-group">
-                        <label>Full Name *</label>
-                        <input type="text" id="walkinName" class="form-control" required>
-                    </div>
-                    <div style="display: flex; gap: 15px;">
-                        <div class="form-group" style="flex: 1;">
-                            <label>Age *</label>
-                            <input type="number" id="walkinAge" class="form-control" required>
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label>Birthday (Optional)</label>
-                            <input type="date" id="walkinBirthday" class="form-control">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Email Address (Optional)</label>
-                        <input type="email" id="walkinEmail" class="form-control" placeholder="e.g. walkin@gmail.com">
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">Register & Check-In Walk-In</button>
+                    <div class="form-group"><label>Full Name *</label><input type="text" id="walkinName" class="form-control" required></div>
+                    <div style="display: flex; gap: 15px;"><div class="form-group" style="flex: 1;"><label>Age *</label><input type="number" id="walkinAge" class="form-control" required></div><div class="form-group" style="flex: 1;"><label>Birthday</label><input type="date" id="walkinBirthday" class="form-control"></div></div>
+                    <div class="form-group"><label>Email Address</label><input type="email" id="walkinEmail" class="form-control"></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Register & Check-In</button>
                 </form>
             </div>
         </div>
@@ -595,98 +727,46 @@
     <div id="directoryTab" class="tab-content">
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <h2 style="margin: 0; border: none; padding: 0;">Community Directory</h2>
-                    <button id="btnDirectoryAddMember" class="btn btn-primary btn-sm" style="display:none;" onclick="openAddMemberModal()">➕ Add Entry</button>
-                </div>
-                <div id="directoryTotalCount" class="badge badge-blue" style="font-size: 0.85rem; padding: 8px 12px;">Total Registered: 0</div>
+                <h2 style="margin: 0; border: none;">Directory</h2>
+                <button id="btnDirectoryAddMember" class="btn btn-primary btn-sm" style="display:none;" onclick="openAddMemberModal()">➕ Add Entry</button>
+                <div id="directoryTotalCount" class="badge badge-blue">Total: 0</div>
             </div>
-
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
-                <select id="sortDirectorySelect" class="form-control" style="flex: 1; min-width: 130px;" onchange="filterDirectory()">
-                    <option value="name_asc">Name (A-Z)</option>
-                    <option value="name_desc">Name (Z-A)</option>
-                    <option value="age_asc">Age (Youngest)</option>
-                    <option value="age_desc">Age (Oldest)</option>
-                </select>
-                <select id="filterAgeCategory" class="form-control" style="flex: 1; min-width: 150px;" onchange="filterDirectory()">
-                    <option value="all">Filter: All Ages</option>
-                    <option value="minis">Minis (12 & Under)</option>
-                    <option value="youth">Youth (13 - 21)</option>
-                    <option value="adult">Adults (22+)</option>
-                </select>
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <select id="sortDirectorySelect" class="form-control" onchange="filterDirectory()"><option value="name_asc">Name (A-Z)</option><option value="name_desc">Name (Z-A)</option><option value="age_asc">Age (Youngest)</option><option value="age_desc">Age (Oldest)</option></select>
+                <select id="filterAgeCategory" class="form-control" onchange="filterDirectory()"><option value="all">All Ages</option><option value="minis">Minis</option><option value="youth">Youth</option><option value="adult">Adults</option></select>
             </div>
-
-            <div class="form-group">
-                <input type="text" id="directorySearchInput" class="form-control" placeholder="Search directory by name or ID..." oninput="filterDirectory()">
-            </div>
-
+            <div class="form-group"><input type="text" id="directorySearchInput" class="form-control" placeholder="Search..." oninput="filterDirectory()"></div>
             <div id="directoryTableContainer"></div>
         </div>
     </div>
 
     <div id="eventsTab" class="tab-content">
         <div class="sub-nav">
-            <button id="btnSubEventList" class="sub-nav-btn active" onclick="switchEventSubTab('list')">📅 Published Gatherings</button>
-            <button id="btnSubEventCreate" class="sub-nav-btn" onclick="switchEventSubTab('create')" style="display:none;">➕ Create New Gathering</button>
+            <button id="btnSubEventList" class="sub-nav-btn active" onclick="switchEventSubTab('list')">📅 Events</button>
+            <button id="btnSubEventCreate" class="sub-nav-btn" onclick="switchEventSubTab('create')" style="display:none;">➕ Create</button>
         </div>
-
         <div id="subTabEventCreate" class="event-sub-tab">
             <div class="card">
-                <h2>Create New Event</h2>
+                <h2>Create Event</h2>
                 <form id="createEventForm" onsubmit="handleCreateEvent(event)">
-                    <div class="form-group">
-                        <label>Event Name *</label>
-                        <input type="text" id="evtName" class="form-control" required>
-                    </div>
-                    <div style="display: flex; gap: 15px;">
-                        <div class="form-group" style="flex: 1;">
-                            <label>Date *</label>
-                            <input type="date" id="evtDate" class="form-control" required>
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label>Time Start</label>
-                            <input type="time" id="evtTime" class="form-control">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Venue / Location</label>
-                        <input type="text" id="evtVenue" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>Event Poster Image</label>
-                        <input type="file" id="evtPoster" class="form-control" accept="image/*">
-                    </div>
-                    <div class="form-group">
-                        <label>Google Photos Album URL (Optional)</label>
-                        <input type="url" id="evtPhotosUrl" class="form-control" placeholder="https://photos.app.goo.gl/...">
-                    </div>
-                    <div class="form-group">
-                        <label>Google Drive Folder URL (Optional)</label>
-                        <input type="url" id="evtMaterialsUrl" class="form-control" placeholder="https://drive.google.com/...">
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">Publish Event</button>
+                    <div class="form-group"><label>Name *</label><input type="text" id="evtName" class="form-control" required></div>
+                    <div style="display: flex; gap: 15px;"><div class="form-group" style="flex: 1;"><label>Date *</label><input type="date" id="evtDate" class="form-control" required></div><div class="form-group" style="flex: 1;"><label>Time</label><input type="time" id="evtTime" class="form-control"></div></div>
+                    <div class="form-group"><label>Venue</label><input type="text" id="evtVenue" class="form-control"></div>
+                    <div class="form-group"><label>XP Points *</label><input type="number" id="evtPoints" class="form-control" value="10" required></div>
+                    <div class="form-group"><label>Poster</label><input type="file" id="evtPoster" class="form-control" accept="image/*"></div>
+                    <div class="form-group"><label>Photos URL</label><input type="url" id="evtPhotosUrl" class="form-control"></div>
+                    <div class="form-group"><label>Drive URL</label><input type="url" id="evtMaterialsUrl" class="form-control"></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Publish</button>
                 </form>
             </div>
         </div>
-
         <div id="subTabEventList" class="event-sub-tab active">
             <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
-                    <h2>Published Events</h2>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button id="viewBtnList" class="btn btn-outline btn-sm active" onclick="setEventViewMode('list')">☰ List</button>
-                        <button id="viewBtnGrid" class="btn btn-outline btn-sm" onclick="setEventViewMode('grid')">▦ Grid</button>
-                        <button id="viewBtnCal" class="btn btn-outline btn-sm" onclick="setEventViewMode('calendar')">📅 Cal</button>
-                    </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>Events</h2>
+                    <div style="display: flex; gap: 8px;"><button id="viewBtnList" class="btn btn-outline btn-sm active" onclick="setEventViewMode('list')">☰</button><button id="viewBtnGrid" class="btn btn-outline btn-sm" onclick="setEventViewMode('grid')">▦</button><button id="viewBtnCal" class="btn btn-outline btn-sm" onclick="setEventViewMode('calendar')">📅</button></div>
                 </div>
-
-                <div id="calendarControls" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-                    <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(-1)">◀ Prev</button>
-                    <h3 id="calendarMonthTitle" style="font-size: 1.2rem; color: var(--primary);"></h3>
-                    <button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(1)">Next ▶</button>
-                </div>
-
+                <div id="calendarControls" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 20px;"><button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(-1)">◀</button><h3 id="calendarMonthTitle" style="font-size: 1.2rem; color: var(--primary);"></h3><button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(1)">▶</button></div>
                 <div id="eventsListContainer"></div>
             </div>
         </div>
@@ -695,240 +775,204 @@
     <div id="attendanceTab" class="tab-content">
         <div class="card">
             <h2>Attendance Logs</h2>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
-                <input type="text" id="attendanceSearchInput" class="form-control" placeholder="Search by name or event..." style="max-width: 300px;" oninput="filterAttendanceLogs()">
-                <button class="btn btn-outline" onclick="exportAttendanceLogsCSV()">📥 Export CSV</button>
-            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 20px;"><input type="text" id="attendanceSearchInput" class="form-control" placeholder="Search..." oninput="filterAttendanceLogs()"><button class="btn btn-outline" onclick="exportAttendanceLogsCSV()">📥 Export</button></div>
             <div id="attendanceLogsContainer"></div>
         </div>
     </div>
 
     <div id="activityLogsTab" class="tab-content">
         <div class="card">
-            <h2>User Activity & Audit Logs</h2>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
-                <input type="text" id="activitySearchInput" class="form-control" placeholder="Search by user or action..." style="max-width: 300px;" oninput="filterActivityLogs()">
-                <button class="btn btn-outline" onclick="exportActivityLogsCSV()">📥 Export CSV</button>
-            </div>
+            <h2>Audit Logs</h2>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 20px;"><input type="text" id="activitySearchInput" class="form-control" placeholder="Search..." oninput="filterActivityLogs()"><button class="btn btn-outline" onclick="exportActivityLogsCSV()">📥 Export</button></div>
             <div id="activityLogsContainer"></div>
         </div>
     </div>
 
     <div id="permissionsTab" class="tab-content">
         <div class="card">
-            <h2>User Directory & Permission Management</h2>
-            <div class="form-group">
-                <label>Search Directory (Min. 3 characters)</label>
-                <input type="text" id="permUserSearchInput" class="form-control" placeholder="Search name or unique pass ID..." oninput="filterPermUserList()">
-            </div>
-            <div id="permUserListContainer" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; margin-top: 20px;">
-                <div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>
-            </div>
+            <h2>Permissions Management</h2>
+            <div class="form-group"><input type="text" id="permUserSearchInput" class="form-control" placeholder="Search directory..." oninput="filterPermUserList()"></div>
+            <div id="permUserListContainer" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; margin-top: 20px;"></div>
         </div>
     </div>
 
 </div>
-
 <div id="confirmModal" class="modal" style="z-index: 9999;">
     <div class="modal-content" style="max-width: 400px; text-align: center;">
-        <div class="modal-drag-handle"></div>
-        <h2 style="color: var(--danger); border-bottom: none; margin-bottom: 10px;">⚠️ Confirm Action</h2>
+        <h2 style="color: var(--danger); border-bottom: none;">⚠️ Confirm Action</h2>
         <p id="confirmSummary" style="font-size: 1rem; color: var(--text-main); margin-bottom: 20px;"></p>
-        <div class="modal-footer" style="display: flex; gap: 10px; justify-content: center; padding-top: 15px; border-top: 1px solid var(--border-color);">
-            <button type="button" class="btn btn-secondary" onclick="closeConfirmModal()" style="flex: 1;">Cancel</button>
-            <button type="button" id="executeConfirmBtn" class="btn btn-danger" style="flex: 1;">Proceed</button>
+        <div class="modal-footer" style="display: flex; gap: 10px; justify-content: center;"><button type="button" class="btn btn-secondary" onclick="closeConfirmModal()" style="flex: 1;">Cancel</button><button type="button" id="executeConfirmBtn" class="btn btn-danger" style="flex: 1;">Proceed</button></div>
+    </div>
+</div>
+
+<div id="eventAnalyticsModal" class="modal">
+    <div class="modal-content" style="max-width: 800px; background: #F8FAFC;">
+        <span class="close-modal" onclick="closeAnalyticsModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <div style="display: flex; gap: 20px; margin-bottom: 15px;">
+            <div id="analyticsModalPoster" style="width: 100px; height: 140px; background: #E2E8F0; border-radius: 8px;"></div>
+            <div style="flex: 1;">
+                <h2 id="analyticsEventTitle" style="color: var(--primary); font-size: 1.5rem; margin-bottom: 5px; border: none;">Event Title</h2>
+                <p id="analyticsEventMeta" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px;">Date & Venue</p>
+                <div id="analyticsEventLinks" style="display: flex; gap: 8px;"></div>
+            </div>
+            <button id="analyticsEditEventBtn" class="btn btn-outline btn-sm" style="display: none; height: fit-content;">✏️ Edit</button>
+        </div>
+
+        <div class="sub-nav" style="background: #FFF; border-radius: 8px; padding: 5px; margin-bottom: 20px;">
+            <button id="btnAnalyticsTabOverview" class="sub-nav-btn active" onclick="switchAnalyticsSubTab('overview')">📊 List</button>
+            <button id="btnAnalyticsTabRoles" class="sub-nav-btn" onclick="switchAnalyticsSubTab('roles')">🎭 Roles</button>
+        </div>
+
+        <div id="analyticsTabOverview" style="display: block;">
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+                <div id="cardTurnout" style="background: #FFF; padding: 15px; border-radius: 12px; text-align: center; cursor: pointer;" onclick="setAnalyticsCardFilter('all')"><div id="statTotalTurnout" style="font-size: 1.8rem; font-weight: 800; color: var(--primary);">0</div><div style="font-size: 0.75rem;">Total</div></div>
+                <div id="cardPreReg" style="background: #FFF; padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; opacity: 0.5;" onclick="setAnalyticsCardFilter('prereg')"><div id="statTotalPreReg" style="font-size: 1.8rem; font-weight: 800; color: var(--success);">0</div><div style="font-size: 0.75rem;">Pre-Reg</div></div>
+                <div id="cardWalkin" style="background: #FFF; padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; opacity: 0.5;" onclick="setAnalyticsCardFilter('walkin')"><div id="statWalkins" style="font-size: 1.8rem; font-weight: 800; color: var(--text-main);">0</div><div style="font-size: 0.75rem;">Walk-ins</div></div>
+                <div style="background: #FFF; padding: 15px; border-radius: 12px; text-align: center;"><div id="statTurnoutPercent" style="font-size: 1.8rem; font-weight: 800; color: #8B5CF6;">0%</div><div style="font-size: 0.75rem;">Turnout</div></div>
+            </div>
+
+            <div style="background: #FFF; border-radius: 12px; padding: 15px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                    <h3 style="margin: 0; border: none;">List</h3><button id="addEntryAnalyticsBtn" class="btn btn-primary btn-sm" style="display:none;" onclick="openAddAttendeeModal()">➕ Add</button>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <input type="text" id="attSearchNative" placeholder="Search..." class="form-control" oninput="filterAnalyticsRoster()">
+                    <select id="attAgeNative" class="form-control" onchange="filterAnalyticsRoster()"><option value="all">All Ages</option><option value="mini">Minis</option><option value="youth">Youth</option><option value="adult">Adults</option></select>
+                    <div id="attRosterCount" class="badge badge-blue">Total: 0</div>
+                </div>
+                <div id="analyticsRosterContainer" style="max-height: 220px; overflow-y: auto;"></div>
+                <div style="margin-top: 15px;"><button class="btn btn-outline" onclick="exportAnalyticsCSV()">📥 Export CSV</button></div>
+            </div>
+        </div>
+
+        <div id="analyticsTabRoles" style="display: none;">
+            <div style="background: #FFF; border-radius: 12px; padding: 15px;">
+                <div id="eventRolesRestrictedSection" style="display: none; background: #FEF3C7; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3>🔒 Leaders' Notes</h3><textarea id="eventRolesDetailNotes" class="form-control" rows="8" style="resize: vertical; min-height: 150px; padding: 10px;"></textarea><button class="btn btn-sm" style="background: #D97706; color: #FFF; margin-top: 10px;" onclick="saveEventRolesNotes()">Save Notes</button>
+                </div>
+                <div id="eventRoleAssignControls" style="display: none; background: var(--bg-light); padding: 15px; margin-bottom: 15px;">
+                    <h4>Assign Member</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+        <div style="flex: 1 1 100%; position: relative;"><input type="text" id="evtRoleSearchInput" class="form-control" placeholder="Search Member..." onkeyup="filterEventRoleSearch()"><div id="evtRoleSearchDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border: 1px solid var(--border-color); max-height: 200px; overflow-y: auto; z-index:100;"></div></div>
+        <input type="hidden" id="evtRoleSelectedUserId">
+        <input type="text" id="evtRoleNameInput" class="form-control" placeholder="Role (e.g. Food)" style="flex: 1 1 45%;">
+        <input type="text" id="evtRoleSubRoleInput" class="form-control" placeholder="Sub-Role" style="flex: 1 1 45%;">
+        <button class="btn btn-primary" onclick="assignEventRole()" style="flex: 1 1 100%;">Assign Role</button>
+    </div>
+                </div>
+                <h3>Event Team</h3>
+                <div id="eventRolesContainer" style="max-height: 300px; overflow-y: auto;"></div>
+            </div>
         </div>
     </div>
 </div>
 
 <div id="worshipSetlistModal" class="modal">
     <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="V3Worship.closeSetlistManager()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2 id="wsSetlistModalName">Editing Setlist</h2>
-        <input type="hidden" id="wsActiveSetlistId">
-
-        <div class="form-group" style="margin-top: 15px;">
-            <label>Add Song to Setlist</label>
-            <div style="display:flex; gap:10px;">
-                <select id="wsSetlistAddSongSelect" class="form-control"></select>
-                <button type="button" class="btn btn-primary" onclick="V3Worship.addSongToActiveSetlist()">Add</button>
-            </div>
-        </div>
-
-        <div style="margin-top: 20px;">
-            <h3 style="font-size:1rem; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:10px;">Current Songs</h3>
-            <div id="wsModalSongsList" style="max-height:300px; overflow-y:auto;"></div>
-        </div>
-
-        <div class="modal-footer">
-            <button type="button" class="btn btn-primary" onclick="V3Worship.closeSetlistManager()" style="width:100%;">Done</button>
-        </div>
+        <span class="close-modal" onclick="V3Worship.closeSetlistManager()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2 id="wsSetlistModalName">Editing Setlist</h2><input type="hidden" id="wsActiveSetlistId">
+        <div class="form-group"><label>Add Song</label><div style="display:flex; gap:10px;"><select id="wsSetlistAddSongSelect" class="form-control"></select><button type="button" class="btn btn-primary" onclick="V3Worship.addSongToActiveSetlist()">Add</button></div></div>
+        <div id="wsModalSongsList" style="max-height:300px; overflow-y:auto; margin-top:20px;"></div>
     </div>
 </div>
 
 <div id="editSongModal" class="modal">
     <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="V3Worship.closeEditSongModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
+        <span class="close-modal" onclick="V3Worship.closeEditSongModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
         <h2>Edit Song</h2>
         <form id="editSongForm" onsubmit="V3Worship.saveEditSong(event)">
             <input type="hidden" id="editSongId">
-            <div class="form-group"><label>Song Title *</label><input type="text" id="editSongTitle" class="form-control" required></div>
-            <div class="form-group"><label>Artist / Original Writer</label><input type="text" id="editSongArtist" class="form-control"></div>
-            <div style="display:flex; gap:15px;">
-                <div class="form-group" style="flex:1;"><label>Key</label><input type="text" id="editSongKey" class="form-control"></div>
-                <div class="form-group" style="flex:1;"><label>BPM</label><input type="text" id="editSongBPM" class="form-control"></div>
-            </div>
+            <div class="form-group"><label>Title *</label><input type="text" id="editSongTitle" class="form-control" required></div>
+            <div class="form-group"><label>Artist</label><input type="text" id="editSongArtist" class="form-control"></div>
+            <div style="display:flex; gap:15px;"><div class="form-group" style="flex:1;"><label>Key</label><input type="text" id="editSongKey" class="form-control"></div><div class="form-group" style="flex:1;"><label>BPM</label><input type="text" id="editSongBPM" class="form-control"></div></div>
             <div class="form-group"><label>Audio MP3/WAV Link</label><input type="url" id="editSongAudio" class="form-control"></div>
-            <div class="form-group"><label>YouTube Video Link</label><input type="url" id="editSongYoutube" class="form-control"></div>
-            <div class="form-group"><label>Chord Chart PDF Link</label><input type="url" id="editSongChords" class="form-control"></div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="V3Worship.closeEditSongModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Changes</button>
-            </div>
+            <div class="form-group"><label>YouTube Link</label><input type="url" id="editSongYoutube" class="form-control"></div>
+            <div class="form-group"><label>Chord Chart Link</label><input type="url" id="editSongChords" class="form-control"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
         </form>
+    </div>
+</div>
+
+<div id="editEventRoleModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeEditEventRoleModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Event Role</h2><input type="hidden" id="editEvtRoleMappingId">
+        <div class="form-group"><label>Primary Role</label><input type="text" id="editEvtRoleNameInput" class="form-control"></div>
+        <div class="form-group"><label>Sub-Role</label><input type="text" id="editEvtSubRoleInput" class="form-control"></div>
+        <button class="btn btn-primary" onclick="saveEventRoleEdit()" style="width:100%;">Save Changes</button>
+    </div>
+</div>
+
+<div id="editMinistryRoleModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeEditMinistryRoleModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Ministry Role</h2><input type="hidden" id="editMinRoleMappingId">
+        <div class="form-group"><label>Role Level</label><select id="editMinRoleSelect" class="form-control"><option value="Ministry Head">Ministry Head</option><option value="Member">Member</option></select></div>
+        <div class="form-group"><label>Sub-Role</label><input type="text" id="editMinSubRoleInput" class="form-control"></div>
+        <button class="btn btn-primary" onclick="saveMinistryRoleEdit()" style="width:100%;">Save Changes</button>
     </div>
 </div>
 
 <div id="ministryDetailsModal" class="modal">
     <div class="modal-content" style="max-width: 700px;">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeMinistryDetailsModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-
+        <span class="close-modal" onclick="closeMinistryDetailsModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-            <div style="display: flex; gap: 15px; align-items: center;">
-                <div id="ministryDetailLogoContainer" style="width: 50px; height: 50px; border-radius: 8px; overflow: hidden; display: none;"></div>
-                <h2 id="ministryDetailTitle" style="color: var(--primary); font-size: 1.6rem; border:none; padding:0; margin:0;">Ministry Name</h2>
-            </div>
+            <div style="display: flex; gap: 15px; align-items: center;"><div id="ministryDetailLogoContainer"></div><h2 id="ministryDetailTitle" style="color: var(--primary); margin:0;">Ministry</h2></div>
             <button id="btnEditMinistryConfig" class="btn btn-outline btn-sm" style="display: none;" onclick="openEditMinistryModal()">✏️ Edit</button>
         </div>
-        <p id="ministryDetailDesc" style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 20px;"></p>
-
-        <div id="ministryRestrictedSection" style="display: none; background: #FEF3C7; border: 1px solid #F59E0B; padding: 15px; border-radius: 8px; margin-bottom: 25px;">
-            <h3 style="color: #D97706; font-size: 1rem; margin-bottom: 10px; border: none;">🔒 Permission-Gated Notes / Details</h3>
-            <textarea id="ministryDetailNotes" class="form-control" rows="4" placeholder="Confidential links, schedules, or notes..."></textarea>
-            <button class="btn btn-sm" style="background: #D97706; color: #FFF; margin-top: 10px;" onclick="saveMinistryNotes()">Save Notes</button>
+        <p id="ministryDetailDesc" style="color: var(--text-muted); margin-bottom: 20px;"></p>
+        <div id="ministryRestrictedSection" style="display: none; background: #FEF3C7; padding: 15px; border-radius: 8px; margin-bottom: 25px;">
+            <h3>🔒 Notes</h3><textarea id="ministryDetailNotes" class="form-control" rows="4"></textarea><button class="btn btn-sm" style="background: #D97706; color: #FFF; margin-top: 10px;" onclick="saveMinistryNotes()">Save</button>
         </div>
-
-        <h3 style="font-size: 1.1rem; margin-bottom: 12px; color: var(--text-main); border-bottom: 2px solid var(--bg-light); padding-bottom: 8px;">Ministry Roster & Roles</h3>
-
-        <div id="ministryAssignControls" style="display: none; background: var(--bg-light); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 15px;">
-            <h4 style="margin-bottom: 10px; font-size: 0.9rem;">Assign New Member</h4>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <div style="flex: 2; min-width: 200px; position: relative;">
-                    <input type="text" id="minSearchInput" class="form-control" placeholder="Search directory..." autocomplete="off" onkeyup="filterMinistrySearch()">
-                    <div id="minSearchDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid var(--border-color); border-radius:0 0 8px 8px; max-height:200px; overflow-y:auto; z-index:100; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
-                </div>
-                <input type="hidden" id="minSelectedUserId">
-                <select id="minRoleSelect" class="form-control" style="flex: 1; min-width: 150px;">
-                    <option value="Ministry Head">Ministry Head</option>
-                    <option value="Assistant Ministry Head">Assistant Ministry Head</option>
-                    <option value="Youth Ministry Head">Youth Ministry Head</option>
-                    <option value="Core Member">Core Member</option>
-                    <option value="Member">Member</option>
-                    <option value="Integration Period">Integration Period</option>
-                </select>
-                <input type="text" id="minSubRoleInput" class="form-control" placeholder="Sub-Role (e.g. Drummer)" style="flex: 1; min-width: 150px;">
-                <button class="btn btn-primary" onclick="assignMinistryRole()" style="flex: 1;">Assign</button>
-            </div>
+        <h3>List</h3>
+        <div id="ministryAssignControls" style="display: none; background: var(--bg-light); padding: 15px; margin-bottom: 15px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+        <div style="flex: 1 1 100%; position: relative;"><input type="text" id="minSearchInput" class="form-control" placeholder="Search Member..." onkeyup="filterMinistrySearch()"><div id="minSearchDropdown" style="display:none; position:absolute; background:#FFF; width:100%; border: 1px solid var(--border-color); max-height: 200px; overflow-y: auto; z-index:100;"></div></div>
+        <input type="hidden" id="minSelectedUserId">
+        <select id="minRoleSelect" class="form-control" style="flex: 1 1 45%;"><option value="Member">Member</option><option value="Ministry Head">Ministry Head</option></select>
+        <input type="text" id="minSubRoleInput" class="form-control" placeholder="Sub-Role" style="flex: 1 1 45%;">
+        <button class="btn btn-primary" onclick="assignMinistryRole()" style="flex: 1 1 100%;">Assign Role</button>
+    </div>
         </div>
-
-        <div id="ministryRosterContainer" style="max-height: 350px; overflow-y: auto; padding-right: 5px;"></div>
-
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick="closeMinistryDetailsModal()">Close</button>
-        </div>
+        <div id="ministryRosterContainer" style="max-height: 350px; overflow-y: auto;"></div>
     </div>
 </div>
 
-<div id="addAttendeeModal" class="modal" style="z-index: 1001;">
+<div id="addAttendeeModal" class="modal">
     <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeAddAttendeeModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2>Add Entry to Event</h2>
-        <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Search the directory to manually add an attendance or pre-reg record to this event.</p>
-        <input type="text" id="addAttendeeSearch" class="form-control" placeholder="Search member by name..." oninput="filterAddAttendeeSearch()">
+        <span class="close-modal" onclick="closeAddAttendeeModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Add Entry</h2>
+        <input type="text" id="addAttendeeSearch" class="form-control" placeholder="Search member..." oninput="filterAddAttendeeSearch()">
         <div id="addAttendeeResults" style="max-height: 300px; overflow-y: auto; margin-top: 15px;"></div>
     </div>
 </div>
 
 <div id="addMemberModal" class="modal">
     <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeAddMemberModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2>Add New Member Entry</h2>
-        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Manually register a new member into the community directory.</p>
+        <span class="close-modal" onclick="closeAddMemberModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Add Member</h2>
         <form id="addMemberForm" onsubmit="submitNewMember(event)">
-            <div class="form-group">
-                <label>Profile Picture (Optional)</label>
-                <input type="file" id="addMemberProfilePic" class="form-control" accept="image/*">
-            </div>
-            <div class="form-group">
-                <label>Full Name *</label>
-                <input type="text" id="addMemberName" class="form-control" required>
-            </div>
-            <div class="form-group">
-                <label>Email Address</label>
-                <input type="email" id="addMemberEmail" class="form-control">
-            </div>
-            <div style="display: flex; gap: 15px;">
-                <div class="form-group" style="flex: 1;">
-                    <label>Age *</label>
-                    <input type="number" id="addMemberAge" class="form-control" required>
-                </div>
-                <div class="form-group" style="flex: 1;">
-                    <label>Birthday</label>
-                    <input type="date" id="addMemberBirthday" class="form-control">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Mobile Number</label>
-                <input type="text" id="addMemberMobile" class="form-control">
-            </div>
-            <div class="form-group">
-                <label>Social Media Handle</label>
-                <input type="text" id="addMemberSocial" class="form-control">
-            </div>
-            <div class="form-group">
-                <label>Parents / Guardian Name</label>
-                <input type="text" id="addMemberParents" class="form-control">
-            </div>
-            <div class="modal-footer" style="flex-wrap: wrap;">
-                <button type="button" class="btn btn-secondary" onclick="closeAddMemberModal()" style="flex:1;">Cancel</button>
-                <button type="submit" class="btn btn-primary" style="flex:1;">Register Member</button>
-            </div>
+            <div class="form-group"><label>Profile Picture</label><input type="file" id="addMemberProfilePic" class="form-control" accept="image/*"></div>
+            <div class="form-group"><label>Name *</label><input type="text" id="addMemberName" class="form-control" required></div>
+            <div style="display: flex; gap: 15px;"><div class="form-group" style="flex:1;"><label>Age *</label><input type="number" id="addMemberAge" class="form-control" required></div><div class="form-group" style="flex:1;"><label>Birthday</label><input type="date" id="addMemberBirthday" class="form-control"></div></div>
+            <div class="form-group"><label>Email</label><input type="email" id="addMemberEmail" class="form-control"></div>
+            <div class="form-group"><label>Mobile</label><input type="text" id="addMemberMobile" class="form-control"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Register</button>
         </form>
     </div>
 </div>
 
 <div id="preregSettingsModal" class="modal">
     <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closePreregSettingsModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2>Pre-Registration Page Setup</h2>
+        <span class="close-modal" onclick="closePreregSettingsModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Pre-Registration Setup</h2>
         <form id="preregSettingsForm" onsubmit="savePreregSettings(event)">
             <input type="hidden" id="preregSetEventId">
-            <div class="form-group">
-                <label>Top Banner (Image)</label>
-                <input type="file" id="preregSetBanner" class="form-control" accept="image/*">
-            </div>
-            <div class="form-group">
-                <label>Page Title</label>
-                <input type="text" id="preregSetTitle" class="form-control" placeholder="e.g., FOG Youth Camp 2026 Registration">
-            </div>
-            <div class="form-group">
-                <label>Additional Information</label>
-                <textarea id="preregSetInfo" class="form-control" rows="3" placeholder="Time, venue, what to bring..."></textarea>
-            </div>
-            <div class="form-group">
-                <label>Bottom Banner / Document Image (Optional)</label>
-                <input type="file" id="preregSetBottomBanner" class="form-control" accept="image/*">
-            </div>
-            <div class="modal-footer" style="flex-direction: column; gap: 10px;">
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Save Settings</button>
-                <button type="button" class="btn btn-secondary" style="width: 100%;" onclick="openPublicPreregFromSettings()">👁️ View Public Form</button>
-            </div>
+            <div class="form-group"><label>Top Banner</label><input type="file" id="preregSetBanner" class="form-control" accept="image/*"></div>
+            <div class="form-group"><label>Title</label><input type="text" id="preregSetTitle" class="form-control"></div>
+            <div class="form-group"><label>Info</label><textarea id="preregSetInfo" class="form-control" rows="3"></textarea></div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Save Settings</button>
+            <button type="button" class="btn btn-secondary" style="width: 100%; margin-top: 10px;" onclick="openPublicPreregFromSettings()">👁️ View Form</button>
         </form>
     </div>
 </div>
@@ -939,156 +983,502 @@
 
 <div id="fastEditProfileModal" class="modal">
     <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeFastEditProfileModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
+        <span class="close-modal" onclick="closeFastEditProfileModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
         <h2>Edit Profile</h2>
-        <form id="fastEditProfileForm" onsubmit="event.preventDefault();">
+        <form id="fastEditProfileForm" onsubmit="event.preventDefault(); submitFastEditProfile(false)">
             <input type="hidden" id="fastEditMemberId">
-            <div class="form-group">
-                <label>Update Profile Picture</label>
-                <input type="file" id="fastEditProfilePic" class="form-control" accept="image/*">
-            </div>
-            <div class="form-group">
-                <label>Full Name</label>
-                <input type="text" id="fastEditName" class="form-control" required>
-            </div>
-            <div class="form-group">
-                <label>Email Address</label>
-                <input type="email" id="fastEditEmail" class="form-control">
-            </div>
-            <div style="display: flex; gap: 15px;">
-                <div class="form-group" style="flex: 1;">
-                    <label>Age</label>
-                    <input type="number" id="fastEditAge" class="form-control">
-                </div>
-                <div class="form-group" style="flex: 1;">
-                    <label>Birthday</label>
-                    <input type="date" id="fastEditBirthday" class="form-control">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Social Media Handle</label>
-                <input type="text" id="fastEditSocial" class="form-control">
-            </div>
-            <div class="form-group">
-                <label>Parents / Guardian Name</label>
-                <input type="text" id="fastEditParents" class="form-control">
-            </div>
-            <div class="modal-footer" style="flex-wrap: wrap;">
-                <button type="button" class="btn btn-secondary" onclick="closeFastEditProfileModal()" style="flex:1;">Cancel</button>
-                <button type="button" class="btn btn-outline" onclick="submitFastEditProfile(false)" style="flex:1;">Save</button>
-                <button type="button" class="btn btn-primary" onclick="submitFastEditProfile(true)" style="flex:1; min-width: 150px;">Save & Check In</button>
-            </div>
+            <div class="form-group"><label>Name</label><input type="text" id="fastEditName" class="form-control" required></div>
+            <div class="form-group"><label>Email</label><input type="email" id="fastEditEmail" class="form-control"></div>
+            <div style="display:flex; gap:15px;"><div class="form-group"><label>Age</label><input type="number" id="fastEditAge" class="form-control"></div><div class="form-group"><label>Birthday</label><input type="date" id="fastEditBirthday" class="form-control"></div></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save</button>
         </form>
     </div>
 </div>
 
 <div id="editEventModal" class="modal">
     <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeEditEventModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
+        <span class="close-modal" onclick="closeEditEventModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
         <h2>Edit Event</h2>
-        <form id="editEventForm" onsubmit="event.preventDefault();">
+        <form id="editEventForm" onsubmit="event.preventDefault(); submitEditEvent();">
             <input type="hidden" id="editEvtId">
-            <div class="form-group">
-                <label>Event Name *</label>
-                <input type="text" id="editEvtName" class="form-control" required>
-            </div>
-            <div style="display: flex; gap: 15px;">
-                <div class="form-group" style="flex: 1;">
-                    <label>Date *</label>
-                    <input type="date" id="editEvtDate" class="form-control" required>
-                </div>
-                <div class="form-group" style="flex: 1;">
-                    <label>Time Start</label>
-                    <input type="time" id="editEvtTime" class="form-control">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Venue / Location</label>
-                <input type="text" id="editEvtVenue" class="form-control">
-            </div>
-            <div class="form-group">
-                <label>Update Poster Image</label>
-                <input type="file" id="editEvtPoster" class="form-control" accept="image/*">
-            </div>
-            <div class="form-group">
-                <label>Google Photos Album URL</label>
-                <input type="url" id="editEvtPhotosUrl" class="form-control">
-            </div>
-            <div class="form-group">
-                <label>Google Drive Folder URL</label>
-                <input type="url" id="editEvtMaterialsUrl" class="form-control">
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeEditEventModal()">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="submitEditEvent()">Save Changes</button>
-            </div>
+            <div class="form-group"><label>Name *</label><input type="text" id="editEvtName" class="form-control" required></div>
+            <div style="display: flex; gap: 15px;"><div class="form-group"><label>Date *</label><input type="date" id="editEvtDate" class="form-control" required></div><div class="form-group"><label>Time</label><input type="time" id="editEvtTime" class="form-control"></div></div>
+            <div class="form-group"><label>Venue</label><input type="text" id="editEvtVenue" class="form-control"></div>
+            <div class="form-group"><label>XP *</label><input type="number" id="editEvtPoints" class="form-control" required></div>
+            <div class="form-group"><label>Poster</label><input type="file" id="editEvtPoster" class="form-control"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
         </form>
     </div>
 </div>
 
 <div id="assignPermissionModal" class="modal">
     <div class="modal-content">
-        <div class="modal-drag-handle"></div>
-        <span class="close-modal" onclick="closeAssignPermissionModal()" style="float:right; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1;">&times;</span>
-        <h2>Assign User Permissions</h2>
-        <div id="permModalUserBanner" style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 15px; border-radius: 8px; font-weight: 700; color: var(--primary); margin-bottom: 20px;"></div>
-
+        <span class="close-modal" onclick="closeAssignPermissionModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Assign Permissions</h2>
+        <div id="permModalUserBanner" style="background: rgba(255,107,0,0.1); padding: 15px; border-radius: 8px; font-weight: 700; color: var(--primary); margin-bottom: 20px;"></div>
         <form onsubmit="event.preventDefault(); handleSavePermissionsFromModal();">
             <input type="hidden" id="modalPermUserId">
-            <div class="form-group">
-                <label style="font-size: 1rem; color: var(--text-main); margin-bottom: 12px;">Select Permissions to Assign:</label>
-                <div style="display: flex; flex-direction: column; gap: 14px; background: var(--bg-light); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_checkin" style="width:20px;height:20px;"> Access "Check-In"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_directory" style="width:20px;height:20px;"> Access "Directory"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_events" style="width:20px;height:20px;"> Access "Events"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_attendance" style="width:20px;height:20px;"> Access "Attendance Logs"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_ministries" style="width:20px;height:20px;"> Access "Ministries"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_activity" style="width:20px;height:20px;"> Access "Activity Logs"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_permissions" style="width:20px;height:20px;"> Access "Add Permissions"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_discipleship" style="width:20px;height:20px;"> Access "Discipleship Admin"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_ai" style="width:20px;height:20px;"> Access "AI Assistant"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_worship" style="width:20px;height:20px;"> Access "Worship Hub"</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px;"><input type="checkbox" class="permCheckModal" value="access_communications" style="width:20px;height:20px;"> Access "Communications Broadcasts"</label>
-                    <hr style="border:0; border-top:1px solid var(--border-color); margin: 5px 0;">
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: var(--primary);"><input type="checkbox" class="permCheckModal" value="add_entries" style="width:20px;height:20px;"> ➕ Add Entries (Forms, Roles, Walk-ins)</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: #8B5CF6;"><input type="checkbox" class="permCheckModal" value="edit_entries" style="width:20px;height:20px;"> ✏️ Edit Entries (Profiles, Events, Notes)</label>
-                    <label style="font-weight: 600; display:flex; align-items:center; gap:8px; color: var(--danger);"><input type="checkbox" class="permCheckModal" value="delete_entries" style="width:20px;height:20px;"> 🗑️ Delete Entries (Profiles, Events, Roles)</label>
-                </div>
+            <div style="display: flex; flex-direction: column; gap: 14px; background: var(--bg-light); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <label><input type="checkbox" class="permCheckModal" value="access_checkin"> Check-In</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_directory"> Directory</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_events"> Events</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_attendance"> Attendance Logs</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_ministries"> Ministries</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_activity"> Activity Logs</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_permissions"> Permissions</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_discipleship"> Discipleship Admin</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_ai"> AI Assistant</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_worship"> Worship Hub</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_communications"> Broadcasts</label>
+                <hr>
+                <label style="color:var(--primary);"><input type="checkbox" class="permCheckModal" value="add_entries"> ➕ Add Entries</label>
+                <label style="color:#8B5CF6;"><input type="checkbox" class="permCheckModal" value="edit_entries"> ✏️ Edit Entries</label>
+                <label style="color:var(--danger);"><input type="checkbox" class="permCheckModal" value="delete_entries"> 🗑️ Delete Entries</label>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeAssignPermissionModal()">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="handleSavePermissionsFromModal()">Save Permissions</button>
-            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%; margin-top:20px;">Save Permissions</button>
         </form>
     </div>
 </div>
 
-<div id="worshipAudioPlayer" class="worship-player-container" style="display:none;">
-    <div class="worship-player-info">
-        <strong id="wpTitle">Song Title</strong>
-        <small id="wpArtist">Artist</small>
+<div id="editPathwayModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="V2Discipleship.closeEditPathwayModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Milestone</h2>
+        <form onsubmit="V2Discipleship.updatePathway(event)">
+            <input type="hidden" id="editPathId">
+            <div class="form-group"><label>Milestone Title *</label><input type="text" id="editPathTitle" class="form-control" required></div>
+            <div class="form-group"><label>Description *</label><textarea id="editPathDesc" class="form-control" rows="2" required></textarea></div>
+            <div style="display:flex; gap:15px;">
+                <div class="form-group" style="flex:1;"><label>Step Order *</label><input type="number" id="editPathOrder" class="form-control" required></div>
+                <div class="form-group" style="flex:1;"><label>Points Awarded *</label><input type="number" id="editPathPoints" class="form-control" required></div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
+        </form>
     </div>
-    <div class="worship-player-controls">
-        <audio id="wpAudio" controls controlsList="nodownload" style="display:none;"></audio>
-        <div id="wpYoutubeContainer" style="display:none;"></div>
+</div>
+
+<div id="editSmallGroupModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="V2Discipleship.closeEditSmallGroupModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Small Group</h2>
+        <form onsubmit="V2Discipleship.updateSmallGroup(event)">
+            <input type="hidden" id="editSgId">
+            <div class="form-group"><label>Group Name *</label><input type="text" id="editSgName" class="form-control" required></div>
+            <div class="form-group"><label>Group Logo</label><input type="file" id="editSgLogo" class="form-control" accept="image/*"></div>
+
+            <div class="form-group" style="position: relative;">
+                <label>Assign Leader</label>
+                <input type="text" id="editSgLeaderSearch" class="form-control" placeholder="Search name to assign leader..." onkeyup="V2Discipleship.filterEditLeaderSearch()">
+                <div id="editSgLeaderDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid var(--border-color); z-index:100; max-height:150px; overflow-y:auto; border-radius: 6px;"></div>
+                <input type="hidden" id="editSgLeaderId">
+            </div>
+            <div style="display:flex; gap:15px;">
+                <div class="form-group" style="flex:1;"><label>Schedule</label><input type="text" id="editSgSchedule" class="form-control"></div>
+                <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="editSgVenue" class="form-control"></div>
+            </div>
+            <div class="form-group"><label>Privacy Level</label><select id="editSgPrivacy" class="form-control"><option value="Open">🌐 Open</option><option value="Approval">🔒 Approval</option><option value="Invite-Only">🕵️ Invite-Only</option></select></div>
+<div class="form-group"><label>Points Awarded on Join *</label><input type="number" id="editSgPoints" class="form-control" required></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
+        </form>
     </div>
-    <button class="worship-player-close" onclick="V3Worship.closePlayer()">&times;</button>
+</div>
+
+<div id="editJournalModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="V2Discipleship.closeEditJournalModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Journal Entry</h2>
+        <form onsubmit="V2Discipleship.updateJournal(event)">
+            <input type="hidden" id="editJournalId">
+            <div class="form-group"><label>Title *</label><input type="text" id="editJournalTitle" class="form-control" required></div>
+            <div class="form-group"><label>Mood</label><select id="editJournalMood" class="form-control"><option value="Blessed">Blessed & Grateful</option><option value="Seeking">Seeking Guidance</option><option value="Joyful">Joyful</option><option value="Reflective">Reflective</option></select></div>
+            <div class="form-group"><label>Content *</label><textarea id="editJournalContent" class="form-control" rows="6" style="overflow-y: hidden; min-height: 150px; padding: 15px; font-size: 1rem; border-radius: 12px; resize: none;" oninput="window.autoResizeBox(this)" required></textarea></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
+        </form>
+    </div>
+</div>
+
+<div id="editPrayerModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="V2Discipleship.closeEditPrayerModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Prayer Request</h2>
+        <form onsubmit="V2Discipleship.updatePrayer(event)">
+            <input type="hidden" id="editPrayerId">
+            <div class="form-group"><label>Prayer Title *</label><input type="text" id="editPrayerTitle" class="form-control" required></div>
+            <div class="form-group"><label>Request *</label><textarea id="editPrayerContent" class="form-control" rows="3" required></textarea></div>
+            <div class="form-group"><input type="checkbox" id="editPrayerAnonymous"><label for="editPrayerAnonymous">Anonymous</label></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
+        </form>
+    </div>
 </div>
 
 <script>
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js').catch(err => {
-                console.log('PWA Service Worker Registration Failed:', err);
-            });
+            navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW Failed:', err));
         });
     }
 </script>
-<script src="/js/app.js"></script>
-<script src="/js/v2-discipleship.js"></script>
-<script src="/js/v3-worship.js"></script>
-<script src="/js/v4-communications.js"></script>
+
+<script src="/js/app.js?v=12.2"></script>
+<script src="/js/v2-discipleship.js?v=12.2"></script>
+<script src="/js/v3-worship.js?v=12.2"></script>
+<script src="/js/v4-communications.js?v=12.2"></script>
+<script src="/js/v6-gamification.js?v=12.2"></script>
+<script src="/js/v7-ai-assistant.js?v=12.2"></script>
+<script src="/js/v8-slingshot.js?v=12.2"></script>
+<script src="/js/v8-noahs-ark.js?v=12.2"></script>
+<script src="/js/v8-red-sea.js?v=12.2"></script>
+<script src="/js/v8-peters-leap.js?v=12.2"></script>
+<script src="/js/v8-jonahs-dive.js?v=12.2"></script>
+<script src="/js/v9-growth-games.js?v=12.2"></script>
+<script src="/js/v10-expansion.js?v=12.2"></script>
+
+
+
+<div id="viewProfileModal" class="modal">
+    <div class="modal-content" style="max-width: 600px; padding: 0; overflow-y: auto; overflow-x: hidden; background: #F8FAFC;">
+        <span class="close-modal" onclick="closeViewProfileModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer; z-index: 10;">&times;</span>
+        
+        <div style="background: #FFF; padding: 35px 20px 20px 20px; text-align: center; border-bottom: 1px solid var(--border-color);">
+            <div id="viewModalProfileAvatar" class="avatar-circle" style="width: 120px; height: 120px; font-size: 3rem; margin: 0 auto 15px auto;"></div>
+            <h2 id="modalProfileName" style="margin: 0; border: none; padding: 0; font-size: 1.8rem; color: var(--primary); font-weight: 800;"></h2>
+            
+            <div style="margin-top: 12px;">
+                
+            <div style="position: relative; display: inline-block;">
+                <p id="modalProfileXP" class="badge" style="background: #FEF3C7; color: #D97706; font-size: 1.1rem; padding: 8px 16px; border: 1px solid #FDE68A; cursor: pointer; font-weight: bold; transition: 0.2s; margin: 0;">⭐ 0 Overall XP 🖱️</p>
+                <div id="modalXpTooltip" style="display: none; background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100; flex-direction: row; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 5px; position: absolute; left: 50%; transform: translateX(-50%); min-width: 250px;">
+                    <p class="badge" style="background: #E0E7FF; color: #2563EB; font-size: 0.85rem; margin: 0; padding: 6px 12px;">🎮 <span id="modalArcadeXp">0</span> Arcade</p>
+                    <p class="badge" style="background: #D1FAE5; color: #059669; font-size: 0.85rem; margin: 0; padding: 6px 12px;">🌱 <span id="modalGrowthXp">0</span> Growth</p>
+                    <p class="badge" style="background: #F3E8FF; color: #DB2777; font-size: 0.85rem; margin: 0; padding: 6px 12px;">🎫 <span id="modalEventXp">0</span> Events</p>
+                </div>
+            </div>
+            </div>
+            
+            <p id="modalProfileCode" class="badge badge-orange" style="margin-top: 10px; display: none;"></p>
+        </div>
+
+        <div style="padding: 20px;">
+            <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 10px; border-bottom: 2px solid var(--bg-light); padding-bottom: 5px;">Personal Details</h3>
+            <div id="modalBioSummary" style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 25px; line-height: 1.6; background: #FFF; padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); text-align: left;"></div>
+            
+            <div class="sub-nav" style="margin-bottom: 15px; justify-content: center; background: #FFF; padding: 5px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <button class="sub-nav-btn active" id="btnModalTabRoles" onclick="switchProfileModalTab('roles')" style="flex:1;">🎭 Roles</button>
+                <button class="sub-nav-btn" id="btnModalTabAttendance" onclick="switchProfileModalTab('attendance')" style="flex:1;">📋 Participation</button>
+            </div>
+            
+            <div id="modalTabRoles">
+                <div id="modalMinistriesHistory"></div>
+                <div id="modalRolesPagination" style="display:none; text-align: center; margin-top: 15px;"></div>
+            </div>
+            <div id="modalTabAttendance" style="display:none;">
+                <div id="modalAttendanceHistory"></div>
+                <div id="modalAttPagination" style="display:none; text-align: center; margin-top: 15px;"></div>
+            </div>
+        </div>
+        
+        <div id="modalQrSectionWrapper" style="display: none; padding: 20px; background: var(--bg-light); border-top: 1px solid var(--border-color); text-align: center;">
+            <h3 style="font-size: 1rem; margin-bottom: 10px; color: var(--text-muted);">Secure QR Pass</h3>
+            <div id="modalQrContainer" style="display: inline-block; padding: 10px; background: #FFF; border-radius: 8px; border: 1px solid var(--border-color);"></div>
+            <div style="margin-top: 15px;">
+                <a id="modalDownloadQrBtn" class="btn btn-primary" download="Pass.png" style="width: 100%;">📥 Download QR Pass</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="editMemberModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeEditMemberModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Member</h2>
+        <form id="editMemberForm" onsubmit="event.preventDefault(); saveMemberEditWithConfirm();">
+            <input type="hidden" id="editMemberId">
+            <div class="form-group"><label>Profile Picture</label><input type="file" id="editMemberProfilePic" class="form-control" accept="image/*"></div>
+            <div class="form-group"><label>Name *</label><input type="text" id="editMemberName" class="form-control" required></div>
+            <div style="display:flex; gap:15px;"><div class="form-group" style="flex:1;"><label>Age</label><input type="number" id="editMemberAge" class="form-control"></div><div class="form-group" style="flex:1;"><label>Birthday</label><input type="date" id="editMemberBirthday" class="form-control"></div></div>
+            <div class="form-group"><label>Email</label><input type="email" id="editMemberEmail" class="form-control"></div>
+            <div class="form-group"><label>Social Media</label><input type="text" id="editMemberSocial" class="form-control"></div>
+            <div class="form-group"><label>Parents/Guardian</label><input type="text" id="editMemberParents" class="form-control"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
+        </form>
+    </div>
+</div>
+
+<div id="editMinistryModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeEditMinistryModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Edit Ministry</h2>
+        <form onsubmit="event.preventDefault(); saveMinistryEdit();">
+            <div class="form-group"><label>Name *</label><input type="text" id="editMinName" class="form-control" required></div>
+            <div class="form-group"><label>Logo</label><input type="file" id="editMinLogo" class="form-control" accept="image/*"></div>
+            <div class="form-group"><label>Description</label><textarea id="editMinDesc" class="form-control" rows="3"></textarea></div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Save Changes</button>
+        </form>
+    </div>
+</div>
+
+<div id="groupSpaceModal" class="modal">
+    <div class="modal-content" style="max-width: 600px; padding: 0; background: #F8FAFC; display: flex; flex-direction: column; height: 85vh;">
+        <div style="background: #FFF; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); z-index: 10;">
+            <h2 id="groupSpaceTitle" style="margin: 0; color: var(--primary); border: none; font-size: 1.2rem; font-weight: 800;">🔥 Campfire</h2>
+            <span class="close-modal" onclick="closeGroupSpace()" style="font-size: 28px; cursor: pointer;">&times;</span>
+        </div>
+        <div id="groupChatMessages" style="flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #F8FAFC;">
+            <p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Welcome to your group's private campfire. 🔥</p>
+        </div>
+        <div style="background: #FFF; padding: 12px 15px; border-top: 1px solid var(--border-color); z-index: 10;">
+            <form onsubmit="sendGroupMessage(event)" style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="groupChatInput" class="form-control" placeholder="Share something..." required autocomplete="off" style="border-radius: 20px; padding-left: 15px;">
+                <button type="submit" class="btn btn-primary" style="border-radius: 20px; padding: 0 20px;">Send</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="groupVaultModal" class="modal">
+    <div class="modal-content" style="max-width: 600px; padding: 0; background: #F8FAFC; display: flex; flex-direction: column; max-height: 85vh;">
+        <div style="background: #FFF; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); z-index: 10;">
+            <h2 id="groupVaultTitle" style="margin: 0; color: #2563EB; border: none; font-size: 1.2rem; font-weight: 800;">🎥 Video Vault</h2>
+            <span class="close-modal" onclick="closeGroupVault()" style="font-size: 28px; cursor: pointer;">&times;</span>
+        </div>
+        
+        <div style="padding: 15px; overflow-y: auto; flex: 1;">
+            <div id="vaultLeaderControls" style="display: none; background: #DBEAFE; padding: 15px; border-radius: 8px; border: 1px solid #BFDBFE; margin-bottom: 20px;">
+                <h3 style="font-size: 1rem; color: #1E3A8A; margin-bottom: 10px;">➕ Schedule Google Meet</h3>
+                <form onsubmit="scheduleGroupSession(event)" style="display: flex; flex-direction: column; gap: 10px;">
+                    <input type="hidden" id="vaultGroupId">
+                    <input type="text" id="vaultSessionTitle" class="form-control" placeholder="Session Title (e.g., Alpha Week 1)" required>
+                    <input type="datetime-local" id="vaultSessionDate" class="form-control" required>
+                    <input type="url" id="vaultSessionMeet" class="form-control" placeholder="Google Meet URL (https://meet.google.com/...)" required>
+                    <button type="submit" class="btn btn-primary" style="background: #2563EB;">Schedule Session</button>
+                </form>
+            </div>
+
+            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 10px; border-bottom: 2px solid var(--border-color); padding-bottom: 5px;">Sessions & Recordings</h3>
+            <div id="vaultListContainer"></div>
+        </div>
+    </div>
+</div>
+
+<div id="groupDashboardModal" class="modal">
+    <div class="modal-content" style="max-width: 600px; padding: 0; background: #F8FAFC; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
+        <span class="close-modal" onclick="closeGroupDashboard()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer; z-index: 10; color: var(--text-main);">&times;</span>
+        
+        <div style="background: #FFF; padding: 30px 20px 20px 20px; text-align: center; border-bottom: 3px solid var(--primary); position: relative; color: var(--text-main);">
+            <div id="dashGroupLogo" style="width: 80px; height: 80px; margin: 0 auto 15px auto; border-radius: 12px; background: #FFF0E6; border: 1px solid rgba(255,107,0,0.2); display: flex; align-items: center; justify-content: center; font-size: 2rem;">👥</div>
+            <h2 id="dashGroupName" style="margin: 0; border: none; font-size: 1.8rem; font-weight: 800; color: var(--primary);">Group Name</h2>
+            <p id="dashGroupMeta" style="font-size: 0.9rem; color: var(--text-muted); margin-top: 5px;">Loading...</p>
+        </div>
+
+        <div class="sub-nav" style="margin: 0; padding: 10px; background: #FFF; border-bottom: 1px solid var(--border-color); justify-content: center;">
+            <button class="sub-nav-btn active" id="btnDashOverview" onclick="switchDashTab('overview')">🏠 Hub</button>
+            <button class="sub-nav-btn" id="btnDashMembers" onclick="switchDashTab('members')">👥 Members</button>
+            <button class="sub-nav-btn" id="btnDashPrayers" onclick="switchDashTab('prayers')">🙏 Prayers</button>
+            <button class="sub-nav-btn" id="btnDashDeepDive" onclick="switchDashTab('deepdive')">📖 Deep Dives</button>
+            <button class="sub-nav-btn" id="btnDashMemories" onclick="switchDashTab('memories')">📸 Memories</button>
+        </div>
+
+        <div style="padding: 15px; overflow-y: auto; flex: 1;">
+            
+            <div id="dashTabOverview" style="display: block;">
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button class="btn btn-primary" style="flex: 1; padding: 15px; font-size: 1.1rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(255,107,0,0.2);" onclick="launchDashCampfire()"><span style="font-size: 1.5rem; display:block;">🔥</span> Open Chat</button>
+                    <button class="btn btn-outline" style="flex: 1; padding: 15px; font-size: 1.1rem; border-radius: 12px; border-color: #3B82F6; color: #2563EB; background: #EFF6FF;" onclick="launchDashVault()"><span style="font-size: 1.5rem; display:block;">🎥</span> Video Vault</button>
+                </div>
+                
+                <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 15px;">
+                    <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">💬 Latest from the Campfire</h3>
+                    <div id="dashRecentChat" style="font-size: 1.05rem; color: var(--text-main); font-style: italic;">Loading...</div>
+                </div>
+
+                <div style="background: #ECFDF5; border: 1px solid #34D399; padding: 15px; border-radius: 12px; color: #047857; text-align: center; box-shadow: 0 4px 10px rgba(16,185,129,0.1);">
+                    <h3 style="font-size: 1.1rem; color: #047857; border: none; margin-bottom: 5px;">⚔️ Co-Op Discipleship Streak</h3>
+                    <p style="font-size: 0.85rem; opacity: 0.9; margin-bottom: 10px;">If 100% of members play a Growth Game today, the whole group gets bonus XP!</p>
+                    <div id="dashStreakStatus" style="background: rgba(255,255,255,0.2); padding: 8px; border-radius: 8px; font-weight: bold;">Tracking coming soon...</div>
+                </div>
+            </div>
+
+            <div id="dashTabMembers" style="display: none;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">🟢 Online (Active today) | ⚪ Offline</p>
+                
+        <div id="dashLeaderControls" style="display:none; background: #DBEAFE; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+            <h4 style="margin-top:0; color:#1E3A8A; margin-bottom: 10px;">👑 Leader Controls: Invite Member</h4>
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1; position:relative;">
+                    <input type="text" id="dashInviteSearch" class="form-control" placeholder="Search name to invite..." onkeyup="filterDashInvite()">
+                    <div id="dashInviteDropdown" style="display:none; position:absolute; background:#FFF; width:100%; border:1px solid var(--border-color); z-index:100; max-height:150px; overflow-y:auto; border-radius: 6px;"></div>
+                    <input type="hidden" id="dashInviteYouthId">
+                </div>
+                <button class="btn btn-primary btn-sm" style="background: #1E3A8A;" onclick="submitDashInvite()">Add</button>
+            </div>
+        </div>
+<div id="dashMembersList"></div>
+            </div>
+
+            
+            <div id="dashTabDeepDive" style="display: none;">
+                <div id="dashCreateThreadSection" style="display:none; background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <h4 style="margin-top:0; color:var(--primary); margin-bottom: 10px;">📝 Start a Discussion</h4>
+                    <form onsubmit="submitGroupThread(event)" style="display: flex; flex-direction: column; gap: 10px;">
+                        <input type="text" id="threadTitle" class="form-control" placeholder="Discussion Topic / Sermon Title..." required>
+                        <textarea id="threadContent" class="form-control" rows="4" placeholder="Share your reflection, sermon notes, or discussion prompt here..." style="resize: vertical; min-height: 100px;" required></textarea>
+                        <button type="submit" class="btn btn-primary" style="background: var(--primary); color: #FFF !important; font-weight: bold; border: none; box-shadow: 0 4px 10px rgba(255,107,0,0.3);">Post to Group</button>
+                    </form>
+                </div>
+                <div id="dashThreadsList"></div>
+            </div>
+
+            <div id="dashTabMemories" style="display: none;">
+                <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid rgba(255,107,0,0.2); margin-bottom: 20px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.03);">
+                    <h3 style="color: var(--primary); font-size: 1.1rem; margin-bottom: 10px; border: none;">📸 Post a Memory</h3>
+                    <form onsubmit="submitGroupMemory(event)" style="display: flex; flex-direction: column; gap: 10px;">
+                        <input type="file" id="memoryImageInput" class="form-control" accept="image/*" required>
+                        <input type="text" id="memoryCaptionInput" class="form-control" placeholder="Write a short caption..." required>
+                        <button type="submit" class="btn btn-primary" style="background: var(--primary); color: #FFF !important; font-weight: bold; width: 100%; border: none; box-shadow: 0 4px 10px rgba(255,107,0,0.3);">Upload Photo</button>
+                    </form>
+                </div>
+                <div id="dashMemoriesGrid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;"></div>
+            </div>
+        
+<div id="dashTabPrayers" style="display: none;">
+                <div style="text-align: center; margin-bottom: 15px;">
+                    <button class="btn btn-outline btn-sm" style="border-color: #8B5CF6; color: #8B5CF6; background: #F3E8FF;" onclick="openGroupPrayerModal()">➕ Post Private Prayer</button>
+                </div>
+                <div id="dashPrayersList">
+                    <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-top:20px;">Group prayer wall locking mechanisms will be unlocked in the next patch!</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div id="groupPrayerModal" class="modal">
+    <div class="modal-content" style="max-width: 500px; background: #F8FAFC;">
+        <span class="close-modal" onclick="closeGroupPrayerModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2 style="color: #8B5CF6; border: none; margin-bottom: 15px; font-weight: 800;">➕ Post Group Prayer</h2>
+        <form onsubmit="submitGroupPrayer(event)">
+            <div class="form-group">
+                <label>Title *</label>
+                <input type="text" id="gpTitle" class="form-control" placeholder="E.g., Pray for my exams" required>
+            </div>
+            <div class="form-group">
+                <label>Prayer Request *</label>
+                <textarea id="gpRequest" class="form-control" rows="4" placeholder="Share your heart with the group..." required></textarea>
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="gpAnonymous" style="width: 18px; height: 18px;"> 
+                <label for="gpAnonymous" style="margin:0;">Post Anonymously</label>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; background: #8B5CF6; font-weight: bold;">Share with Group</button>
+        </form>
+    </div>
+</div>
+
+<div id="groupThreadModal" class="modal" style="z-index: 1050 !important;">
+    <div class="modal-content" style="max-width: 600px; padding: 0; background: #F8FAFC; display: flex; flex-direction: column; height: 85vh;">
+        <div style="background: #FFF; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); z-index: 10;">
+            <h2 style="margin: 0; font-size: 1.1rem; border: none; color: var(--primary);">📖 Discussion</h2>
+            <span class="close-modal" onclick="closeThreadView()" style="font-size: 28px; cursor: pointer; color: var(--text-main);">&times;</span>
+        </div>
+        <div style="flex: 1; overflow-y: auto; padding: 15px; background: #F8FAFC;">
+            <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px;">
+                <h3 id="viewThreadTitle" style="color: var(--primary); font-size: 1.3rem; margin-bottom: 8px;"></h3>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid var(--bg-light); padding-bottom: 10px;">
+                    <div id="viewThreadAvatar" style="width:30px; height:30px; border-radius:50%; background:var(--bg-light); display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:bold;"></div>
+                    <div>
+                        <strong id="viewThreadAuthor" style="font-size: 0.9rem; color: var(--text-main); display:block;"></strong>
+                        <small id="viewThreadDate" style="font-size: 0.75rem; color: var(--text-muted);"></small>
+                    </div>
+                </div>
+                <p id="viewThreadContent" style="font-size: 1rem; color: var(--text-main); line-height: 1.6; white-space: pre-wrap; margin:0;"></p>
+            </div>
+            <h4 style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px; text-transform: uppercase;">Replies</h4>
+            <div id="threadRepliesList" style="display:flex; flex-direction:column; gap:12px;"></div>
+        </div>
+        <div style="background: #FFF; padding: 12px 15px; border-top: 1px solid var(--border-color); z-index: 10;">
+            <form onsubmit="submitThreadReply(event)" style="display: flex; flex-direction: column; gap: 8px;">
+                <input type="hidden" id="replyThreadId">
+                <textarea id="replyThreadInput" class="form-control" placeholder="Write your reply..." rows="2" style="resize: vertical; min-height: 50px;" required></textarea>
+                <button type="submit" class="btn btn-primary" style="background: var(--primary); color: #FFF !important; font-weight: bold; border: none; align-self: flex-end; padding: 8px 20px; box-shadow: 0 4px 10px rgba(255,107,0,0.3);">Reply</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="groupThreadModal" class="modal" style="z-index: 1050 !important;">
+    <div class="modal-content" style="max-width: 600px; padding: 0; background: #F8FAFC; display: flex; flex-direction: column; height: 85vh;">
+        <div style="background: #FFF; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); z-index: 10;">
+            <h2 style="margin: 0; font-size: 1.1rem; border: none; color: var(--primary);">📖 Discussion</h2>
+            <span class="close-modal" onclick="closeThreadView()" style="font-size: 28px; cursor: pointer; color: var(--text-main);">&times;</span>
+        </div>
+        <div style="flex: 1; overflow-y: auto; padding: 15px; background: #F8FAFC;">
+            <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px;">
+                <h3 id="viewThreadTitle" style="color: var(--primary); font-size: 1.3rem; margin-bottom: 8px;"></h3>
+                <p id="viewThreadContent" style="font-size: 1rem; color: var(--text-main); line-height: 1.6; white-space: pre-wrap; margin:0;"></p>
+            </div>
+            <h4 style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px; text-transform: uppercase;">Replies</h4>
+            <div id="threadRepliesList" style="display:flex; flex-direction:column; gap:12px;"></div>
+        </div>
+        <div style="background: #FFF; padding: 12px 15px; border-top: 1px solid var(--border-color); z-index: 10;">
+            <form onsubmit="submitThreadReply(event)" style="display: flex; flex-direction: column; gap: 8px;">
+                <input type="hidden" id="replyThreadId">
+                <textarea id="replyThreadInput" class="form-control" placeholder="Write your reply..." rows="2" style="resize: vertical; min-height: 50px;" required></textarea>
+                <button type="submit" class="btn btn-primary" style="background: var(--primary); color: #FFF !important; font-weight: bold; border: none; align-self: flex-end; padding: 8px 20px;">Reply</button>
+            </form>
+        </div>
+    </div>
+</div>
+<div id="liturgicalReadingsModal" class="modal" style="z-index: 2000 !important;">
+    <div class="modal-content" style="max-width: 700px; padding: 0; background: #F8FAFC; height: 90vh; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="background: #FFF; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary); z-index: 10;">
+            <h2 style="margin: 0; font-size: 1.2rem; color: var(--primary); border: none;">📖 Daily Mass Readings</h2>
+            <span class="close-modal" onclick="window.closeLiturgicalReadings()" style="font-size: 28px; cursor: pointer; color: var(--text-main);">&times;</span>
+        </div>
+        <div style="flex: 1; position: relative; overflow: hidden; -webkit-overflow-scrolling: touch;">
+            <iframe id="readingsIframe" style="width: 100%; height: 100%; border: none; background: #FFF;" loading="lazy"></iframe>
+        </div>
+    </div>
+</div>
+
+<div id="reactionListModal" class="modal" style="z-index: 2500 !important;">
+    <div class="modal-content" style="max-width: 350px; background: #FFF; padding: 0; text-align: center; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+        <div style="background: var(--bg-light); padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+            <h3 id="reactionListTitle" style="margin:0; color: var(--text-main); font-size: 1.1rem; border:none;">Reactions</h3>
+            <span class="close-modal" onclick="document.getElementById('reactionListModal').classList.remove('active')" style="font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
+        </div>
+        <div id="reactionListNames" style="padding: 10px 20px; max-height: 250px; overflow-y: auto; color: var(--text-main); font-size: 0.95rem; line-height: 1.6; text-align: left;">
+        </div>
+    </div>
+</div>
+
+<script>
+    window.handleGoogleCredentialResponse = async function(response) {
+        document.getElementById('globalPreloader').style.display = 'flex';
+        document.getElementById('globalPreloader').style.opacity = '1';
+        try {
+            const res = await fetch('/api/auth/google', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: response.credential })
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentUser = data.username;
+                currentMember = data.member;
+                userPermissions = data.permissions || [];
+                localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+                if (window.buildNav) window.buildNav();
+                if (window.applyGranularPermissions) window.applyGranularPermissions();
+                if (data.is_new) alert('Welcome to FOG Ministries! Your Seeker profile has been created seamlessly.');
+                if (window.loadDailyManna) window.loadDailyManna();
+                switchTab('pulseDashboardTab');
+            } else { alert('Authentication failed.'); }
+        } catch(e) { console.error(e); alert('Network error during Google sign-in.'); }
+        finally { 
+            document.getElementById('globalPreloader').style.opacity = '0';
+            setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500); 
+        }
+    };
+</script>
 </body>
 </html>
