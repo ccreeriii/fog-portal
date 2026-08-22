@@ -1,10 +1,10 @@
 {
   "name": "fog-portal",
   "version": "1.0.0",
-  "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
@@ -15,5 +15,14 @@
     "node-cron": "^4.6.0",
     "sqlite3": "^6.0.1",
     "web-push": "^3.6.7"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ccreeriii/fog-portal.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ccreeriii/fog-portal/issues"
+  },
+  "homepage": "https://github.com/ccreeriii/fog-portal#readme",
+  "description": ""
 }
