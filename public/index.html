@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="/manifest.json">
@@ -1430,5 +1431,51 @@
         </div>
     </div>
 </div>
+
+<script>
+    window.initGoogleAuth = function() {
+        if (!window.google) return alert("Google Login Service is loading, please try again in a moment.");
+        google.accounts.id.initialize({
+            client_id: "100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com",
+            callback: handleGoogleCredentialResponse
+        });
+        google.accounts.id.prompt(); // Shows the Google One Tap UI
+    };
+
+    window.handleGoogleCredentialResponse = async function(response) {
+        document.getElementById('globalPreloader').style.display = 'flex';
+        document.getElementById('globalPreloader').style.opacity = '1';
+        try {
+            const res = await fetch('/api/auth/google', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: response.credential })
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                currentUser = data.username;
+                userPermissions = data.permissions || [];
+                currentMember = data.member;
+                localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+                window.buildNav();
+                window.applyGranularPermissions();
+                
+                if (data.is_new) {
+                    alert('Welcome to FOG Ministries! Your Seeker profile has been created seamlessly.');
+                }
+                
+                // Immediately transition them to the Koinonia Pulse Dashboard
+                window.switchTab('pulseDashboardTab');
+            } else {
+                alert('Authentication failed.');
+            }
+        } catch(e) {
+            console.error(e);
+            alert('A network error occurred.');
+        } finally {
+            document.getElementById('globalPreloader').style.display = 'none';
+        }
+    };
+</script>
 </body>
 </html>
