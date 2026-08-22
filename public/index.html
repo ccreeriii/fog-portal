@@ -1479,3 +1479,410 @@
 </script>
 </body>
 </html>
+    <div id="communicationsAdminTab" class="tab-content">
+        <div class="card">
+            <h2 style="color: #3B82F6;">📢 Broadcast Engine</h2>
+            <div class="broadcast-form-container">
+                <form id="broadcastForm" onsubmit="V4Communications.sendBroadcast(event)">
+                    <div class="form-group"><label>Target Audience *</label><select id="bcTargetSelect" class="form-control" required><option value="All">All Registered Members</option><option value="Leaders">All Leaders & Admins</option></select></div>
+                    <div class="form-group"><label>Announcement Title *</label><input type="text" id="bcTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Message Body *</label><textarea id="bcMessage" class="form-control" rows="5" required></textarea></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%; background: #3B82F6;">Send Broadcast</button>
+                </form>
+            </div>
+        </div>
+        <div class="card"><h2>Broadcast History</h2><div id="broadcastHistoryContainer"></div></div>
+    </div>
+
+    <div id="discipleshipAdminTab" class="tab-content">
+        <div class="sub-nav">
+            <button id="btnSubAdminAnalytics" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('analytics')">📊 Analytics</button>
+            <button id="btnSubAdminPathways" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('pathways')">🗺️ Pathway Builder</button>
+            <button id="btnSubAdminGroups" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('groups')">👥 Small Groups</button>
+            <button id="btnSubAdminGamification" class="sub-nav-btn" onclick="V6Gamification.switchAdminTab('gamification')">🎯 Gamification</button>
+            <button id="btnSubAdminHabits" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('habits')">📖 Daily Habits</button>
+        </div>
+        <div id="subTabAdminAnalytics" class="discipleship-admin-sub-tab active">
+            <div class="card"><h2>Congregation Spiritual Stages</h2><div class="chart-wrapper"><canvas id="spiritualStagesChart"></canvas></div></div>
+        </div>
+        <div id="subTabAdminPathways" class="discipleship-admin-sub-tab" style="display:none;">
+            <div class="card">
+                <h2>Create New Discipleship Milestone</h2>
+                <form id="createPathwayForm" onsubmit="V2Discipleship.createPathway(event)">
+                    <div class="form-group"><label>Milestone Title *</label><input type="text" id="pathCreateTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Description *</label><textarea id="pathCreateDesc" class="form-control" rows="2" required></textarea></div>
+                    <div class="form-group"><label>Step Order (Number) *</label><input type="number" id="pathCreateOrder" class="form-control" required></div>
+                    <div class="form-group"><label>Points Awarded (Growth XP) *</label><input type="number" id="pathCreatePoints" class="form-control" value="50" required></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Create Milestone</button>
+                </form>
+            </div>
+            <div class="card"><h2>Active Pathways</h2><div id="adminPathwaysList"></div></div>
+        </div>
+        <div id="subTabAdminGroups" class="discipleship-admin-sub-tab" style="display:none;">
+            <div class="card">
+                <h2>Create New Small Group</h2>
+                <form id="createSmallGroupForm" onsubmit="V2Discipleship.createSmallGroup(event)">
+                    <div class="form-group"><label>Group Name *</label><input type="text" id="sgCreateName" class="form-control" required></div>
+                    <div class="form-group"><label>Group Logo (Optional)</label><input type="file" id="sgCreateLogo" class="form-control" accept="image/*"></div>
+                    <div class="form-group" style="position: relative;">
+                        <label>Leader</label><input type="text" id="sgLeaderSearch" class="form-control" onkeyup="V2Discipleship.filterLeaderSearch()">
+                        <div id="sgLeaderDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid var(--border-color); z-index:100;"></div>
+                        <input type="hidden" id="sgCreateLeaderId">
+                    </div>
+                    <div style="display:flex; gap:15px;">
+                        <div class="form-group" style="flex:1;"><label>Schedule</label><input type="text" id="sgCreateSchedule" class="form-control"></div>
+                        <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="sgCreateVenue" class="form-control"></div>
+                    </div>
+                    <div class="form-group"><label>Privacy Level</label><select id="sgCreatePrivacy" class="form-control"><option value="Open">🌐 Open (Anyone can join)</option><option value="Approval">🔒 Approval Needed</option><option value="Invite-Only">🕵️ Secret (Invite-Only)</option></select></div>
+                    <div class="form-group"><label>Points Awarded on Join (Growth XP) *</label><input type="number" id="sgCreatePoints" class="form-control" value="20" required></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Create Group</button>
+                </form>
+            </div>
+            <div class="card"><h2>Active Small Groups</h2><div id="adminSmallGroupsList"></div></div>
+        </div>
+        <div id="subTabAdminHabits" class="discipleship-admin-sub-tab" style="display:none;">
+            <div class="card">
+                <h2 style="color:#10B981;">📖 Daily Habit Rewards</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Set the Growth XP members earn for daily spiritual habits (awarded once per day).</p>
+                <form id="habitSettingsForm" onsubmit="V2Discipleship.saveHabitSettings(event)">
+                    <div style="display:flex; gap:15px;">
+                        <div class="form-group" style="flex:1;"><label>Journal Points (Daily) *</label><input type="number" id="habitJournalPts" class="form-control" required></div>
+                        <div class="form-group" style="flex:1;"><label>Prayer Points (Daily) *</label><input type="number" id="habitPrayerPts" class="form-control" required></div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%; background: #10B981; border: none;">Save Habit Settings</button>
+                </form>
+            </div>
+        </div>
+        <div id="subTabAdminGamification" class="discipleship-admin-sub-tab" style="display:none;">
+            <div class="card">
+                <h2 style="color:#D97706;">Create Weekly Challenge</h2>
+                <form id="createChallengeForm" onsubmit="V6Gamification.createChallenge(event)">
+                    <div class="form-group"><label>Challenge Title *</label><input type="text" id="gamCreateTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Description *</label><textarea id="gamCreateDesc" class="form-control" rows="2" required></textarea></div>
+                    <div class="form-group"><label>Growth Points *</label><input type="number" id="gamCreatePoints" class="form-control" value="50" required></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%; background: #F59E0B;">Publish Challenge</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="aiAssistantTab" class="tab-content">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                <h2 style="color: #10B981; margin: 0;">🤖 AI Ministry Assistant</h2>
+            </div>
+            <div id="aiChatHistory" class="ai-chat-box"><div class="chat-msg chat-ai">Hello, I am Silas, your FOG ministry assistant.</div></div>
+            <form style="display: flex; gap: 10px;" onsubmit="V7AIAssistant.sendMessage(event)">
+                <input type="text" id="aiChatInput" class="form-control" required style="flex: 1;">
+                <button type="submit" class="btn btn-primary" style="background: #10B981;">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="discipleshipTab" class="tab-content">
+        <div id="growthSubHome" class="growth-sub-tab active">
+            <div id="liturgicalCard" class="card" style="display:none; transition: all 0.5s ease; border: none; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                    <span id="liturgicalSeason" class="badge" style="background: rgba(255,255,255,0.25); color: #FFF; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem;">Season</span>
+                    <span id="liturgicalFeast" style="font-size:0.8rem; color:#FFF; font-weight:800; text-align: right; max-width: 60%;">Feast Day</span>
+                </div>
+                <h3 style="color:#FFF; border:none; padding:0; margin-bottom: 12px; font-size: 1.3rem;">📖 Daily Gospel</h3>
+                <p id="liturgicalGospel" style="color:#FFF; font-size:1.05rem; font-style:italic; margin-bottom: 20px; line-height:1.6; text-shadow: 0 1px 3px rgba(0,0,0,0.3);"></p>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-sm" style="background:#FFF; color:var(--text-main); font-weight:800; flex: 1; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="window.openLiturgicalReadings()">📖 Full Readings</button>
+                    <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4);" onclick="window.switchGrowthSubTab('Journal')">🙏 Reflect</button>
+                </div>
+            </div>
+            <div id="verseOfDayContainer"></div>
+            <div id="nextStepContainer"></div>
+            <div class="card" style="border-top: 4px solid #059669;">
+                <h2 style="color: #047857;">🌱 Spiritual Growth</h2>
+                <div class="sub-nav" style="margin-bottom: 15px;">
+                    <button id="btnGamTabChallenges" class="sub-nav-btn active" onclick="V6Gamification.switchTab('challenges')">🎯 Weekly Tasks</button>
+                    <button id="btnGamTabGames" class="sub-nav-btn" onclick="V6Gamification.switchTab('games')">🧠 Games</button>
+                    <button id="btnGamTabLeaderboard" class="sub-nav-btn" onclick="V6Gamification.switchTab('leaderboard')">🏅 Ranks</button>
+                </div>
+                <div id="gamTabChallenges" style="display: block;"><div id="gamActiveChallengesList"></div></div>
+                <div id="gamTabGames" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Play games and earn Growth XP!</p>
+                        <button class="btn btn-outline btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="font-weight: bold;">🔄 Refresh</button>
+                    </div>
+                    <div id="featuredGrowthGameContainer" style="margin-bottom: 20px;"></div>
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                        <button id="btnGrowthIndiv" class="btn btn-primary btn-sm" style="flex: 1;" onclick="if(window.V10Expansion) V10Expansion.filterGrowthGames('indiv')">👤 Individual</button>
+                        <button id="btnGrowthGroups" class="btn btn-outline btn-sm" style="flex: 1;" onclick="if(window.V10Expansion) V10Expansion.filterGrowthGames('groups')">👥 Groups</button>
+                    </div>
+                    <div class="arcade-grid" id="growthGamesGrid">
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Catechism Clash"><div class="game-tile-icon">⏱️</div><div class="game-tile-info"><h3>Catechism Clash</h3><p>60-Second Sprint!</p></div><div class="game-tile-action" style="background:#059669;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Daily Manna Scramble"><div class="game-tile-icon">🧩</div><div class="game-tile-info"><h3>Daily Manna</h3><p>Unscramble the verse!</p></div><div class="game-tile-action" style="background:#14B8A6;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Emoji Sermon Translator"><div class="game-tile-icon">😀</div><div class="game-tile-info"><h3>Emoji Sermon</h3><p>Decode the story.</p></div><div class="game-tile-action" style="background:#F59E0B;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="The Narrow Gate"><div class="game-tile-icon">🚪</div><div class="game-tile-info"><h3>The Narrow Gate</h3><p>Hardcore Trivia.</p></div><div class="game-tile-action" style="background:#6366F1;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Shield of Faith: Reflex Tap"><div class="game-tile-icon">🛡️</div><div class="game-tile-info"><h3>Shield of Faith</h3><p>Reflex memory game!</p></div><div class="game-tile-action" style="background:#EC4899;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Who Am I?"><div class="game-tile-icon">🕵️‍♂️</div><div class="game-tile-info"><h3>Who Am I?</h3><p>Guess the character!</p></div><div class="game-tile-action" style="background:#8B5CF6;">PLAY</div></div>
+                        <div class="arcade-game-tile growth-game-indiv" data-game-name="Would You Rather" onclick="V9GrowthGames.mountWouldYouRather()"><div class="game-tile-icon">⚖️</div><div class="game-tile-info"><h3>Would You Rather</h3><p>Daily Poll.</p></div><div class="game-tile-action" style="background:#8B5CF6;">VOTE</div></div>
+                        <div class="arcade-game-tile growth-game-groups" data-game-name="Verse Chain" onclick="V9GrowthGames.mountVerseChain()"><div class="game-tile-icon">🔗</div><div class="game-tile-info"><h3>Verse Chain</h3><p>Cooperative puzzle!</p></div><div class="game-tile-action" style="background:#3B82F6;">CO-OP</div></div>
+                        <div class="arcade-game-tile growth-game-groups" data-game-name="Cell Group Clash" onclick="V9GrowthGames.mountGroupClash()"><div class="game-tile-icon">⚔️</div><div class="game-tile-info"><h3>Group Clash</h3><p>Group leaderboards!</p></div><div class="game-tile-action" style="background:#DC2626;">RANKS</div></div>
+                    </div>
+                    <div id="growthActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
+                </div>
+                <div id="gamTabLeaderboard" style="display: none;"><div id="gamLeaderboardList"></div></div>
+            </div>
+        </div>
+        <div id="growthSubMilestones" class="growth-sub-tab"><div class="card"><h2>Milestones</h2><div id="pathwaysListContainer"></div></div></div>
+        <div id="growthSubJournal" class="growth-sub-tab">
+            <div class="card">
+                <h2>Private Journal</h2>
+                <form id="journalForm" onsubmit="V2Discipleship.saveJournal(event)">
+                    <div class="form-group"><label>Title *</label><input type="text" id="journalTitle" class="form-control" required></div>
+                    <div style="display:flex; gap:15px;">
+                        <div class="form-group" style="flex:1;"><label>Framework</label><select id="journalType" class="form-control" onchange="V2Discipleship.applyJournalTemplate()"><option value="Freehand">Freehand (Blank)</option><option value="Lectio Divina">📖 Lectio Divina</option><option value="Examen">🌙 Daily Examen</option></select></div>
+                        <div class="form-group" style="flex:1;"><label>Mood</label><select id="journalMood" class="form-control"><option value="Blessed">Blessed</option><option value="Seeking">Seeking</option><option value="Joyful">Joyful</option><option value="Reflective">Reflective</option></select></div>
+                    </div>
+                    <div class="form-group"><label>Content *</label><textarea id="journalContent" class="form-control" rows="6" required></textarea></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Save</button>
+                </form>
+                <div id="journalsContainer" style="margin-top:20px;"></div>
+            </div>
+        </div>
+        <div id="growthSubPrayer" class="growth-sub-tab">
+            <div class="card">
+                <h2>Prayer Center</h2>
+                <form id="prayerForm" onsubmit="V2Discipleship.submitPrayer(event)">
+                    <div class="form-group"><label>Title *</label><input type="text" id="prayerTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Request *</label><textarea id="prayerContent" class="form-control" rows="3" required></textarea></div>
+                    <div class="form-group"><input type="checkbox" id="prayerAnonymous"><label for="prayerAnonymous">Anonymous</label></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Submit</button>
+                </form>
+                <div id="prayerWallContainer"></div>
+            </div>
+        </div>
+        <div id="growthSubGroups" class="growth-sub-tab"><div class="card"><h2>Small Groups</h2><div id="smallGroupsContainer"></div></div></div>
+    </div>
+
+    <div id="leaderboardsHubTab" class="tab-content">
+        <div class="card" style="padding: 0; overflow: hidden; border-color: var(--primary);">
+            <div style="padding: 15px 20px; background: linear-gradient(135deg, #2563EB, #4F46E5); color: #FFF; display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="margin:0; border:none; padding:0; color: #FFF;"><span style="font-size: 1.5rem;">🏆</span> GLOBAL RANKS</h2>
+                <button class="btn btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="background: rgba(255,255,255,0.2); color: #FFF; border: none; font-weight: bold;">🔄 Refresh Ranks</button>
+            </div>
+            <div class="sub-nav" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); margin-bottom: 0; padding: 10px 15px;">
+                <button id="btnLdrOverall" class="sub-nav-btn active" onclick="V10Expansion.switchLeaderboardTab('overall')">⭐ Overall</button>
+                <button id="btnLdrGrowth" class="sub-nav-btn" onclick="V10Expansion.switchLeaderboardTab('growth')">🌱 Growth</button>
+                <button id="btnLdrArcade" class="sub-nav-btn" onclick="V10Expansion.switchLeaderboardTab('arcade')">🎮 Arcade</button>
+            </div>
+            <div id="ldrOverallView" style="padding: 20px; display: block;"><h3 style="color: #D97706; margin-bottom: 15px;">Top Overall Leaders (All Time)</h3><div id="ldrOverallContainer"></div><h3 style="color: #D97706; margin-bottom: 15px; margin-top: 25px;">Top Overall (This Month)</h3><div id="ldrOverallMonthContainer"></div></div>
+            <div id="ldrGrowthView" style="padding: 20px; display: none;"><h3 style="color: #059669; margin-bottom: 15px;">Top Growth Leaders (All Time)</h3><div id="ldrGrowthContainer"></div><h3 style="color: #059669; margin-bottom: 15px; margin-top: 25px;">Top Growth (This Month)</h3><div id="ldrGrowthMonthContainer"></div></div>
+            <div id="ldrArcadeView" style="padding: 20px; display: none;"><h3 style="color: #2563EB; margin-bottom: 15px;">Top Arcade Players (All Time)</h3><div id="ldrArcadeContainer"></div><h3 style="color: #2563EB; margin-bottom: 15px; margin-top: 25px;">Top Arcade (This Month)</h3><div id="ldrArcadeMonthContainer"></div></div>
+        </div>
+    </div>
+
+    <div id="worshipTab" class="tab-content">
+        <div class="sub-nav">
+            <button id="btnSubWorshipLibrary" class="sub-nav-btn active" onclick="V3Worship.switchWorshipSubTab('library')">🎵 Library</button>
+            <button id="btnSubWorshipSetlists" class="sub-nav-btn" onclick="V3Worship.switchWorshipSubTab('setlists')">📋 Setlists</button>
+        </div>
+        <div id="subTabWorshipLibrary" class="worship-sub-tab active">
+            <div class="card">
+                <h2>Add Song</h2>
+                <form id="createSongForm" onsubmit="V3Worship.createSong(event)">
+                    <div class="form-group"><label>Title *</label><input type="text" id="wsSongTitle" class="form-control" required></div>
+                    <div class="form-group"><label>Artist</label><input type="text" id="wsSongArtist" class="form-control"></div>
+                    <div style="display:flex; gap:15px;"><div class="form-group" style="flex:1;"><label>Key</label><input type="text" id="wsSongKey" class="form-control"></div><div class="form-group" style="flex:1;"><label>BPM</label><input type="text" id="wsSongBPM" class="form-control"></div></div>
+                    <div class="form-group"><label>Audio Link</label><input type="url" id="wsSongAudio" class="form-control"></div>
+                    <div class="form-group"><label>YouTube Link</label><input type="url" id="wsSongYoutube" class="form-control"></div>
+                    <div class="form-group"><label>Chords PDF</label><input type="url" id="wsSongChords" class="form-control"></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Add Song</button>
+                </form>
+            </div>
+            <div class="card"><h2>Library</h2><div id="worshipLibraryList"></div></div>
+        </div>
+        <div id="subTabWorshipSetlists" class="worship-sub-tab" style="display:none;">
+            <div class="card">
+                <h2>Create Setlist</h2>
+                <form id="createSetlistForm" onsubmit="V3Worship.createSetlist(event)">
+                    <div class="form-group"><label>Name *</label><input type="text" id="wsSetlistName" class="form-control" required></div>
+                    <div class="form-group"><label>Date</label><input type="date" id="wsSetlistDate" class="form-control"></div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Create</button>
+                </form>
+            </div>
+            <div class="card"><h2>Setlists</h2><div id="worshipSetlistsContainer"></div></div>
+        </div>
+    </div>
+
+    <div id="ministriesTab" class="tab-content">
+        <div class="sub-nav">
+            <button id="btnSubMinistryList" class="sub-nav-btn active" onclick="switchMinistrySubTab('list')">🏛️ Directory</button>
+            <button id="btnSubMinistryCreate" class="sub-nav-btn" onclick="switchMinistrySubTab('create')" style="display:none;">➕ Create</button>
+        </div>
+        <div id="subTabMinistryCreate" class="ministry-sub-tab">
+            <div class="card">
+                <h2>Create Ministry</h2>
+                <form onsubmit="handleCreateMinistry(event)">
+                    <div class="form-group"><label>Name *</label><input type="text" id="minCreateName" class="form-control" required></div>
+                    <div class="form-group"><label>Logo</label><input type="file" id="minCreateLogo" class="form-control" accept="image/*"></div>
+                    <div class="form-group"><label>Description</label><textarea id="minCreateDesc" class="form-control" rows="3"></textarea></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Create</button>
+                </form>
+            </div>
+        </div>
+        <div id="subTabMinistryList" class="ministry-sub-tab active">
+            <div class="card"><h2>Ministries</h2><div id="ministryListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;"></div></div>
+        </div>
+    </div>
+
+    <div id="checkinTab" class="tab-content">
+        <div class="card">
+            <h2>Event Check-In Station</h2>
+            <div class="form-group" style="margin-bottom: 15px;"><label>Select Active Event</label><select id="activeEventDropdown" class="form-control" onchange="updateActiveEventBanner()"></select></div>
+            <div id="checkinCounters" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 25px;">
+                <div style="background: rgba(255,107,0,0.1); border: 1px solid var(--primary); padding: 12px; border-radius: 8px; text-align: center;"><div id="liveTotal" style="font-size: 1.4rem; font-weight: 800; color: var(--primary);">0</div><div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700;">CHECKED-IN</div></div>
+                <div style="background: rgba(16,185,129,0.1); border: 1px solid var(--success); padding: 12px; border-radius: 8px; text-align: center;"><div id="livePreRegTotal" style="font-size: 1.4rem; font-weight: 800; color: var(--success);">0</div><div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700;">PRE-REG'D</div></div>
+                <div style="background: var(--bg-light); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; text-align: center;"><div id="livePreReg" style="font-size: 1.4rem; font-weight: 800; color: var(--text-main);">0</div><div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700;">ARRIVED</div></div>
+                <div style="background: var(--bg-light); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; text-align: center;"><div id="liveWalkin" style="font-size: 1.4rem; font-weight: 800; color: var(--text-main);">0</div><div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700;">WALK-INS</div></div>
+            </div>
+            <div style="display: flex; gap: 10px; border-bottom: 2px solid var(--border-color); padding-bottom: 20px; margin-bottom: 20px;"><button id="btnCheckinScanner" class="btn btn-outline active" onclick="switchCheckinMode('scanner')" style="flex:1;">📷 Scanner</button><button id="btnCheckinManual" class="btn btn-outline" onclick="switchCheckinMode('manual')" style="flex:1;">🔍 Search</button><button id="btnCheckinWalkin" class="btn btn-outline" onclick="switchCheckinMode('walkin')" style="flex:1; display:none;">📝 Walk-In</button></div>
+            <div id="checkinModeScanner" class="checkin-sub-tab active"><div id="reader" style="width: 100%; border-radius: 12px; overflow: hidden;"></div></div>
+            <div id="checkinModeManual" class="checkin-sub-tab"><input type="text" id="manualSearchInput" class="form-control" placeholder="Search..." oninput="filterManualCheckin()"><div id="manualCheckinResults" style="max-height: 400px; overflow-y: auto; margin-top: 15px;"></div></div>
+            <div id="checkinModeWalkin" class="checkin-sub-tab">
+                <form onsubmit="handleWalkin(event)">
+                    <div class="form-group"><label>Full Name *</label><input type="text" id="walkinName" class="form-control" required></div>
+                    <div style="display: flex; gap: 15px;"><div class="form-group" style="flex: 1;"><label>Age *</label><input type="number" id="walkinAge" class="form-control" required></div><div class="form-group" style="flex: 1;"><label>Birthday</label><input type="date" id="walkinBirthday" class="form-control"></div></div>
+                    <div class="form-group"><label>Email Address</label><input type="email" id="walkinEmail" class="form-control"></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Register & Check-In</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="directoryTab" class="tab-content">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
+                <h2 style="margin: 0; border: none;">Directory</h2>
+                <button id="btnDirectoryAddMember" class="btn btn-primary btn-sm" style="display:none;" onclick="openAddMemberModal()">➕ Add Entry</button>
+                <div id="directoryTotalCount" class="badge badge-blue">Total: 0</div>
+            </div>
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <select id="sortDirectorySelect" class="form-control" onchange="filterDirectory()"><option value="name_asc">Name (A-Z)</option><option value="name_desc">Name (Z-A)</option><option value="age_asc">Age (Youngest)</option><option value="age_desc">Age (Oldest)</option></select>
+                <select id="filterAgeCategory" class="form-control" onchange="filterDirectory()"><option value="all">All Ages</option><option value="minis">Minis</option><option value="youth">Youth</option><option value="adult">Adults</option></select>
+            </div>
+            <div class="form-group"><input type="text" id="directorySearchInput" class="form-control" placeholder="Search..." oninput="filterDirectory()"></div>
+            <div id="directoryTableContainer"></div>
+        </div>
+    </div>
+
+    <div id="eventsTab" class="tab-content">
+        <div class="sub-nav">
+            <button id="btnSubEventList" class="sub-nav-btn active" onclick="switchEventSubTab('list')">📅 Events</button>
+            <button id="btnSubEventCreate" class="sub-nav-btn" onclick="switchEventSubTab('create')" style="display:none;">➕ Create</button>
+        </div>
+        <div id="subTabEventCreate" class="event-sub-tab">
+            <div class="card">
+                <h2>Create Event</h2>
+                <form id="createEventForm" onsubmit="handleCreateEvent(event)">
+                    <div class="form-group"><label>Name *</label><input type="text" id="evtName" class="form-control" required></div>
+                    <div style="display: flex; gap: 15px;"><div class="form-group" style="flex: 1;"><label>Date *</label><input type="date" id="evtDate" class="form-control" required></div><div class="form-group" style="flex: 1;"><label>Time</label><input type="time" id="evtTime" class="form-control"></div></div>
+                    <div class="form-group"><label>Venue</label><input type="text" id="evtVenue" class="form-control"></div>
+                    <div class="form-group"><label>XP Points *</label><input type="number" id="evtPoints" class="form-control" value="10" required></div>
+                    <div class="form-group"><label>Poster</label><input type="file" id="evtPoster" class="form-control" accept="image/*"></div>
+                    <div class="form-group"><label>Photos URL</label><input type="url" id="evtPhotosUrl" class="form-control"></div>
+                    <div class="form-group"><label>Drive URL</label><input type="url" id="evtMaterialsUrl" class="form-control"></div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Publish</button>
+                </form>
+            </div>
+        </div>
+        <div id="subTabEventList" class="event-sub-tab active">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>Events</h2>
+                    <div style="display: flex; gap: 8px;"><button id="viewBtnList" class="btn btn-outline btn-sm active" onclick="setEventViewMode('list')">☰</button><button id="viewBtnGrid" class="btn btn-outline btn-sm" onclick="setEventViewMode('grid')">▦</button><button id="viewBtnCal" class="btn btn-outline btn-sm" onclick="setEventViewMode('calendar')">📅</button></div>
+                </div>
+                <div id="calendarControls" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 20px;"><button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(-1)">◀</button><h3 id="calendarMonthTitle" style="font-size: 1.2rem; color: var(--primary);"></h3><button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(1)">▶</button></div>
+                <div id="eventsListContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="attendanceTab" class="tab-content">
+        <div class="card">
+            <h2>Attendance Logs</h2>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 20px;"><input type="text" id="attendanceSearchInput" class="form-control" placeholder="Search..." oninput="filterAttendanceLogs()"><button class="btn btn-outline" onclick="exportAttendanceLogsCSV()">📥 Export</button></div>
+            <div id="attendanceLogsContainer"></div>
+        </div>
+    </div>
+
+    <div id="activityLogsTab" class="tab-content">
+        <div class="card">
+            <h2>Audit Logs</h2>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 20px;"><input type="text" id="activitySearchInput" class="form-control" placeholder="Search..." oninput="filterActivityLogs()"><button class="btn btn-outline" onclick="exportActivityLogsCSV()">📥 Export</button></div>
+            <div id="activityLogsContainer"></div>
+        </div>
+    </div>
+
+    <div id="permissionsTab" class="tab-content">
+        <div class="card">
+            <h2>Permissions Management</h2>
+            <div class="form-group"><input type="text" id="permUserSearchInput" class="form-control" placeholder="Search directory..." oninput="filterPermUserList()"></div>
+            <div id="permUserListContainer" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; margin-top: 20px;"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- SCRIPT TAGS & PWA REGISTRATION -->
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW Failed:', err));
+        });
+    }
+</script>
+
+<script src="/js/app.js?v=12.4"></script>
+<script src="/js/v2-discipleship.js?v=12.4"></script>
+<script src="/js/v3-worship.js?v=12.4"></script>
+<script src="/js/v4-communications.js?v=12.4"></script>
+<script src="/js/v6-gamification.js?v=12.4"></script>
+<script src="/js/v7-ai-assistant.js?v=12.4"></script>
+<script src="/js/v8-slingshot.js?v=12.4"></script>
+<script src="/js/v8-noahs-ark.js?v=12.4"></script>
+<script src="/js/v8-red-sea.js?v=12.4"></script>
+<script src="/js/v8-peters-leap.js?v=12.4"></script>
+<script src="/js/v8-jonahs-dive.js?v=12.4"></script>
+<script src="/js/v9-growth-games.js?v=12.4"></script>
+<script src="/js/v10-expansion.js?v=12.4"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+    window.initGoogleAuth = function() {
+        if (!window.google) return alert("Google Login Service is loading, please try again in a moment.");
+        google.accounts.id.initialize({
+            client_id: "100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com",
+            callback: handleGoogleCredentialResponse
+        });
+        google.accounts.id.prompt();
+    };
+    window.handleGoogleCredentialResponse = async function(response) {
+        document.getElementById('globalPreloader').style.display = 'flex';
+        document.getElementById('globalPreloader').style.opacity = '1';
+        try {
+            const res = await fetch('/api/auth/google', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: response.credential })
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentUser = data.username;
+                userPermissions = data.permissions || [];
+                currentMember = data.member;
+                localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+                window.buildNav();
+                window.applyGranularPermissions();
+                if (data.is_new) { alert('Welcome to FOG Ministries! Your Seeker profile has been created seamlessly.'); }
+                window.switchTab('pulseDashboardTab');
+            } else { alert('Authentication failed.'); }
+        } catch(e) { console.error(e); alert('A network error occurred.'); }
+        finally { document.getElementById('globalPreloader').style.display = 'none'; }
+    };
+</script>
+</body>
+</html>
