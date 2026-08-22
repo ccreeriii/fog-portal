@@ -2492,3 +2492,38 @@ window.buildReactionUI = function(type, id, reactionsData) {
     </div>`;
 };
 
+
+
+// ==========================================
+// DAILY MANNA (KOINONIA ENGINE)
+// ==========================================
+window.loadDailyManna = function() {
+    const verses = [
+        { text: "For I know the plans I have for you, declares the Lord, plans for welfare and not for evil, to give you a future and a hope.", ref: "Jeremiah 29:11" },
+        { text: "I can do all things through him who strengthens me.", ref: "Philippians 4:13" },
+        { text: "Trust in the Lord with all your heart, and do not lean on your own understanding.", ref: "Proverbs 3:5" },
+        { text: "Be strong and courageous. Do not be frightened, and do not be dismayed, for the Lord your God is with you wherever you go.", ref: "Joshua 1:9" },
+        { text: "But they who wait for the Lord shall renew their strength; they shall mount up with wings like eagles.", ref: "Isaiah 40:31" },
+        { text: "Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come.", ref: "2 Corinthians 5:17" },
+        { text: "And let us consider how to stir up one another to love and good works.", ref: "Hebrews 10:24" },
+        { text: "Where two or three gather in my name, there am I with them.", ref: "Matthew 18:20" }
+    ];
+    const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
+    const dailyVerse = verses[dayOfYear % verses.length];
+    
+    const mannaText = document.getElementById('pulseDailyGospelText');
+    if (mannaText) {
+        mannaText.innerHTML = '"' + dailyVerse.text + '"<br><span style="font-weight:bold; font-size:0.85rem; display:block; text-align:right; margin-top:5px; color: var(--primary);">— ' + dailyVerse.ref + '</span>';
+    }
+    
+    const greetingName = document.getElementById('pulseGreetingName');
+    if (greetingName && window.currentMember && window.currentMember.name) {
+        greetingName.innerText = "We're glad you're here, " + window.currentMember.name.split(' ')[0] + ".";
+    }
+};
+
+const _originalSwitchTabPulse = window.switchTab;
+window.switchTab = function(tabId) {
+    if (_originalSwitchTabPulse) _originalSwitchTabPulse(tabId);
+    if (tabId === 'pulseDashboardTab') window.loadDailyManna();
+};

@@ -9,7 +9,7 @@ const cron = require('node-cron');
 const app = express();
 
 app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private'); next(); });
-const PORT = process.env.PORT || 3000;
+const PORT = 3001;
 
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection:', reason));
