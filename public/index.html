@@ -23,7 +23,30 @@
         .growth-sub-tab { display: none; animation: fadeIn 0.3s ease-out; }
         .growth-sub-tab.active { display: block; }
     </style>
-</head>
+
+    <script>
+        // Fast-path interceptor: If an event query parameter exists, bypass portal login entirely
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('event')) {
+                // Hide preloader instantly when body loads
+                document.addEventListener('DOMContentLoaded', () => {
+                    const loader = document.getElementById('globalPreloader');
+                    if (loader) loader.style.display = 'none';
+                    const mainHeader = document.getElementById('mainHeader');
+                    if (mainHeader) mainHeader.style.display = 'none';
+                    const mainContainer = document.getElementById('mainContainer');
+                    if (mainContainer) mainContainer.style.display = 'block';
+                    
+                    // Hide all tabs except the public prereg tab
+                    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+                    const preregTab = document.getElementById('preregPublicTab');
+                    if (preregTab) preregTab.classList.add('active');
+                });
+            }
+        })();
+    </script>
+    </head>
 <body>
 
 <div id="globalPreloader" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #F8FAFC; z-index: 999999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease-out;">

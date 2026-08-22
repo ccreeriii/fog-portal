@@ -9,3 +9,7 @@ fog_community.db
 fog_community_PRE_MIGRATION_backup.db
 backups/
 node_modules/
+fog_community.db
+fog_community.db-wal
+fog_community.db-shm
+backups/
