@@ -115,6 +115,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS brain_crosswords (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, grid_size INTEGER, words_json TEXT, created_at DATETIME)`);
 
     // SCHEMA AUTO-HEALING
+    db.run("CREATE TABLE IF NOT EXISTS secret_prayer_pals (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, pal_youth_id INTEGER, week_start TEXT, UNIQUE(youth_id, week_start))", ()=>{});
     db.run(`ALTER TABLE youth ADD COLUMN google_id TEXT`, () => {});
     db.run(`ALTER TABLE youth ADD COLUMN facebook_id TEXT`, () => {});
     db.run(`ALTER TABLE youth ADD COLUMN account_tier TEXT DEFAULT 'New Member'`, () => {});
@@ -1334,6 +1335,13 @@ app.get('/api/growth-games/whoami', (req, res) => { db.get(`SELECT id, clue1, cl
 app.post('/api/growth-games/whoami/submit', (req, res) => { const { youth_id, question_id, clues_used, is_correct, actor } = req.body; db.get(`SELECT id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'whoami' AND game_id = ?`, [youth_id, question_id], (err, row) => { if (row) return res.status(400).json({ error: 'You already played this Who Am I!' }); db.run(`INSERT INTO brain_user_logs (youth_id, game_type, game_id, played_at) VALUES (?, 'whoami', ?, ?)`, [youth_id, question_id, getManilaTime()]); if (is_correct) { let pts = 15; if (clues_used === 2) pts = 10; if (clues_used === 3) pts = 5; awardPoints(youth_id, 'growth', pts, actor || 'System', 'Who Am I?'); res.json({ success: true, pointsAwarded: pts }); } else { res.json({ success: true, pointsAwarded: 0 }); } }); });
 app.get('/api/growth-games/verse-chain', (req, res) => { const { group_id } = req.query; db.get(`SELECT * FROM brain_verse_chain ORDER BY id DESC LIMIT 1`, [], (err, verse) => { if (!verse) return res.json({ verse: null, contributions: [] }); if (!group_id) return res.json({ verse, contributions: [] }); db.all(`SELECT word_index, youth_id, guessed_word FROM brain_verse_contributions WHERE group_id = ? AND verse_id = ?`, [group_id, verse.id], (err2, contribs) => { res.json({ verse, contributions: contribs || [] }); }); }); });
 app.post('/api/growth-games/verse-chain/submit', (req, res) => { const { youth_id, group_id, verse_id, word_index, guessed_word, actor } = req.body; if (!group_id) return res.status(400).json({error: "You must be in a small group to play this."}); db.run(`INSERT INTO brain_verse_contributions (group_id, verse_id, youth_id, word_index, guessed_word, created_at) VALUES (?, ?, ?, ?, ?, ?)`, [group_id, verse_id, youth_id, word_index, guessed_word, getManilaTime()], function(err) { if (err) return res.status(400).json({error: "Word already solved by your group!"}); awardPoints(youth_id, 'growth', 10, actor || 'System', 'Verse Chain'); res.json({ success: true, pointsAwarded: 10 }); }); });
+
+
+app.get('/api/prayer-pals/current/:youth_id', (req, res) => {
+    db.get('SELECT p.*, y.name as pal_name FROM secret_prayer_pals p JOIN youth y ON p.pal_youth_id = y.id WHERE p.youth_id = ? ORDER BY p.id DESC LIMIT 1', [req.params.youth_id], (err, row) => {
+        res.json(row || null);
+    });
+});
 
 app.listen(PORT, () => { console.log(`Server running safely on Port ${PORT}`); });
 

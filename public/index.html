@@ -129,10 +129,10 @@
                     <button class="btn btn-outline" style="margin-top: 15px; width: 100%;" onclick="showPreregStep(1)">Back</button>
                 </div>
 
+                
                 <div id="preregStepSuccess" style="display:none; text-align: center;">
                     <h2 style="color: var(--success); border: none; margin-bottom: 5px;">✅ Pre-Registered!</h2>
                     <p style="margin-bottom: 15px;">We are excited to see you there.</p>
-
                     <div style="background: var(--bg-light); padding: 20px; border-radius: 12px; margin: 15px 0; border: 1px solid var(--border-color);">
                         <h3 style="margin-bottom: 10px; font-size: 1.1rem; color: var(--text-main);">Your Quick Check-in QR Pass</h3>
                         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">
@@ -140,6 +140,14 @@
                             <strong>Note:</strong> Even without this QR, you can still go to the venue and join the event!
                         </p>
                         <div id="preregSuccessQrContainer" style="display: flex; justify-content: center; margin-bottom: 5px; background: white; padding: 15px; border-radius: 12px; display: inline-block;"></div>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 15px; margin-top: 5px;">For mobile device, long press on the QR code and save it to your photos or photo gallery/album.</p>
+                        <a id="preregSuccessQrDownload" class="btn btn-primary" download="Event-QR-Pass.png" style="width: 100%;">📥 Save to Photo Gallery</a>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 10px;">Please click the button above to download and keep a copy of your pass.</p>
+                        <button class="btn btn-outline" style="width: 100%; margin-top: 15px; border-color: var(--primary); color: var(--primary);" onclick="sharePreRegLink()">🔗 Share/invite a friend or someone</button>
+                    </div>
+                    <button class="btn btn-outline" style="width: 100%; margin-top: 5px;" onclick="closePublicPrereg()">Close</button>
+                </div>
+                <img id="preregPublicBottomBanner" src="" style="width: 100%; object-fit: contain; margin-top: 30px; border-top: 1px solid var(--border-color); padding-top: 20px; display: none;">
                         <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 15px; margin-top: 5px;">For mobile device, long press on the QR code and save it to your photos or photo gallery/album.</p>
                         <a id="preregSuccessQrDownload" class="btn btn-primary" download="Event-QR-Pass.png" style="width: 100%;">📥 Save to Photo Gallery</a>
                         <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 10px;">Please click the button above to download and keep a copy of your pass.</p>

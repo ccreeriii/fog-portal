@@ -2598,7 +2598,7 @@ window.filterPermUserList = async function() {
     container.innerHTML = matches.map(u => `
         <div class="search-item">
             <div><strong style="color:var(--text-main); font-size:1.05rem;">${u.name || 'Unknown'}</strong></div>
-            <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${(u.name || '').replace(/'/g, "\\'")}')">Select</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${(u.name || '').replace(/'/g, "\\'")}')">Click here to register</button>
         </div>
     `).join('');
 };
@@ -2698,3 +2698,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 1000);
 });
+
+
+window.loadSecretPrayerPal = async function() {
+    if (!currentMember || !currentMember.id) return;
+    try {
+        const res = await fetch('/api/prayer-pals/current/' + currentMember.id);
+        const data = await res.json();
+        const palNameElem = document.getElementById('pulsePrayerPalName');
+        if (palNameElem) {
+            palNameElem.innerText = data && data.pal_name ? data.pal_name : "Not assigned yet.";
+        }
+    } catch(e) {}
+};
