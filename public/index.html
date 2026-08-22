@@ -22,7 +22,8 @@
         .ai-pill-btn:hover { background: #10B981; color: #FFF; }
         .growth-sub-tab { display: none; animation: fadeIn 0.3s ease-out; }
         .growth-sub-tab.active { display: block; }
-    </style>
+        body:has(.modal.active) .bottom-nav { display: none !important; }
+</style>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>.bottom-nav { z-index: 90 !important; } .modal { z-index: 9999 !important; }</style>
 </head>
@@ -206,17 +207,43 @@
     </div>
 
     
-    <div id="pulseDashboardTab" class="tab-content">
-        <div class="card" style="padding: 0; overflow: hidden; border: none; background: var(--bg-light); box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-            <div style="padding: 25px 20px; background: linear-gradient(135deg, var(--primary), #F59E0B); color: #FFF; text-align: center; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;">
-                <h2 style="margin: 0; font-size: 1.8rem; border: none; color: #FFF;">Home Dashboard</h2>
-                <p id="pulseGreetingName" style="font-size: 1.1rem; opacity: 0.9; margin-top: 5px;">Fellowship First</p>
+    <div id="pulseDashboardTab" class="tab-content active">
+        <div style="background: linear-gradient(135deg, var(--primary), #F59E0B); padding: 35px 20px 25px 20px; text-align: center; border-bottom-left-radius: 24px; border-bottom-right-radius: 24px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+            <h2 style="margin: 0; font-size: 1.8rem; border: none; color: #FFF;">Home Dashboard</h2>
+            <p id="pulseGreetingName" style="font-size: 1.1rem; opacity: 0.9; margin-top: 5px;">Welcome to your journey!</p>
+        </div>
+
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 15px; margin-top: -15px;">
+            
+            <!-- Phase 1: Encounter -->
+            <div class="card" style="margin: 0; border-left: 4px solid #10B981; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">📖 Phase 1: Encounter</h3>
+                <p id="pulseDailyGospelText" style="font-size: 1rem; color: var(--text-main); font-style: italic; margin: 0; line-height: 1.5;">Loading Daily Manna...</p>
             </div>
-            <div style="padding: 20px; display: flex; flex-direction: column; gap: 15px; margin-top: -10px;">
-                <div style="background: #FFF; padding: 15px; border-radius: 12px; border-left: 4px solid #10B981; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
-                    <h3 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">📖 Daily Manna</h3>
-                    <p id="pulseDailyGospelText" style="font-size: 1rem; color: var(--text-main); font-style: italic; margin: 0; line-height: 1.5;">Loading daily verse...</p>
+
+            <!-- Phase 2: Belonging -->
+            <div id="pulsePrayerPalWidget" class="card" style="margin: 0; border-left: 4px solid #8B5CF6; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">🤫 Phase 2: Belonging</h3>
+                <p style="font-size: 1rem; color: var(--text-main); margin: 0;">Your Secret Prayer Pal is <strong id="pulsePrayerPalName" style="color: #8B5CF6;">Loading...</strong></p>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">Reach out and ask how you can pray for them this week!</p>
+            </div>
+
+            <!-- Your Pathway (Phases 3+) -->
+            <div class="card" style="margin: 0; border-left: 4px solid var(--primary); padding: 15px; background: var(--bg-light); box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px;">📍 My Journey</h3>
+                <div style="display: flex; align-items: center; justify-content: space-between; background: #FFF; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div>
+                        <strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Connect</strong>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Join an upcoming gathering</p>
+                    </div>
+                    <button class="btn btn-outline btn-sm" onclick="switchTab('eventsTab')">View</button>
                 </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <button class="btn btn-primary" style="padding: 12px; font-weight: bold; border-radius: 12px;" onclick="switchTab('eventsTab')">📅 Events</button>
+                <button class="btn btn-outline" style="padding: 12px; font-weight: bold; border-radius: 12px; color: var(--text-main); border-color: var(--border-color);" onclick="switchTab('discipleshipTab')">🔥 Campfire</button>
             </div>
         </div>
     </div>
