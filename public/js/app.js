@@ -2711,3 +2711,149 @@ window.loadSecretPrayerPal = async function() {
         }
     } catch(e) {}
 };
+
+// ==========================================
+// V3 DYNAMIC KOINONIA NAVIGATION PATCH
+// ==========================================
+
+// Override standard login routing to go to Home instead of Profile
+const _origHandleLogin = window.handleLogin;
+window.handleLogin = async function(e) {
+    e.preventDefault();
+    document.getElementById('globalPreloader').style.display = 'flex';
+    document.getElementById('globalPreloader').style.opacity = '1';
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: document.getElementById('loginUser').value, password: document.getElementById('loginPass').value })
+        });
+        const data = await res.json();
+        if (data.success) {
+            currentUser = data.username; currentMember = data.member; userPermissions = data.permissions || [];
+            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            window.buildNav();
+            if(window.applyGranularPermissions) window.applyGranularPermissions();
+            if(window.loadDailyManna) window.loadDailyManna();
+            if(window.loadSecretPrayerPal) window.loadSecretPrayerPal();
+            switchTab('pulseDashboardTab');
+        } else { alert(data.message); }
+    } catch (err) { alert('Network Error'); }
+    finally { 
+        document.getElementById('globalPreloader').style.opacity = '0';
+        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500); 
+    }
+};
+
+window.checkLoginState = function() {
+    const saved = localStorage.getItem('fog_user');
+    if (saved) {
+        const userObj = JSON.parse(saved);
+        currentUser = userObj.username; currentMember = userObj.member; userPermissions = userObj.permissions || [];
+        window.buildNav();
+        if(window.applyGranularPermissions) window.applyGranularPermissions();
+        if(window.loadDailyManna) window.loadDailyManna();
+        if(window.loadSecretPrayerPal) window.loadSecretPrayerPal();
+        switchTab('pulseDashboardTab');
+    } else {
+        switchTab('loginTab');
+        const loader = document.getElementById('globalPreloader');
+        if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 500); }
+    }
+};
+
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+    const isAdmin = window.hasPerm && (window.hasPerm('edit_entries') || currentUser === 'celsocreeriii@gmail.com');
+    let bHtml = '';
+
+    if (context === 'arcadeTab') {
+        bHtml = `
+            <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+            <button class="bottom-nav-btn" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+            <button class="bottom-nav-btn active" onclick="switchTab('arcadeTab')"><span>🎯</span>Arcade</button>
+            <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab')"><span>🌱</span>Grow</button>
+            <button class="bottom-nav-btn" onclick="switchTab('leaderboardsHubTab')"><span>🏆</span>Ranks</button>
+            <button class="bottom-nav-btn text-danger" onclick="logout()"><span>🚪</span>Logout</button>
+        `;
+    } else if (context === 'discipleshipTab') {
+        bHtml = `
+            <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+            <button class="bottom-nav-btn active" onclick="switchTab('discipleshipTab')"><span>🌱</span>Growth</button>
+            <button class="bottom-nav-btn" onclick="switchTab('leaderboardsHubTab')"><span>🏆</span>Ranks</button>
+            <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+            <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+            <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        `;
+    } else {
+        // Default View (Home, Profile, etc)
+        bHtml = `
+            <button class="bottom-nav-btn ${context === 'pulseDashboardTab' ? 'active' : ''}" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+            <button class="bottom-nav-btn ${context === 'profileTab' ? 'active' : ''}" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+            <button class="bottom-nav-btn ${context === 'arcadeTab' ? 'active' : ''}" onclick="switchTab('arcadeTab')"><span>🎯</span>Arcade</button>
+            <button class="bottom-nav-btn ${context === 'discipleshipTab' ? 'active' : ''}" onclick="switchTab('discipleshipTab')"><span>🌱</span>Grow</button>
+        `;
+        if (isAdmin) {
+            bHtml += `<button class="bottom-nav-btn" onclick="openSidebar()"><span>☰</span>Menu</button>`;
+        } else {
+            bHtml += `<button class="bottom-nav-btn text-danger" onclick="logout()"><span>🚪</span>Logout</button>`;
+        }
+    }
+    bottomNav.innerHTML = bHtml;
+};
+
+window.buildNav = function() {
+    const sidebar = document.getElementById('sidebarNav');
+    if (!sidebar) return;
+    const isAdmin = window.hasPerm && (window.hasPerm('edit_entries') || currentUser === 'celsocreeriii@gmail.com');
+
+    // Force bottom nav to show for everyone (including Admins)
+    const bottomNav = document.getElementById('bottomNav');
+    if(bottomNav) bottomNav.style.display = 'flex';
+
+    let sidebarHtml = `
+        <div class="sidebar-header">
+            <img src="/img/logo.png" alt="Logo" class="fog-header-logo" onerror="this.style.display='none'">
+            <h2>FOG V3</h2>
+        </div>
+        <button class="nav-btn" onclick="switchTab('pulseDashboardTab')">🏠 Home</button>
+        <button class="nav-btn" onclick="switchTab('profileTab')">👤 My Profile</button>
+        <button class="nav-btn" onclick="switchTab('inboxTab')">🔔 Inbox</button>
+        <button class="nav-btn" onclick="switchTab('arcadeTab')">🎯 FOG Arcade</button>
+        <button class="nav-btn" onclick="switchTab('discipleshipTab')">🌱 Spiritual Growth</button>
+    `;
+
+    if (isAdmin) {
+        document.getElementById('hamburgerBtn').style.display = 'block';
+        sidebarHtml += `
+            <hr style="border-color: #334155; margin: 15px 0;">
+            <p style="color: #94A3B8; font-size: 0.75rem; margin-left: 15px; text-transform: uppercase;">Leadership Tools</p>
+            <button class="nav-btn" onclick="switchTab('checkinTab')">📸 Event Check-In</button>
+            <button class="nav-btn" onclick="switchTab('eventsTab')">📅 Events Admin</button>
+            <button class="nav-btn" onclick="switchTab('directoryTab')">👥 Directory</button>
+            <button class="nav-btn" onclick="switchTab('ministriesTab')">🏛️ Ministries</button>
+            <button class="nav-btn" onclick="switchTab('worshipTab')">🎵 Worship Hub</button>
+            <button class="nav-btn" onclick="switchTab('discipleshipAdminTab')">⚙️ Discipleship Admin</button>
+            <button class="nav-btn" onclick="switchTab('communicationsAdminTab')">📢 Broadcasts</button>
+            <button class="nav-btn" onclick="switchTab('aiAssistantTab')">🤖 AI Assistant</button>
+            <button class="nav-btn" onclick="switchTab('permissionsTab')">🔑 Permissions</button>
+            <button class="nav-btn" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>
+            <button class="nav-btn" onclick="switchTab('activityLogsTab')">📝 Audit Logs</button>
+        `;
+    } else {
+        document.getElementById('hamburgerBtn').style.display = 'none';
+    }
+
+    sidebarHtml += `<button class="nav-btn text-danger" onclick="logout()" style="margin-top: auto;">🚪 Logout</button>`;
+    sidebar.innerHTML = sidebarHtml;
+
+    // Trigger bottom nav render based on the currently active tab
+    const activeTab = document.querySelector('.tab-content.active');
+    window.renderBottomNav(activeTab ? activeTab.id : 'pulseDashboardTab');
+};
+
+const _originalSwitchTabNav = window.switchTab;
+window.switchTab = function(tabId) {
+    if (_originalSwitchTabNav) _originalSwitchTabNav(tabId);
+    if (window.renderBottomNav) window.renderBottomNav(tabId);
+};
