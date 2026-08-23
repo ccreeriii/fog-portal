@@ -21,6 +21,40 @@ const publicVapidKey = 'BPjMZjGy5VeLPQXNdkiJvfgeMAzQ0db3Pp_0ulzDv8s222iCcF6A7W0s
 const privateVapidKey = 'rIOhhPjfafLULXqq96N6S3g5xxVllVVrf50GkDiLmYc';
 webpush.setVapidDetails('mailto:celsocreeriii@gmail.com', publicVapidKey, privateVapidKey);
 
+
+// SILAS SECRET PRAYER PAL ENGINE (STRICT GENDER MATCHING)
+cron.schedule('0 9 * * 1', () => { // Every Monday at 9:00 AM
+    console.log('[CRON] Silas is assigning gender-strict Secret Prayer Pals...');
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const pad = (n) => String(n).padStart(2, '0');
+    const weekStart = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+    const assignPalsByGender = (gender) => {
+        db.all(`SELECT id FROM youth WHERE gender = ? AND account_tier != 'New Member'`, [gender], (err, members) => {
+            if (!members || members.length < 2) return;
+            
+            // Fisher-Yates Shuffle
+            let shuffled = [...members];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+
+            const stmt = db.prepare(`INSERT OR IGNORE INTO secret_prayer_pals (youth_id, pal_youth_id, week_start) VALUES (?, ?, ?)`);
+            for (let i = 0; i < shuffled.length; i++) {
+                const current = shuffled[i];
+                const next = shuffled[(i + 1) % shuffled.length]; // Circular assignment ensures everyone gives and receives
+                stmt.run([current.id, next.id, weekStart]);
+            }
+            stmt.finalize();
+        });
+    };
+
+    assignPalsByGender('Male');
+    assignPalsByGender('Female');
+
+}, { scheduled: true, timezone: "Asia/Manila" });
+
 const getManilaTime = () => {
     const d = new Date();
     const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
@@ -115,6 +149,10 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS brain_crosswords (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, grid_size INTEGER, words_json TEXT, created_at DATETIME)`);
 
     // SCHEMA AUTO-HEALING
+    db.run("ALTER TABLE youth ADD COLUMN gender TEXT", ()=>{});
+    db.run("ALTER TABLE youth ADD COLUMN commitment_intent TEXT", ()=>{});
+    db.run("ALTER TABLE ministry_members ADD COLUMN intent_message TEXT", ()=>{});
+
     db.run("CREATE TABLE IF NOT EXISTS secret_prayer_pals (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, pal_youth_id INTEGER, week_start TEXT, UNIQUE(youth_id, week_start))", ()=>{});
     db.run(`ALTER TABLE youth ADD COLUMN google_id TEXT`, () => {});
     db.run(`ALTER TABLE youth ADD COLUMN facebook_id TEXT`, () => {});
@@ -622,10 +660,10 @@ app.post('/api/login', (req, res) => {
 app.post('/api/logout', (req, res) => { logActivity(req.body.username, 'LOGOUT', 'User logged out'); res.json({ success: true }); });
 
 app.put('/api/youth/profile/:id', (req, res) => {
-    const { name, age, birthday, social_media, parents_name, password, email, profile_picture, actor } = req.body;
-    let sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, password=?, email=? WHERE id=?`;
-    let params = [name, age, birthday, social_media, parents_name, password, email, req.params.id];
-    if (profile_picture !== undefined) { sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, password=?, email=?, profile_picture=? WHERE id=?`; params = [name, age, birthday, social_media, parents_name, password, email, profile_picture, req.params.id]; }
+    const { name, age, birthday, social_media, parents_name, password, email, profile_picture, gender, actor } = req.body;
+    let sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, password=?, email=?, gender=? WHERE id=?`;
+    let params = [name, age, birthday, social_media, parents_name, password, email, gender, req.params.id];
+    if (profile_picture !== undefined) { sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, password=?, email=?, profile_picture=?, gender=? WHERE id=?`; params = [name, age, birthday, social_media, parents_name, password, email, profile_picture, gender, req.params.id]; }
     db.run(sql, params, function (err) {
         if (err) return res.status(500).json({ error: err.message });
         db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [password, req.params.id]);
@@ -1340,6 +1378,32 @@ app.post('/api/growth-games/verse-chain/submit', (req, res) => { const { youth_i
 app.get('/api/prayer-pals/current/:youth_id', (req, res) => {
     db.get('SELECT p.*, y.name as pal_name FROM secret_prayer_pals p JOIN youth y ON p.pal_youth_id = y.id WHERE p.youth_id = ? ORDER BY p.id DESC LIMIT 1', [req.params.youth_id], (err, row) => {
         res.json(row || null);
+    });
+});
+
+
+// ==========================================
+// PHASE 3: COMMITMENT PLEDGE ENDPOINT
+// ==========================================
+app.post('/api/youth/:id/commit', (req, res) => {
+    const youthId = req.params.id;
+    const { actor, intent_message } = req.body;
+
+    db.run(`UPDATE youth SET account_tier = 'Committed Member', commitment_intent = ? WHERE id = ?`, [intent_message, youthId], function(err) {
+        if (err) return res.status(500).json({ success: false, error: 'Database error updating tier: ' + err.message });
+
+        db.get(`SELECT permissions FROM users WHERE youth_id = ?`, [youthId], (err, user) => {
+            let perms = [];
+            if (user && user.permissions) { try { perms = JSON.parse(user.permissions); } catch(e) {} }
+            if (!perms.includes('access_directory')) perms.push('access_directory');
+
+            db.run(`UPDATE users SET permissions = ? WHERE youth_id = ?`, [JSON.stringify(perms), youthId], function(err2) {
+                logActivity(actor || 'System', 'COMMITMENT_PLEDGE', `Member ID ${youthId} committed with intent: ${intent_message}`);
+                db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err3, member) => {
+                    res.json({ success: true, member, permissions: perms });
+                });
+            });
+        });
     });
 });
 
