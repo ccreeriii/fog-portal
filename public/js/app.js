@@ -4965,3 +4965,77 @@ window.loadMembershipAdminData = async function() {
         window.filterMinistryLogs();
     } catch(e) {}
 };
+
+// ==========================================
+// V35: PRECISE Z-INDEX, PASS ID & SAFE SAVES
+// ==========================================
+
+// 1. EXACT Z-INDEX TARGETING
+const styleFixV35 = document.createElement('style');
+styleFixV35.innerHTML = `
+    #editMinistryRoleModal { z-index: 99999 !important; }
+    #ministryDetailsModal { z-index: 1050 !important; }
+`;
+document.head.appendChild(styleFixV35);
+
+// 2. ACTIVATE EXISTING PASS ID PLACEHOLDER (Only on My Profile)
+const origPopulateV35 = window.populateProfileTab;
+if (origPopulateV35 && !window.v35PopulatePatched) {
+    window.populateProfileTab = function(member) {
+        origPopulateV35(member);
+        setTimeout(() => {
+            const codeEl = document.getElementById('myProfileCode');
+            if (codeEl) {
+                codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
+                codeEl.style.display = 'inline-block';
+            }
+        }, 100);
+    };
+    window.v35PopulatePatched = true;
+}
+
+// 3. SAFE SAVE BUTTON WRAPPER (Prevents Infinite Loops!)
+const origSaveMinRoleV35 = window.saveMinistryRoleEdit;
+if (origSaveMinRoleV35 && !window.v35SavePatched) {
+    window.saveMinistryRoleEdit = async function() {
+        const nativeFetch = window.fetch;
+        window.fetch = async function(url, opts) {
+            if (opts && opts.method === 'PUT' && typeof opts.body === 'string') {
+                try {
+                    let b = JSON.parse(opts.body);
+                    b.actor = window.currentUser || 'Admin';
+                    opts.body = JSON.stringify(b);
+                } catch(e) {}
+            }
+            return await nativeFetch.apply(this, arguments);
+        };
+        try {
+            await origSaveMinRoleV35();
+        } finally {
+            // GUARANTEE fetch is restored to normal so no other buttons break
+            window.fetch = nativeFetch; 
+        }
+    };
+    window.v35SavePatched = true;
+}
+
+// 4. DROPDOWN OVERRIDE (Targeting exact modal)
+setInterval(() => {
+    const select = document.querySelector('#editMinistryRoleModal select');
+    if (select && !select.classList.contains('patched-v35')) {
+        if (select.innerHTML.includes('value="Member"')) {
+            const currentVal = select.value;
+            select.innerHTML = `
+                <option value="Ministry Head">Ministry Head</option>
+                <option value="Assistant Ministry Head">Assistant Ministry Head</option>
+                <option value="Youth Ministry Head">Youth Ministry Head</option>
+                <option value="Core">Core</option>
+                <option value="Member">Member</option>
+                <option value="Integration Period">Integration Period</option>
+            `;
+            if (currentVal && !select.innerHTML.includes(currentVal)) select.innerHTML += `<option value="${currentVal}">${currentVal}</option>`;
+            select.value = currentVal;
+            select.classList.add('patched-v35');
+        }
+    }
+}, 1000);
