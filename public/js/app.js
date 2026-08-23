@@ -4556,40 +4556,7 @@ setInterval(() => {
 }, 1000);
 
 // 3. MASTER FETCH INTERCEPTOR (Safe & Unified)
-if (!window.masterFetchPatched) {
-    const nativeFetch = window.fetch;
-    window.fetch = async function(url, options) {
-        // A. Ministry Role Logs
-        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/members/') && url.includes('/api/ministries')) {
-            try {
-                url = url.replace(/\/api\/ministries(\-v\d+)?\//, '/api/ministries-v36/');
-                if (options.body) {
-                    let bodyObj = JSON.parse(options.body);
-                    bodyObj.actor = (window.currentMember && window.currentMember.name) ? window.currentMember.name : (window.currentUser || 'Admin');
-                    options.body = JSON.stringify(bodyObj);
-                }
-            } catch(e) {}
-        }
-        // B. Profile Updates (Mobile/Address)
-        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/api/youth/profile/')) {
-            try {
-                url = url.replace(/\/api\/youth(\-v\d+)?\/profile\//, '/api/youth-v37/profile/');
-                if (options.body) {
-                    let bodyObj = JSON.parse(options.body);
-                    const myMob = document.getElementById('myEditMobile'), myAdd = document.getElementById('myEditAddress');
-                    const edMob = document.getElementById('editMemberMobile'), edAdd = document.getElementById('editMemberAddress');
-                    if (myMob && myMob.value) bodyObj.mobile = myMob.value;
-                    if (myAdd && myAdd.value) bodyObj.address = myAdd.value;
-                    if (edMob && edMob.value) bodyObj.mobile = edMob.value;
-                    if (edAdd && edAdd.value) bodyObj.address = edAdd.value;
-                    options.body = JSON.stringify(bodyObj);
-                }
-            } catch(e) {}
-        }
-        return nativeFetch.apply(this, [url, options]);
-    };
-    window.masterFetchPatched = true;
-}
+
 
 // 4. DYNAMIC UI INJECTOR (Inputs & Overrides)
 setInterval(() => {
@@ -4853,4 +4820,72 @@ window.approveFullMember = async function(id) {
         });
         window.loadMembershipAdminData();
     } catch(e) { alert('Error processing approval.'); }
+};
+
+// ==========================================
+// V39: FULL NAME LOGS & CLEAN PROFILE UI
+// ==========================================
+
+// 1. BULLETPROOF FETCH INTERCEPTOR (Extracts Real Name from LocalStorage)
+if (!window.v39FetchPatched) {
+    const nativeFetchV39 = window.fetch;
+    window.fetch = async function(url, options) {
+        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/members/') && url.includes('/api/ministries')) {
+            try {
+                url = url.replace(/\/api\/ministries(\-v\d+)?\//, '/api/ministries-v36/');
+                if (options.body) {
+                    let bodyObj = JSON.parse(options.body);
+                    
+                    // Forcefully rip the full name directly from the local cache
+                    let realName = window.currentUser || 'Admin';
+                    try {
+                        const localUser = JSON.parse(localStorage.getItem('fog_user'));
+                        if (localUser && localUser.member && localUser.member.name) {
+                            realName = localUser.member.name;
+                        }
+                    } catch(err) {}
+                    
+                    bodyObj.actor = realName;
+                    options.body = JSON.stringify(bodyObj);
+                }
+            } catch(e) {}
+        }
+        
+        // Profile Update Interceptor
+        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/api/youth/profile/')) {
+            try {
+                url = url.replace(/\/api\/youth(\-v\d+)?\/profile\//, '/api/youth-v37/profile/');
+                if (options.body) {
+                    let bodyObj = JSON.parse(options.body);
+                    const myMob = document.getElementById('myEditMobile'), myAdd = document.getElementById('myEditAddress');
+                    const edMob = document.getElementById('editMemberMobile'), edAdd = document.getElementById('editMemberAddress');
+                    if (myMob && myMob.value) bodyObj.mobile = myMob.value;
+                    if (myAdd && myAdd.value) bodyObj.address = myAdd.value;
+                    if (edMob && edMob.value) bodyObj.mobile = edMob.value;
+                    if (edAdd && edAdd.value) bodyObj.address = edAdd.value;
+                    options.body = JSON.stringify(bodyObj);
+                }
+            } catch(e) {}
+        }
+        return nativeFetchV39.apply(this, [url, options]);
+    };
+    window.v39FetchPatched = true;
+}
+
+// 2. CLEAN PROFILE UI (Wipes Redundant Mobile)
+const origPopV39 = window.populateProfileTab;
+window.populateProfileTab = function(member) {
+    if (origPopV39) origPopV39(member);
+    setTimeout(() => {
+        const pTags = Array.from(document.querySelectorAll('#profileTab p, #profileTab div'));
+        for (let p of pTags) {
+            // Find the exact paragraph holding the contact info and rebuild it from scratch
+            if (p.innerHTML.includes('<strong>Mobile:</strong>') || p.innerHTML.includes('<strong>Email:</strong>')) {
+                p.innerHTML = `<strong>Email:</strong> ${member.email || 'N/A'}<br>
+                               <strong>Mobile:</strong> ${member.mobile || 'N/A'}<br>
+                               <strong>Address:</strong> ${member.address || 'N/A'}`;
+                break; // Stop after fixing the contact block
+            }
+        }
+    }, 200);
 };
