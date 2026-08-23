@@ -4021,3 +4021,197 @@ window.loadPendingApplications = async function() {
         </div>`).join('');
     } catch(e) { list.innerHTML = '<div style="text-align:center; color:var(--danger);">Network error.</div>'; }
 };
+
+// ==========================================
+// V26: ISOLATED FIXES (MESSAGES, PASSWORD BUG, MODERATION UI)
+// ==========================================
+
+// --- FIX 1: BEAUTIFUL SUCCESS MODALS FOR WORKFLOWS ---
+if (!document.getElementById('customSuccessModal')) {
+    document.body.insertAdjacentHTML('beforeend', `
+    <div id="customSuccessModal" class="modal" style="z-index: 99999;">
+        <div class="modal-content" style="max-width: 450px; text-align: center; padding: 30px 20px;">
+            <div id="csmIcon" style="font-size: 3rem; margin-bottom: 10px;">🎉</div>
+            <h2 id="csmTitle" style="color: var(--primary); margin-bottom: 10px; border: none;">Success</h2>
+            <p id="csmMessage" style="font-size: 0.95rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 20px; white-space: pre-wrap; text-align: left;"></p>
+            <button class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; border-radius: 12px;" onclick="document.getElementById('customSuccessModal').classList.remove('active'); document.body.style.overflow = 'auto';">Awesome, thanks!</button>
+        </div>
+    </div>`);
+}
+
+window.showSuccessMessage = function(icon, title, message) {
+    document.getElementById('csmIcon').innerText = icon;
+    document.getElementById('csmTitle').innerText = title;
+    document.getElementById('csmMessage').innerText = message;
+    document.getElementById('customSuccessModal').style.display = 'flex';
+    document.getElementById('customSuccessModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+};
+
+window.submitCommitment = async function(e) {
+    if(e) e.preventDefault();
+    const msg = document.getElementById('commitmentIntentMsg').value.trim();
+    if (!msg) return alert('Please share your reflection.');
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/commit', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: currentMember.name, intent_message: msg })
+        });
+        const data = await res.json();
+        if (data.success) {
+            currentMember = data.member;
+            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            closeCommitmentModal();
+            if(window.renderHomeJourney) window.renderHomeJourney();
+            
+            showSuccessMessage('🕊️', 'Welcome to the Family!', "Thank you for choosing to belong to Fire of God Ministries. This is a beautiful step in your spiritual journey.\n\nWe are excited to walk alongside you in faith, fellowship, and formation. Welcome home!");
+        } else { alert(data.error || 'Failed to submit commitment.'); }
+    } catch(err) { alert('Network Error'); }
+};
+
+window.submitMinistryIntent = async function(e) {
+    if(e) e.preventDefault();
+    const minId = document.getElementById('ministrySelect').value;
+    const msg = document.getElementById('ministryIntentMsg').value.trim();
+    if (!minId || !msg) return alert('Please complete all fields.');
+    try {
+        const payload = { youth_id: currentMember.id, intent_message: msg, actor: currentMember.name || 'Member' };
+        const res = await fetch(`/api/ministries/${minId}/apply`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.success) { 
+            closeMinistryIntentModal(); 
+            if (window.renderHomeJourney) window.renderHomeJourney(); 
+            if (window.loadMyV3Roles) window.loadMyV3Roles(); 
+            
+            showSuccessMessage('🌱', 'Intent Received!', "Thank you for stepping out in faith to serve!\n\nPlease note that joining a ministry is a process of discernment and growth. You will be invited to undergo specific activities and formations as you journey toward becoming a full-fledged team member. \n\nWe are excited for what God will do through you!");
+        } else { alert(data.error || 'Failed to submit application. You may already be in this ministry.'); }
+    } catch(err) { alert('Network error.'); }
+};
+
+// --- FIX 2: PREVENT PASSWORD OVERWRITING ON ADMIN EDITS ---
+window.submitFastEditProfile = async function(doCheckIn) {
+    const form = document.getElementById('fastEditProfileForm');
+    if(!form.checkValidity()) { form.reportValidity(); return; }
+
+    const id = document.getElementById('fastEditMemberId').value;
+    const fileInput = document.getElementById('fastEditProfilePic');
+    let picBase64 = undefined;
+    if (fileInput && fileInput.files && fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
+
+    const payload = {
+        name: document.getElementById('fastEditName').value, email: document.getElementById('fastEditEmail').value,
+        age: document.getElementById('fastEditAge').value, birthday: document.getElementById('fastEditBirthday').value,
+        social_media: document.getElementById('fastEditSocial').value, parents_name: document.getElementById('fastEditParents').value,
+        profile_picture: picBase64, 
+        password: '', // CRITICAL FIX: Empty string preserves the existing password in backend!
+        actor: currentUser
+    };
+    window.triggerActionConfirmation(`Confirm updating profile for ${payload.name}?`, async () => {
+        const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if(data.success) {
+            window.closeFastEditProfileModal(); youthData = []; await window.loadDirectory();
+            if(doCheckIn) window.quickCheckin(id, payload.name);
+            else {
+                alert("Profile updated successfully! (Password safely preserved)");
+                window.updateActiveEventBanner();
+                if(currentAnalyticsData) window.openAnalyticsModal(currentAnalyticsData.event.id);
+            }
+        }
+    });
+};
+
+window.saveMemberEditWithConfirm = async function() {
+    const form = document.getElementById('editMemberModal').querySelector('form');
+    if(!form.checkValidity()) { form.reportValidity(); return; }
+
+    const id = document.getElementById('editMemberId').value;
+    const fileInput = document.getElementById('editMemberProfilePic');
+    let picBase64 = undefined;
+    if (fileInput && fileInput.files && fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
+
+    const payload = {
+        name: document.getElementById('editMemberName').value, email: document.getElementById('editMemberEmail').value,
+        age: document.getElementById('editMemberAge').value, birthday: document.getElementById('editMemberBirthday').value,
+        social_media: document.getElementById('editMemberSocial').value, parents_name: document.getElementById('editMemberParents').value,
+        password: '', // CRITICAL FIX: Empty string preserves the existing password in backend!
+        profile_picture: picBase64, actor: currentUser
+    };
+    window.triggerActionConfirmation(`Confirm updating member profile for '${payload.name}'?`, async () => {
+        await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        window.closeEditMemberModal(); youthData = []; window.loadDirectory();
+    });
+};
+
+// --- FIX 3: ENSURE MODERATION TAB RENDERS HEIGHT FULLY ---
+window.ensureModerationDOM = function() {
+    let modTab = document.getElementById('subTabMinistryModeration');
+    if (!modTab) {
+        const listTab = document.getElementById('subTabMinistryList');
+        if (listTab) {
+            listTab.insertAdjacentHTML('afterend', `
+            <div id="subTabMinistryModeration" class="ministry-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out; width: 100%;">
+                <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02); min-height: 200px;">
+                    <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Application</h3>
+                    <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px; width: 100%;"></div>
+                </div>
+            </div>`);
+        }
+    } else {
+        if (!document.getElementById('pendingApplicationsList')) {
+            const header = modTab.querySelector('h3');
+            if (header) header.insertAdjacentHTML('afterend', '<div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px; width: 100%;"></div>');
+        }
+    }
+};
+
+window.switchMinistrySubTab = function(tab) {
+    const tabs = ['list', 'moderation', 'create'];
+    tabs.forEach(t => {
+        const capitalTab = t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById('subTabMinistry' + capitalTab);
+        const btn = document.getElementById('btnSubMinistry' + capitalTab);
+        
+        if (el) el.style.display = (tab === t) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', tab === t);
+    });
+
+    if (tab === 'list') window.loadMinistries();
+    if (tab === 'moderation') {
+        window.ensureModerationDOM();
+        if (window.loadPendingApplications) window.loadPendingApplications();
+    }
+};
+
+window.loadPendingApplications = async function() {
+    window.ensureModerationDOM();
+    const list = document.getElementById('pendingApplicationsList');
+    if (!list) return;
+    
+    list.innerHTML = '<div style="text-align:center; padding: 20px; color:var(--text-muted);">Loading pending applications...</div>';
+    
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">No pending applications right now!</div>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+        <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                    <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                    <button type="button" class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { list.innerHTML = '<div style="text-align:center; padding: 20px; color:var(--danger);">Network error fetching applications.</div>'; }
+};
