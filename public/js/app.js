@@ -1,3 +1,23 @@
+
+// --- RESTORED LOGOUT FUNCTION ---
+window.logout = async function() {
+    if (!confirm('Are you sure you want to log out?')) return;
+    try {
+        if (typeof currentUser !== 'undefined' && currentUser) {
+            await fetch('/api/logout', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({username: currentUser}) 
+            });
+        }
+        localStorage.removeItem('fog_user');
+        window.location.reload();
+    } catch(e) {
+        localStorage.removeItem('fog_user');
+        window.location.reload();
+    }
+};
+
 let currentUser = null;
 let currentMember = null;
 let userPermissions = [];
@@ -2998,34 +3018,80 @@ window.submitMinistryIntent = async function(e) {
     } catch(err) { alert('Network error.'); }
 };
 
+
+// --- INVINCIBLE MODERATION DASHBOARD ---
 window.loadPendingApplications = async function() {
-    let board = document.getElementById('pendingApplicationsBoard');
-    if (!board) {
-        const parentList = document.getElementById('subTabMinistryList');
-        if (parentList) {
-            parentList.insertAdjacentHTML('afterbegin', `<div id="pendingApplicationsBoard" style="margin-bottom: 25px; display: none; background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color);"><h3 style="color: #F59E0B; margin-top: 0;">📋 Pending Ministry Expressions</h3><div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;"></div></div>`);
-            board = document.getElementById('pendingApplicationsBoard');
-        }
-    }
-    const list = document.getElementById('pendingApplicationsList');
-    if (!list || !board) return;
     try {
         const res = await fetch('/api/ministries/applications/pending');
         const apps = await res.json();
-        if (!apps || apps.length === 0) { board.style.display = 'none'; return; }
+        
+        let board = document.getElementById('pendingApplicationsBoard');
+        
+        if (!apps || apps.length === 0) {
+            if (board) board.style.display = 'none';
+            return;
+        }
+
+        // If the board got wiped out by loadMinistries(), rebuild it
+        if (!board) {
+            const parentList = document.getElementById('subTabMinistryList');
+            if (parentList) {
+                const ui = `
+                <div id="pendingApplicationsBoard" style="margin-bottom: 25px; background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+                    <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                        <span>📋</span> Pending Ministry Expressions
+                    </h3>
+                    <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;"></div>
+                </div>`;
+                parentList.insertAdjacentHTML('afterbegin', ui);
+                board = document.getElementById('pendingApplicationsBoard');
+            }
+        }
+
+        if (!board) return; // Failsafe
         board.style.display = 'block';
+
+        const list = document.getElementById('pendingApplicationsList');
+        if (!list) return;
+
         let html = '';
         apps.forEach(app => {
-            html += `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B;">
-                <strong>${app.applicant_name}</strong> <span style="font-size:0.8rem; background:#FEF3C7; color:#D97706; padding:2px 8px; border-radius:12px;">${app.ministry_name}</span>
-                <p style="font-size:0.9rem; font-style:italic; margin:5px 0;">"${app.intent_message}"</p>
-                <button class="btn btn-outline btn-sm text-danger" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
-                <button class="btn btn-primary btn-sm" style="background:#10B981; border:none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
-            </div>`;
+            html += `
+                <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                            <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                            <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger);" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                            <button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                        </div>
+                    </div>
+                </div>
+            `;
         });
         list.innerHTML = html;
-    } catch(e) {}
+    } catch(e) {
+        console.error('Failed to load pending applications', e);
+    }
 };
+
+// Create an Observer to constantly watch the Ministries Tab. 
+// If loadMinistries() wipes the board, the observer instantly injects it back.
+const observeMinistriesTab = () => {
+    const minTab = document.getElementById('subTabMinistryList');
+    if (!minTab) return;
+    const observer = new MutationObserver((mutations) => {
+        if (!document.getElementById('pendingApplicationsBoard')) {
+            window.loadPendingApplications();
+        }
+    });
+    observer.observe(minTab, { childList: true });
+};
+document.addEventListener('DOMContentLoaded', observeMinistriesTab);
+
 
 window.processApplication = async function(ministryId, mappingId, decision) {
     if (!confirm('Are you sure?')) return;
@@ -3035,3 +3101,168 @@ window.processApplication = async function(ministryId, mappingId, decision) {
         window.loadPendingApplications(); if(window.loadMinistries) window.loadMinistries();
     } catch(e) {}
 };
+
+
+// ==========================================
+// V11: FINAL POLISH & SYNC REPAIR
+// ==========================================
+
+// 1. Fix "Loading details..." (Personal Details Bio Box)
+window.populateProfileTab = async function(member) {
+    if (!member) return;
+    
+    // 🔥 Inject Personal Details directly into the HTML
+    const bio = document.getElementById('myBioSummary');
+    if (bio) {
+        bio.innerHTML = `
+            <strong>Email:</strong> ${member.email || 'N/A'}<br>
+            <strong>Age:</strong> ${member.age || 'N/A'}<br>
+            <strong>Gender:</strong> ${member.gender || 'N/A'}<br>
+            <strong>Birthday:</strong> ${member.birthday || 'N/A'}<br>
+            <strong>Mobile:</strong> ${member.mobile || 'N/A'}<br>
+            <strong>Social Media:</strong> ${member.social_media || 'N/A'}<br>
+            <strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}
+        `;
+    }
+
+    // Populate Edit Form
+    if(document.getElementById('myMemberId')) document.getElementById('myMemberId').value = member.id || '';
+    if(document.getElementById('myEditName')) document.getElementById('myEditName').value = member.name || '';
+    if(document.getElementById('myEditEmail')) document.getElementById('myEditEmail').value = member.email || '';
+    if(document.getElementById('myEditAge')) document.getElementById('myEditAge').value = member.age || '';
+    if(document.getElementById('myEditBirthday')) document.getElementById('myEditBirthday').value = member.birthday || '';
+    if(document.getElementById('myEditSocial')) document.getElementById('myEditSocial').value = member.social_media || '';
+    if(document.getElementById('myEditParents')) document.getElementById('myEditParents').value = member.parents_name || '';
+    if(document.getElementById('myEditGender')) document.getElementById('myEditGender').value = member.gender || '';
+    
+    // Header & Avatar
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+    if(document.getElementById('myProfileCode')) document.getElementById('myProfileCode').innerText = member.qr_code || 'N/A';
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+    
+    // Sync Roles
+    if (window.loadMyV3Roles) window.loadMyV3Roles();
+};
+
+// 2. Fix Participation Tab (Build the missing container on the fly)
+window.loadMyV3Attendance = async function() {
+    let container = document.getElementById('myAttendanceHistory');
+    if (!container) {
+        const parent = document.getElementById('myProfileTabAttendance');
+        if (parent) {
+            parent.innerHTML = '<div class="card" style="margin-bottom: 0;"><div id="myAttendanceHistory" style="padding: 5px;"></div></div>';
+            container = document.getElementById('myAttendanceHistory');
+        }
+    }
+    if (!container || !currentMember) return;
+    container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:10px;">Loading participation logs...</div>';
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/history');
+        const logs = await res.json();
+        if (!logs || logs.length === 0) {
+            container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">No participation logs found.</div>';
+            return;
+        }
+        let html = '';
+        logs.forEach(a => {
+            let status = a.is_walkin ? '<span class="badge badge-orange">Walk-in</span>' : '<span class="badge badge-green">Pre-Reg</span>';
+            html += `<div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; background: #FFF; border-radius: 8px; margin-bottom: 8px;">
+                <div><strong style="color: var(--primary); font-size: 1.05rem;">${a.event_name || 'Event'}</strong><br><small style="color:var(--text-muted);">${a.checked_in_at || ''}</small></div>
+                ${status}
+            </div>`;
+        });
+        container.innerHTML = html;
+    } catch(e) {
+        container.innerHTML = '<div style="text-align:center; color:var(--danger); padding:10px;">Failed to load logs.</div>';
+    }
+};
+
+// 3. Fix Moderation Board (Pin to the highest indestructible container)
+window.loadPendingApplications = async function() {
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+        
+        let board = document.getElementById('pendingApplicationsBoard');
+        
+        if (!apps || apps.length === 0) {
+            if (board) board.style.display = 'none';
+            return;
+        }
+
+        if (!board) {
+            const minTab = document.getElementById('ministriesTab');
+            if (minTab) {
+                const ui = `<div id="pendingApplicationsBoard" style="margin-bottom: 25px; background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+                    <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                        <span>📋</span> Pending Ministry Expressions
+                    </h3>
+                    <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;"></div>
+                </div>`;
+                
+                const h2 = minTab.querySelector('h2');
+                if (h2) h2.insertAdjacentHTML('afterend', ui);
+                else minTab.insertAdjacentHTML('afterbegin', ui);
+                board = document.getElementById('pendingApplicationsBoard');
+            }
+        }
+
+        if (!board) return;
+        board.style.display = 'block';
+        const list = document.getElementById('pendingApplicationsList');
+        if (!list) return;
+
+        let html = '';
+        apps.forEach(app => {
+            html += `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                        <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                        <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger);" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                        <button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                    </div>
+                </div>
+            </div>`;
+        });
+        list.innerHTML = html;
+    } catch(e) { console.error(e); }
+};
+
+// 4. Force Global Sync on Login (Intercepts login and auto-reloads SPA)
+if (!window.fetch.isV11Patched) {
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+        const response = await originalFetch.apply(this, args);
+        const url = args[0];
+        if (typeof url === 'string' && (url.includes('/api/login') || url.includes('/api/auth/google'))) {
+            const clonedRes = response.clone();
+            clonedRes.json().then(data => {
+                if (data.success) {
+                    console.log("Login Sync: Forcing Reload to populate SPA...");
+                    // Force a reload 1 second after successful login to perfectly sync the frontend UI state
+                    setTimeout(() => window.location.reload(), 1000);
+                }
+            }).catch(e=>{});
+        }
+        return response;
+    };
+    window.fetch.isV11Patched = true;
+}
+
+// 5. Ultimate Observer to protect the Pending Board
+const secureMinistriesTab = () => {
+    const minTab = document.getElementById('ministriesTab');
+    if (!minTab) return;
+    const observer = new MutationObserver(() => {
+        if (!document.getElementById('pendingApplicationsBoard') && window.loadPendingApplications) {
+            window.loadPendingApplications();
+        }
+    });
+    observer.observe(minTab, { childList: true, subtree: true });
+};
+document.addEventListener('DOMContentLoaded', secureMinistriesTab);
