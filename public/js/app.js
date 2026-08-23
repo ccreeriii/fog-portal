@@ -3234,25 +3234,7 @@ window.loadPendingApplications = async function() {
 };
 
 // 4. Force Global Sync on Login (Intercepts login and auto-reloads SPA)
-if (!window.fetch.isV11Patched) {
-    const originalFetch = window.fetch;
-    window.fetch = async function(...args) {
-        const response = await originalFetch.apply(this, args);
-        const url = args[0];
-        if (typeof url === 'string' && (url.includes('/api/login') || url.includes('/api/auth/google'))) {
-            const clonedRes = response.clone();
-            clonedRes.json().then(data => {
-                if (data.success) {
-                    console.log("Login Sync: Forcing Reload to populate SPA...");
-                    // Force a reload 1 second after successful login to perfectly sync the frontend UI state
-                    setTimeout(() => window.location.reload(), 1000);
-                }
-            }).catch(e=>{});
-        }
-        return response;
-    };
-    window.fetch.isV11Patched = true;
-}
+
 
 // 5. Ultimate Observer to protect the Pending Board
 const secureMinistriesTab = () => {
@@ -3266,3 +3248,151 @@ const secureMinistriesTab = () => {
     observer.observe(minTab, { childList: true, subtree: true });
 };
 document.addEventListener('DOMContentLoaded', secureMinistriesTab);
+
+
+// ==========================================
+// V12: ULTIMATE HARMONY (SPA SYNC, ROLES, DIRECTORY)
+// ==========================================
+
+window.populateProfileTab = async function(member) {
+    if (!member) return;
+    
+    // 🔥 Ensure Gender Input is present! If missing, rebuild it.
+    if (!document.getElementById('myEditGender') && document.getElementById('myEditName')) {
+        document.getElementById('myEditName').parentElement.insertAdjacentHTML('afterend', `
+        <div class="form-group">
+            <label>Gender (For Secret Prayer Pals)</label>
+            <select id="myEditGender" class="form-control">
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+            </select>
+        </div>`);
+    }
+
+    // Populate Read-Only Bio Block
+    const bio = document.getElementById('myBioSummary');
+    if (bio) {
+        bio.innerHTML = `
+            <strong>Email:</strong> ${member.email || 'N/A'}<br>
+            <strong>Age:</strong> ${member.age || 'N/A'}<br>
+            <strong>Gender:</strong> ${member.gender || 'N/A'}<br>
+            <strong>Birthday:</strong> ${member.birthday || 'N/A'}<br>
+            <strong>Mobile:</strong> ${member.mobile || 'N/A'}<br>
+            <strong>Social Media:</strong> ${member.social_media || 'N/A'}<br>
+            <strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}
+        `;
+    }
+
+    // Populate Edit Fields
+    if(document.getElementById('myMemberId')) document.getElementById('myMemberId').value = member.id || '';
+    if(document.getElementById('myEditName')) document.getElementById('myEditName').value = member.name || '';
+    if(document.getElementById('myEditEmail')) document.getElementById('myEditEmail').value = member.email || '';
+    if(document.getElementById('myEditAge')) document.getElementById('myEditAge').value = member.age || '';
+    if(document.getElementById('myEditBirthday')) document.getElementById('myEditBirthday').value = member.birthday || '';
+    if(document.getElementById('myEditSocial')) document.getElementById('myEditSocial').value = member.social_media || '';
+    if(document.getElementById('myEditParents')) document.getElementById('myEditParents').value = member.parents_name || '';
+    if(document.getElementById('myEditGender')) document.getElementById('myEditGender').value = member.gender || '';
+    
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+    if(document.getElementById('myProfileCode')) document.getElementById('myProfileCode').innerText = member.qr_code || 'N/A';
+    
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+    
+    if (window.loadMyV3Roles) window.loadMyV3Roles(member.id, 'myMinistriesHistory');
+    if (window.loadMyV3Attendance) window.loadMyV3Attendance(member.id, 'myAttendanceHistory');
+    
+    // 🔥 SYNC THE SPA: Instantly update the dashboard Journey without a refresh!
+    if (window.renderHomeJourney) window.renderHomeJourney(); 
+};
+
+// 🔥 Restore Event Roles & Ministry Roles Together!
+window.loadMyV3Roles = async function(targetMemberId, containerId) {
+    const id = targetMemberId || (typeof currentMember !== 'undefined' && currentMember ? currentMember.id : null);
+    const cId = containerId || 'myMinistriesHistory';
+    const container = document.getElementById(cId);
+    if (!container || !id) return;
+    
+    container.innerHTML = '<div style="text-align:center; padding:10px; color:var(--text-muted);">Loading roles...</div>';
+    try {
+        const [minRes, evtRes] = await Promise.all([
+            fetch('/api/youth/' + id + '/ministries'),
+            fetch('/api/youth/' + id + '/event_roles')
+        ]);
+        const ministries = await minRes.json();
+        const events = await evtRes.json();
+        
+        let allRoles = [];
+        if(ministries && ministries.length) ministries.forEach(m => allRoles.push({...m, type: 'ministry'}));
+        if(events && events.length) events.forEach(e => allRoles.push({...e, type: 'event'}));
+        
+        if (allRoles.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:10px;">No roles assigned yet.</div>'; 
+            return;
+        }
+        
+        allRoles.sort((a,b) => new Date(b.assigned_at) - new Date(a.assigned_at));
+        
+        let html = '';
+        allRoles.forEach(r => {
+            const isPriority = r.is_priority === 1;
+            const priorityBadge = isPriority ? '<span style="background:#FEF3C7; color:#D97706; padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-left:8px;">⭐ Priority</span>' : '';
+            const badge = r.type === 'ministry' ? '<span class="badge badge-blue">🏛️ Ministry</span>' : '<span class="badge badge-orange">📅 Event</span>';
+            const title = r.type === 'ministry' ? r.ministry_name : r.event_name;
+            const roleStr = r.role || r.role_name;
+            const subStr = r.sub_role ? ' | ' + r.sub_role : '';
+            
+            // Only show Make Priority button if it's the current user's profile and it's a ministry
+            const actionBtn = (r.type === 'ministry' && r.role !== 'Applicant' && !isPriority && currentMember && id === currentMember.id && cId === 'myMinistriesHistory') 
+                ? `<button class="btn btn-outline btn-sm" style="margin-top:10px; font-size:0.75rem;" onclick="setCorePriority(${r.mapping_id})">Make Core Priority</button>` 
+                : '';
+            
+            html += `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${isPriority ? '#F59E0B' : 'var(--border-color)'};">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <strong style="color: var(--primary); font-size: 1.05rem;">${title || 'Unknown'} ${priorityBadge}</strong>
+                    ${badge}
+                </div>
+                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:5px;">
+                    <strong>Role:</strong> ${roleStr} ${subStr}<br>
+                    <strong>Assigned:</strong> ${(r.assigned_at || '').split(' ')[0]}
+                </div>
+                ${actionBtn}
+            </div>`;
+        });
+        container.innerHTML = html;
+    } catch(e) {
+        container.innerHTML = '<div style="color:var(--danger); text-align:center;">Failed to load roles.</div>';
+    }
+};
+
+// 🔥 Fix Directory Modal (View Profile)
+window.viewProfile = async function(id) {
+    try {
+        const res = await fetch('/api/youth');
+        const users = await res.json();
+        const member = users.find(u => u.id === id);
+        if (!member) return alert('Member not found.');
+        
+        if(document.getElementById('viewProfileName')) document.getElementById('viewProfileName').innerText = member.name;
+        if(document.getElementById('viewProfileAge')) document.getElementById('viewProfileAge').innerText = member.age || 'N/A';
+        if(document.getElementById('viewProfileEmail')) document.getElementById('viewProfileEmail').innerText = member.email || 'N/A';
+        if(document.getElementById('viewProfileMobile')) document.getElementById('viewProfileMobile').innerText = member.mobile || 'N/A';
+        if(document.getElementById('viewProfileSocial')) document.getElementById('viewProfileSocial').innerText = member.social_media || 'N/A';
+        if(document.getElementById('viewProfileBirthday')) document.getElementById('viewProfileBirthday').innerText = member.birthday || 'N/A';
+        if(document.getElementById('viewProfileParents')) document.getElementById('viewProfileParents').innerText = member.parents_name || 'N/A';
+        
+        const av = document.getElementById('viewProfileAvatar');
+        if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+
+        const modal = document.getElementById('viewProfileModal');
+        if(modal) modal.classList.add('active');
+    } catch(e) {
+        console.error(e);
+    }
+};
+
+window.closeViewProfileModal = function() {
+    const modal = document.getElementById('viewProfileModal');
+    if(modal) modal.classList.remove('active');
+};
