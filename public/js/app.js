@@ -3866,3 +3866,158 @@ window.processApplicationModal = async function(ministryId, mappingId, decision)
 setInterval(() => {
     document.querySelectorAll('#btnModerateMinistries').forEach(b => b.remove());
 }, 1000);
+
+// ==========================================
+// V26: SURGICAL FIXES (COMMITMENT MODAL, FORM RELOADS, WORKFLOW)
+// ==========================================
+
+// --- FIX 1 & 2: REBUILD COMMITMENT MODAL WITH EXACT WORDINGS & STOP RELOADS ---
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        const commitModal = document.getElementById('commitmentModal');
+        if (commitModal) {
+            commitModal.innerHTML = `
+            <div class="modal-content" style="max-width: 450px; text-align: center; padding: 30px 20px;">
+                <span class="close-modal" onclick="closeCommitmentModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer;">&times;</span>
+                <div style="font-size: 3rem; margin-bottom: 10px;">🕊️</div>
+                <h2 style="color: var(--primary); margin-bottom: 5px; border: none;">Choose to Belong</h2>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">You are about to officially embrace Fire of God Ministries as your spiritual family.</p>
+                
+                <div style="background: #FFFBEB; padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 20px; text-align: left;">
+                    <p style="font-size: 0.9rem; color: #D97706; margin: 0; font-style: italic;">
+                        "I choose to grow with Fire of God Ministries and journey with this community in faith, fellowship, formation, and mission."
+                    </p>
+                </div>
+
+                <form onsubmit="event.preventDefault(); submitCommitment(event);" style="text-align: left;">
+                    <div class="form-group">
+                        <label style="font-weight: bold; color: var(--text-main);">How is God leading you to make this community your home?</label>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 8px;">We'd love to hear a brief reflection on your heart to journey with us.</p>
+                        <textarea id="commitmentIntentMsg" class="form-control" rows="4" placeholder="Share your heart..." required></textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-radius: 12px; background: #F59E0B; border: none;" onclick="submitCommitment(event)">Commit to the Community</button>
+                </form>
+            </div>`;
+        }
+
+        const intentModal = document.getElementById('ministryIntentModal');
+        if (intentModal) {
+            intentModal.innerHTML = `
+            <div class="modal-content" style="max-width: 450px; text-align: center; padding: 30px 20px;">
+                <span class="close-modal" onclick="closeMinistryIntentModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer;">&times;</span>
+                <div style="font-size: 3rem; margin-bottom: 10px;">🔥</div>
+                <h2 style="color: var(--primary); margin-bottom: 5px; border: none;">Discover Your Place</h2>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Express your intent to serve and begin your discernment journey.</p>
+                <form onsubmit="event.preventDefault(); submitMinistryIntent(event);" style="text-align: left;">
+                    <div class="form-group">
+                        <label style="font-weight: bold; color: var(--text-main);">Which Ministry are you drawn to?</label>
+                        <select id="ministrySelect" class="form-control" required><option value="">Loading...</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight: bold; color: var(--text-main);">What draws your heart to this team?</label>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 8px;">Share a little bit about what excites you or how you'd love to contribute! 💛</p>
+                        <textarea id="ministryIntentMsg" class="form-control" rows="3" placeholder="I'd love to be part of this because..." required></textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-radius: 12px; background: #F59E0B; border: none;" onclick="submitMinistryIntent(event)">Send My Intent 🕊️</button>
+                </form>
+            </div>`;
+        }
+    }, 800);
+});
+
+// --- FIX 3: BULLETPROOF SUBMIT FUNCTIONS ---
+window.submitCommitment = async function(e) {
+    if(e) e.preventDefault();
+    const msg = document.getElementById('commitmentIntentMsg').value.trim();
+    if (!msg) return alert('Please share your reflection.');
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/commit', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: currentMember.name, intent_message: msg })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert("Welcome to the core community!");
+            currentMember = data.member;
+            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            closeCommitmentModal();
+            if(window.renderHomeJourney) window.renderHomeJourney();
+        } else { alert(data.error || 'Failed to submit commitment.'); }
+    } catch(err) { alert('Network Error'); }
+};
+
+window.submitMinistryIntent = async function(e) {
+    if(e) e.preventDefault();
+    const minId = document.getElementById('ministrySelect').value;
+    const msg = document.getElementById('ministryIntentMsg').value.trim();
+    if (!minId || !msg) return alert('Please complete all fields.');
+    try {
+        const payload = { youth_id: currentMember.id, intent_message: msg, actor: currentMember.name || 'Member' };
+        const res = await fetch(`/api/ministries/${minId}/apply`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.success) { 
+            alert('Ministry Intent submitted successfully!'); 
+            closeMinistryIntentModal(); 
+            if (window.renderHomeJourney) window.renderHomeJourney(); 
+            if (window.loadMyV3Roles) window.loadMyV3Roles(); 
+        } else { alert(data.error || 'Failed to submit application. You may already be in this ministry.'); }
+    } catch(err) { alert('Network error.'); }
+};
+
+// --- FIX 4: CLARIFY EXPAND SERVICE WORKFLOW ---
+window.renderHomeJourney = async function() {
+    const container = document.getElementById('dynamicJourneyContainer');
+    if (!container || !currentMember) return;
+    let html = '';
+    if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 3</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+    } else {
+        try {
+            const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
+            const ministries = await res.json();
+            const isApplicant = ministries.some(m => m.role === 'Applicant');
+            const isActiveMember = ministries.some(m => m.role !== 'Applicant');
+            
+            if (isActiveMember) {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p>${isApplicant ? '<p style="font-size:0.75rem; color:#F59E0B; margin:0; font-weight:bold;">(Application Pending)</p>' : ''}</div><button type="button" class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
+            } else if (isApplicant) {
+                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Pending</button>`;
+            } else {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 4</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
+            }
+        } catch(e) {}
+    }
+    container.innerHTML = html;
+};
+
+// --- FIX 5: ENSURE MODERATION TAB RENDERS ---
+window.loadPendingApplications = async function() {
+    const list = document.getElementById('pendingApplicationsList');
+    if (!list) return;
+    list.innerHTML = '<div style="text-align:center; color:var(--text-muted);">Loading pending applications...</div>';
+    
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">No pending applications right now!</div>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+        <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                    <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                    <button type="button" class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { list.innerHTML = '<div style="text-align:center; color:var(--danger);">Network error.</div>'; }
+};
