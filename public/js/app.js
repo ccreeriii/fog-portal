@@ -4994,30 +4994,7 @@ if (origPopulateV35 && !window.v35PopulatePatched) {
     window.v35PopulatePatched = true;
 }
 
-// 3. SAFE SAVE BUTTON WRAPPER (Prevents Infinite Loops!)
-const origSaveMinRoleV35 = window.saveMinistryRoleEdit;
-if (origSaveMinRoleV35 && !window.v35SavePatched) {
-    window.saveMinistryRoleEdit = async function() {
-        const nativeFetch = window.fetch;
-        window.fetch = async function(url, opts) {
-            if (opts && opts.method === 'PUT' && typeof opts.body === 'string') {
-                try {
-                    let b = JSON.parse(opts.body);
-                    b.actor = window.currentUser || 'Admin';
-                    opts.body = JSON.stringify(b);
-                } catch(e) {}
-            }
-            return await nativeFetch.apply(this, arguments);
-        };
-        try {
-            await origSaveMinRoleV35();
-        } finally {
-            // GUARANTEE fetch is restored to normal so no other buttons break
-            window.fetch = nativeFetch; 
-        }
-    };
-    window.v35SavePatched = true;
-}
+
 
 // 4. DROPDOWN OVERRIDE (Targeting exact modal)
 setInterval(() => {
@@ -5039,3 +5016,91 @@ setInterval(() => {
         }
     }
 }, 1000);
+
+// ==========================================
+// V36: FREEZE FIX, PRECISION LOGS & PASS ID
+// ==========================================
+
+// 1. HIDE DUPLICATE PASS ID PERMANENTLY
+const styleFixV36 = document.createElement('style');
+styleFixV36.innerHTML = `
+    #myUniquePassIdBadge { display: none !important; }
+`;
+document.head.appendChild(styleFixV36);
+
+// 2. PERMANENT, NON-DESTRUCTIVE FETCH INTERCEPTOR
+if (!window.v36FetchPatched) {
+    const nativeFetchV36 = window.fetch;
+    window.fetch = async function(url, options) {
+        // Only intercept ministry member role updates
+        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/members/') && url.includes('/api/ministries')) {
+            try {
+                url = url.replace(/\/api\/ministries(\-v\d+)?\//, '/api/ministries-v36/'); // Route to precise V36 endpoint
+                if (options.body) {
+                    let bodyObj = JSON.parse(options.body);
+                    bodyObj.actor = window.currentUser || 'Admin';
+                    options.body = JSON.stringify(bodyObj);
+                }
+            } catch(e) {}
+        }
+        return nativeFetchV36.apply(this, [url, options]);
+    };
+    window.v36FetchPatched = true;
+}
+
+// 3. PRECISION MINISTRY LOG RENDERER
+window.loadMembershipAdminData = async function() {
+    try {
+        const commRes = await fetch('/api/admin/community-intents-v2');
+        window.cachedCommunityIntents = await commRes.json();
+        window.filterCommunityLogs();
+    } catch(e) {}
+
+    try {
+        const minRes = await fetch('/api/admin/ministry-logs-v36'); // Use V36 endpoint
+        window.cachedMinistryLogs = await minRes.json();
+        window.filterMinistryLogs();
+    } catch(e) {}
+};
+
+window.renderMinistryLogs = function(list) {
+    const mList = document.getElementById('ministryIntentsLogList');
+    if (!mList) return;
+    if (list.length === 0) {
+        mList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); border: 1px dashed var(--border-color); border-radius: 8px;">No logs match your filter.</div>';
+        return;
+    }
+    mList.innerHTML = list.map(m => `
+    <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+            <div style="flex: 1;">
+                <strong style="color: var(--text-main); font-size: 1.05rem;">${m.applicant_name}</strong>
+                <span class="badge badge-orange">${m.ministry_name}</span>
+                <span class="badge" style="background: #E2E8F0; color: #475569;">Current Role: ${m.role}</span><br>
+                <small style="color: var(--text-muted);">📅 Action Logged: <strong style="color:var(--text-main);">${m.timestamp || m.assigned_at || 'Unknown Time'}</strong></small><br>
+                <small style="color: var(--success); font-weight: bold;">👤 Processed by: ${m.actor || 'Admin / System'}</small>
+                <p style="font-size: 0.95rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 500;">
+                    📝 ${m.intent_message || 'Assigned directly by Admin.'}
+                </p>
+            </div>
+        </div>
+    </div>`).join('');
+};
+
+// 4. AGGRESSIVE AUTO-HEALER FOR UI FREEZING
+setInterval(() => {
+    // Check for invisible preloader blocking clicks
+    const preloader = document.getElementById('globalPreloader');
+    if (preloader && preloader.style.opacity === '0' && preloader.style.display !== 'none') {
+        preloader.style.display = 'none';
+    }
+
+    // Check if body is locked while no modals are open
+    const activeModals = document.querySelectorAll('.modal.active, .modal[style*="display: block"], .modal[style*="display: flex"]');
+    if (activeModals.length === 0) {
+        if (document.body.style.overflow === 'hidden' || document.body.style.pointerEvents === 'none') {
+            document.body.style.overflow = '';
+            document.body.style.pointerEvents = 'auto';
+        }
+    }
+}, 500);
