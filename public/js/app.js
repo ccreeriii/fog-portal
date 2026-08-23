@@ -2882,10 +2882,60 @@ window.switchTab = function(tabId) {
 };
 
 
+
+
 // ==========================================
-// V10: IRONCLAD PROFILE & MODERATION UI
+// V14: ABSOLUTE TRUTH MASTER OVERRIDE
 // ==========================================
 
+// --- 1. COMMITMENT PLEDGE (I'M READY) ---
+window.openCommitmentModal = function() {
+    const modal = document.getElementById('commitmentModal');
+    if (modal) {
+        modal.style.display = 'flex'; // Force bypass CSS
+        modal.classList.add('active');
+    } else { alert("Error: Commitment modal not found in HTML."); }
+};
+
+window.closeCommitmentModal = function() {
+    const modal = document.getElementById('commitmentModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+};
+
+window.submitCommitmentPledge = async function(e) {
+    e.preventDefault();
+    if (!currentMember) return;
+    const msgEl = document.getElementById('commitmentIntentMsg');
+    const intentMsg = msgEl ? msgEl.value.trim() : 'I am ready to commit.';
+
+    document.getElementById('globalPreloader').style.display = 'flex';
+    document.getElementById('globalPreloader').style.opacity = '1';
+
+    try {
+        const res = await fetch(`/api/youth/${currentMember.id}/commit`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentMember.name, intent_message: intentMsg })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            currentMember = data.member;
+            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions || [], member: currentMember }));
+            window.closeCommitmentModal();
+            if(window.renderHomeJourney) window.renderHomeJourney();
+            alert('Welcome to the family! You have successfully committed to Fire of God Ministries.');
+        } else { alert('Error: ' + data.error); }
+    } catch(err) { alert('Network error while processing your pledge.'); } 
+    finally {
+        document.getElementById('globalPreloader').style.opacity = '0';
+        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+    }
+};
+
+// --- 2. DYNAMIC HOME JOURNEY ---
 window.renderHomeJourney = async function() {
     const container = document.getElementById('dynamicJourneyContainer');
     if (!container || !currentMember) return;
@@ -2910,367 +2960,15 @@ window.renderHomeJourney = async function() {
     container.innerHTML = html;
 };
 
-window.switchMyProfileTab = function(tabId) {
-    document.querySelectorAll('#btnMyProfileTabRoles, #btnMyProfileTabSchedule, #btnMyProfileTabAttendance').forEach(b => b.classList.remove('active'));
-    document.getElementById('myProfileTabRoles').style.display = 'none';
-    document.getElementById('myProfileTabSchedule').style.display = 'none';
-    document.getElementById('myProfileTabAttendance').style.display = 'none';
-    
-    if (tabId === 'roles') {
-        document.getElementById('btnMyProfileTabRoles').classList.add('active');
-        document.getElementById('myProfileTabRoles').style.display = 'block';
-        if (window.loadMyV3Roles) window.loadMyV3Roles();
-    } else if (tabId === 'schedule') {
-        document.getElementById('btnMyProfileTabSchedule').classList.add('active');
-        document.getElementById('myProfileTabSchedule').style.display = 'block';
-    } else if (tabId === 'attendance') {
-        document.getElementById('btnMyProfileTabAttendance').classList.add('active');
-        document.getElementById('myProfileTabAttendance').style.display = 'block';
-        if (window.loadMyV3Attendance) window.loadMyV3Attendance();
-    }
-};
-
-window.populateProfileTab = async function(member) {
-    if (!member) return;
-    if(document.getElementById('myMemberId')) document.getElementById('myMemberId').value = member.id || '';
-    if(document.getElementById('myEditName')) document.getElementById('myEditName').value = member.name || '';
-    if(document.getElementById('myEditEmail')) document.getElementById('myEditEmail').value = member.email || '';
-    if(document.getElementById('myEditAge')) document.getElementById('myEditAge').value = member.age || '';
-    if(document.getElementById('myEditBirthday')) document.getElementById('myEditBirthday').value = member.birthday || '';
-    if(document.getElementById('myEditSocial')) document.getElementById('myEditSocial').value = member.social_media || '';
-    if(document.getElementById('myEditParents')) document.getElementById('myEditParents').value = member.parents_name || '';
-    if(document.getElementById('myEditGender')) document.getElementById('myEditGender').value = member.gender || '';
-    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
-    if(document.getElementById('myProfileCode')) document.getElementById('myProfileCode').innerText = member.qr_code || 'N/A';
-    const av = document.getElementById('myProfileAvatar');
-    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
-    if (window.loadMyV3Roles) window.loadMyV3Roles();
-};
-
-window.loadMyV3Roles = async function() {
-    const container = document.getElementById('myMinistriesHistory');
-    if (!container || !currentMember) return;
-    try {
-        const minRes = await fetch('/api/youth/' + currentMember.id + '/ministries');
-        const roles = await minRes.json();
-        if (!roles || roles.length === 0) {
-            container.innerHTML = '<div style="color:var(--text-muted); text-align:center;">No roles assigned yet.</div>'; return;
-        }
-        let html = '';
-        roles.forEach(r => {
-            const isPriority = r.is_priority === 1;
-            const priorityBadge = isPriority ? '<span style="background:#FEF3C7; color:#D97706; padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-left:8px;">⭐ Priority</span>' : '';
-            const actionBtn = (r.role !== 'Applicant' && !isPriority) ? `<button class="btn btn-outline btn-sm" style="margin-top:10px; font-size:0.75rem;" onclick="setCorePriority(${r.mapping_id})">Make Core Priority</button>` : '';
-            html += `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${isPriority ? '#F59E0B' : 'var(--border-color)'};">
-                <h4 style="margin:0; color:var(--text-main); font-size:1.05rem;">${r.ministry_name} ${priorityBadge}</h4>
-                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:5px;"><strong>Role:</strong> ${r.role}</div>${actionBtn}</div>`;
-        });
-        container.innerHTML = html;
-    } catch(e) {}
-};
-
-window.loadMyV3Attendance = async function() {
-    const container = document.getElementById('myAttendanceHistory');
-    if (!container || !currentMember) return;
-    try {
-        const res = await fetch('/api/youth/' + currentMember.id + '/history');
-        const logs = await res.json();
-        if (!logs || logs.length === 0) return container.innerHTML = '<div style="color:var(--text-muted); text-align:center;">No logs found.</div>';
-        let html = '';
-        logs.forEach(a => {
-            html += `<div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; background: #FFF; border-radius: 8px; margin-bottom: 8px;">
-                <div><strong style="color: var(--primary); font-size: 1.05rem;">${a.event_name || 'Event'}</strong><br><small style="color:var(--text-muted);">${a.checked_in_at || ''}</small></div>
-            </div>`;
-        });
-        container.innerHTML = html;
-    } catch(e) {}
-};
-
-window.setCorePriority = async function(mappingId) {
-    if(!confirm("Set this as your Priority Ministry?")) return;
-    try { await fetch(`/api/ministries/members/${mappingId}/priority`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ youth_id: currentMember.id }) });
-        window.loadMyV3Roles();
-    } catch(e) {}
-};
-
-window.openMinistryIntentModal = async function() {
-    document.getElementById('ministryIntentModal').classList.add('active');
-    try {
-        const res = await fetch('/api/ministries');
-        const ministries = await res.json();
-        document.getElementById('ministrySelect').innerHTML = '<option value="">Select a Ministry...</option>' + ministries.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
-    } catch(e) {}
-};
-
-window.closeMinistryIntentModal = function() {
-    document.getElementById('ministryIntentModal').classList.remove('active');
-};
-
-window.submitMinistryIntent = async function(e) {
-    e.preventDefault();
-    const minId = document.getElementById('ministrySelect').value;
-    const msg = document.getElementById('ministryIntentMsg').value.trim();
-    if (!minId || !msg) return alert('Please complete all fields.');
-    try {
-        const res = await fetch(`/api/ministries/${minId}/apply`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ youth_id: currentMember.id, intent_message: msg, actor: currentMember.name }) });
-        const data = await res.json();
-        if (data.success) { alert('Intent submitted!'); window.closeMinistryIntentModal(); if(window.renderHomeJourney) window.renderHomeJourney(); } else { alert(data.error); }
-    } catch(err) { alert('Network error.'); }
-};
-
-
-// --- INVINCIBLE MODERATION DASHBOARD ---
-window.loadPendingApplications = async function() {
-    try {
-        const res = await fetch('/api/ministries/applications/pending');
-        const apps = await res.json();
-        
-        let board = document.getElementById('pendingApplicationsBoard');
-        
-        if (!apps || apps.length === 0) {
-            if (board) board.style.display = 'none';
-            return;
-        }
-
-        // If the board got wiped out by loadMinistries(), rebuild it
-        if (!board) {
-            const parentList = document.getElementById('subTabMinistryList');
-            if (parentList) {
-                const ui = `
-                <div id="pendingApplicationsBoard" style="margin-bottom: 25px; background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
-                    <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-                        <span>📋</span> Pending Ministry Expressions
-                    </h3>
-                    <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;"></div>
-                </div>`;
-                parentList.insertAdjacentHTML('afterbegin', ui);
-                board = document.getElementById('pendingApplicationsBoard');
-            }
-        }
-
-        if (!board) return; // Failsafe
-        board.style.display = 'block';
-
-        const list = document.getElementById('pendingApplicationsList');
-        if (!list) return;
-
-        let html = '';
-        apps.forEach(app => {
-            html += `
-                <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
-                        <div style="flex: 1; min-width: 200px;">
-                            <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
-                            <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
-                            <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
-                        </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger);" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
-                            <button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-        list.innerHTML = html;
-    } catch(e) {
-        console.error('Failed to load pending applications', e);
-    }
-};
-
-// Create an Observer to constantly watch the Ministries Tab. 
-// If loadMinistries() wipes the board, the observer instantly injects it back.
-const observeMinistriesTab = () => {
-    const minTab = document.getElementById('subTabMinistryList');
-    if (!minTab) return;
-    const observer = new MutationObserver((mutations) => {
-        if (!document.getElementById('pendingApplicationsBoard')) {
-            window.loadPendingApplications();
-        }
-    });
-    observer.observe(minTab, { childList: true });
-};
-document.addEventListener('DOMContentLoaded', observeMinistriesTab);
-
-
-window.processApplication = async function(ministryId, mappingId, decision) {
-    if (!confirm('Are you sure?')) return;
-    try {
-        if (decision === 'Denied') { await fetch(`/api/ministries/${ministryId}/members/${mappingId}`, { method: 'DELETE' }); }
-        else { await fetch(`/api/ministries/${ministryId}/members/${mappingId}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ role: decision, sub_role: '' }) }); }
-        window.loadPendingApplications(); if(window.loadMinistries) window.loadMinistries();
-    } catch(e) {}
-};
-
-
-// ==========================================
-// V11: FINAL POLISH & SYNC REPAIR
-// ==========================================
-
-// 1. Fix "Loading details..." (Personal Details Bio Box)
+// --- 3. PROFILE POPULATOR & QR CODE GENERATOR ---
 window.populateProfileTab = async function(member) {
     if (!member) return;
     
-    // 🔥 Inject Personal Details directly into the HTML
-    const bio = document.getElementById('myBioSummary');
-    if (bio) {
-        bio.innerHTML = `
-            <strong>Email:</strong> ${member.email || 'N/A'}<br>
-            <strong>Age:</strong> ${member.age || 'N/A'}<br>
-            <strong>Gender:</strong> ${member.gender || 'N/A'}<br>
-            <strong>Birthday:</strong> ${member.birthday || 'N/A'}<br>
-            <strong>Mobile:</strong> ${member.mobile || 'N/A'}<br>
-            <strong>Social Media:</strong> ${member.social_media || 'N/A'}<br>
-            <strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}
-        `;
-    }
-
-    // Populate Edit Form
-    if(document.getElementById('myMemberId')) document.getElementById('myMemberId').value = member.id || '';
-    if(document.getElementById('myEditName')) document.getElementById('myEditName').value = member.name || '';
-    if(document.getElementById('myEditEmail')) document.getElementById('myEditEmail').value = member.email || '';
-    if(document.getElementById('myEditAge')) document.getElementById('myEditAge').value = member.age || '';
-    if(document.getElementById('myEditBirthday')) document.getElementById('myEditBirthday').value = member.birthday || '';
-    if(document.getElementById('myEditSocial')) document.getElementById('myEditSocial').value = member.social_media || '';
-    if(document.getElementById('myEditParents')) document.getElementById('myEditParents').value = member.parents_name || '';
-    if(document.getElementById('myEditGender')) document.getElementById('myEditGender').value = member.gender || '';
-    
-    // Header & Avatar
-    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
-    if(document.getElementById('myProfileCode')) document.getElementById('myProfileCode').innerText = member.qr_code || 'N/A';
-    const av = document.getElementById('myProfileAvatar');
-    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
-    
-    // Sync Roles
-    if (window.loadMyV3Roles) window.loadMyV3Roles();
-};
-
-// 2. Fix Participation Tab (Build the missing container on the fly)
-window.loadMyV3Attendance = async function() {
-    let container = document.getElementById('myAttendanceHistory');
-    if (!container) {
-        const parent = document.getElementById('myProfileTabAttendance');
-        if (parent) {
-            parent.innerHTML = '<div class="card" style="margin-bottom: 0;"><div id="myAttendanceHistory" style="padding: 5px;"></div></div>';
-            container = document.getElementById('myAttendanceHistory');
-        }
-    }
-    if (!container || !currentMember) return;
-    container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:10px;">Loading participation logs...</div>';
-    try {
-        const res = await fetch('/api/youth/' + currentMember.id + '/history');
-        const logs = await res.json();
-        if (!logs || logs.length === 0) {
-            container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">No participation logs found.</div>';
-            return;
-        }
-        let html = '';
-        logs.forEach(a => {
-            let status = a.is_walkin ? '<span class="badge badge-orange">Walk-in</span>' : '<span class="badge badge-green">Pre-Reg</span>';
-            html += `<div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; background: #FFF; border-radius: 8px; margin-bottom: 8px;">
-                <div><strong style="color: var(--primary); font-size: 1.05rem;">${a.event_name || 'Event'}</strong><br><small style="color:var(--text-muted);">${a.checked_in_at || ''}</small></div>
-                ${status}
-            </div>`;
-        });
-        container.innerHTML = html;
-    } catch(e) {
-        container.innerHTML = '<div style="text-align:center; color:var(--danger); padding:10px;">Failed to load logs.</div>';
-    }
-};
-
-// 3. Fix Moderation Board (Pin to the highest indestructible container)
-window.loadPendingApplications = async function() {
-    try {
-        const res = await fetch('/api/ministries/applications/pending');
-        const apps = await res.json();
-        
-        let board = document.getElementById('pendingApplicationsBoard');
-        
-        if (!apps || apps.length === 0) {
-            if (board) board.style.display = 'none';
-            return;
-        }
-
-        if (!board) {
-            const minTab = document.getElementById('ministriesTab');
-            if (minTab) {
-                const ui = `<div id="pendingApplicationsBoard" style="margin-bottom: 25px; background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
-                    <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-                        <span>📋</span> Pending Ministry Expressions
-                    </h3>
-                    <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;"></div>
-                </div>`;
-                
-                const h2 = minTab.querySelector('h2');
-                if (h2) h2.insertAdjacentHTML('afterend', ui);
-                else minTab.insertAdjacentHTML('afterbegin', ui);
-                board = document.getElementById('pendingApplicationsBoard');
-            }
-        }
-
-        if (!board) return;
-        board.style.display = 'block';
-        const list = document.getElementById('pendingApplicationsList');
-        if (!list) return;
-
-        let html = '';
-        apps.forEach(app => {
-            html += `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
-                    <div style="flex: 1; min-width: 200px;">
-                        <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
-                        <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
-                        <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger);" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
-                        <button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
-                    </div>
-                </div>
-            </div>`;
-        });
-        list.innerHTML = html;
-    } catch(e) { console.error(e); }
-};
-
-// 4. Force Global Sync on Login (Intercepts login and auto-reloads SPA)
-
-
-// 5. Ultimate Observer to protect the Pending Board
-const secureMinistriesTab = () => {
-    const minTab = document.getElementById('ministriesTab');
-    if (!minTab) return;
-    const observer = new MutationObserver(() => {
-        if (!document.getElementById('pendingApplicationsBoard') && window.loadPendingApplications) {
-            window.loadPendingApplications();
-        }
-    });
-    observer.observe(minTab, { childList: true, subtree: true });
-};
-document.addEventListener('DOMContentLoaded', secureMinistriesTab);
-
-
-// ==========================================
-// V12: ULTIMATE HARMONY (SPA SYNC, ROLES, DIRECTORY)
-// ==========================================
-
-window.populateProfileTab = async function(member) {
-    if (!member) return;
-    
-    // 🔥 Ensure Gender Input is present! If missing, rebuild it.
     if (!document.getElementById('myEditGender') && document.getElementById('myEditName')) {
         document.getElementById('myEditName').parentElement.insertAdjacentHTML('afterend', `
-        <div class="form-group">
-            <label>Gender (For Secret Prayer Pals)</label>
-            <select id="myEditGender" class="form-control">
-                <option value="">Select Gender</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-            </select>
-        </div>`);
+        <div class="form-group"><label>Gender</label><select id="myEditGender" class="form-control"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>`);
     }
 
-    // Populate Read-Only Bio Block
     const bio = document.getElementById('myBioSummary');
     if (bio) {
         bio.innerHTML = `
@@ -3284,30 +2982,79 @@ window.populateProfileTab = async function(member) {
         `;
     }
 
-    // Populate Edit Fields
-    if(document.getElementById('myMemberId')) document.getElementById('myMemberId').value = member.id || '';
-    if(document.getElementById('myEditName')) document.getElementById('myEditName').value = member.name || '';
-    if(document.getElementById('myEditEmail')) document.getElementById('myEditEmail').value = member.email || '';
-    if(document.getElementById('myEditAge')) document.getElementById('myEditAge').value = member.age || '';
-    if(document.getElementById('myEditBirthday')) document.getElementById('myEditBirthday').value = member.birthday || '';
-    if(document.getElementById('myEditSocial')) document.getElementById('myEditSocial').value = member.social_media || '';
-    if(document.getElementById('myEditParents')) document.getElementById('myEditParents').value = member.parents_name || '';
-    if(document.getElementById('myEditGender')) document.getElementById('myEditGender').value = member.gender || '';
+    ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            let key = id.replace('myEdit', '').toLowerCase();
+            if(id === 'myEditParents') key = 'parents_name';
+            if(id === 'myEditSocial') key = 'social_media';
+            if(id === 'myMemberId') key = 'id';
+            el.value = member[key] || '';
+        }
+    });
     
     if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
-    if(document.getElementById('myProfileCode')) document.getElementById('myProfileCode').innerText = member.qr_code || 'N/A';
+    
+    // 🔥 THE QR CODE IMAGE GENERATOR
+    const codeEl = document.getElementById('myProfileCode');
+    if (codeEl) {
+        codeEl.className = ""; // Remove orange badge class
+        codeEl.style.textAlign = 'center';
+        if (member.qr_code) {
+            codeEl.innerHTML = `<br><img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(member.qr_code)}" alt="QR" style="border-radius:8px; padding:5px; background:white; margin-top:5px; border:2px solid var(--primary);"><br><span style="font-weight:bold; font-size:1.05rem; margin-top:5px; display:inline-block; color:var(--text-main);">${member.qr_code}</span>`;
+        } else {
+            codeEl.innerText = 'No QR Assigned';
+        }
+    }
     
     const av = document.getElementById('myProfileAvatar');
     if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
     
     if (window.loadMyV3Roles) window.loadMyV3Roles(member.id, 'myMinistriesHistory');
     if (window.loadMyV3Attendance) window.loadMyV3Attendance(member.id, 'myAttendanceHistory');
-    
-    // 🔥 SYNC THE SPA: Instantly update the dashboard Journey without a refresh!
     if (window.renderHomeJourney) window.renderHomeJourney(); 
 };
 
-// 🔥 Restore Event Roles & Ministry Roles Together!
+// --- 4. FRESH CACHE SYNC ON PROFILE TAB CLICK ---
+if (!window.switchTab.isV14Patched) {
+    const origSwitchTab = window.switchTab;
+    window.switchTab = async function(tabId) {
+        if(origSwitchTab) origSwitchTab(tabId);
+        
+        if (tabId === 'profileTab' && typeof currentMember !== 'undefined' && currentMember) {
+            try {
+                const res = await fetch('/api/youth');
+                const users = await res.json();
+                const fresh = users.find(u => u.id == currentMember.id);
+                if (fresh && window.populateProfileTab) window.populateProfileTab(fresh);
+            } catch(e) {}
+        }
+    };
+    window.switchTab.isV14Patched = true;
+}
+
+// --- 5. ROLES & HIERARCHY ---
+window.switchMyProfileTab = function(tabId) {
+    document.querySelectorAll('#btnMyProfileTabRoles, #btnMyProfileTabSchedule, #btnMyProfileTabAttendance').forEach(b => b.classList.remove('active'));
+    ['Roles', 'Schedule', 'Attendance'].forEach(t => {
+        const el = document.getElementById('myProfileTab' + t);
+        if(el) el.style.display = 'none';
+    });
+    
+    if (tabId === 'roles') {
+        document.getElementById('btnMyProfileTabRoles').classList.add('active');
+        document.getElementById('myProfileTabRoles').style.display = 'block';
+        if (window.loadMyV3Roles) window.loadMyV3Roles();
+    } else if (tabId === 'attendance') {
+        document.getElementById('btnMyProfileTabAttendance').classList.add('active');
+        document.getElementById('myProfileTabAttendance').style.display = 'block';
+        if (window.loadMyV3Attendance) window.loadMyV3Attendance();
+    } else if (tabId === 'schedule') {
+        document.getElementById('btnMyProfileTabSchedule').classList.add('active');
+        document.getElementById('myProfileTabSchedule').style.display = 'block';
+    }
+};
+
 window.loadMyV3Roles = async function(targetMemberId, containerId) {
     const id = targetMemberId || (typeof currentMember !== 'undefined' && currentMember ? currentMember.id : null);
     const cId = containerId || 'myMinistriesHistory';
@@ -3316,83 +3063,436 @@ window.loadMyV3Roles = async function(targetMemberId, containerId) {
     
     container.innerHTML = '<div style="text-align:center; padding:10px; color:var(--text-muted);">Loading roles...</div>';
     try {
-        const [minRes, evtRes] = await Promise.all([
-            fetch('/api/youth/' + id + '/ministries'),
-            fetch('/api/youth/' + id + '/event_roles')
-        ]);
-        const ministries = await minRes.json();
-        const events = await evtRes.json();
+        const [minRes, evtRes] = await Promise.all([ fetch('/api/youth/' + id + '/ministries'), fetch('/api/youth/' + id + '/event_roles') ]);
+        const ministries = await minRes.json(); const events = await evtRes.json();
         
         let allRoles = [];
         if(ministries && ministries.length) ministries.forEach(m => allRoles.push({...m, type: 'ministry'}));
         if(events && events.length) events.forEach(e => allRoles.push({...e, type: 'event'}));
+        if (allRoles.length === 0) return container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:10px;">No roles assigned yet.</div>'; 
         
-        if (allRoles.length === 0) {
-            container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:10px;">No roles assigned yet.</div>'; 
-            return;
-        }
+        // 🔥 HIERARCHY: Ministry First, Event Second, Then Date
+        allRoles.sort((a, b) => {
+            if (a.type !== b.type) return a.type === 'ministry' ? -1 : 1;
+            return new Date(b.assigned_at) - new Date(a.assigned_at);
+        });
         
-        allRoles.sort((a,b) => new Date(b.assigned_at) - new Date(a.assigned_at));
-        
-        let html = '';
-        allRoles.forEach(r => {
+        container.innerHTML = allRoles.map(r => {
             const isPriority = r.is_priority === 1;
             const priorityBadge = isPriority ? '<span style="background:#FEF3C7; color:#D97706; padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-left:8px;">⭐ Priority</span>' : '';
             const badge = r.type === 'ministry' ? '<span class="badge badge-blue">🏛️ Ministry</span>' : '<span class="badge badge-orange">📅 Event</span>';
             const title = r.type === 'ministry' ? r.ministry_name : r.event_name;
-            const roleStr = r.role || r.role_name;
-            const subStr = r.sub_role ? ' | ' + r.sub_role : '';
+            const actionBtn = (r.type === 'ministry' && r.role !== 'Applicant' && !isPriority && currentMember && id == currentMember.id && cId === 'myMinistriesHistory') 
+                ? `<button class="btn btn-outline btn-sm" style="margin-top:10px; font-size:0.75rem;" onclick="setCorePriority(${r.mapping_id})">Make Core Priority</button>` : '';
             
-            // Only show Make Priority button if it's the current user's profile and it's a ministry
-            const actionBtn = (r.type === 'ministry' && r.role !== 'Applicant' && !isPriority && currentMember && id === currentMember.id && cId === 'myMinistriesHistory') 
-                ? `<button class="btn btn-outline btn-sm" style="margin-top:10px; font-size:0.75rem;" onclick="setCorePriority(${r.mapping_id})">Make Core Priority</button>` 
-                : '';
-            
-            html += `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${isPriority ? '#F59E0B' : 'var(--border-color)'};">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                    <strong style="color: var(--primary); font-size: 1.05rem;">${title || 'Unknown'} ${priorityBadge}</strong>
-                    ${badge}
-                </div>
-                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:5px;">
-                    <strong>Role:</strong> ${roleStr} ${subStr}<br>
-                    <strong>Assigned:</strong> ${(r.assigned_at || '').split(' ')[0]}
-                </div>
-                ${actionBtn}
+            return `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${isPriority ? '#F59E0B' : 'var(--border-color)'};">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><strong style="color: var(--primary); font-size: 1.05rem;">${title || 'Unknown'} ${priorityBadge}</strong>${badge}</div>
+                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:5px;"><strong>Role:</strong> ${r.role || r.role_name} ${r.sub_role ? ' | '+r.sub_role : ''}</div>${actionBtn}
             </div>`;
-        });
-        container.innerHTML = html;
-    } catch(e) {
-        container.innerHTML = '<div style="color:var(--danger); text-align:center;">Failed to load roles.</div>';
-    }
+        }).join('');
+    } catch(e) { container.innerHTML = '<div style="color:var(--danger); text-align:center;">Failed to load roles.</div>'; }
 };
 
-// 🔥 Fix Directory Modal (View Profile)
+window.loadMyV3Attendance = async function() {
+    let container = document.getElementById('myAttendanceHistory');
+    if (!container) {
+        const parent = document.getElementById('myProfileTabAttendance');
+        if (parent) { parent.innerHTML = '<div class="card" style="margin-bottom: 0;"><div id="myAttendanceHistory" style="padding: 5px;"></div></div>'; container = document.getElementById('myAttendanceHistory'); }
+    }
+    if (!container || !currentMember) return;
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/history');
+        const logs = await res.json();
+        if (!logs || logs.length === 0) return container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">No participation logs found.</div>';
+        container.innerHTML = logs.map(a => `<div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; background: #FFF; border-radius: 8px; margin-bottom: 8px;"><div><strong style="color: var(--primary); font-size: 1.05rem;">${a.event_name || 'Event'}</strong><br><small style="color:var(--text-muted);">${a.checked_in_at || ''}</small></div>${a.is_walkin ? '<span class="badge badge-orange">Walk-in</span>' : '<span class="badge badge-green">Pre-Reg</span>'}</div>`).join('');
+    } catch(e) {}
+};
+
+// --- 6. DIRECTORY "VIEW PROFILE" MODAL (Forced Open) ---
 window.viewProfile = async function(id) {
     try {
+        document.getElementById('globalPreloader').style.display = 'flex';
+        document.getElementById('globalPreloader').style.opacity = '1';
+
         const res = await fetch('/api/youth');
         const users = await res.json();
-        const member = users.find(u => u.id === id);
-        if (!member) return alert('Member not found.');
+        const member = users.find(u => u.id == id);
+        if (!member) {
+            document.getElementById('globalPreloader').style.opacity = '0';
+            setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+            return alert('Member not found.');
+        }
         
-        if(document.getElementById('viewProfileName')) document.getElementById('viewProfileName').innerText = member.name;
-        if(document.getElementById('viewProfileAge')) document.getElementById('viewProfileAge').innerText = member.age || 'N/A';
-        if(document.getElementById('viewProfileEmail')) document.getElementById('viewProfileEmail').innerText = member.email || 'N/A';
-        if(document.getElementById('viewProfileMobile')) document.getElementById('viewProfileMobile').innerText = member.mobile || 'N/A';
-        if(document.getElementById('viewProfileSocial')) document.getElementById('viewProfileSocial').innerText = member.social_media || 'N/A';
-        if(document.getElementById('viewProfileBirthday')) document.getElementById('viewProfileBirthday').innerText = member.birthday || 'N/A';
-        if(document.getElementById('viewProfileParents')) document.getElementById('viewProfileParents').innerText = member.parents_name || 'N/A';
+        const safeText = (val) => val || 'N/A';
+        if(document.getElementById('viewProfileName')) document.getElementById('viewProfileName').innerText = member.name || 'Unknown';
+        if(document.getElementById('viewProfileAge')) document.getElementById('viewProfileAge').innerText = safeText(member.age);
+        if(document.getElementById('viewProfileEmail')) document.getElementById('viewProfileEmail').innerText = safeText(member.email);
+        if(document.getElementById('viewProfileMobile')) document.getElementById('viewProfileMobile').innerText = safeText(member.mobile);
+        if(document.getElementById('viewProfileSocial')) document.getElementById('viewProfileSocial').innerText = safeText(member.social_media);
+        if(document.getElementById('viewProfileBirthday')) document.getElementById('viewProfileBirthday').innerText = safeText(member.birthday);
+        if(document.getElementById('viewProfileParents')) document.getElementById('viewProfileParents').innerText = safeText(member.parents_name);
         
         const av = document.getElementById('viewProfileAvatar');
         if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
 
         const modal = document.getElementById('viewProfileModal');
-        if(modal) modal.classList.add('active');
+        if(modal) {
+            modal.style.display = 'flex'; // Force bypass CSS conflicts
+            modal.classList.add('active');
+        }
     } catch(e) {
-        console.error(e);
+        alert("Network error.");
+    } finally {
+        document.getElementById('globalPreloader').style.opacity = '0';
+        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
     }
 };
 
 window.closeViewProfileModal = function() {
     const modal = document.getElementById('viewProfileModal');
-    if(modal) modal.classList.remove('active');
+    if(modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+};
+
+// --- 7. MODERATION DASHBOARD OBSERVER ---
+window.loadPendingApplications = async function() {
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+        
+        let board = document.getElementById('pendingApplicationsBoard');
+        if (!apps || apps.length === 0) { if (board) board.style.display = 'none'; return; }
+
+        if (!board) {
+            const minTab = document.getElementById('ministriesTab');
+            if (minTab) {
+                const h2 = minTab.querySelector('h2');
+                const ui = `<div id="pendingApplicationsBoard" style="margin-bottom: 25px; background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02);"><h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Expressions</h3><div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;"></div></div>`;
+                if (h2) h2.insertAdjacentHTML('afterend', ui); else minTab.insertAdjacentHTML('afterbegin', ui);
+                board = document.getElementById('pendingApplicationsBoard');
+            }
+        }
+        if (!board) return;
+        board.style.display = 'block';
+
+        const list = document.getElementById('pendingApplicationsList');
+        if (!list) return;
+        list.innerHTML = apps.map(app => `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;"><div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;"><div style="flex: 1; min-width: 200px;"><strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong><span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span><p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p></div><div style="display: flex; gap: 8px;"><button class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button><button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button></div></div></div>`).join('');
+    } catch(e) {}
+};
+
+const secureMinistriesTab = () => {
+    const minTab = document.getElementById('ministriesTab');
+    if (!minTab) return;
+    const observer = new MutationObserver(() => {
+        if (!document.getElementById('pendingApplicationsBoard') && window.loadPendingApplications) window.loadPendingApplications();
+    });
+    observer.observe(minTab, { childList: true, subtree: true });
+};
+document.addEventListener('DOMContentLoaded', secureMinistriesTab);
+
+window.logout = async function() {
+    if (!confirm('Are you sure you want to log out?')) return;
+    try {
+        if (typeof currentUser !== 'undefined' && currentUser) { await fetch('/api/logout', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username: currentUser}) }); }
+        localStorage.removeItem('fog_user'); window.location.reload();
+    } catch(e) { localStorage.removeItem('fog_user'); window.location.reload(); }
+};
+
+
+// ==========================================
+// V15: ABSOLUTE PERFECTION OVERRIDE
+// ==========================================
+
+// 1. REPAIR QR PLACEMENT
+window.populateProfileTab = async function(member) {
+    if (!member) return;
+    
+    if (!document.getElementById('myEditGender') && document.getElementById('myEditName')) {
+        document.getElementById('myEditName').parentElement.insertAdjacentHTML('afterend', `
+        <div class="form-group"><label>Gender</label><select id="myEditGender" class="form-control"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>`);
+    }
+
+    const bio = document.getElementById('myBioSummary');
+    if (bio) {
+        bio.innerHTML = `<strong>Email:</strong> ${member.email || 'N/A'}<br><strong>Age:</strong> ${member.age || 'N/A'}<br><strong>Gender:</strong> ${member.gender || 'N/A'}<br><strong>Birthday:</strong> ${member.birthday || 'N/A'}<br><strong>Mobile:</strong> ${member.mobile || 'N/A'}<br><strong>Social Media:</strong> ${member.social_media || 'N/A'}<br><strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}`;
+    }
+
+    ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            let key = id.replace('myEdit', '').toLowerCase();
+            if(id === 'myEditParents') key = 'parents_name';
+            if(id === 'myEditSocial') key = 'social_media';
+            if(id === 'myMemberId') key = 'id';
+            el.value = member[key] || '';
+        }
+    });
+    
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+    
+    // 🔥 TARGET EXACT HTML QR PLACEHOLDER
+    const qrContainer = document.getElementById('myQrContainer');
+    const dlBtn = document.getElementById('myDownloadQrBtn');
+    if (qrContainer && dlBtn) {
+        if (member.qr_code) {
+            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:100%; height:auto; border-radius:8px;">`;
+            dlBtn.href = qrUrl;
+            dlBtn.style.display = 'inline-block';
+        } else {
+            qrContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No QR Assigned</span>';
+            dlBtn.style.display = 'none';
+        }
+    }
+    
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+    
+    if (window.loadMyV3Roles) window.loadMyV3Roles(member.id, 'myMinistriesHistory');
+    if (window.loadMyV3Attendance) window.loadMyV3Attendance();
+    if (window.renderHomeJourney) window.renderHomeJourney(); 
+};
+
+// 2. REPAIR DIRECTORY MODAL
+window.viewProfile = async function(id) {
+    try {
+        document.getElementById('globalPreloader').style.display = 'flex';
+        document.getElementById('globalPreloader').style.opacity = '1';
+
+        const res = await fetch('/api/youth');
+        const users = await res.json();
+        // Loose equality to catch string-to-int mismatches
+        const member = users.find(u => String(u.id) === String(id));
+        if (!member) {
+            document.getElementById('globalPreloader').style.opacity = '0';
+            setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+            return alert('Member not found.');
+        }
+        
+        const safeText = (val) => val || 'N/A';
+        
+        // Populate all possible fields securely
+        ['viewProfileName','viewProfileAge','viewProfileEmail','viewProfileMobile','viewProfileSocial','viewProfileBirthday','viewProfileParents'].forEach(fieldId => {
+             let key = fieldId.replace('viewProfile', '').toLowerCase();
+             if(key === 'parents') key = 'parents_name';
+             if(key === 'social') key = 'social_media';
+             if(document.getElementById(fieldId)) document.getElementById(fieldId).innerText = safeText(member[key]);
+        });
+        
+        // Target specific Version 1 Avatar ID
+        const av1 = document.getElementById('viewModalProfileAvatar');
+        const avHtml = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+        if (av1) av1.innerHTML = avHtml;
+
+        // Target specific Version 1 QR Pass modal section
+        const mQrContainer = document.getElementById('modalQrContainer');
+        const mDlBtn = document.getElementById('modalDownloadQrBtn');
+        const mQrWrap = document.getElementById('modalQrSectionWrapper');
+        if (mQrContainer && mDlBtn && mQrWrap) {
+             if (member.qr_code) {
+                 const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+                 mQrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:150px; height:150px; border-radius:8px;">`;
+                 mDlBtn.href = qrUrl;
+                 mQrWrap.style.display = 'block';
+             } else {
+                 mQrWrap.style.display = 'none';
+             }
+        }
+
+        const modal = document.getElementById('viewProfileModal');
+        if(modal) {
+            modal.style.display = 'block';
+            modal.classList.add('active');
+        }
+    } catch(e) {
+        alert("Network error.");
+    } finally {
+        document.getElementById('globalPreloader').style.opacity = '0';
+        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+    }
+};
+
+window.closeViewProfileModal = function() {
+    const modal = document.getElementById('viewProfileModal');
+    if(modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+};
+
+// 3. REPAIR MODERATION DASHBOARD (Targeting hardcoded HTML)
+window.loadPendingApplications = async function() {
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+        
+        let board = document.getElementById('pendingApplicationsBoard');
+        if (!board) return; // Failsafe
+
+        if (!apps || apps.length === 0) { 
+            board.style.display = 'none'; 
+            return; 
+        }
+
+        board.style.display = 'block';
+        const list = document.getElementById('pendingApplicationsList');
+        if (!list) return;
+        
+        list.innerHTML = apps.map(app => `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;"><div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;"><div style="flex: 1; min-width: 200px;"><strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong><span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span><p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p></div><div style="display: flex; gap: 8px;"><button class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button><button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button></div></div></div>`).join('');
+    } catch(e) {}
+};
+
+window.openCommitmentModal = function() {
+    const modal = document.getElementById('commitmentModal');
+    if (modal) {
+        modal.style.display = 'block';
+        modal.classList.add('active');
+    } else {
+        alert('Commitment Modal HTML not found!');
+    }
+};
+
+// === V16: DIRECTORY, MODAL FREEZE, & BOARD FIX ===
+
+// 1. DIRECTORY "VIEW" BUTTON FIX (Matches the exact HTML onclick)
+window.openViewProfileModal = async function(id) {
+    try {
+        document.getElementById('globalPreloader').style.display = 'flex';
+        document.getElementById('globalPreloader').style.opacity = '1';
+
+        const res = await fetch('/api/youth');
+        const users = await res.json();
+        const member = users.find(u => String(u.id) === String(id));
+        
+        if (!member) {
+            document.getElementById('globalPreloader').style.opacity = '0';
+            setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+            return alert('Member not found.');
+        }
+        
+        const safeText = (val) => val || 'N/A';
+        ['viewProfileName','viewProfileAge','viewProfileEmail','viewProfileMobile','viewProfileSocial','viewProfileBirthday','viewProfileParents'].forEach(fieldId => {
+             let key = fieldId.replace('viewProfile', '').toLowerCase();
+             if(key === 'parents') key = 'parents_name';
+             if(key === 'social') key = 'social_media';
+             if(document.getElementById(fieldId)) document.getElementById(fieldId).innerText = safeText(member[key]);
+        });
+        
+        const av1 = document.getElementById('viewModalProfileAvatar');
+        if (av1) av1.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+
+        const mQrContainer = document.getElementById('modalQrContainer');
+        const mDlBtn = document.getElementById('modalDownloadQrBtn');
+        const mQrWrap = document.getElementById('modalQrSectionWrapper');
+        if (mQrContainer && mDlBtn && mQrWrap) {
+             if (member.qr_code) {
+                 const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+                 mQrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:150px; height:150px; border-radius:8px;">`;
+                 mDlBtn.href = qrUrl;
+                 mQrWrap.style.display = 'block';
+             } else {
+                 mQrWrap.style.display = 'none';
+             }
+        }
+
+        const modal = document.getElementById('viewProfileModal');
+        if(modal) {
+            modal.style.display = 'flex';
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden'; // LOCK BACKGROUND SCROLL
+        }
+    } catch(e) {
+        alert("Network error.");
+    } finally {
+        document.getElementById('globalPreloader').style.opacity = '0';
+        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+    }
+};
+
+window.closeViewProfileModal = function() {
+    const modal = document.getElementById('viewProfileModal');
+    if(modal) {
+        modal.style.display = '';
+        modal.classList.remove('active');
+        document.body.style.overflow = ''; // UNFREEZE BACKGROUND SCROLL
+    }
+};
+
+// 2. MODAL FREEZE FIX ("I'M READY" MODAL)
+window.openCommitmentModal = function() {
+    const modal = document.getElementById('commitmentModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden'; // LOCK BACKGROUND SCROLL
+    }
+};
+
+window.closeCommitmentModal = function() {
+    const modal = document.getElementById('commitmentModal');
+    if (modal) {
+        modal.style.display = '';
+        modal.classList.remove('active');
+        document.body.style.overflow = ''; // UNFREEZE BACKGROUND SCROLL
+    }
+};
+
+// 3. MODERATION DASHBOARD FIX (Intercept native loadMinistries)
+if (!window.loadMinistries.isV16Patched) {
+    const origLoadMinistries = window.loadMinistries;
+    window.loadMinistries = async function(...args) {
+        if(origLoadMinistries) await origLoadMinistries.apply(this, args);
+        if(window.loadPendingApplications) window.loadPendingApplications(); // RUN AFTER WIPE
+    };
+    window.loadMinistries.isV16Patched = true;
+}
+
+window.loadPendingApplications = async function() {
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+        
+        // Delete old board to prevent duplicate injection
+        const oldBoard = document.getElementById('pendingApplicationsBoard');
+        if (oldBoard) oldBoard.remove();
+
+        if (!apps || apps.length === 0) return;
+
+        const minTab = document.getElementById('ministriesTab');
+        if (!minTab) return;
+
+        let appsHtml = '';
+        apps.forEach(app => {
+            appsHtml += `
+            <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                        <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                        <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                        <button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                    </div>
+                </div>
+            </div>`;
+        });
+
+        const ui = `
+        <div id="pendingApplicationsBoard" style="margin-bottom: 25px; background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+            <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Expressions</h3>
+            <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;">
+                ${appsHtml}
+            </div>
+        </div>`;
+        
+        const h2 = minTab.querySelector('h2');
+        if (h2) h2.insertAdjacentHTML('afterend', ui);
+        else minTab.insertAdjacentHTML('afterbegin', ui);
+        
+    } catch(e) {}
 };
