@@ -4528,46 +4528,163 @@ window.loadPendingApplications = async function() {
 };
 
 // ==========================================
-// V30: MEMBERSHIP LOGS & INTEGRATION PERIOD
+// V38: UNIFIED MASTER PATCH (CLEAN RECOVERY)
 // ==========================================
 
-// 1. Point the "I'm Ready" submit button to the new V2 endpoint
-window.submitCommitment = async function(e) {
-    if(e) e.preventDefault();
-    const msg = document.getElementById('commitmentIntentMsg').value.trim();
-    if (!msg) return alert('Please share your reflection.');
-    try {
-        const res = await fetch('/api/youth/' + currentMember.id + '/commit-v2', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ actor: currentMember.name, intent_message: msg })
-        });
-        const data = await res.json();
-        if (data.success) {
-            currentMember = data.member;
-            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
-            closeCommitmentModal();
-            if(window.renderHomeJourney) window.renderHomeJourney();
-            
-            showSuccessMessage('🎉', 'Welcome to the Family!', "Thank you for choosing to belong to Fire of God Ministries. This is a beautiful step in your spiritual journey.\n\nWe are excited to walk alongside you in faith, fellowship, and formation. Welcome home!");
-        } else { alert(data.error || 'Failed to submit commitment.'); }
-    } catch(err) { alert('Network Error'); }
-};
+// 1. Z-INDEX & CSS FIXES (Hides duplicate Pass ID, forces Modals to front)
+const styleFixes = document.createElement('style');
+styleFixes.innerHTML = `
+    #editMinistryRoleModal, #editMemberModal, .modal[id*="edit"] { z-index: 99999 !important; }
+    #ministryDetailsModal, #viewMinistryModal { z-index: 1050 !important; }
+    .custom-success-modal { z-index: 100000 !important; }
+    #modalProfileCode { display: none !important; }
+`;
+document.head.appendChild(styleFixes);
 
-// 2. Update Home Dashboard to show "Integration Period" status
-const origRenderJourney = window.renderHomeJourney;
-window.renderHomeJourney = async function() {
-    const container = document.getElementById('dynamicJourneyContainer');
-    if (!container || !currentMember) return;
-    
-    if (currentMember.account_tier === 'Integration Period') {
-        container.innerHTML = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Integration Period</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Undergoing community formation</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>In Progress</button>`;
-        return;
+// 2. AUTO-HEALING UI (Prevents Screen Freezing)
+setInterval(() => {
+    const visibleModals = Array.from(document.querySelectorAll('.modal')).filter(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.opacity !== '0';
+    });
+    if (visibleModals.length === 0) {
+        if (document.body.style.overflow === 'hidden' || document.body.style.pointerEvents === 'none') {
+            document.body.style.overflow = '';
+            document.body.style.pointerEvents = 'auto';
+        }
+    }
+}, 1000);
+
+// 3. MASTER FETCH INTERCEPTOR (Safe & Unified)
+if (!window.masterFetchPatched) {
+    const nativeFetch = window.fetch;
+    window.fetch = async function(url, options) {
+        // A. Ministry Role Logs
+        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/members/') && url.includes('/api/ministries')) {
+            try {
+                url = url.replace(/\/api\/ministries(\-v\d+)?\//, '/api/ministries-v36/');
+                if (options.body) {
+                    let bodyObj = JSON.parse(options.body);
+                    bodyObj.actor = (window.currentMember && window.currentMember.name) ? window.currentMember.name : (window.currentUser || 'Admin');
+                    options.body = JSON.stringify(bodyObj);
+                }
+            } catch(e) {}
+        }
+        // B. Profile Updates (Mobile/Address)
+        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/api/youth/profile/')) {
+            try {
+                url = url.replace(/\/api\/youth(\-v\d+)?\/profile\//, '/api/youth-v37/profile/');
+                if (options.body) {
+                    let bodyObj = JSON.parse(options.body);
+                    const myMob = document.getElementById('myEditMobile'), myAdd = document.getElementById('myEditAddress');
+                    const edMob = document.getElementById('editMemberMobile'), edAdd = document.getElementById('editMemberAddress');
+                    if (myMob && myMob.value) bodyObj.mobile = myMob.value;
+                    if (myAdd && myAdd.value) bodyObj.address = myAdd.value;
+                    if (edMob && edMob.value) bodyObj.mobile = edMob.value;
+                    if (edAdd && edAdd.value) bodyObj.address = edAdd.value;
+                    options.body = JSON.stringify(bodyObj);
+                }
+            } catch(e) {}
+        }
+        return nativeFetch.apply(this, [url, options]);
+    };
+    window.masterFetchPatched = true;
+}
+
+// 4. DYNAMIC UI INJECTOR (Inputs & Overrides)
+setInterval(() => {
+    // Dropdown Override
+    const select = document.querySelector('#editMinistryRoleModal select');
+    if (select && !select.classList.contains('patched-v37')) {
+        if (select.innerHTML.includes('value="Member"')) {
+            const currentVal = select.value;
+            select.innerHTML = `
+                <option value="Ministry Head">Ministry Head</option>
+                <option value="Assistant Ministry Head">Assistant Ministry Head</option>
+                <option value="Youth Ministry Head">Youth Ministry Head</option>
+                <option value="Core">Core</option>
+                <option value="Member">Member</option>
+                <option value="Integration Period">Integration Period</option>
+            `;
+            if (currentVal && !select.innerHTML.includes(currentVal)) select.innerHTML += `<option value="${currentVal}">${currentVal}</option>`;
+            select.value = currentVal;
+            select.classList.add('patched-v37');
+        }
+    }
+
+    // Profile Form Inputs (My Profile)
+    const myEmailGroup = document.getElementById('myEditEmail');
+    if (myEmailGroup && !document.getElementById('myEditMobile')) {
+        myEmailGroup.parentElement.insertAdjacentHTML('afterend', `
+            <div class="form-group"><label>Mobile Number</label><input type="text" id="myEditMobile" class="form-control" placeholder="e.g. 09123456789"></div>
+            <div class="form-group"><label>Address</label><input type="text" id="myEditAddress" class="form-control" placeholder="Enter full address"></div>
+        `);
     }
     
-    if (origRenderJourney) await origRenderJourney();
+    // Profile Form Inputs (Admin Edit)
+    const edEmailGroup = document.getElementById('editMemberEmail');
+    if (edEmailGroup && !document.getElementById('editMemberMobile')) {
+        edEmailGroup.parentElement.insertAdjacentHTML('afterend', `
+            <div class="form-group"><label>Mobile Number</label><input type="text" id="editMemberMobile" class="form-control"></div>
+            <div class="form-group"><label>Address</label><input type="text" id="editMemberAddress" class="form-control"></div>
+        `);
+    }
+
+    // Make Priority Button
+    document.querySelectorAll('button').forEach(btn => {
+        if (btn.innerText.trim() === 'Make Core Priority') {
+            btn.innerText = '⭐ Make Priority';
+            btn.classList.remove('btn-outline');
+            btn.classList.add('btn-primary');
+        }
+    });
+}, 1000);
+
+// 5. PROFILE UI OVERRIDES (Pass ID & Display mapping)
+const origPopV37 = window.populateProfileTab;
+if (origPopV37 && !window.v37PopPatched) {
+    window.populateProfileTab = function(member) {
+        origPopV37(member);
+        setTimeout(() => {
+            // Unique Pass ID Injection
+            const codeEl = document.getElementById('myProfileCode');
+            if (codeEl) {
+                codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
+                codeEl.style.display = 'inline-block';
+            }
+
+            // Input Values
+            if(document.getElementById('myEditMobile')) document.getElementById('myEditMobile').value = member.mobile || '';
+            if(document.getElementById('myEditAddress')) document.getElementById('myEditAddress').value = member.address || '';
+            
+            // Display Values
+            const pTags = Array.from(document.querySelectorAll('#profileTab p, #profileTab div'));
+            for (let p of pTags) {
+                if (p.innerHTML.includes('<strong>Mobile:</strong>') && !p.innerHTML.includes('<strong>Address:</strong>')) {
+                    p.innerHTML = p.innerHTML.replace('<strong>Mobile:</strong>', `<strong>Mobile:</strong> ${member.mobile || 'N/A'}<br><strong>Address:</strong> ${member.address || 'N/A'}<br><strong style="display:none;">Mobile:</strong>`);
+                    break;
+                }
+            }
+        }, 150);
+    };
+    window.v37PopPatched = true;
+}
+
+// 6. MAKE PRIORITY FUNCTION
+window.makeCorePriority = async function(mappingId, youthId) {
+    if(!confirm("Set this as your Priority Ministry?")) return;
+    try {
+        await fetch('/api/ministries-v37/priority/' + mappingId, {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({youth_id: youthId})
+        });
+        alert('Priority Ministry Updated Successfully! ⭐');
+        if (window.loadMyV3Roles) window.loadMyV3Roles();
+        if (window.renderHomeJourney) window.renderHomeJourney();
+    } catch(e) { alert('Error updating priority.'); }
 };
 
-// 3. Inject the New Admin Dashboard into the DOM
+// 7. MEMBERSHIP LOGS (ADMIN DASHBOARD)
+// A. Inject Tab HTML
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         if (!document.getElementById('membershipAdminTab')) {
@@ -4577,17 +4694,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button id="btnSubMemCommunity" class="sub-nav-btn active" onclick="switchMemSubTab('community')">🕊️ Community Intents</button>
                     <button id="btnSubMemMinistry" class="sub-nav-btn" onclick="switchMemSubTab('ministry')">🔥 Ministry Logs</button>
                 </div>
+                
                 <div id="subTabMemCommunity" class="mem-sub-tab" style="display:block; animation: fadeIn 0.3s ease-out;">
                     <div class="card">
                         <h2 style="color: var(--primary);">🕊️ Community Intent Logs</h2>
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Members who clicked "I'm Ready" and are entering the Integration Period.</p>
+                        <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                            <input type="text" id="commFilterName" class="form-control" placeholder="🔍 Search name..." oninput="filterCommunityLogs()" style="flex:1; min-width:150px;">
+                            <input type="date" id="commFilterStart" class="form-control" onchange="filterCommunityLogs()" title="Start Date">
+                            <input type="date" id="commFilterEnd" class="form-control" onchange="filterCommunityLogs()" title="End Date">
+                        </div>
                         <div id="communityIntentsList"></div>
                     </div>
                 </div>
+                
                 <div id="subTabMemMinistry" class="mem-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
                     <div class="card">
                         <h2 style="color: #F59E0B;">🔥 Master Ministry Logs</h2>
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Historical record of all expressions to serve.</p>
+                        <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                            <input type="text" id="minLogFilterName" class="form-control" placeholder="🔍 Search name or ministry..." oninput="filterMinistryLogs()" style="flex:1; min-width:150px;">
+                            <input type="date" id="minLogFilterStart" class="form-control" onchange="filterMinistryLogs()" title="Start Date">
+                            <input type="date" id="minLogFilterEnd" class="form-control" onchange="filterMinistryLogs()" title="End Date">
+                        </div>
                         <div id="ministryIntentsLogList"></div>
                     </div>
                 </div>
@@ -4596,10 +4723,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 1000);
 });
 
-// 4. Add the button to the Sidebar for Admins
+// B. Sidebar Button
 const origBuildNavLogs = window.buildNav;
 window.buildNav = function() {
-    origBuildNavLogs();
+    if(origBuildNavLogs) origBuildNavLogs();
     const sidebar = document.getElementById('sidebarNav');
     if (sidebar && (window.hasPerm('edit_entries') || currentUser === 'celsocreeriii@gmail.com')) {
         if (!document.getElementById('navBtnMembership')) {
@@ -4619,117 +4746,27 @@ window.switchMemSubTab = function(tab) {
     loadMembershipAdminData();
 };
 
-window.loadMembershipAdminData = async function() {
-    // Load Community Intents
-    try {
-        const commRes = await fetch('/api/admin/community-intents');
-        const comms = await commRes.json();
-        const cList = document.getElementById('communityIntentsList');
-        if (comms.length === 0) {
-            cList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">No intents recorded yet.</div>';
-        } else {
-            cList.innerHTML = comms.map(c => `
-            <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 10px;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
-                    <div style="flex: 1;">
-                        <strong style="color: var(--text-main); font-size: 1.05rem;">${c.name}</strong>
-                        <span class="badge ${c.account_tier === 'Integration Period' ? 'badge-orange' : 'badge-blue'}">${c.account_tier}</span><br>
-                        <small style="color: var(--text-muted);">📅 Intent submitted: ${c.commitment_date || 'Unknown'}</small>
-                        <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${c.commitment_intent || 'No message provided.'}"</p>
-                    </div>
-                    ${c.account_tier === 'Integration Period' ? `<button class="btn btn-primary btn-sm" onclick="approveFullMember(${c.id})">Grant Full Member</button>` : `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold;">Completed</span>`}
-                </div>
-            </div>`).join('');
-        }
-    } catch(e) {}
-
-    // Load Ministry Master Logs
-    try {
-        const minRes = await fetch('/api/admin/ministry-logs');
-        const mins = await minRes.json();
-        const mList = document.getElementById('ministryIntentsLogList');
-        if (mins.length === 0) {
-            mList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">No logs recorded yet.</div>';
-        } else {
-            mList.innerHTML = mins.map(m => `
-            <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
-                <strong style="color: var(--text-main); font-size: 1.05rem;">${m.applicant_name}</strong>
-                <span class="badge badge-orange">${m.ministry_name}</span>
-                <span class="badge" style="background: #E2E8F0; color: #475569;">Status: ${m.role}</span><br>
-                <small style="color: var(--text-muted);">📅 Activity logged: ${m.assigned_at || 'Unknown'}</small>
-                <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${m.intent_message || 'Assigned directly by Admin.'}"</p>
-            </div>`).join('');
-        }
-    } catch(e) {}
-};
-
-window.approveFullMember = async function(id) {
-    if(!confirm('Advance this user from Integration Period to Full Committed Member?')) return;
-    try {
-        await fetch('/api/admin/community-intents/' + id + '/approve', { method: 'POST' });
-        loadMembershipAdminData();
-    } catch(e) { alert('Error.'); }
-};
-
-// ==========================================
-// V31: DASHBOARD FILTERS, TIMESTAMPS & CLIENT SYNC
-// ==========================================
-
+// C. Data Fetching & Caching
 window.cachedCommunityIntents = [];
 window.cachedMinistryLogs = [];
 
-// 1. Inject Filter Inputs into the DOM
-document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-        const commTab = document.getElementById('subTabMemCommunity');
-        if (commTab && !document.getElementById('commFilterName')) {
-            const cList = document.getElementById('communityIntentsList');
-            if (cList) {
-                cList.insertAdjacentHTML('beforebegin', `
-                <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
-                    <input type="text" id="commFilterName" class="form-control" placeholder="🔍 Search name..." oninput="filterCommunityLogs()" style="flex:1; min-width:150px;">
-                    <input type="date" id="commFilterStart" class="form-control" onchange="filterCommunityLogs()" title="Start Date">
-                    <input type="date" id="commFilterEnd" class="form-control" onchange="filterCommunityLogs()" title="End Date">
-                </div>`);
-            }
-        }
-
-        const minTab = document.getElementById('subTabMemMinistry');
-        if (minTab && !document.getElementById('minLogFilterName')) {
-            const mList = document.getElementById('ministryIntentsLogList');
-            if (mList) {
-                mList.insertAdjacentHTML('beforebegin', `
-                <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
-                    <input type="text" id="minLogFilterName" class="form-control" placeholder="🔍 Search name or ministry..." oninput="filterMinistryLogs()" style="flex:1; min-width:150px;">
-                    <input type="date" id="minLogFilterStart" class="form-control" onchange="filterMinistryLogs()" title="Start Date">
-                    <input type="date" id="minLogFilterEnd" class="form-control" onchange="filterMinistryLogs()" title="End Date">
-                </div>`);
-            }
-        }
-    }, 1500);
-});
-
-// 2. Fetch and Cache Data (POINTING TO V2 ENDPOINTS)
 window.loadMembershipAdminData = async function() {
     try {
         const commRes = await fetch('/api/admin/community-intents-v2');
         window.cachedCommunityIntents = await commRes.json();
         window.filterCommunityLogs();
     } catch(e) {}
-
     try {
-        const minRes = await fetch('/api/admin/ministry-logs');
+        const minRes = await fetch('/api/admin/ministry-logs-v36');
         window.cachedMinistryLogs = await minRes.json();
         window.filterMinistryLogs();
     } catch(e) {}
 };
 
-// 3. Community Filter Logic
 window.filterCommunityLogs = function() {
     const q = document.getElementById('commFilterName') ? document.getElementById('commFilterName').value.toLowerCase().trim() : '';
     const start = document.getElementById('commFilterStart') ? document.getElementById('commFilterStart').value : '';
     const end = document.getElementById('commFilterEnd') ? document.getElementById('commFilterEnd').value : '';
-    
     let filtered = window.cachedCommunityIntents.filter(c => {
         let matchName = (c.name || '').toLowerCase().includes(q);
         let matchDate = true;
@@ -4743,12 +4780,10 @@ window.filterCommunityLogs = function() {
     window.renderCommunityIntents(filtered);
 };
 
-// 4. Ministry Filter Logic
 window.filterMinistryLogs = function() {
     const q = document.getElementById('minLogFilterName') ? document.getElementById('minLogFilterName').value.toLowerCase().trim() : '';
     const start = document.getElementById('minLogFilterStart') ? document.getElementById('minLogFilterStart').value : '';
     const end = document.getElementById('minLogFilterEnd') ? document.getElementById('minLogFilterEnd').value : '';
-
     let filtered = window.cachedMinistryLogs.filter(m => {
         let matchName = (m.applicant_name || '').toLowerCase().includes(q) || (m.ministry_name || '').toLowerCase().includes(q);
         let matchDate = true;
@@ -4762,7 +4797,7 @@ window.filterMinistryLogs = function() {
     window.renderMinistryLogs(filtered);
 };
 
-// 5. Renderers (with explicit Accepted Timestamps)
+// D. Renderers
 window.renderCommunityIntents = function(list) {
     const cList = document.getElementById('communityIntentsList');
     if (!cList) return;
@@ -4794,284 +4829,6 @@ window.renderMinistryLogs = function(list) {
     }
     mList.innerHTML = list.map(m => `
     <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
-        <strong style="color: var(--text-main); font-size: 1.05rem;">${m.applicant_name}</strong>
-        <span class="badge badge-orange">${m.ministry_name}</span>
-        <span class="badge" style="background: #E2E8F0; color: #475569;">Status: ${m.role}</span><br>
-        <small style="color: var(--text-muted);">📅 Activity logged: ${m.assigned_at || 'Unknown'}</small>
-        <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${m.intent_message || 'Assigned directly by Admin.'}"</p>
-    </div>`).join('');
-};
-
-// 6. Pass the current Admin's name into the V2 API
-window.approveFullMember = async function(id) {
-    if(!confirm('Advance this user from Integration Period to Full Committed Member?')) return;
-    try {
-        await fetch('/api/admin/community-intents-v2/' + id + '/approve', { 
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ actor: currentUser })
-        });
-        window.loadMembershipAdminData();
-    } catch(e) { alert('Error processing approval.'); }
-};
-
-// 7. SILENT CLIENT CACHE SYNC (POINTING TO V2)
-window.renderHomeJourney = async function() {
-    const container = document.getElementById('dynamicJourneyContainer');
-    if (!container || !currentMember) return;
-
-    try {
-        const tierRes = await fetch('/api/youth-v2/' + currentMember.id + '/tier');
-        if (tierRes.ok) {
-            const tierData = await tierRes.json();
-            if(tierData.account_tier && tierData.account_tier !== currentMember.account_tier) {
-                currentMember.account_tier = tierData.account_tier;
-                localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
-            }
-        }
-    } catch(e) {}
-
-    let html = '';
-    if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
-        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 3</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
-    } else if (currentMember.account_tier === 'Integration Period') {
-        html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Integration Period</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Undergoing community formation</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>In Progress</button>`;
-    } else {
-        try {
-            const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
-            const ministries = await res.json();
-            const isApplicant = ministries.some(m => m.role === 'Applicant');
-            const isActiveMember = ministries.some(m => m.role !== 'Applicant');
-            
-            if (isActiveMember) {
-                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p>${isApplicant ? '<p style="font-size:0.75rem; color:#F59E0B; margin:0; font-weight:bold;">(Application Pending)</p>' : ''}</div><button type="button" class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
-            } else if (isApplicant) {
-                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Pending</button>`;
-            } else {
-                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 4</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
-            }
-        } catch(e) {}
-    }
-    container.innerHTML = html;
-};
-
-
-// ==========================================
-// V34: Z-INDEX, AUTO-HEAL, ROLE LOGS & PASS ID
-// ==========================================
-
-// 1. Z-INDEX CSS FIX
-const styleFixV34 = document.createElement('style');
-styleFixV34.innerHTML = `
-    #viewMinistryModal { z-index: 1050 !important; }
-    #editMemberModal, .modal[id*="edit"] { z-index: 99999 !important; }
-    .custom-success-modal { z-index: 100000 !important; }
-`;
-document.head.appendChild(styleFixV34);
-
-// Dynamic Z-Index enforcer for clicks
-document.addEventListener('click', (e) => {
-    setTimeout(() => {
-        document.querySelectorAll('.modal.active').forEach(m => {
-            if (m.id === 'editMemberModal' || m.innerHTML.includes('Save Changes') || m.innerHTML.includes('Update Role')) {
-                m.style.zIndex = '99999';
-            }
-        });
-    }, 50);
-});
-
-// 2. AUTO-HEALING UI LOOP (Fixes the stuck/frozen screen bug)
-setInterval(() => {
-    const visibleModals = Array.from(document.querySelectorAll('.modal')).filter(m => window.getComputedStyle(m).display !== 'none');
-    if (visibleModals.length === 0) {
-        if (document.body.style.overflow === 'hidden' || document.body.style.pointerEvents === 'none') {
-            document.body.style.overflow = '';
-            document.body.style.pointerEvents = 'auto';
-        }
-    }
-}, 1000);
-
-// 3. UNIQUE PASS ID (Visible ONLY on My Profile)
-const origPopulateV34 = window.populateProfileTab;
-if (origPopulateV34 && !window.v34PopulatePatched) {
-    window.populateProfileTab = function(member) {
-        origPopulateV34(member); // Run original layout code
-        setTimeout(() => {
-            let profileHeader = document.querySelector('#profileTab .profile-header-card');
-            if (profileHeader && !document.getElementById('myUniquePassIdBadge')) {
-                profileHeader.insertAdjacentHTML('beforeend', 
-                    `<div id="myUniquePassIdBadge" style="width: 100%; text-align: center; margin-top: 15px; animation: fadeIn 0.5s;">
-                        <span class="badge badge-blue" style="font-size: 1.1rem; padding: 8px 20px; background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD;">
-                            🔑 Unique Pass ID: <strong style="letter-spacing: 1px;">${member.qr_code || 'N/A'}</strong>
-                        </span>
-                    </div>`
-                );
-            }
-        }, 100);
-    };
-    window.v34PopulatePatched = true;
-}
-
-// 4. SAFE ROLE LOGGING INTERCEPTOR (No infinite loops!)
-if (!window.v34FetchPatched) {
-    const nativeFetch = window.fetch;
-    window.fetch = async function(url, options) {
-        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/members/') && url.includes('/api/ministries')) {
-            try {
-                let bodyObj = JSON.parse(options.body);
-                bodyObj.actor = window.currentUser || 'Admin';
-                options.body = JSON.stringify(bodyObj);
-                url = url.replace(/\/api\/ministries(\-v2)?\//, '/api/ministries-v34/'); // Route to clean V34 endpoint
-            } catch(e) {}
-        }
-        return nativeFetch.apply(this, [url, options]);
-    };
-    window.v34FetchPatched = true;
-}
-
-// 5. DROPDOWN OVERRIDE
-setInterval(() => {
-    document.querySelectorAll('select').forEach(select => {
-        if (!select.classList.contains('patched-v34') && !select.id.includes('Filter') && !select.id.includes('ministrySelect')) {
-            if (select.innerHTML.includes('value="Member"')) {
-                const currentVal = select.value;
-                select.innerHTML = `
-                    <option value="Ministry Head">Ministry Head</option>
-                    <option value="Assistant Ministry Head">Assistant Ministry Head</option>
-                    <option value="Youth Ministry Head">Youth Ministry Head</option>
-                    <option value="Core">Core</option>
-                    <option value="Member">Member</option>
-                    <option value="Integration Period">Integration Period</option>
-                `;
-                if (currentVal && !select.innerHTML.includes(currentVal)) select.innerHTML += `<option value="${currentVal}">${currentVal}</option>`;
-                select.value = currentVal;
-                select.classList.add('patched-v34');
-            }
-        }
-    });
-}, 1000);
-
-// 6. UPDATE DASHBOARD TO POINT TO V34 LEDGER
-window.loadMembershipAdminData = async function() {
-    try {
-        const commRes = await fetch('/api/admin/community-intents-v2');
-        window.cachedCommunityIntents = await commRes.json();
-        window.filterCommunityLogs();
-    } catch(e) {}
-
-    try {
-        const minRes = await fetch('/api/admin/ministry-logs-v34'); // Safe V34 ledger
-        window.cachedMinistryLogs = await minRes.json();
-        window.filterMinistryLogs();
-    } catch(e) {}
-};
-
-// ==========================================
-// V35: PRECISE Z-INDEX, PASS ID & SAFE SAVES
-// ==========================================
-
-// 1. EXACT Z-INDEX TARGETING
-const styleFixV35 = document.createElement('style');
-styleFixV35.innerHTML = `
-    #editMinistryRoleModal { z-index: 99999 !important; }
-    #ministryDetailsModal { z-index: 1050 !important; }
-`;
-document.head.appendChild(styleFixV35);
-
-// 2. ACTIVATE EXISTING PASS ID PLACEHOLDER (Only on My Profile)
-const origPopulateV35 = window.populateProfileTab;
-if (origPopulateV35 && !window.v35PopulatePatched) {
-    window.populateProfileTab = function(member) {
-        origPopulateV35(member);
-        setTimeout(() => {
-            const codeEl = document.getElementById('myProfileCode');
-            if (codeEl) {
-                codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
-                codeEl.style.display = 'inline-block';
-            }
-        }, 100);
-    };
-    window.v35PopulatePatched = true;
-}
-
-
-
-// 4. DROPDOWN OVERRIDE (Targeting exact modal)
-setInterval(() => {
-    const select = document.querySelector('#editMinistryRoleModal select');
-    if (select && !select.classList.contains('patched-v35')) {
-        if (select.innerHTML.includes('value="Member"')) {
-            const currentVal = select.value;
-            select.innerHTML = `
-                <option value="Ministry Head">Ministry Head</option>
-                <option value="Assistant Ministry Head">Assistant Ministry Head</option>
-                <option value="Youth Ministry Head">Youth Ministry Head</option>
-                <option value="Core">Core</option>
-                <option value="Member">Member</option>
-                <option value="Integration Period">Integration Period</option>
-            `;
-            if (currentVal && !select.innerHTML.includes(currentVal)) select.innerHTML += `<option value="${currentVal}">${currentVal}</option>`;
-            select.value = currentVal;
-            select.classList.add('patched-v35');
-        }
-    }
-}, 1000);
-
-// ==========================================
-// V36: FREEZE FIX, PRECISION LOGS & PASS ID
-// ==========================================
-
-// 1. HIDE DUPLICATE PASS ID PERMANENTLY
-const styleFixV36 = document.createElement('style');
-styleFixV36.innerHTML = `
-    #myUniquePassIdBadge { display: none !important; }
-`;
-document.head.appendChild(styleFixV36);
-
-// 2. PERMANENT, NON-DESTRUCTIVE FETCH INTERCEPTOR
-if (!window.v36FetchPatched) {
-    const nativeFetchV36 = window.fetch;
-    window.fetch = async function(url, options) {
-        // Only intercept ministry member role updates
-        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/members/') && url.includes('/api/ministries')) {
-            try {
-                url = url.replace(/\/api\/ministries(\-v\d+)?\//, '/api/ministries-v36/'); // Route to precise V36 endpoint
-                if (options.body) {
-                    let bodyObj = JSON.parse(options.body);
-                    bodyObj.actor = window.currentUser || 'Admin';
-                    options.body = JSON.stringify(bodyObj);
-                }
-            } catch(e) {}
-        }
-        return nativeFetchV36.apply(this, [url, options]);
-    };
-    window.v36FetchPatched = true;
-}
-
-// 3. PRECISION MINISTRY LOG RENDERER
-window.loadMembershipAdminData = async function() {
-    try {
-        const commRes = await fetch('/api/admin/community-intents-v2');
-        window.cachedCommunityIntents = await commRes.json();
-        window.filterCommunityLogs();
-    } catch(e) {}
-
-    try {
-        const minRes = await fetch('/api/admin/ministry-logs-v36'); // Use V36 endpoint
-        window.cachedMinistryLogs = await minRes.json();
-        window.filterMinistryLogs();
-    } catch(e) {}
-};
-
-window.renderMinistryLogs = function(list) {
-    const mList = document.getElementById('ministryIntentsLogList');
-    if (!mList) return;
-    if (list.length === 0) {
-        mList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); border: 1px dashed var(--border-color); border-radius: 8px;">No logs match your filter.</div>';
-        return;
-    }
-    mList.innerHTML = list.map(m => `
-    <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
             <div style="flex: 1;">
                 <strong style="color: var(--text-main); font-size: 1.05rem;">${m.applicant_name}</strong>
@@ -5087,20 +4844,13 @@ window.renderMinistryLogs = function(list) {
     </div>`).join('');
 };
 
-// 4. AGGRESSIVE AUTO-HEALER FOR UI FREEZING
-setInterval(() => {
-    // Check for invisible preloader blocking clicks
-    const preloader = document.getElementById('globalPreloader');
-    if (preloader && preloader.style.opacity === '0' && preloader.style.display !== 'none') {
-        preloader.style.display = 'none';
-    }
-
-    // Check if body is locked while no modals are open
-    const activeModals = document.querySelectorAll('.modal.active, .modal[style*="display: block"], .modal[style*="display: flex"]');
-    if (activeModals.length === 0) {
-        if (document.body.style.overflow === 'hidden' || document.body.style.pointerEvents === 'none') {
-            document.body.style.overflow = '';
-            document.body.style.pointerEvents = 'auto';
-        }
-    }
-}, 500);
+window.approveFullMember = async function(id) {
+    if(!confirm('Advance this user from Integration Period to Full Committed Member?')) return;
+    try {
+        await fetch('/api/admin/community-intents-v2/' + id + '/approve', { 
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: (window.currentMember && window.currentMember.name) ? window.currentMember.name : currentUser })
+        });
+        window.loadMembershipAdminData();
+    } catch(e) { alert('Error processing approval.'); }
+};
