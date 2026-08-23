@@ -4939,3 +4939,70 @@ window.renderMinistryLogs = function(list) {
         </div>
     </div>`).join('');
 };
+
+// ==========================================
+// V33: MODAL LAYERING, ACTOR SYNC & AUTO-HEAL
+// ==========================================
+
+// 1. Z-INDEX FIX: Force Edit Member Modal to the front
+const styleFix = document.createElement('style');
+styleFix.innerHTML = `
+    #editMemberModal { z-index: 99999 !important; }
+    #viewProfileModal { z-index: 99998 !important; }
+    .custom-success-modal { z-index: 100000 !important; }
+`;
+document.head.appendChild(styleFix);
+
+// 2. FETCH INTERCEPTOR: Ensure Admin name is ALWAYS attached to role saves
+const origFetchV33 = window.fetch;
+window.fetch = async function(url, options) {
+    if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/members/')) {
+        if (options.body) {
+            try {
+                let bodyObj = JSON.parse(options.body);
+                bodyObj.actor = window.currentUser || 'Admin'; // Attach who clicked Save
+                options.body = JSON.stringify(bodyObj);
+            } catch(e) {}
+        }
+    }
+    return origFetchV33.apply(this, [url, options]);
+};
+
+// 3. CLOSE FUNCTION OVERRIDES: Safely handle stacked modals
+window.closeEditMemberModal = function() {
+    const mod = document.getElementById('editMemberModal');
+    if (mod) {
+        mod.style.display = 'none';
+        mod.classList.remove('active');
+    }
+    // Only unlock the background if the Ministry list modal isn't also open
+    const minMod = document.getElementById('ministryModal') || document.getElementById('viewMinistryModal');
+    if (!minMod || (minMod.style.display === 'none' || minMod.style.display === '')) {
+        document.body.style.overflow = '';
+    }
+};
+
+window.closeMinistryModal = function() {
+    const mod = document.getElementById('ministryModal') || document.getElementById('viewMinistryModal');
+    if (mod) {
+        mod.style.display = 'none';
+        mod.classList.remove('active');
+    }
+    document.body.style.overflow = '';
+};
+
+// 4. AUTO-HEALING LOOP: Permanently solves the freezing/stuck UI issue
+setInterval(() => {
+    // Check if any modal in the DOM is actually open right now
+    const anyModalOpen = Array.from(document.querySelectorAll('.modal')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display === 'flex' || style.display === 'block';
+    });
+
+    // If no modals are open, but the screen is locked, force unlock it!
+    if (!anyModalOpen && document.body.style.overflow === 'hidden') {
+        document.body.style.overflow = '';
+        document.body.style.pointerEvents = 'auto';
+    }
+}, 1000);
+

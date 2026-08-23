@@ -8,6 +8,26 @@ const webpush = require('web-push');
 const cron = require('node-cron');
 const app = express();
 
+// V33: ROOT INTERCEPTOR FOR MINISTRY ROLE LOGGING
+// Because this is at the top, Express will use this route FIRST, ensuring logging always fires.
+app.put('/api/ministries/:id/members/:mappingId', (req, res) => {
+    const { role, sub_role, actor } = req.body;
+    db.get("SELECT youth_id FROM ministry_members WHERE id = ?", [req.params.mappingId], (err, row) => {
+        if(!row) return res.status(404).json({error: 'Not found'});
+        const timeNow = typeof getManilaTime === 'function' ? getManilaTime() : new Date().toISOString();
+        const logMsg = role === 'Integration Period' ? 'Application Accepted for Integration Period' : `Role updated to ${role}`;
+        
+        db.run("UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?", [role, sub_role || '', req.params.mappingId], function(err) {
+            if(err) return res.status(500).json({error: err.message});
+            db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
+                [req.params.id, row.youth_id, role, actor || 'Admin', timeNow, logMsg], () => {
+                    res.json({success: true});
+            });
+        });
+    });
+});
+
+
 app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private'); next(); });
 const PORT = process.env.PORT || 3000;
 
