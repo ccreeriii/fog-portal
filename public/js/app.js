@@ -4854,3 +4854,88 @@ window.renderHomeJourney = async function() {
     }
     container.innerHTML = html;
 };
+
+// ==========================================
+// V32: DYNAMIC DROPDOWNS & ROLE HISTORY INTERCEPTOR
+// ==========================================
+
+// 1. SILENT FETCH INTERCEPTOR
+// This automatically upgrades ANY ministry role update to use the new logging endpoint!
+const originalFetchV32 = window.fetch;
+window.fetch = async function(url, options) {
+    if (options && options.method === 'PUT' && typeof url === 'string' && url.match(/\/api\/ministries\/\d+\/members\/\d+/)) {
+        url = url.replace('/api/ministries/', '/api/ministries-v2/'); // Upgrade to V2 logging route
+        if (options.body) {
+            try {
+                let bodyObj = JSON.parse(options.body);
+                bodyObj.actor = window.currentUser || 'Admin'; // Attach who clicked the button
+                options.body = JSON.stringify(bodyObj);
+            } catch(e) {}
+        }
+    }
+    return originalFetchV32.apply(this, [url, options]);
+};
+
+// 2. DYNAMIC DROPDOWN OBSERVER
+// Ensures the ministry page dropdowns ONLY have the requested roles
+setInterval(() => {
+    document.querySelectorAll('select').forEach(select => {
+        if (!select.classList.contains('patched-v32') && !select.id.includes('Filter') && !select.id.includes('ministrySelect')) {
+            // Check if it's likely a role select (contains 'Member')
+            if (select.innerHTML.includes('value="Member"')) {
+                const currentVal = select.value;
+                select.innerHTML = `
+                    <option value="Ministry Head">Ministry Head</option>
+                    <option value="Assistant Ministry Head">Assistant Ministry Head</option>
+                    <option value="Youth Ministry Head">Youth Ministry Head</option>
+                    <option value="Core">Core</option>
+                    <option value="Member">Member</option>
+                    <option value="Integration Period">Integration Period</option>
+                `;
+                // Preserve applicant if it hasn't been changed yet
+                if (currentVal && !select.innerHTML.includes(currentVal)) {
+                    select.innerHTML += `<option value="${currentVal}">${currentVal}</option>`;
+                }
+                select.value = currentVal;
+                select.classList.add('patched-v32');
+            }
+        }
+    });
+}, 1000);
+
+// 3. UPGRADE MINISTRY LOGS RENDERER
+window.loadMembershipAdminData = async function() {
+    try {
+        const commRes = await fetch('/api/admin/community-intents-v2');
+        window.cachedCommunityIntents = await commRes.json();
+        window.filterCommunityLogs();
+    } catch(e) {}
+
+    try {
+        const minRes = await fetch('/api/admin/ministry-logs-v3'); // Pointing to new Ledger
+        window.cachedMinistryLogs = await minRes.json();
+        window.filterMinistryLogs();
+    } catch(e) {}
+};
+
+window.renderMinistryLogs = function(list) {
+    const mList = document.getElementById('ministryIntentsLogList');
+    if (!mList) return;
+    if (list.length === 0) {
+        mList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); border: 1px dashed var(--border-color); border-radius: 8px;">No logs match your filter.</div>';
+        return;
+    }
+    mList.innerHTML = list.map(m => `
+    <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+            <div>
+                <strong style="color: var(--text-main); font-size: 1.05rem;">${m.applicant_name}</strong>
+                <span class="badge badge-orange">${m.ministry_name}</span>
+                <span class="badge" style="background: #E2E8F0; color: #475569;">Role: ${m.role}</span><br>
+                <small style="color: var(--text-muted);">📅 Action Logged: ${m.timestamp || 'Unknown'}</small><br>
+                <small style="color: var(--success); font-weight: bold;">👤 Processed by: ${m.actor || 'System'}</small>
+                <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${m.intent_message || 'Assigned directly by Admin.'}"</p>
+            </div>
+        </div>
+    </div>`).join('');
+};
