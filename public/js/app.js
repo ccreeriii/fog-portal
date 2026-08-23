@@ -4526,3 +4526,147 @@ window.loadPendingApplications = async function() {
         list.innerHTML = `<div style="text-align:center; padding: 20px; color:var(--danger); font-weight: bold;">Network error fetching applications: ${e.message}</div>`; 
     }
 };
+
+// ==========================================
+// V30: MEMBERSHIP LOGS & INTEGRATION PERIOD
+// ==========================================
+
+// 1. Point the "I'm Ready" submit button to the new V2 endpoint
+window.submitCommitment = async function(e) {
+    if(e) e.preventDefault();
+    const msg = document.getElementById('commitmentIntentMsg').value.trim();
+    if (!msg) return alert('Please share your reflection.');
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/commit-v2', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: currentMember.name, intent_message: msg })
+        });
+        const data = await res.json();
+        if (data.success) {
+            currentMember = data.member;
+            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            closeCommitmentModal();
+            if(window.renderHomeJourney) window.renderHomeJourney();
+            
+            showSuccessMessage('🎉', 'Welcome to the Family!', "Thank you for choosing to belong to Fire of God Ministries. This is a beautiful step in your spiritual journey.\n\nWe are excited to walk alongside you in faith, fellowship, and formation. Welcome home!");
+        } else { alert(data.error || 'Failed to submit commitment.'); }
+    } catch(err) { alert('Network Error'); }
+};
+
+// 2. Update Home Dashboard to show "Integration Period" status
+const origRenderJourney = window.renderHomeJourney;
+window.renderHomeJourney = async function() {
+    const container = document.getElementById('dynamicJourneyContainer');
+    if (!container || !currentMember) return;
+    
+    if (currentMember.account_tier === 'Integration Period') {
+        container.innerHTML = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Integration Period</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Undergoing community formation</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>In Progress</button>`;
+        return;
+    }
+    
+    if (origRenderJourney) await origRenderJourney();
+};
+
+// 3. Inject the New Admin Dashboard into the DOM
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        if (!document.getElementById('membershipAdminTab')) {
+            document.getElementById('mainContainer').insertAdjacentHTML('beforeend', `
+            <div id="membershipAdminTab" class="tab-content">
+                <div class="sub-nav">
+                    <button id="btnSubMemCommunity" class="sub-nav-btn active" onclick="switchMemSubTab('community')">🕊️ Community Intents</button>
+                    <button id="btnSubMemMinistry" class="sub-nav-btn" onclick="switchMemSubTab('ministry')">🔥 Ministry Logs</button>
+                </div>
+                <div id="subTabMemCommunity" class="mem-sub-tab" style="display:block; animation: fadeIn 0.3s ease-out;">
+                    <div class="card">
+                        <h2 style="color: var(--primary);">🕊️ Community Intent Logs</h2>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Members who clicked "I'm Ready" and are entering the Integration Period.</p>
+                        <div id="communityIntentsList"></div>
+                    </div>
+                </div>
+                <div id="subTabMemMinistry" class="mem-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+                    <div class="card">
+                        <h2 style="color: #F59E0B;">🔥 Master Ministry Logs</h2>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Historical record of all expressions to serve.</p>
+                        <div id="ministryIntentsLogList"></div>
+                    </div>
+                </div>
+            </div>`);
+        }
+    }, 1000);
+});
+
+// 4. Add the button to the Sidebar for Admins
+const origBuildNavLogs = window.buildNav;
+window.buildNav = function() {
+    origBuildNavLogs();
+    const sidebar = document.getElementById('sidebarNav');
+    if (sidebar && (window.hasPerm('edit_entries') || currentUser === 'celsocreeriii@gmail.com')) {
+        if (!document.getElementById('navBtnMembership')) {
+            const dirBtn = Array.from(sidebar.querySelectorAll('.nav-btn')).find(b => b.innerText.includes('Directory'));
+            if (dirBtn) {
+                dirBtn.insertAdjacentHTML('afterend', `<button id="navBtnMembership" class="nav-btn" data-target="membershipAdminTab" onclick="switchTab('membershipAdminTab'); loadMembershipAdminData();">🛡️ Membership Logs</button>`);
+            }
+        }
+    }
+};
+
+window.switchMemSubTab = function(tab) {
+    document.getElementById('subTabMemCommunity').style.display = tab === 'community' ? 'block' : 'none';
+    document.getElementById('subTabMemMinistry').style.display = tab === 'ministry' ? 'block' : 'none';
+    document.getElementById('btnSubMemCommunity').classList.toggle('active', tab === 'community');
+    document.getElementById('btnSubMemMinistry').classList.toggle('active', tab === 'ministry');
+    loadMembershipAdminData();
+};
+
+window.loadMembershipAdminData = async function() {
+    // Load Community Intents
+    try {
+        const commRes = await fetch('/api/admin/community-intents');
+        const comms = await commRes.json();
+        const cList = document.getElementById('communityIntentsList');
+        if (comms.length === 0) {
+            cList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">No intents recorded yet.</div>';
+        } else {
+            cList.innerHTML = comms.map(c => `
+            <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                    <div style="flex: 1;">
+                        <strong style="color: var(--text-main); font-size: 1.05rem;">${c.name}</strong>
+                        <span class="badge ${c.account_tier === 'Integration Period' ? 'badge-orange' : 'badge-blue'}">${c.account_tier}</span><br>
+                        <small style="color: var(--text-muted);">📅 Intent submitted: ${c.commitment_date || 'Unknown'}</small>
+                        <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${c.commitment_intent || 'No message provided.'}"</p>
+                    </div>
+                    ${c.account_tier === 'Integration Period' ? `<button class="btn btn-primary btn-sm" onclick="approveFullMember(${c.id})">Grant Full Member</button>` : `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold;">Completed</span>`}
+                </div>
+            </div>`).join('');
+        }
+    } catch(e) {}
+
+    // Load Ministry Master Logs
+    try {
+        const minRes = await fetch('/api/admin/ministry-logs');
+        const mins = await minRes.json();
+        const mList = document.getElementById('ministryIntentsLogList');
+        if (mins.length === 0) {
+            mList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">No logs recorded yet.</div>';
+        } else {
+            mList.innerHTML = mins.map(m => `
+            <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+                <strong style="color: var(--text-main); font-size: 1.05rem;">${m.applicant_name}</strong>
+                <span class="badge badge-orange">${m.ministry_name}</span>
+                <span class="badge" style="background: #E2E8F0; color: #475569;">Status: ${m.role}</span><br>
+                <small style="color: var(--text-muted);">📅 Activity logged: ${m.assigned_at || 'Unknown'}</small>
+                <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${m.intent_message || 'Assigned directly by Admin.'}"</p>
+            </div>`).join('');
+        }
+    } catch(e) {}
+};
+
+window.approveFullMember = async function(id) {
+    if(!confirm('Advance this user from Integration Period to Full Committed Member?')) return;
+    try {
+        await fetch('/api/admin/community-intents/' + id + '/approve', { method: 'POST' });
+        loadMembershipAdminData();
+    } catch(e) { alert('Error.'); }
+};
