@@ -4670,3 +4670,187 @@ window.approveFullMember = async function(id) {
         loadMembershipAdminData();
     } catch(e) { alert('Error.'); }
 };
+
+// ==========================================
+// V31: DASHBOARD FILTERS, TIMESTAMPS & CLIENT SYNC
+// ==========================================
+
+window.cachedCommunityIntents = [];
+window.cachedMinistryLogs = [];
+
+// 1. Inject Filter Inputs into the DOM
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        const commTab = document.getElementById('subTabMemCommunity');
+        if (commTab && !document.getElementById('commFilterName')) {
+            const cList = document.getElementById('communityIntentsList');
+            if (cList) {
+                cList.insertAdjacentHTML('beforebegin', `
+                <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <input type="text" id="commFilterName" class="form-control" placeholder="🔍 Search name..." oninput="filterCommunityLogs()" style="flex:1; min-width:150px;">
+                    <input type="date" id="commFilterStart" class="form-control" onchange="filterCommunityLogs()" title="Start Date">
+                    <input type="date" id="commFilterEnd" class="form-control" onchange="filterCommunityLogs()" title="End Date">
+                </div>`);
+            }
+        }
+
+        const minTab = document.getElementById('subTabMemMinistry');
+        if (minTab && !document.getElementById('minLogFilterName')) {
+            const mList = document.getElementById('ministryIntentsLogList');
+            if (mList) {
+                mList.insertAdjacentHTML('beforebegin', `
+                <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <input type="text" id="minLogFilterName" class="form-control" placeholder="🔍 Search name or ministry..." oninput="filterMinistryLogs()" style="flex:1; min-width:150px;">
+                    <input type="date" id="minLogFilterStart" class="form-control" onchange="filterMinistryLogs()" title="Start Date">
+                    <input type="date" id="minLogFilterEnd" class="form-control" onchange="filterMinistryLogs()" title="End Date">
+                </div>`);
+            }
+        }
+    }, 1500);
+});
+
+// 2. Fetch and Cache Data (POINTING TO V2 ENDPOINTS)
+window.loadMembershipAdminData = async function() {
+    try {
+        const commRes = await fetch('/api/admin/community-intents-v2');
+        window.cachedCommunityIntents = await commRes.json();
+        window.filterCommunityLogs();
+    } catch(e) {}
+
+    try {
+        const minRes = await fetch('/api/admin/ministry-logs');
+        window.cachedMinistryLogs = await minRes.json();
+        window.filterMinistryLogs();
+    } catch(e) {}
+};
+
+// 3. Community Filter Logic
+window.filterCommunityLogs = function() {
+    const q = document.getElementById('commFilterName') ? document.getElementById('commFilterName').value.toLowerCase().trim() : '';
+    const start = document.getElementById('commFilterStart') ? document.getElementById('commFilterStart').value : '';
+    const end = document.getElementById('commFilterEnd') ? document.getElementById('commFilterEnd').value : '';
+    
+    let filtered = window.cachedCommunityIntents.filter(c => {
+        let matchName = (c.name || '').toLowerCase().includes(q);
+        let matchDate = true;
+        if(start || end) {
+            const intentDate = c.commitment_date ? c.commitment_date.split(' ')[0] : '';
+            if(start && intentDate < start) matchDate = false;
+            if(end && intentDate > end) matchDate = false;
+        }
+        return matchName && matchDate;
+    });
+    window.renderCommunityIntents(filtered);
+};
+
+// 4. Ministry Filter Logic
+window.filterMinistryLogs = function() {
+    const q = document.getElementById('minLogFilterName') ? document.getElementById('minLogFilterName').value.toLowerCase().trim() : '';
+    const start = document.getElementById('minLogFilterStart') ? document.getElementById('minLogFilterStart').value : '';
+    const end = document.getElementById('minLogFilterEnd') ? document.getElementById('minLogFilterEnd').value : '';
+
+    let filtered = window.cachedMinistryLogs.filter(m => {
+        let matchName = (m.applicant_name || '').toLowerCase().includes(q) || (m.ministry_name || '').toLowerCase().includes(q);
+        let matchDate = true;
+        if(start || end) {
+            const logDate = m.assigned_at ? m.assigned_at.split(' ')[0] : '';
+            if(start && logDate < start) matchDate = false;
+            if(end && logDate > end) matchDate = false;
+        }
+        return matchName && matchDate;
+    });
+    window.renderMinistryLogs(filtered);
+};
+
+// 5. Renderers (with explicit Accepted Timestamps)
+window.renderCommunityIntents = function(list) {
+    const cList = document.getElementById('communityIntentsList');
+    if (!cList) return;
+    if (list.length === 0) {
+        cList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); border: 1px dashed var(--border-color); border-radius: 8px;">No intents match your filter.</div>';
+        return;
+    }
+    cList.innerHTML = list.map(c => `
+    <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+            <div style="flex: 1;">
+                <strong style="color: var(--text-main); font-size: 1.05rem;">${c.name}</strong>
+                <span class="badge ${c.account_tier === 'Integration Period' ? 'badge-orange' : 'badge-blue'}">${c.account_tier}</span><br>
+                <small style="color: var(--text-muted);">📅 Intent submitted: ${c.commitment_date || 'Unknown'}</small>
+                ${c.commitment_accepted_at ? `<br><small style="color: var(--success); font-weight: bold;">✅ Accepted: ${c.commitment_accepted_at} by ${c.commitment_accepted_by || 'Admin'}</small>` : ''}
+                <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${c.commitment_intent || 'No message provided.'}"</p>
+            </div>
+            ${c.account_tier === 'Integration Period' ? `<button class="btn btn-primary btn-sm" onclick="approveFullMember(${c.id})">Grant Full Member</button>` : `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold; background: #D1FAE5; padding: 4px 8px; border-radius: 8px;">Completed</span>`}
+        </div>
+    </div>`).join('');
+};
+
+window.renderMinistryLogs = function(list) {
+    const mList = document.getElementById('ministryIntentsLogList');
+    if (!mList) return;
+    if (list.length === 0) {
+        mList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); border: 1px dashed var(--border-color); border-radius: 8px;">No logs match your filter.</div>';
+        return;
+    }
+    mList.innerHTML = list.map(m => `
+    <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+        <strong style="color: var(--text-main); font-size: 1.05rem;">${m.applicant_name}</strong>
+        <span class="badge badge-orange">${m.ministry_name}</span>
+        <span class="badge" style="background: #E2E8F0; color: #475569;">Status: ${m.role}</span><br>
+        <small style="color: var(--text-muted);">📅 Activity logged: ${m.assigned_at || 'Unknown'}</small>
+        <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${m.intent_message || 'Assigned directly by Admin.'}"</p>
+    </div>`).join('');
+};
+
+// 6. Pass the current Admin's name into the V2 API
+window.approveFullMember = async function(id) {
+    if(!confirm('Advance this user from Integration Period to Full Committed Member?')) return;
+    try {
+        await fetch('/api/admin/community-intents-v2/' + id + '/approve', { 
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: currentUser })
+        });
+        window.loadMembershipAdminData();
+    } catch(e) { alert('Error processing approval.'); }
+};
+
+// 7. SILENT CLIENT CACHE SYNC (POINTING TO V2)
+window.renderHomeJourney = async function() {
+    const container = document.getElementById('dynamicJourneyContainer');
+    if (!container || !currentMember) return;
+
+    try {
+        const tierRes = await fetch('/api/youth-v2/' + currentMember.id + '/tier');
+        if (tierRes.ok) {
+            const tierData = await tierRes.json();
+            if(tierData.account_tier && tierData.account_tier !== currentMember.account_tier) {
+                currentMember.account_tier = tierData.account_tier;
+                localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            }
+        }
+    } catch(e) {}
+
+    let html = '';
+    if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 3</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+    } else if (currentMember.account_tier === 'Integration Period') {
+        html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Integration Period</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Undergoing community formation</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>In Progress</button>`;
+    } else {
+        try {
+            const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
+            const ministries = await res.json();
+            const isApplicant = ministries.some(m => m.role === 'Applicant');
+            const isActiveMember = ministries.some(m => m.role !== 'Applicant');
+            
+            if (isActiveMember) {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p>${isApplicant ? '<p style="font-size:0.75rem; color:#F59E0B; margin:0; font-weight:bold;">(Application Pending)</p>' : ''}</div><button type="button" class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
+            } else if (isApplicant) {
+                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Pending</button>`;
+            } else {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 4</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
+            }
+        } catch(e) {}
+    }
+    container.innerHTML = html;
+};
