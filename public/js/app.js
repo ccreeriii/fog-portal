@@ -4366,3 +4366,87 @@ window.loadPendingApplications = async function() {
         list.innerHTML = `<div style="text-align:center; padding: 20px; color:var(--danger); font-weight: bold;">Network error fetching applications: ${e.message}</div>`; 
     }
 };
+
+// ==========================================
+// V28: NON-DESTRUCTIVE MODERATION TAB RENDER
+// ==========================================
+
+// Safely inject the tab once without destroying existing visible tabs
+window.injectModerationTab = function() {
+    let modTab = document.getElementById('subTabMinistryModeration');
+    if (!modTab) {
+        const listTab = document.getElementById('subTabMinistryList');
+        if (listTab) {
+            listTab.insertAdjacentHTML('afterend', `
+            <div id="subTabMinistryModeration" class="ministry-sub-tab" style="display:none; width: 100%; min-height: 400px; animation: fadeIn 0.3s ease-out;">
+                <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02); min-height: 300px;">
+                    <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Application</h3>
+                    <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px; width: 100%;"></div>
+                </div>
+            </div>`);
+        }
+    }
+};
+
+// Override the destructive function to prevent it from hiding the tab
+window.ensureModerationDOM = function() {
+    window.injectModerationTab();
+};
+
+window.switchMinistrySubTab = function(tab) {
+    window.injectModerationTab(); // Ensure it exists before trying to switch to it
+
+    const tabs = ['list', 'moderation', 'create'];
+    tabs.forEach(t => {
+        const capitalTab = t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById('subTabMinistry' + capitalTab);
+        const btn = document.getElementById('btnSubMinistry' + capitalTab);
+
+        if (el) el.style.display = (tab === t) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', tab === t);
+    });
+
+    if (tab === 'list') window.loadMinistries();
+    if (tab === 'moderation') {
+        if (window.loadPendingApplications) window.loadPendingApplications();
+    }
+};
+
+window.loadPendingApplications = async function() {
+    window.injectModerationTab();
+    const list = document.getElementById('pendingApplicationsList');
+    if (!list) return;
+
+    list.innerHTML = '<div style="text-align:center; padding: 20px; color:var(--text-muted); font-size: 1rem;">Loading pending applications...</div>';
+
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        if (!res.ok) throw new Error('Server returned ' + res.status);
+        const apps = await res.json();
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size: 1rem; border: 1px dashed var(--border-color); border-radius: 8px;">No pending applications right now!</div>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+        <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px; width: 100%; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                    <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                    <button type="button" class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { 
+        list.innerHTML = `<div style="text-align:center; padding: 20px; color:var(--danger); font-weight: bold;">Network error fetching applications: ${e.message}</div>`; 
+    }
+};
+
+// Call this once on load to ensure it's staged
+setTimeout(window.injectModerationTab, 1000);
