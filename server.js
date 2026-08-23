@@ -31,19 +31,19 @@ cron.schedule('0 9 * * 1', () => { // Every Monday at 9:00 AM
 
     const assignPalsByGender = (gender) => {
         db.all(`SELECT id FROM youth WHERE gender = ? AND account_tier != 'New Member'`, [gender], (err, members) => {
-            if (!members || members.length < 2) return;
+            if (!members || members?.length || 0 < 2) return;
             
             // Fisher-Yates Shuffle
             let shuffled = [...members];
-            for (let i = shuffled.length - 1; i > 0; i--) {
+            for (let i = shuffled?.length || 0 - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
             }
 
             const stmt = db.prepare(`INSERT OR IGNORE INTO secret_prayer_pals (youth_id, pal_youth_id, week_start) VALUES (?, ?, ?)`);
-            for (let i = 0; i < shuffled.length; i++) {
+            for (let i = 0; i < shuffled?.length || 0; i++) {
                 const current = shuffled[i];
-                const next = shuffled[(i + 1) % shuffled.length]; // Circular assignment ensures everyone gives and receives
+                const next = shuffled[(i + 1) % shuffled?.length || 0]; // Circular assignment ensures everyone gives and receives
                 stmt.run([current.id, next.id, weekStart]);
             }
             stmt.finalize();
@@ -208,7 +208,7 @@ db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`UPDATE users SET permissions = ? WHERE username = 'celsocreeriii@gmail.com'`, [superadminPermissions]);
 
     db.all(`SELECT id, qr_code FROM youth WHERE id NOT IN (SELECT youth_id FROM users WHERE youth_id IS NOT NULL)`, [], (err, rows) => {
-        if (rows && rows.length > 0) {
+        if (rows && rows?.length || 0 > 0) {
             const stmt = db.prepare(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`);
             rows.forEach(r => { if(r.qr_code) stmt.run([r.qr_code, r.qr_code, r.id, getManilaTime()]); });
             stmt.finalize();
@@ -331,7 +331,7 @@ function pushToUser(youthId, title, message) {
     db.get(`SELECT qr_code FROM youth WHERE id = ?`, [youthId], (err, y) => {
         if (y && y.qr_code) {
             db.all(`SELECT subscription FROM push_subscriptions WHERE username = ?`, [y.qr_code], (err, subs) => {
-                if (subs && subs.length > 0) {
+                if (subs && subs?.length || 0 > 0) {
                     const payload = JSON.stringify({ title, body: message, url: '/' });
                     subs.forEach(row => {
                         try {
@@ -448,15 +448,15 @@ cron.schedule('0 9 * * 1', () => {
         groups.forEach(g => {
             // Get all approved members of this group
             db.all(`SELECT y.id, y.name FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ? AND sgm.status='Approved'`, [g.id], (err, members) => {
-                if(!members || members.length < 2) return; // Need at least 2 people to pair
+                if(!members || members?.length || 0 < 2) return; // Need at least 2 people to pair
                 
                 // Shuffle the array of members randomly
                 let shuffled = members.map(value => ({ value, sort: Math.random() })).sort((a, b) => a.sort - b.sort).map(({ value }) => value);
                 
                 // Create a circular prayer chain (A prays for B, B prays for C, C prays for A)
-                for(let i = 0; i < shuffled.length; i++) {
+                for(let i = 0; i < shuffled?.length || 0; i++) {
                     let intercessor = shuffled[i];
-                    let target = shuffled[(i + 1) % shuffled.length];
+                    let target = shuffled[(i + 1) % shuffled?.length || 0];
                     
                     const msg = `Your Secret Prayer Pal this week in ${g.name} is ${target.name}! 🙏 Reach out, ask how they are doing, and keep them in your daily prayers.`;
                     pushToUser(intercessor.id, "🤫 Secret Prayer Pal!", msg);
@@ -613,7 +613,7 @@ app.post('/api/auth/google', async (req, res) => {
                     db.get(`SELECT permissions FROM users WHERE youth_id = ?`, [member.id], (err, u) => {
                         const perms = u && u.permissions ? JSON.parse(u.permissions) : [];
                         logActivity(member.name, 'OAUTH_LOGIN', 'Logged in via Google');
-                        return res.json({ success: true, username: member.qr_code, permissions: perms, member, is_admin: perms.length > 0 });
+                        return res.json({ success: true, username: member.qr_code, permissions: perms, member, is_admin: perms?.length || 0 > 0 });
                     });
                 } else {
                     // 3. Auto-provision New Member
@@ -751,7 +751,7 @@ app.get('/api/events/:id/analytics', (req, res) => {
             const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
             db.all(`SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`, [eventId], (err3, roster) => {
                 db.all(`SELECT p.youth_id, p.created_at, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM pre_registrations p JOIN youth y ON p.youth_id = y.id WHERE p.event_id = ? ORDER BY p.created_at DESC`, [eventId], (err4, preRegList) => {
-                    const totalTurnout = roster.length; const walkins = roster.filter(r => r.is_walkin === 1).length; const checkedInPreRegs = totalTurnout - walkins; const totalPreRegistered = preRegList.length;
+                    const totalTurnout = roster?.length || 0; const walkins = roster.filter(r => r.is_walkin === 1)?.length || 0; const checkedInPreRegs = totalTurnout - walkins; const totalPreRegistered = preRegList?.length || 0;
                     res.json({ event, totalDirectory, totalTurnout, turnoutPercentage: totalPreRegistered > 0 ? ((checkedInPreRegs / totalPreRegistered) * 100).toFixed(1) : '0.0', walkins, preReg: checkedInPreRegs, totalPreRegistered, roster, preRegList });
                 });
             });
@@ -801,7 +801,7 @@ app.post('/api/blockouts', (req, res) => { db.run(`INSERT INTO blockout_dates (y
 app.delete('/api/blockouts/:id', (req, res) => { db.run(`DELETE FROM blockout_dates WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); });
 
 // NEW DISCIPLESHIP API (WITH POINTS)
-app.get('/api/discipleship/next-step/:youth_id', (req, res) => { db.all(`SELECT p.*, m.status as member_status, m.completed_at FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, steps) => { let nextStep = steps.find(s => s.member_status !== 'Completed'); if (!nextStep && steps.length > 0) nextStep = steps[steps.length - 1]; res.json({ nextStep, allSteps: steps }); }); });
+app.get('/api/discipleship/next-step/:youth_id', (req, res) => { db.all(`SELECT p.*, m.status as member_status, m.completed_at FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, steps) => { let nextStep = steps.find(s => s.member_status !== 'Completed'); if (!nextStep && steps?.length || 0 > 0) nextStep = steps[steps?.length || 0 - 1]; res.json({ nextStep, allSteps: steps }); }); });
 app.post('/api/discipleship/milestones', (req, res) => {
     db.get(`SELECT status FROM member_milestones WHERE youth_id = ? AND pathway_id = ?`, [req.body.youth_id, req.body.pathway_id], (err, row) => {
         const alreadyCompleted = row && row.status === 'Completed';
@@ -1032,7 +1032,7 @@ app.post('/api/ai/chat', (req, res) => {
         db.get(`SELECT COUNT(*) as cnt FROM youth WHERE age <= 12`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.cnt} Minis</strong> (age 12 and below). <br><br>💡 <em>Tip: You can ask "show minis list" to see their names and ages.</em>`); }); return;
     }
     if (q === 'show minis list' || q.includes('list of minis') || q.includes('who are the minis')) {
-        db.all(`SELECT name, age FROM youth WHERE age <= 12 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows.length===0) return finalizeChat("No minis found in the database."); let msg = `<strong>👶 List of Minis:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
+        db.all(`SELECT name, age FROM youth WHERE age <= 12 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows?.length || 0===0) return finalizeChat("No minis found in the database."); let msg = `<strong>👶 List of Minis:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
     }
 
     // 2. Youth Logic
@@ -1040,7 +1040,7 @@ app.post('/api/ai/chat', (req, res) => {
         db.get(`SELECT COUNT(*) as cnt FROM youth WHERE age >= 13 AND age <= 21`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.cnt} Youth</strong> (ages 13-21). <br><br>💡 <em>Tip: You can ask "show youth list" to see their names and ages.</em>`); }); return;
     }
     if (q === 'show youth list' || q.includes('list of youth') || q.includes('who are the youth')) {
-        db.all(`SELECT name, age FROM youth WHERE age >= 13 AND age <= 21 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows.length===0) return finalizeChat("No youth found in the database."); let msg = `<strong>🔥 List of Youth:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
+        db.all(`SELECT name, age FROM youth WHERE age >= 13 AND age <= 21 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows?.length || 0===0) return finalizeChat("No youth found in the database."); let msg = `<strong>🔥 List of Youth:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
     }
 
     // 3. Adults Logic
@@ -1048,7 +1048,7 @@ app.post('/api/ai/chat', (req, res) => {
         db.get(`SELECT COUNT(*) as cnt FROM youth WHERE age >= 22`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.cnt} Adults</strong> (ages 22+). <br><br>💡 <em>Tip: You can ask "show adult list" to see their names.</em>`); }); return;
     }
     if (q === 'show adult list' || q.includes('list of adults') || q.includes('who are the adults')) {
-        db.all(`SELECT name, age FROM youth WHERE age >= 22 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows.length===0) return finalizeChat("No adults found in the database."); let msg = `<strong>👥 List of Adults:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
+        db.all(`SELECT name, age FROM youth WHERE age >= 22 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows?.length || 0===0) return finalizeChat("No adults found in the database."); let msg = `<strong>👥 List of Adults:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
     }
 
     // 4. Custom Roles Parser ("who has role core", "how many users have role usher")
@@ -1060,11 +1060,11 @@ app.post('/api/ai/chat', (req, res) => {
              if(roleName) {
                  db.all(`SELECT y.name, m.name as min_name, mm.role FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id JOIN ministries m ON mm.ministry_id = m.id WHERE LOWER(mm.role) LIKE ? OR LOWER(mm.sub_role) LIKE ?`, [`%${roleName}%`, `%${roleName}%`], (err, rows1) => {
                      db.all(`SELECT y.name, e.name as evt_name, er.role_name FROM event_roles er JOIN youth y ON er.youth_id = y.id JOIN events e ON er.event_id = e.id WHERE LOWER(er.role_name) LIKE ? OR LOWER(er.sub_role) LIKE ?`, [`%${roleName}%`, `%${roleName}%`], (err, rows2) => {
-                         let total = (rows1?rows1.length:0) + (rows2?rows2.length:0);
+                         let total = (rows1?rows1?.length || 0:0) + (rows2?rows2?.length || 0:0);
                          if (total === 0) return finalizeChat(`I couldn't find anyone in the directory with the role "<strong>${roleName}</strong>".`);
                          let msg = `Found <strong>${total}</strong> user(s) with a role matching "${roleName}":<br><br>`;
-                         if(rows1 && rows1.length>0) { msg += `<strong>Ministry Roles:</strong><br>`; rows1.forEach(r => msg += `• ${r.name} (${r.role} - ${r.min_name})<br>`); }
-                         if(rows2 && rows2.length>0) { msg += `<br><strong>Event Roles:</strong><br>`; rows2.forEach(r => msg += `• ${r.name} (${r.role_name} - ${r.evt_name})<br>`); }
+                         if(rows1 && rows1?.length || 0>0) { msg += `<strong>Ministry Roles:</strong><br>`; rows1.forEach(r => msg += `• ${r.name} (${r.role} - ${r.min_name})<br>`); }
+                         if(rows2 && rows2?.length || 0>0) { msg += `<br><strong>Event Roles:</strong><br>`; rows2.forEach(r => msg += `• ${r.name} (${r.role_name} - ${r.evt_name})<br>`); }
                          finalizeChat(msg);
                      });
                  });
@@ -1097,7 +1097,7 @@ app.post('/api/ai/chat', (req, res) => {
 app.get('/api/liturgical/today', (req, res) => {
     const today = getManilaTime().split(' ')[0];
     const gospels = ["I am the bread of life... (John 6:35)", "Blessed are the poor in spirit... (Matthew 5:3)", "I am the light of the world... (John 8:12)", "Come to me, all you who are weary... (Matthew 11:28)"];
-    const dailyGospel = gospels[parseInt(today.split('-')[2], 10) % gospels.length];
+    const dailyGospel = gospels[parseInt(today.split('-')[2], 10) % gospels?.length || 0];
     require('https').get('https://calapi.inadiutorium.cz/api/v0/en/calendars/default/today', (resp) => {
         let data = ''; resp.on('data', chunk => data += chunk);
         resp.on('end', () => {
@@ -1168,7 +1168,7 @@ app.post('/api/small-groups/react-v2', (req, res) => {
         
         // 3. Clean up empty arrays to keep database light
         Object.keys(reactions).forEach(e => {
-            if(reactions[e].length === 0) delete reactions[e];
+            if(reactions[e]?.length || 0 === 0) delete reactions[e];
         });
 
         db.run(`UPDATE ${table} SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), id], () => {
@@ -1210,14 +1210,14 @@ app.post('/api/communications/broadcast', (req, res) => {
             }
             db.all(targetQuery, targetParams, (err, youths) => {
                 const usernames = ['celsocreeriii@gmail.com'];
-                if (youths && youths.length > 0) {
+                if (youths && youths?.length || 0 > 0) {
                     const stmt = db.prepare(`INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)`);
                     youths.forEach(y => { if (y && y.id) { stmt.run([y.id, announcementId, getManilaTime()]); if (y.qr_code) usernames.push(y.qr_code); } });
                     stmt.finalize();
                 }
                 const placeholders = usernames.map(() => '?').join(',');
                 db.all(`SELECT subscription FROM push_subscriptions WHERE username IN (${placeholders})`, usernames, (err, subs) => {
-                    if (err || !subs || subs.length === 0) return res.json({ success: true, sentCount: 0 });
+                    if (err || !subs || subs?.length || 0 === 0) return res.json({ success: true, sentCount: 0 });
                     const payload = JSON.stringify({ title, body: message, url: '/' });
                     let sentCount = 0;
                     Promise.all(subs.map(row => {
@@ -1357,10 +1357,10 @@ app.get('/api/growth-games/emoji', (req, res) => {
     const day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6:1);
     const startOfWeek = new Date(d.setDate(diff)).toISOString().split('T')[0] + " 00:00:00";
     db.all(`SELECT game_id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'emoji' AND created_at >= ?`, [youth_id, startOfWeek], (err, logs) => {
-        if (logs && logs.length >= 15) return res.json({ limit_reached: true });
+        if (logs && logs?.length || 0 >= 15) return res.json({ limit_reached: true });
         const playedIds = logs ? logs.map(l => l.game_id) : [];
-        const placeholders = playedIds.length > 0 ? playedIds.map(()=>'?').join(',') : "''";
-        db.get(`SELECT * FROM brain_emoji_translation WHERE id NOT IN (${placeholders}) ORDER BY RANDOM() LIMIT 1`, playedIds, (err, q) => { if (!q) return res.json({ exhausted: true }); res.json({ question: q, played_count: playedIds.length }); });
+        const placeholders = playedIds?.length || 0 > 0 ? playedIds.map(()=>'?').join(',') : "''";
+        db.get(`SELECT * FROM brain_emoji_translation WHERE id NOT IN (${placeholders}) ORDER BY RANDOM() LIMIT 1`, playedIds, (err, q) => { if (!q) return res.json({ exhausted: true }); res.json({ question: q, played_count: playedIds?.length || 0 }); });
     });
 });
 app.post('/api/growth-games/emoji/submit', (req, res) => { const { youth_id, game_id, actor } = req.body; db.get(`SELECT id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'emoji' AND game_id = ?`, [youth_id, game_id], (err, row) => { if (row) return res.status(400).json({ error: 'You already translated this emoji story!' }); db.run(`INSERT INTO brain_user_logs (youth_id, game_type, game_id, played_at) VALUES (?, 'emoji', ?, ?)`, [youth_id, game_id, getManilaTime()]); awardPoints(youth_id, 'growth', 10, actor || 'System', 'Emoji Sermon Translator'); res.json({ success: true, pointsAwarded: 10 }); }); });
