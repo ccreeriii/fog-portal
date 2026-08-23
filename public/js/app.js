@@ -136,6 +136,7 @@ const OfflineManager = {
             if(document.getElementById('directoryTab') && document.getElementById('directoryTab').classList.contains('active')) window.loadDirectory();
             if(document.getElementById('checkinTab') && document.getElementById('checkinTab').classList.contains('active')) window.updateActiveEventBanner();
             if(document.getElementById('ministriesTab') && document.getElementById('ministriesTab').classList.contains('active')) window.loadMinistries();
+            if(window.loadPendingApplications) window.loadPendingApplications();
         }
     }
 };
@@ -2736,6 +2737,7 @@ window.handleLogin = async function(e) {
             if(window.loadDailyManna) window.loadDailyManna();
             if(window.loadSecretPrayerPal) window.loadSecretPrayerPal();
             switchTab('pulseDashboardTab');
+            if(window.renderHomeJourney) window.renderHomeJourney();
         } else { alert(data.message); }
     } catch (err) { alert('Network Error'); }
     finally { 
@@ -2754,6 +2756,7 @@ window.checkLoginState = function() {
         if(window.loadDailyManna) window.loadDailyManna();
         if(window.loadSecretPrayerPal) window.loadSecretPrayerPal();
         switchTab('pulseDashboardTab');
+            if(window.renderHomeJourney) window.renderHomeJourney();
     } else {
         switchTab('loginTab');
         const loader = document.getElementById('globalPreloader');
@@ -2856,4 +2859,179 @@ const _originalSwitchTabNav = window.switchTab;
 window.switchTab = function(tabId) {
     if (_originalSwitchTabNav) _originalSwitchTabNav(tabId);
     if (window.renderBottomNav) window.renderBottomNav(tabId);
+};
+
+
+// ==========================================
+// V10: IRONCLAD PROFILE & MODERATION UI
+// ==========================================
+
+window.renderHomeJourney = async function() {
+    const container = document.getElementById('dynamicJourneyContainer');
+    if (!container || !currentMember) return;
+    let html = '';
+    if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 3</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+    } else {
+        try {
+            const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
+            const ministries = await res.json();
+            const isApplicant = ministries.some(m => m.role === 'Applicant');
+            const isActiveMember = ministries.some(m => m.role !== 'Applicant');
+            if (isActiveMember) {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p></div><button class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
+            } else if (isApplicant) {
+                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button class="btn btn-secondary btn-sm" disabled>Pending</button>`;
+            } else {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 4</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
+            }
+        } catch(e) {}
+    }
+    container.innerHTML = html;
+};
+
+window.switchMyProfileTab = function(tabId) {
+    document.querySelectorAll('#btnMyProfileTabRoles, #btnMyProfileTabSchedule, #btnMyProfileTabAttendance').forEach(b => b.classList.remove('active'));
+    document.getElementById('myProfileTabRoles').style.display = 'none';
+    document.getElementById('myProfileTabSchedule').style.display = 'none';
+    document.getElementById('myProfileTabAttendance').style.display = 'none';
+    
+    if (tabId === 'roles') {
+        document.getElementById('btnMyProfileTabRoles').classList.add('active');
+        document.getElementById('myProfileTabRoles').style.display = 'block';
+        if (window.loadMyV3Roles) window.loadMyV3Roles();
+    } else if (tabId === 'schedule') {
+        document.getElementById('btnMyProfileTabSchedule').classList.add('active');
+        document.getElementById('myProfileTabSchedule').style.display = 'block';
+    } else if (tabId === 'attendance') {
+        document.getElementById('btnMyProfileTabAttendance').classList.add('active');
+        document.getElementById('myProfileTabAttendance').style.display = 'block';
+        if (window.loadMyV3Attendance) window.loadMyV3Attendance();
+    }
+};
+
+window.populateProfileTab = async function(member) {
+    if (!member) return;
+    if(document.getElementById('myMemberId')) document.getElementById('myMemberId').value = member.id || '';
+    if(document.getElementById('myEditName')) document.getElementById('myEditName').value = member.name || '';
+    if(document.getElementById('myEditEmail')) document.getElementById('myEditEmail').value = member.email || '';
+    if(document.getElementById('myEditAge')) document.getElementById('myEditAge').value = member.age || '';
+    if(document.getElementById('myEditBirthday')) document.getElementById('myEditBirthday').value = member.birthday || '';
+    if(document.getElementById('myEditSocial')) document.getElementById('myEditSocial').value = member.social_media || '';
+    if(document.getElementById('myEditParents')) document.getElementById('myEditParents').value = member.parents_name || '';
+    if(document.getElementById('myEditGender')) document.getElementById('myEditGender').value = member.gender || '';
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+    if(document.getElementById('myProfileCode')) document.getElementById('myProfileCode').innerText = member.qr_code || 'N/A';
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+    if (window.loadMyV3Roles) window.loadMyV3Roles();
+};
+
+window.loadMyV3Roles = async function() {
+    const container = document.getElementById('myMinistriesHistory');
+    if (!container || !currentMember) return;
+    try {
+        const minRes = await fetch('/api/youth/' + currentMember.id + '/ministries');
+        const roles = await minRes.json();
+        if (!roles || roles.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-muted); text-align:center;">No roles assigned yet.</div>'; return;
+        }
+        let html = '';
+        roles.forEach(r => {
+            const isPriority = r.is_priority === 1;
+            const priorityBadge = isPriority ? '<span style="background:#FEF3C7; color:#D97706; padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-left:8px;">⭐ Priority</span>' : '';
+            const actionBtn = (r.role !== 'Applicant' && !isPriority) ? `<button class="btn btn-outline btn-sm" style="margin-top:10px; font-size:0.75rem;" onclick="setCorePriority(${r.mapping_id})">Make Core Priority</button>` : '';
+            html += `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${isPriority ? '#F59E0B' : 'var(--border-color)'};">
+                <h4 style="margin:0; color:var(--text-main); font-size:1.05rem;">${r.ministry_name} ${priorityBadge}</h4>
+                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:5px;"><strong>Role:</strong> ${r.role}</div>${actionBtn}</div>`;
+        });
+        container.innerHTML = html;
+    } catch(e) {}
+};
+
+window.loadMyV3Attendance = async function() {
+    const container = document.getElementById('myAttendanceHistory');
+    if (!container || !currentMember) return;
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/history');
+        const logs = await res.json();
+        if (!logs || logs.length === 0) return container.innerHTML = '<div style="color:var(--text-muted); text-align:center;">No logs found.</div>';
+        let html = '';
+        logs.forEach(a => {
+            html += `<div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; background: #FFF; border-radius: 8px; margin-bottom: 8px;">
+                <div><strong style="color: var(--primary); font-size: 1.05rem;">${a.event_name || 'Event'}</strong><br><small style="color:var(--text-muted);">${a.checked_in_at || ''}</small></div>
+            </div>`;
+        });
+        container.innerHTML = html;
+    } catch(e) {}
+};
+
+window.setCorePriority = async function(mappingId) {
+    if(!confirm("Set this as your Priority Ministry?")) return;
+    try { await fetch(`/api/ministries/members/${mappingId}/priority`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ youth_id: currentMember.id }) });
+        window.loadMyV3Roles();
+    } catch(e) {}
+};
+
+window.openMinistryIntentModal = async function() {
+    document.getElementById('ministryIntentModal').classList.add('active');
+    try {
+        const res = await fetch('/api/ministries');
+        const ministries = await res.json();
+        document.getElementById('ministrySelect').innerHTML = '<option value="">Select a Ministry...</option>' + ministries.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+    } catch(e) {}
+};
+
+window.closeMinistryIntentModal = function() {
+    document.getElementById('ministryIntentModal').classList.remove('active');
+};
+
+window.submitMinistryIntent = async function(e) {
+    e.preventDefault();
+    const minId = document.getElementById('ministrySelect').value;
+    const msg = document.getElementById('ministryIntentMsg').value.trim();
+    if (!minId || !msg) return alert('Please complete all fields.');
+    try {
+        const res = await fetch(`/api/ministries/${minId}/apply`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ youth_id: currentMember.id, intent_message: msg, actor: currentMember.name }) });
+        const data = await res.json();
+        if (data.success) { alert('Intent submitted!'); window.closeMinistryIntentModal(); if(window.renderHomeJourney) window.renderHomeJourney(); } else { alert(data.error); }
+    } catch(err) { alert('Network error.'); }
+};
+
+window.loadPendingApplications = async function() {
+    let board = document.getElementById('pendingApplicationsBoard');
+    if (!board) {
+        const parentList = document.getElementById('subTabMinistryList');
+        if (parentList) {
+            parentList.insertAdjacentHTML('afterbegin', `<div id="pendingApplicationsBoard" style="margin-bottom: 25px; display: none; background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color);"><h3 style="color: #F59E0B; margin-top: 0;">📋 Pending Ministry Expressions</h3><div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;"></div></div>`);
+            board = document.getElementById('pendingApplicationsBoard');
+        }
+    }
+    const list = document.getElementById('pendingApplicationsList');
+    if (!list || !board) return;
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+        if (!apps || apps.length === 0) { board.style.display = 'none'; return; }
+        board.style.display = 'block';
+        let html = '';
+        apps.forEach(app => {
+            html += `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B;">
+                <strong>${app.applicant_name}</strong> <span style="font-size:0.8rem; background:#FEF3C7; color:#D97706; padding:2px 8px; border-radius:12px;">${app.ministry_name}</span>
+                <p style="font-size:0.9rem; font-style:italic; margin:5px 0;">"${app.intent_message}"</p>
+                <button class="btn btn-outline btn-sm text-danger" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                <button class="btn btn-primary btn-sm" style="background:#10B981; border:none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+            </div>`;
+        });
+        list.innerHTML = html;
+    } catch(e) {}
+};
+
+window.processApplication = async function(ministryId, mappingId, decision) {
+    if (!confirm('Are you sure?')) return;
+    try {
+        if (decision === 'Denied') { await fetch(`/api/ministries/${ministryId}/members/${mappingId}`, { method: 'DELETE' }); }
+        else { await fetch(`/api/ministries/${ministryId}/members/${mappingId}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ role: decision, sub_role: '' }) }); }
+        window.loadPendingApplications(); if(window.loadMinistries) window.loadMinistries();
+    } catch(e) {}
 };

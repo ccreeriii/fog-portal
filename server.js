@@ -149,6 +149,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS brain_crosswords (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, grid_size INTEGER, words_json TEXT, created_at DATETIME)`);
 
     // SCHEMA AUTO-HEALING
+    db.run("ALTER TABLE ministry_members ADD COLUMN is_priority INTEGER DEFAULT 0", ()=>{});
     db.run("ALTER TABLE youth ADD COLUMN gender TEXT", ()=>{});
     db.run("ALTER TABLE youth ADD COLUMN commitment_intent TEXT", ()=>{});
     db.run("ALTER TABLE ministry_members ADD COLUMN intent_message TEXT", ()=>{});
@@ -774,7 +775,7 @@ app.get('/api/ministries/:id/members', (req, res) => { db.all(`SELECT mm.id as m
 app.post('/api/ministries/:id/members', (req, res) => { db.run(`INSERT INTO ministry_members (ministry_id, youth_id, role, sub_role, assigned_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.role, req.body.sub_role, getManilaTime()], function(err) { res.json({ success: true }); }); });
 app.put('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.run(`UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?`, [req.body.role, req.body.sub_role, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.delete('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.run(`DELETE FROM ministry_members WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
-app.get('/api/youth/:id/ministries', (req, res) => { db.all(`SELECT m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+app.get('/api/youth/:id/ministries', (req, res) => { db.all(`SELECT mm.id as mapping_id, m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at, mm.is_priority FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 
 app.get('/api/events/:id/roles', (req, res) => { db.all(`SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, er.status, y.id, y.name, y.qr_code, y.profile_picture FROM event_roles er JOIN youth y ON er.youth_id = y.id WHERE er.event_id = ? ORDER BY er.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 app.post('/api/events/:id/roles', (req, res) => {
@@ -1388,20 +1389,15 @@ app.get('/api/prayer-pals/current/:youth_id', (req, res) => {
 app.post('/api/youth/:id/commit', (req, res) => {
     const youthId = req.params.id;
     const { actor, intent_message } = req.body;
-
     db.run(`UPDATE youth SET account_tier = 'Committed Member', commitment_intent = ? WHERE id = ?`, [intent_message, youthId], function(err) {
         if (err) return res.status(500).json({ success: false, error: 'Database error updating tier: ' + err.message });
-
         db.get(`SELECT permissions FROM users WHERE youth_id = ?`, [youthId], (err, user) => {
             let perms = [];
             if (user && user.permissions) { try { perms = JSON.parse(user.permissions); } catch(e) {} }
             if (!perms.includes('access_directory')) perms.push('access_directory');
-
             db.run(`UPDATE users SET permissions = ? WHERE youth_id = ?`, [JSON.stringify(perms), youthId], function(err2) {
                 logActivity(actor || 'System', 'COMMITMENT_PLEDGE', `Member ID ${youthId} committed with intent: ${intent_message}`);
-                db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err3, member) => {
-                    res.json({ success: true, member, permissions: perms });
-                });
+                db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err3, member) => { res.json({ success: true, member, permissions: perms }); });
             });
         });
     });
@@ -1409,67 +1405,26 @@ app.post('/api/youth/:id/commit', (req, res) => {
 
 app.listen(PORT, () => { console.log(`Server running safely on Port ${PORT}`); });
 
-app.get('/api/small-groups/:id/threads', (req, res) => {
-    db.all(`SELECT t.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture, (SELECT COUNT(*) FROM group_thread_replies WHERE thread_id = t.id) as reply_count FROM group_threads t LEFT JOIN youth y ON t.youth_id = y.id WHERE t.group_id = ? ORDER BY t.created_at DESC`, [req.params.id], (err, rows) => { res.json(rows || []); });
-});
-app.post('/api/small-groups/:id/threads', (req, res) => {
-    db.run(`INSERT INTO group_threads (group_id, youth_id, title, content, created_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.title, req.body.content, getManilaTime()], function(err) {
-        if(err) return res.status(500).json({error: err.message});
-        res.json({success: true});
-    });
-});
-app.get('/api/small-groups/threads/:thread_id/replies', (req, res) => {
-    db.all(`SELECT r.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_thread_replies r LEFT JOIN youth y ON r.youth_id = y.id WHERE r.thread_id = ? ORDER BY r.created_at ASC`, [req.params.thread_id], (err, rows) => { res.json(rows || []); });
-});
-app.post('/api/small-groups/threads/:thread_id/replies', (req, res) => {
-    db.run(`INSERT INTO group_thread_replies (thread_id, youth_id, reply_text, created_at) VALUES (?, ?, ?, ?)`, [req.params.thread_id, req.body.youth_id, req.body.reply_text, getManilaTime()], function(err) {
-        if(err) return res.status(500).json({error: err.message});
-        res.json({success: true});
-    });
-});
-app.get('/api/small-groups/:id/memories', (req, res) => {
-    db.all(`SELECT m.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_memories m LEFT JOIN youth y ON m.youth_id = y.id WHERE m.group_id = ? ORDER BY m.created_at DESC LIMIT 50`, [req.params.id], (err, rows) => { res.json(rows || []); });
-});
-app.post('/api/small-groups/:id/memories', (req, res) => {
-    db.run(`INSERT INTO group_memories (group_id, youth_id, image_data, caption, created_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.image_data, req.body.caption, getManilaTime()], function(err) {
-        if(err) return res.status(500).json({error: err.message});
-        res.json({success: true});
-    });
-});
-app.post('/api/small-groups/chat/:chat_id/react', (req, res) => {
-    db.get(`SELECT reactions FROM small_group_chats WHERE id = ?`, [req.params.chat_id], (err, row) => {
-        if(!row) return res.json({success: false});
-        let reactions = {};
-        try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
-        reactions[req.body.emoji] = (reactions[req.body.emoji] || 0) + 1;
-        db.run(`UPDATE small_group_chats SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), req.params.chat_id], () => res.json({success: true}));
+app.post('/api/ministries/:id/apply', (req, res) => {
+    const { youth_id, intent_message, actor } = req.body;
+    if (!youth_id) return res.status(400).json({ error: 'Session error. Please log out and log in again.' });
+    db.run(`INSERT INTO ministry_members (ministry_id, youth_id, role, intent_message, assigned_at) VALUES (?, ?, 'Applicant', ?, ?)`,
+    [req.params.id, youth_id, intent_message, getManilaTime()], function(err) {
+        if (err) return res.status(400).json({ error: 'Already applied or belong to this ministry.' });
+        logActivity(actor, 'MINISTRY_APPLY', `Member ID ${youth_id} submitted intent for Ministry ID ${req.params.id}`);
+        res.json({ success: true });
     });
 });
 
-app.post('/api/small-groups/react', (req, res) => {
-    const { type, id, emoji, user_name } = req.body;
-    let table = '';
-    if(type === 'chat') table = 'small_group_chats';
-    else if(type === 'prayer') table = 'prayer_requests';
-    else if(type === 'memory') table = 'group_memories';
-    else return res.json({success:false});
+app.get('/api/ministries/applications/pending', (req, res) => {
+    db.all(`SELECT mm.id as mapping_id, mm.ministry_id, m.name as ministry_name, y.name as applicant_name, mm.intent_message, mm.assigned_at
+            FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id JOIN youth y ON mm.youth_id = y.id
+            WHERE mm.role = 'Applicant' ORDER BY mm.assigned_at DESC`, [], (err, rows) => { res.json(rows || []); });
+});
 
-    db.get(`SELECT reactions FROM ${table} WHERE id = ?`, [id], (err, row) => {
-        if(!row) return res.json({success: false});
-        let reactions = {}; try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
-        
-        // Handle legacy migration from numbers to arrays
-        if(typeof reactions[emoji] === 'number') reactions[emoji] = Array(reactions[emoji]).fill('Anonymous');
-        if(!Array.isArray(reactions[emoji])) reactions[emoji] = [];
-        
-        // Toggle logic (Remove if exists, add if doesn't)
-        const idx = reactions[emoji].indexOf(user_name);
-        if(idx > -1) {
-            reactions[emoji].splice(idx, 1);
-        } else {
-            reactions[emoji].push(user_name);
-        }
-        
-        db.run(`UPDATE ${table} SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), id], () => res.json({success: true}));
+app.put('/api/ministries/members/:mapping_id/priority', (req, res) => {
+    db.serialize(() => {
+        db.run(`UPDATE ministry_members SET is_priority = 0 WHERE youth_id = ?`, [req.body.youth_id]);
+        db.run(`UPDATE ministry_members SET is_priority = 1 WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); });
     });
 });

@@ -231,7 +231,7 @@
             <!-- Your Pathway (Phases 3+) -->
             <div class="card" style="margin: 0; border-left: 4px solid var(--primary); padding: 15px; background: var(--bg-light); box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
                 <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px;">📍 My Journey</h3>
-                <div style="display: flex; align-items: center; justify-content: space-between; background: #FFF; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <div id="dynamicJourneyContainer" style="display: flex; align-items: center; justify-content: space-between; background: #FFF; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); width: 100%;">
                     <div>
                         <strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Connect</strong>
                         <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Join an upcoming gathering</p>
@@ -1516,5 +1516,27 @@
         }
     };
 </script>
+
+<!-- PHASE 4: MINISTRY INTENT MODAL -->
+<div id="ministryIntentModal" class="modal">
+    <div class="modal-content" style="max-width: 450px; text-align: center; padding: 30px 20px;">
+        <span class="close-modal" onclick="closeMinistryIntentModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer;">&times;</span>
+        <div style="font-size: 3rem; margin-bottom: 10px;">🔥</div>
+        <h2 style="color: var(--primary); margin-bottom: 5px; border: none;">Discover Your Place</h2>
+        <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Express your intent to serve and begin your discernment journey.</p>
+        <form onsubmit="submitMinistryIntent(event)" style="text-align: left;">
+            <div class="form-group">
+                <label style="font-weight: bold; color: var(--text-main);">Which Ministry are you drawn to?</label>
+                <select id="ministrySelect" class="form-control" required><option value="">Loading...</option></select>
+            </div>
+            <div class="form-group">
+                <label style="font-weight: bold; color: var(--text-main);">What draws your heart to this team?</label>
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 8px;">Share a little bit about what excites you or how you'd love to contribute! 💛</p>
+                <textarea id="ministryIntentMsg" class="form-control" rows="3" placeholder="I'd love to be part of this because..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-radius: 12px; background: #F59E0B; border: none;">Send My Intent 🕊️</button>
+        </form>
+    </div>
+</div>
 </body>
 </html>
