@@ -4855,33 +4855,84 @@ window.renderHomeJourney = async function() {
     container.innerHTML = html;
 };
 
+
 // ==========================================
-// V32: DYNAMIC DROPDOWNS & ROLE HISTORY INTERCEPTOR
+// V34: Z-INDEX, AUTO-HEAL, ROLE LOGS & PASS ID
 // ==========================================
 
-// 1. SILENT FETCH INTERCEPTOR
-// This automatically upgrades ANY ministry role update to use the new logging endpoint!
-const originalFetchV32 = window.fetch;
-window.fetch = async function(url, options) {
-    if (options && options.method === 'PUT' && typeof url === 'string' && url.match(/\/api\/ministries\/\d+\/members\/\d+/)) {
-        url = url.replace('/api/ministries/', '/api/ministries-v2/'); // Upgrade to V2 logging route
-        if (options.body) {
-            try {
-                let bodyObj = JSON.parse(options.body);
-                bodyObj.actor = window.currentUser || 'Admin'; // Attach who clicked the button
-                options.body = JSON.stringify(bodyObj);
-            } catch(e) {}
+// 1. Z-INDEX CSS FIX
+const styleFixV34 = document.createElement('style');
+styleFixV34.innerHTML = `
+    #viewMinistryModal { z-index: 1050 !important; }
+    #editMemberModal, .modal[id*="edit"] { z-index: 99999 !important; }
+    .custom-success-modal { z-index: 100000 !important; }
+`;
+document.head.appendChild(styleFixV34);
+
+// Dynamic Z-Index enforcer for clicks
+document.addEventListener('click', (e) => {
+    setTimeout(() => {
+        document.querySelectorAll('.modal.active').forEach(m => {
+            if (m.id === 'editMemberModal' || m.innerHTML.includes('Save Changes') || m.innerHTML.includes('Update Role')) {
+                m.style.zIndex = '99999';
+            }
+        });
+    }, 50);
+});
+
+// 2. AUTO-HEALING UI LOOP (Fixes the stuck/frozen screen bug)
+setInterval(() => {
+    const visibleModals = Array.from(document.querySelectorAll('.modal')).filter(m => window.getComputedStyle(m).display !== 'none');
+    if (visibleModals.length === 0) {
+        if (document.body.style.overflow === 'hidden' || document.body.style.pointerEvents === 'none') {
+            document.body.style.overflow = '';
+            document.body.style.pointerEvents = 'auto';
         }
     }
-    return originalFetchV32.apply(this, [url, options]);
-};
+}, 1000);
 
-// 2. DYNAMIC DROPDOWN OBSERVER
-// Ensures the ministry page dropdowns ONLY have the requested roles
+// 3. UNIQUE PASS ID (Visible ONLY on My Profile)
+const origPopulateV34 = window.populateProfileTab;
+if (origPopulateV34 && !window.v34PopulatePatched) {
+    window.populateProfileTab = function(member) {
+        origPopulateV34(member); // Run original layout code
+        setTimeout(() => {
+            let profileHeader = document.querySelector('#profileTab .profile-header-card');
+            if (profileHeader && !document.getElementById('myUniquePassIdBadge')) {
+                profileHeader.insertAdjacentHTML('beforeend', 
+                    `<div id="myUniquePassIdBadge" style="width: 100%; text-align: center; margin-top: 15px; animation: fadeIn 0.5s;">
+                        <span class="badge badge-blue" style="font-size: 1.1rem; padding: 8px 20px; background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD;">
+                            🔑 Unique Pass ID: <strong style="letter-spacing: 1px;">${member.qr_code || 'N/A'}</strong>
+                        </span>
+                    </div>`
+                );
+            }
+        }, 100);
+    };
+    window.v34PopulatePatched = true;
+}
+
+// 4. SAFE ROLE LOGGING INTERCEPTOR (No infinite loops!)
+if (!window.v34FetchPatched) {
+    const nativeFetch = window.fetch;
+    window.fetch = async function(url, options) {
+        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/members/') && url.includes('/api/ministries')) {
+            try {
+                let bodyObj = JSON.parse(options.body);
+                bodyObj.actor = window.currentUser || 'Admin';
+                options.body = JSON.stringify(bodyObj);
+                url = url.replace(/\/api\/ministries(\-v2)?\//, '/api/ministries-v34/'); // Route to clean V34 endpoint
+            } catch(e) {}
+        }
+        return nativeFetch.apply(this, [url, options]);
+    };
+    window.v34FetchPatched = true;
+}
+
+// 5. DROPDOWN OVERRIDE
 setInterval(() => {
     document.querySelectorAll('select').forEach(select => {
-        if (!select.classList.contains('patched-v32') && !select.id.includes('Filter') && !select.id.includes('ministrySelect')) {
-            // Check if it's likely a role select (contains 'Member')
+        if (!select.classList.contains('patched-v34') && !select.id.includes('Filter') && !select.id.includes('ministrySelect')) {
             if (select.innerHTML.includes('value="Member"')) {
                 const currentVal = select.value;
                 select.innerHTML = `
@@ -4892,18 +4943,15 @@ setInterval(() => {
                     <option value="Member">Member</option>
                     <option value="Integration Period">Integration Period</option>
                 `;
-                // Preserve applicant if it hasn't been changed yet
-                if (currentVal && !select.innerHTML.includes(currentVal)) {
-                    select.innerHTML += `<option value="${currentVal}">${currentVal}</option>`;
-                }
+                if (currentVal && !select.innerHTML.includes(currentVal)) select.innerHTML += `<option value="${currentVal}">${currentVal}</option>`;
                 select.value = currentVal;
-                select.classList.add('patched-v32');
+                select.classList.add('patched-v34');
             }
         }
     });
 }, 1000);
 
-// 3. UPGRADE MINISTRY LOGS RENDERER
+// 6. UPDATE DASHBOARD TO POINT TO V34 LEDGER
 window.loadMembershipAdminData = async function() {
     try {
         const commRes = await fetch('/api/admin/community-intents-v2');
@@ -4912,97 +4960,8 @@ window.loadMembershipAdminData = async function() {
     } catch(e) {}
 
     try {
-        const minRes = await fetch('/api/admin/ministry-logs-v3'); // Pointing to new Ledger
+        const minRes = await fetch('/api/admin/ministry-logs-v34'); // Safe V34 ledger
         window.cachedMinistryLogs = await minRes.json();
         window.filterMinistryLogs();
     } catch(e) {}
 };
-
-window.renderMinistryLogs = function(list) {
-    const mList = document.getElementById('ministryIntentsLogList');
-    if (!mList) return;
-    if (list.length === 0) {
-        mList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); border: 1px dashed var(--border-color); border-radius: 8px;">No logs match your filter.</div>';
-        return;
-    }
-    mList.innerHTML = list.map(m => `
-    <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
-            <div>
-                <strong style="color: var(--text-main); font-size: 1.05rem;">${m.applicant_name}</strong>
-                <span class="badge badge-orange">${m.ministry_name}</span>
-                <span class="badge" style="background: #E2E8F0; color: #475569;">Role: ${m.role}</span><br>
-                <small style="color: var(--text-muted);">📅 Action Logged: ${m.timestamp || 'Unknown'}</small><br>
-                <small style="color: var(--success); font-weight: bold;">👤 Processed by: ${m.actor || 'System'}</small>
-                <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${m.intent_message || 'Assigned directly by Admin.'}"</p>
-            </div>
-        </div>
-    </div>`).join('');
-};
-
-// ==========================================
-// V33: MODAL LAYERING, ACTOR SYNC & AUTO-HEAL
-// ==========================================
-
-// 1. Z-INDEX FIX: Force Edit Member Modal to the front
-const styleFix = document.createElement('style');
-styleFix.innerHTML = `
-    #editMemberModal { z-index: 99999 !important; }
-    #viewProfileModal { z-index: 99998 !important; }
-    .custom-success-modal { z-index: 100000 !important; }
-`;
-document.head.appendChild(styleFix);
-
-// 2. FETCH INTERCEPTOR: Ensure Admin name is ALWAYS attached to role saves
-const origFetchV33 = window.fetch;
-window.fetch = async function(url, options) {
-    if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/members/')) {
-        if (options.body) {
-            try {
-                let bodyObj = JSON.parse(options.body);
-                bodyObj.actor = window.currentUser || 'Admin'; // Attach who clicked Save
-                options.body = JSON.stringify(bodyObj);
-            } catch(e) {}
-        }
-    }
-    return origFetchV33.apply(this, [url, options]);
-};
-
-// 3. CLOSE FUNCTION OVERRIDES: Safely handle stacked modals
-window.closeEditMemberModal = function() {
-    const mod = document.getElementById('editMemberModal');
-    if (mod) {
-        mod.style.display = 'none';
-        mod.classList.remove('active');
-    }
-    // Only unlock the background if the Ministry list modal isn't also open
-    const minMod = document.getElementById('ministryModal') || document.getElementById('viewMinistryModal');
-    if (!minMod || (minMod.style.display === 'none' || minMod.style.display === '')) {
-        document.body.style.overflow = '';
-    }
-};
-
-window.closeMinistryModal = function() {
-    const mod = document.getElementById('ministryModal') || document.getElementById('viewMinistryModal');
-    if (mod) {
-        mod.style.display = 'none';
-        mod.classList.remove('active');
-    }
-    document.body.style.overflow = '';
-};
-
-// 4. AUTO-HEALING LOOP: Permanently solves the freezing/stuck UI issue
-setInterval(() => {
-    // Check if any modal in the DOM is actually open right now
-    const anyModalOpen = Array.from(document.querySelectorAll('.modal')).some(m => {
-        const style = window.getComputedStyle(m);
-        return style.display === 'flex' || style.display === 'block';
-    });
-
-    // If no modals are open, but the screen is locked, force unlock it!
-    if (!anyModalOpen && document.body.style.overflow === 'hidden') {
-        document.body.style.overflow = '';
-        document.body.style.pointerEvents = 'auto';
-    }
-}, 1000);
-
