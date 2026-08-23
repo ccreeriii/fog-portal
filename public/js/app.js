@@ -4889,3 +4889,65 @@ window.populateProfileTab = function(member) {
         }
     }, 200);
 };
+
+// ==========================================
+// V40: RESTORE PROFILE DETAILS & DATE UI
+// ==========================================
+
+// 1. RESTORE ALL PROFILE DETAILS & WIPE DUPLICATES
+window.populateProfileTab = function(member) {
+    if (window.origPopV37) window.origPopV37(member);
+    setTimeout(() => {
+        const pTags = Array.from(document.querySelectorAll('#profileTab p, #profileTab div'));
+        for (let p of pTags) {
+            // Find the main profile details paragraph by looking for Gender or Email
+            if (p.innerHTML.includes('<strong>Gender:</strong>') || p.innerHTML.includes('<strong>Email:</strong>')) {
+                // Rebuild the entire paragraph perfectly to ensure no duplicates and no missing fields
+                p.innerHTML = `
+                    <strong>Email:</strong> ${member.email || 'N/A'}<br>
+                    <strong>Mobile:</strong> ${member.mobile || 'N/A'}<br>
+                    <strong>Address:</strong> ${member.address || 'N/A'}<br>
+                    <strong>Gender:</strong> ${member.gender || 'N/A'}<br>
+                    <strong>Age:</strong> ${member.age || 'N/A'}<br>
+                    <strong>Birthday:</strong> ${member.birthday || 'N/A'}<br>
+                    <strong>Social Media:</strong> ${member.social_media || 'N/A'}<br>
+                    <strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}
+                `;
+                p.style.lineHeight = '1.8';
+                break;
+            }
+        }
+    }, 250);
+};
+
+// 2. STANDARDIZE DATE PICKER UI (Compact "From / To" Pill Design)
+setInterval(() => {
+    ['commFilter', 'minLogFilter'].forEach(prefix => {
+        const startInput = document.getElementById(prefix + 'Start');
+        if (startInput && !startInput.parentElement.classList.contains('date-pill')) {
+            const container = startInput.parentElement;
+            container.style.alignItems = 'center';
+            
+            // Wrap Start Date
+            const startWrapper = document.createElement('div');
+            startWrapper.className = 'date-pill';
+            startWrapper.style.cssText = 'display:flex; align-items:center; gap:6px; background:#FFF; padding:6px 10px; border-radius:8px; border:1px solid #CBD5E1; box-shadow:inset 0 1px 2px rgba(0,0,0,0.05);';
+            startInput.parentNode.insertBefore(startWrapper, startInput);
+            startWrapper.innerHTML = '<span style="font-size:0.85rem; color:#64748B; font-weight:bold;">From</span>';
+            startWrapper.appendChild(startInput);
+            startInput.style.cssText = 'border:none; outline:none; background:transparent; cursor:pointer; font-size:0.9rem; color:var(--text-main);';
+
+            // Wrap End Date
+            const endInput = document.getElementById(prefix + 'End');
+            if (endInput) {
+                const endWrapper = document.createElement('div');
+                endWrapper.className = 'date-pill';
+                endWrapper.style.cssText = 'display:flex; align-items:center; gap:6px; background:#FFF; padding:6px 10px; border-radius:8px; border:1px solid #CBD5E1; box-shadow:inset 0 1px 2px rgba(0,0,0,0.05);';
+                endInput.parentNode.insertBefore(endWrapper, endInput);
+                endWrapper.innerHTML = '<span style="font-size:0.85rem; color:#64748B; font-weight:bold;">To</span>';
+                endWrapper.appendChild(endInput);
+                endInput.style.cssText = 'border:none; outline:none; background:transparent; cursor:pointer; font-size:0.9rem; color:var(--text-main);';
+            }
+        }
+    });
+}, 1000);
