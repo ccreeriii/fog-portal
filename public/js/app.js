@@ -3637,3 +3637,232 @@ if (!window.isModalFailsafePatched) {
     });
     window.isModalFailsafePatched = true;
 }
+
+// ==========================================
+// V25: SURGICAL FIXES (GENDER, HOME BUTTONS, XP, 3-WAY MINISTRIES)
+// ==========================================
+
+// --- FIX 1: GENDER NOT SAVING ---
+window.handleSelfProfileUpdate = async function(e) {
+    e.preventDefault();
+    const id = document.getElementById('myMemberId').value;
+    if (!id) return alert('Admin accounts are updated directly in Add Permissions.');
+
+    const fileInput = document.getElementById('myEditProfilePic');
+    let picBase64 = undefined;
+    if (fileInput && fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
+
+    const genderVal = document.getElementById('myEditGender') ? document.getElementById('myEditGender').value : '';
+
+    const payload = {
+        name: document.getElementById('myEditName').value, email: document.getElementById('myEditEmail').value,
+        age: document.getElementById('myEditAge').value, birthday: document.getElementById('myEditBirthday').value,
+        social_media: document.getElementById('myEditSocial').value, parents_name: document.getElementById('myEditParents').value,
+        password: document.getElementById('myEditPassword').value, profile_picture: picBase64, actor: currentUser,
+        gender: genderVal
+    };
+    window.triggerActionConfirmation('Save changes to your personal profile?', async () => {
+        const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.success) {
+            alert('Profile updated successfully!');
+            currentMember = data.member;
+            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            window.populateProfileTab(data.member);
+        }
+    });
+};
+
+// --- FIX 2: HOME DASHBOARD BUTTONS ("I'm Ready", "Discern", "Expand Service") ---
+if (!document.getElementById('commitmentModal')) {
+    document.body.insertAdjacentHTML('beforeend', `
+    <div id="commitmentModal" class="modal">
+        <div class="modal-content" style="max-width: 450px; text-align: center; padding: 30px 20px;">
+            <span class="close-modal" onclick="closeCommitmentModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer;">&times;</span>
+            <div style="font-size: 3rem; margin-bottom: 10px;">🛡️</div>
+            <h2 style="color: var(--primary); margin-bottom: 5px; border: none;">Koinonia Commitment</h2>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Take the pledge to join our core community.</p>
+            <form onsubmit="submitCommitment(event)" style="text-align: left;">
+                <div class="form-group">
+                    <label style="font-weight: bold; color: var(--text-main);">Your Pledge/Intent</label>
+                    <textarea id="commitmentIntentMsg" class="form-control" rows="3" placeholder="I commit to..." required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-radius: 12px;">Submit Pledge</button>
+            </form>
+        </div>
+    </div>`);
+}
+
+window.openCommitmentModal = function() {
+    const m = document.getElementById('commitmentModal');
+    if(m) { m.style.display = 'flex'; m.classList.add('active'); document.body.style.overflow = 'hidden'; }
+};
+window.closeCommitmentModal = function() {
+    const m = document.getElementById('commitmentModal');
+    if(m) { m.style.display = 'none'; m.classList.remove('active'); document.body.style.overflow = ''; }
+};
+
+window.submitCommitment = async function(e) {
+    e.preventDefault();
+    const msg = document.getElementById('commitmentIntentMsg').value;
+    if (!msg) return;
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/commit', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: currentMember.name, intent_message: msg })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert("Welcome to the core community!");
+            currentMember = data.member;
+            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            closeCommitmentModal();
+            if(window.renderHomeJourney) window.renderHomeJourney();
+        }
+    } catch(err) { alert('Network Error'); }
+};
+
+window.openMinistryIntentModal = async function() {
+    const modal = document.getElementById('ministryIntentModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        try {
+            const res = await fetch('/api/ministries');
+            const ministries = await res.json();
+            document.getElementById('ministrySelect').innerHTML = '<option value="">Select a Ministry...</option>' + ministries.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+        } catch(e) {}
+    }
+};
+window.closeMinistryIntentModal = function() {
+    const modal = document.getElementById('ministryIntentModal');
+    if (modal) { modal.style.display = 'none'; modal.classList.remove('active'); document.body.style.overflow = 'auto'; }
+};
+
+// --- FIX 3: DIRECTORY VIEW PROFILE XP DISPLAY ---
+const origOpenViewProfileModal = window.openViewProfileModal;
+window.openViewProfileModal = async function(id) {
+    await origOpenViewProfileModal(id);
+    
+    // Inject XP specifically under the generated name header inside the modal
+    setTimeout(async () => {
+        try {
+            const usersRes = await fetch('/api/youth');
+            const users = await usersRes.json();
+            const member = users.find(u => String(u.id) === String(id));
+            if (!member) return;
+
+            const modalNameHeader = document.querySelector('#viewProfileModal h2');
+            if (modalNameHeader && !document.getElementById('injectedModalXP')) {
+                modalNameHeader.insertAdjacentHTML('afterend', `
+                <div id="injectedModalXP" style="display:flex; justify-content:center; gap:10px; margin-top:10px;">
+                    <span class="badge badge-orange" style="font-size: 0.9rem;">⭐ ${member.points || 0} XP</span>
+                </div>`);
+            }
+        } catch(e) {}
+    }, 100);
+};
+
+// --- FIX 4: MINISTRIES 3-WAY SPLIT TABS ---
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        const minTab = document.getElementById('ministriesTab');
+        if (!minTab) return;
+
+        // 1. Rebuild Sub-Nav with exactly 3 tabs
+        const subNav = minTab.querySelector('.sub-nav');
+        if (subNav) {
+            subNav.innerHTML = `
+                <button id="btnSubMinistryList" class="sub-nav-btn active" onclick="switchMinistrySubTab('list')">🏛️ Directory</button>
+                <button id="btnSubMinistryModeration" class="sub-nav-btn" onclick="switchMinistrySubTab('moderation')">📋 Moderation</button>
+                <button id="btnSubMinistryCreate" class="sub-nav-btn" onclick="switchMinistrySubTab('create')" style="display: ${window.hasPerm('add_entries') ? 'inline-block' : 'none'};">➕ Create</button>
+            `;
+        }
+
+        // 2. Ensure Moderation Content Exists safely
+        let modTab = document.getElementById('subTabMinistryModeration');
+        if (!modTab) {
+            const listTab = document.getElementById('subTabMinistryList');
+            if (listTab) {
+                listTab.insertAdjacentHTML('afterend', `
+                <div id="subTabMinistryModeration" class="ministry-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+                    <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+                        <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Application</h3>
+                        <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;"></div>
+                    </div>
+                </div>`);
+            }
+        }
+    }, 500);
+});
+
+// 3. Perfect the Logic Controller for the 3 tabs
+window.switchMinistrySubTab = function(tab) {
+    const tabs = ['list', 'moderation', 'create'];
+    
+    tabs.forEach(t => {
+        // Capitalize first letter for element IDs
+        const capitalTab = t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById('subTabMinistry' + capitalTab);
+        const btn = document.getElementById('btnSubMinistry' + capitalTab);
+        
+        if (el) el.style.display = (tab === t) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', tab === t);
+    });
+
+    if (tab === 'list') window.loadMinistries();
+    if (tab === 'moderation' && window.loadPendingApplications) window.loadPendingApplications();
+};
+
+window.loadPendingApplications = async function() {
+    const list = document.getElementById('pendingApplicationsList');
+    if (!list) return;
+    list.innerHTML = '<div style="text-align:center; color:var(--text-muted);">Loading pending applications...</div>';
+    
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">No pending applications right now!</div>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+        <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                    <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                    <button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { list.innerHTML = '<div style="text-align:center; color:var(--danger);">Network error.</div>'; }
+};
+
+window.processApplicationModal = async function(ministryId, mappingId, decision) {
+    if (!confirm('Are you sure you want to ' + decision + ' this application?')) return;
+    try {
+        if (decision === 'Denied') {
+            await fetch(`/api/ministries/${ministryId}/members/${mappingId}`, { method: 'DELETE' });
+        } else {
+            await fetch(`/api/ministries/${ministryId}/members/${mappingId}`, {
+                method: 'PUT', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ role: decision, sub_role: '' })
+            });
+        }
+        window.loadPendingApplications(); 
+        if (window.loadMinistries) window.loadMinistries(); 
+    } catch(e) { alert("Network Error"); }
+};
+
+// Suppress any rogue buttons from old logic loops
+setInterval(() => {
+    document.querySelectorAll('#btnModerateMinistries').forEach(b => b.remove());
+}, 1000);
