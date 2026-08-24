@@ -5104,3 +5104,60 @@ window.switchTab = function(tabId) {
         if(backupCard) backupCard.style.display = 'none';
     }
 };
+
+// ==========================================
+// V41: PROFILE DETAILS & GROWTH SUB-NAV FIX
+// ==========================================
+
+// FIX 1: Restore all profile details (Overriding V39 truncation safely)
+const origPopV40 = window.populateProfileTab;
+window.populateProfileTab = function(member) {
+    if (origPopV40) origPopV40(member);
+    
+    // We use a 300ms timeout to safely execute AFTER V39's 200ms wipe
+    setTimeout(() => {
+        const bio = document.getElementById('myBioSummary');
+        if (bio) {
+            bio.innerHTML = `
+                <strong>Gender:</strong> ${member.gender || 'N/A'}<br>
+                <strong>Email:</strong> ${member.email || 'N/A'}<br>
+                <strong>Mobile:</strong> ${member.mobile || 'N/A'}<br>
+                <strong>Address:</strong> ${member.address || 'N/A'}<br>
+                <strong>Age:</strong> ${member.age || 'N/A'}<br>
+                <strong>Birthday:</strong> ${member.birthday || 'N/A'}<br>
+                <strong>Social Media Handle:</strong> ${member.social_media || 'N/A'}<br>
+                <strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}
+            `;
+        }
+    }, 300);
+};
+
+// FIX 2: Implement missing switchGrowthSubTab mapping for Bottom Navigation
+window.switchGrowthSubTab = function(subTabName) {
+    // 1. Hide all growth sub-tabs
+    document.querySelectorAll('.growth-sub-tab').forEach(el => {
+        el.classList.remove('active');
+        el.style.display = 'none';
+    });
+    
+    // 2. Show the target sub-tab natively mapped to your index.html
+    const targetId = 'growthSub' + subTabName;
+    const targetEl = document.getElementById(targetId);
+    
+    if (targetEl) {
+        targetEl.classList.add('active');
+        targetEl.style.display = 'block';
+    } else {
+        // Failsafe to Growth Home
+        const homeEl = document.getElementById('growthSubHome');
+        if(homeEl) { homeEl.classList.add('active'); homeEl.style.display = 'block'; }
+    }
+
+    // 3. Trigger Data Loads Dynamically so pages aren't empty when clicked
+    if (typeof V2Discipleship !== 'undefined') {
+        if (subTabName === 'Prayer') V2Discipleship.loadPrayers();
+        if (subTabName === 'Journal') V2Discipleship.loadJournals();
+        if (subTabName === 'Milestones') V2Discipleship.loadPathways();
+        if (subTabName === 'Groups') V2Discipleship.loadSmallGroups();
+    }
+};
