@@ -556,3 +556,133 @@ window.closeGroupVault = function() {
         modal.classList.remove('active');
     }
 };
+
+// ========================================================
+// V43: MISSING GROUP DASHBOARD LOGIC MAP
+// ========================================================
+
+window.currentDashboardGroupId = null;
+
+// Ensure null strings don't break the image renderer
+window.openGroupDashboard = function(id, name, logo, leader, leader_id) {
+    window.currentDashboardGroupId = id;
+    const modal = document.getElementById('groupDashboardModal');
+    
+    if (modal) {
+        const nameEl = document.getElementById('dashGroupName');
+        if (nameEl) nameEl.innerText = name || 'Group Name';
+
+        const metaEl = document.getElementById('dashGroupMeta');
+        if (metaEl) metaEl.innerText = leader && String(leader) !== 'null' ? ('Led by ' + leader) : 'Ministry Group';
+
+        const logoEl = document.getElementById('dashGroupLogo');
+        if (logoEl) {
+            if (logo && String(logo) !== 'null' && String(logo) !== 'undefined') {
+                logoEl.innerHTML = `<img src="${logo}" style="width:100%; height:100%; object-fit:cover; border-radius:12px;">`;
+                logoEl.style.background = 'transparent';
+                logoEl.style.border = 'none';
+            } else {
+                logoEl.innerHTML = '👥';
+                logoEl.style.background = '#FFF0E6';
+            }
+        }
+
+        modal.style.display = 'flex';
+        modal.style.zIndex = '105000';
+        modal.classList.add('active');
+        
+        window.switchDashTab('overview');
+    }
+};
+
+window.switchDashTab = function(tab) {
+    const tabs = ['overview', 'members', 'prayers', 'deepdive', 'memories'];
+    tabs.forEach(t => {
+        const elId = t === 'deepdive' ? 'dashTabDeepDive' : 'dashTab' + t.charAt(0).toUpperCase() + t.slice(1);
+        const btnId = t === 'deepdive' ? 'btnDashDeepDive' : 'btnDash' + t.charAt(0).toUpperCase() + t.slice(1);
+        
+        const el = document.getElementById(elId);
+        const btn = document.getElementById(btnId);
+        
+        if (el) el.style.display = (tab === t) ? 'block' : 'none';
+        if (btn) {
+            if (tab === t) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    });
+    
+    if (tab === 'members') window.fetchGroupMembers();
+    if (tab === 'prayers') document.getElementById('dashPrayersList').innerHTML = '<p style="text-align:center; color:#64748B; padding: 20px;">Group prayer wall locking mechanisms will be unlocked in the next patch!</p>';
+    if (tab === 'deepdive') document.getElementById('dashThreadsList').innerHTML = '<p style="text-align:center; color:#64748B; padding: 20px;">Discussions active. (Feature unlocked in next patch)</p>';
+    if (tab === 'memories') document.getElementById('dashMemoriesGrid').innerHTML = '<p style="text-align:center; color:#64748B; padding: 20px;">Memories active. (Feature unlocked in next patch)</p>';
+};
+
+window.closeGroupDashboard = function() {
+    const modal = document.getElementById('groupDashboardModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+    window.currentDashboardGroupId = null;
+};
+
+// Campfire (Chat) mapping
+window.launchDashCampfire = function() {
+    const modal = document.getElementById('groupSpaceModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.style.zIndex = '106000';
+        modal.classList.add('active');
+        document.getElementById('groupChatMessages').innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Welcome to your group\\'s private campfire. 🔥<br><br>(Fetching live messages...)</p>';
+    }
+};
+
+window.closeGroupSpace = function() {
+    const modal = document.getElementById('groupSpaceModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+};
+
+// Video Vault mapping
+window.launchDashVault = function() {
+    const modal = document.getElementById('groupVaultModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.style.zIndex = '106000';
+        modal.classList.add('active');
+        document.getElementById('vaultListContainer').innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Video vault access established. 🎥<br><br>(Fetching sessions...)</p>';
+    }
+};
+
+window.closeGroupVault = function() {
+    const modal = document.getElementById('groupVaultModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+};
+
+window.fetchGroupMembers = async function() {
+    const container = document.getElementById('dashMembersList');
+    if(!container || !window.currentDashboardGroupId) return;
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Syncing members...</p>';
+    try {
+        const res = await fetch('/api/small-groups/' + window.currentDashboardGroupId + '/roster-status');
+        const members = await res.json();
+        if(members.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">No members yet.</p>';
+            return;
+        }
+        container.innerHTML = members.map(m => `
+            <div style="padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px;">
+                ${m.profile_picture ? `<img src="${m.profile_picture}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">` : `<div style="width: 40px; height: 40px; border-radius: 50%; background: var(--bg-light); color: var(--text-main); display: flex; align-items: center; justify-content: center; font-weight: bold;">${m.name.charAt(0).toUpperCase()}</div>`}
+                <div>
+                    <strong style="color: var(--text-main);">${m.name}</strong><br>
+                    <span class="badge ${m.status === 'Approved' ? 'badge-green' : 'badge-orange'}">${m.status}</span>
+                </div>
+            </div>
+        `).join('');
+    } catch(e) { container.innerHTML = '<p style="color:red; text-align:center;">Network error.</p>'; }
+};

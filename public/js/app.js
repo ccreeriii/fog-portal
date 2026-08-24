@@ -5285,3 +5285,183 @@ window.renderBottomNav = function(context) {
     }
     bottomNav.innerHTML = bHtml;
 };
+
+// ========================================================
+// V43: ABSOLUTE PROFILE TRUTH & GROWTH NAVIGATION FIX
+// ========================================================
+
+// 1. Definitively define the Profile Populator (Bypassing legacy wipes)
+window.populateProfileTab = function(member) {
+    if (!member) return;
+
+    // Inject Gender Field securely if missing
+    if (!document.getElementById('myEditGender') && document.getElementById('myEditName')) {
+        document.getElementById('myEditName').parentElement.insertAdjacentHTML('afterend', `
+        <div class="form-group"><label>Gender</label><select id="myEditGender" class="form-control"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>`);
+    }
+
+    // Inject Mobile and Address if missing
+    const myEmailGroup = document.getElementById('myEditEmail');
+    if (myEmailGroup && !document.getElementById('myEditMobile')) {
+        myEmailGroup.parentElement.insertAdjacentHTML('afterend', `
+            <div class="form-group"><label>Mobile Number</label><input type="text" id="myEditMobile" class="form-control" placeholder="e.g. 09123456789"></div>
+            <div class="form-group"><label>Address</label><input type="text" id="myEditAddress" class="form-control" placeholder="Enter full address"></div>
+        `);
+    }
+
+    const safeText = (val) => val && val !== 'null' ? val : 'N/A';
+    
+    // Map all 8 personal details securely
+    const bio = document.getElementById('myBioSummary');
+    if (bio) {
+        bio.innerHTML = `
+            <strong>Gender:</strong> ${safeText(member.gender)}<br>
+            <strong>Email:</strong> ${safeText(member.email)}<br>
+            <strong>Mobile Number:</strong> ${safeText(member.mobile)}<br>
+            <strong>Address:</strong> ${safeText(member.address)}<br>
+            <strong>Age:</strong> ${safeText(member.age)}<br>
+            <strong>Birthday:</strong> ${safeText(member.birthday)}<br>
+            <strong>Social Media Handle:</strong> ${safeText(member.social_media)}<br>
+            <strong>Parents/Guardian:</strong> ${safeText(member.parents_name)}
+        `;
+    }
+
+    // Map inputs safely
+    ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender','myEditMobile','myEditAddress'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            let key = id.replace('myEdit', '').toLowerCase();
+            if(id === 'myEditParents') key = 'parents_name';
+            if(id === 'myEditSocial') key = 'social_media';
+            if(id === 'myMemberId') key = 'id';
+            el.value = member[key] || '';
+        }
+    });
+
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+
+    // QR Code Engine
+    const codeEl = document.getElementById('myProfileCode');
+    if (codeEl) {
+        codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
+        codeEl.style.display = 'inline-block';
+    }
+
+    const qrContainer = document.getElementById('myQrContainer');
+    const dlBtn = document.getElementById('myDownloadQrBtn');
+    if (qrContainer && dlBtn) {
+        if (member.qr_code) {
+            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:100%; height:auto; border-radius:8px; border: 1px solid var(--border-color);">`;
+            dlBtn.href = qrUrl;
+            dlBtn.style.display = 'inline-block';
+        } else {
+            qrContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No QR Assigned</span>';
+            dlBtn.style.display = 'none';
+        }
+    }
+
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+
+    if (window.loadMyV3Roles) window.loadMyV3Roles(member.id, 'myMinistriesHistory');
+    if (window.loadMyV3Attendance) window.loadMyV3Attendance(member.id, 'myAttendanceHistory');
+};
+
+// 2. Attach to Tab Switch for INSTANT rendering without refresh
+const ogSwitchTabProfV43 = window.switchTab;
+window.switchTab = async function(tabId) {
+    if (ogSwitchTabProfV43) ogSwitchTabProfV43(tabId);
+    if (tabId === 'profileTab' && typeof currentMember !== 'undefined' && currentMember) {
+        window.populateProfileTab(currentMember); // Instant load cache
+        
+        // Background fetch to update cache silently
+        fetch('/api/youth').then(r=>r.json()).then(users => {
+            const fresh = users.find(u => u.id == currentMember.id);
+            if (fresh) {
+                currentMember = fresh;
+                localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+                window.populateProfileTab(fresh);
+            }
+        }).catch(e=>{});
+    }
+};
+
+// 3. Update Bottom Nav explicitly reset Growth Tab and neutralize observers
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+    
+    // Neutralize legacy V48 observer
+    bottomNav.classList.add('v48-processing');
+
+    let bHtml = '';
+    if (context === 'discipleshipTab') {
+        bHtml = `
+        <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn active" onclick="switchTab('discipleshipTab'); if(window.switchGrowthSubTab) window.switchGrowthSubTab('Home');"><span>🌱</span>Growth</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    } else {
+        bHtml = `
+        <button class="bottom-nav-btn ${context === 'pulseDashboardTab' ? 'active' : ''}" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+        <button class="bottom-nav-btn ${context === 'profileTab' ? 'active' : ''}" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn ${context === 'arcadeTab' ? 'active' : ''}" onclick="switchTab('arcadeTab')"><span>🎯</span>Arcade</button>
+        <button class="bottom-nav-btn ${context === 'discipleshipTab' ? 'active' : ''}" onclick="switchTab('discipleshipTab'); if(window.switchGrowthSubTab) window.switchGrowthSubTab('Home');"><span>🌱</span>Grow</button>
+        <button class="bottom-nav-btn ${context === 'inboxTab' ? 'active' : ''}" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+        <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab'); setTimeout(() => { if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer'); }, 50);"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    }
+    bottomNav.innerHTML = bHtml;
+};
+
+// 4. Force data fetching when Growth sub-tabs are clicked
+window.switchGrowthSubTab = function(subTabName) {
+    document.querySelectorAll('.growth-sub-tab').forEach(el => {
+        el.classList.remove('active');
+        el.style.display = 'none';
+    });
+    
+    const targetEl = document.getElementById('growthSub' + subTabName);
+    if (targetEl) {
+        targetEl.classList.add('active');
+        targetEl.style.display = 'block';
+    }
+
+    if (typeof V2Discipleship !== 'undefined') {
+        if (subTabName === 'Home') {
+            V2Discipleship.loadLiturgicalData();
+            V2Discipleship.loadNextStep();
+        }
+        if (subTabName === 'Prayer') V2Discipleship.loadPrayers();
+        if (subTabName === 'Journal') V2Discipleship.loadJournals();
+        if (subTabName === 'Groups') V2Discipleship.loadSmallGroups();
+        if (subTabName === 'Milestones') {
+            V2Discipleship.loadPathways();
+            if (typeof currentMember !== 'undefined' && currentMember) {
+                fetch('/api/discipleship/member-progress/' + currentMember.id)
+                    .then(r=>r.json())
+                    .then(progress => {
+                        const userList = document.getElementById('pathwaysListContainer');
+                        if (userList) {
+                            if (progress.length === 0) {
+                                userList.innerHTML = '<p style="color:var(--text-muted); text-align:center;">No active pathways available.</p>';
+                                return;
+                            }
+                            userList.innerHTML = progress.map(p => {
+                                const isCompleted = p.status === 'Completed'; 
+                                const badge = isCompleted ? '<span class="badge badge-green">✅ Completed</span>' : '<span class="badge badge-orange">⏳ Pending</span>'; 
+                                const actionBtn = !isCompleted ? `<button class="btn btn-primary btn-sm" onclick="V2Discipleship.updateMilestone(${p.pathway_id}, 'Completed')">Mark Complete</button>` : '';
+                                return `<div style="background:#FFF; border: 1px solid var(--border-color); padding: 15px; margin-bottom: 10px; border-radius: 8px; display:flex; justify-content:space-between; align-items:center;"><div><strong style="color:var(--text-main); font-size:1.05rem;">${p.title}</strong><div style="margin-top:5px;">${badge}</div></div><div>${actionBtn}</div></div>`;
+                            }).join('');
+                        }
+                    });
+            }
+        }
+    }
+};
