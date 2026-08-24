@@ -4925,3 +4925,61 @@ setInterval(() => {
         }
     });
 }, 1000);
+
+// ==========================================
+// V48: NATIVE NAV OBSERVER & GROUPS MODAL
+// ==========================================
+
+// 1. REBUILD MISSING GROUPS FUNCTION
+window.openGroupDashboard = function(id, name, logo, leader, leader_id) {
+    const modal = document.getElementById('groupDashboardModal');
+    if (modal) {
+        // Populate the modal data natively
+        const nameEl = document.getElementById('dashGroupName');
+        if (nameEl) nameEl.innerText = name || 'Group Name';
+        
+        const metaEl = document.getElementById('dashGroupMeta');
+        if (metaEl) metaEl.innerText = leader ? ('Led by ' + leader) : 'Ministry Group';
+        
+        const logoEl = document.getElementById('dashGroupLogo');
+        if (logoEl) logoEl.innerText = logo || '👥';
+
+        // Force it open securely
+        modal.style.display = 'flex';
+        modal.style.zIndex = '105000';
+        modal.classList.add('active');
+    } else {
+        console.error("Dashboard Modal not found in DOM");
+    }
+};
+
+// 2. NATIVE MUTATION OBSERVER FOR BOTTOM NAV
+document.addEventListener('DOMContentLoaded', () => {
+    const bNav = document.getElementById('bottomNav');
+    if (bNav && !window.v48ObserverActive) {
+        window.v48ObserverActive = true;
+        
+        const navObserver = new MutationObserver((mutations) => {
+            const html = bNav.innerHTML.toLowerCase();
+            
+            // Intercept only when Growth Tab injects 'rank'
+            if (html.includes('rank') && !bNav.classList.contains('v48-processing')) {
+                bNav.classList.add('v48-processing');
+                
+                // Rebuild using EXACT NATIVE CLASSES. No inline CSS to ruin the layout.
+                bNav.innerHTML = `
+                    <button class="bottom-nav-btn" onclick="if(typeof switchTab==='function') switchTab('profileTab')"><span>👤</span>Profile</button>
+                    <button class="bottom-nav-btn active" onclick="if(typeof switchTab==='function') switchTab('growthTab')"><span>🌱</span>Growth</button>
+                    <button class="bottom-nav-btn" onclick="if(typeof switchTab==='function') switchTab('pathwayTab')"><span>🗺️</span>Paths</button>
+                    <button class="bottom-nav-btn" onclick="if(typeof switchTab==='function') switchTab('journalTab')"><span>📖</span>Journal</button>
+                    <button class="bottom-nav-btn" onclick="if(typeof switchTab==='function') switchTab('groupsTab')"><span>👥</span>Groups</button>
+                    <button class="bottom-nav-btn" onclick="if(typeof openSidebar==='function') openSidebar(); else { const sb = document.getElementById('sidebarNav'); if(sb) { sb.style.display = window.getComputedStyle(sb).display === 'none' ? 'block' : 'none'; sb.style.zIndex='999999'; } }"><span>☰</span>Menu</button>
+                `;
+                
+                setTimeout(() => { bNav.classList.remove('v48-processing'); }, 50);
+            }
+        });
+        
+        navObserver.observe(bNav, { childList: true });
+    }
+});
