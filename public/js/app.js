@@ -5537,3 +5537,68 @@ setInterval(() => {
         }
     }
 }, 1000);
+
+// ========================================================
+// V46: SERVICE WORKER ASSASSIN & ROUTER
+// ========================================================
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) {
+            registration.unregister();
+        }
+    });
+}
+
+window.switchTab = function(tabId, subTabId = null) {
+    if (typeof window.renderBottomNav === 'function') window.renderBottomNav(tabId);
+
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.sidebar .nav-btn').forEach(el => el.classList.remove('active'));
+    const sidebarTarget = document.querySelector(`.sidebar .nav-btn[data-target="${tabId}"]`);
+    if(sidebarTarget) sidebarTarget.classList.add('active');
+
+    document.querySelectorAll('.bottom-nav-btn').forEach(el => el.classList.remove('active'));
+    const bottomTarget = document.querySelector(`.bottom-nav-btn[data-target="${tabId}"]`);
+    if(bottomTarget) bottomTarget.classList.add('active');
+
+    window.closeSidebar();
+
+    const targetTab = document.getElementById(tabId);
+    if (targetTab) targetTab.classList.add('active');
+
+    if (tabId === 'discipleshipTab') {
+        if (typeof window.switchGrowthSubTab === 'function') {
+            setTimeout(() => { window.switchGrowthSubTab(subTabId || 'Home'); }, 50);
+        }
+    }
+};
+
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+    
+    let bHtml = '';
+    if (context === 'discipleshipTab') {
+        bHtml = `
+        <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn active" onclick="switchTab('discipleshipTab', 'Home')"><span>🌱</span>Growth</button>
+        <button class="bottom-nav-btn" onclick="switchGrowthSubTab('Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+        <button class="bottom-nav-btn" onclick="switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+        <button class="bottom-nav-btn" onclick="switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    } else {
+        bHtml = `
+        <button class="bottom-nav-btn ${context === 'pulseDashboardTab' ? 'active' : ''}" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+        <button class="bottom-nav-btn ${context === 'profileTab' ? 'active' : ''}" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn ${context === 'arcadeTab' ? 'active' : ''}" onclick="switchTab('arcadeTab')"><span>🎯</span>Arcade</button>
+        <button class="bottom-nav-btn ${context === 'discipleshipTab' ? 'active' : ''}" onclick="switchTab('discipleshipTab', 'Home')"><span>🌱</span>Grow</button>
+        <button class="bottom-nav-btn ${context === 'inboxTab' ? 'active' : ''}" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+        <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab', 'Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    }
+    bottomNav.innerHTML = bHtml;
+};
