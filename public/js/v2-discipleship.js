@@ -648,3 +648,351 @@ window.openGroupDashboard = function(id, name, logo, leaderName, leaderId) {
     modal.classList.add('active');
     window.switchDashTab('Members'); // Force members tab open by default
 };
+
+// ==========================================
+// V101: DEFINITIVE GROUPS LOGIC FIX
+// ==========================================
+
+window.switchDashTab = function(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.dash-tab-content').forEach(el => el.style.display = 'none');
+    // Remove active class from all tab buttons
+    document.querySelectorAll('.dash-nav-btn').forEach(el => el.classList.remove('active'));
+
+    // Show target tab content
+    const target = document.getElementById('dashTab' + tabName);
+    if (target) target.style.display = 'block';
+
+    // Highlight target tab button
+    const btn = document.getElementById('btnDash' + tabName);
+    if (btn) btn.classList.add('active');
+};
+
+window.launchDashCampfire = function(groupId, groupName) {
+    if (typeof window.switchTab === 'function') window.switchTab('communicationsTab');
+    if (typeof window.V4Communications !== 'undefined' && window.V4Communications.openThread) {
+        setTimeout(() => window.V4Communications.openThread(groupId), 300);
+    } else {
+        alert("Navigating to Chat... (Communications module loading)");
+    }
+};
+
+window.launchDashVault = function(groupId) {
+    alert("Video Vault feature is currently undergoing maintenance for staging environment!");
+};
+
+window.openGroupDashboard = function(id, name, logo, leaderName, leaderId) {
+    const modal = document.getElementById('groupDashboardModal');
+    if (!modal) return alert("Group dashboard modal missing!");
+
+    // Centered Logo Injection
+    let safeLogo = (logo && logo !== 'null' && logo !== 'undefined') ? logo : '';
+    const logoEl = document.getElementById('dashGroupLogo');
+    if (logoEl) {
+        if (safeLogo) {
+            logoEl.outerHTML = '<div id="dashGroupLogo" style="width:70px; height:70px; margin: 0 auto 15px auto;"><img src="' + safeLogo + '" style="width:100%; height:100%; border-radius:12px; object-fit:cover; display:block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>';
+        } else {
+            logoEl.outerHTML = '<div id="dashGroupLogo" style="width:70px; height:70px; border-radius:12px; background:var(--bg-light); display:flex; align-items:center; justify-content:center; font-size:2rem; margin: 0 auto 15px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">👥</div>';
+        }
+    }
+
+    if (document.getElementById('dashGroupName')) document.getElementById('dashGroupName').innerText = name || 'Group Name';
+    if (document.getElementById('dashGroupLeader')) document.getElementById('dashGroupLeader').innerText = "Led by " + (leaderName || 'TBA');
+
+    // Forcefully wire the Action Buttons
+    const chatBtn = document.getElementById('btnDashChat');
+    if (chatBtn) {
+        chatBtn.onclick = null; 
+        chatBtn.onclick = () => window.launchDashCampfire(id, name);
+    }
+
+    const vidBtn = document.getElementById('btnDashVideo');
+    if (vidBtn) {
+        vidBtn.onclick = null;
+        vidBtn.onclick = () => window.launchDashVault(id);
+    }
+
+    // Forcefully wire the Tabs
+    const tabMap = {
+        'btnDashMembers': 'Members',
+        'btnDashPrayers': 'Prayers',
+        'btnDashDeepDive': 'DeepDive',
+        'btnDashMemories': 'Memories'
+    };
+    for (const [btnId, tabName] of Object.entries(tabMap)) {
+        const tBtn = document.getElementById(btnId);
+        if (tBtn) {
+            tBtn.onclick = (e) => {
+                e.preventDefault();
+                window.switchDashTab(tabName);
+            };
+        }
+    }
+
+    modal.style.display = 'flex';
+    modal.style.zIndex = '105000';
+    modal.classList.add('active');
+    
+    // Auto-open Members tab
+    window.switchDashTab('Members'); 
+};
+
+
+// ==========================================
+// V102: GROUP DASHBOARD & LITURGICAL FIXES
+// ==========================================
+
+// 1. Group State Tracking
+window.currentDashboardGroupId = null;
+
+// 2. Open Group Dashboard & Centered Logo
+window.openGroupDashboard = function(id, name, logo, leaderName, leaderId) {
+    const modal = document.getElementById('groupDashboardModal');
+    if (!modal) return alert("Group dashboard modal missing!");
+
+    // Save ID for Campfire button
+    window.currentDashboardGroupId = id;
+
+    // Centered Logo
+    let safeLogo = (logo && logo !== 'null' && logo !== 'undefined') ? logo : '';
+    const logoEl = document.getElementById('dashGroupLogo');
+    if (logoEl) {
+        if (safeLogo) {
+            logoEl.outerHTML = '<div id="dashGroupLogo" style="width:70px; height:70px; margin: 0 auto 15px auto;"><img src="' + safeLogo + '" style="width:100%; height:100%; border-radius:12px; object-fit:cover; display:block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>';
+        } else {
+            logoEl.outerHTML = '<div id="dashGroupLogo" style="width:70px; height:70px; border-radius:12px; background:var(--bg-light); display:flex; align-items:center; justify-content:center; font-size:2rem; margin: 0 auto 15px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">👥</div>';
+        }
+    }
+
+    // Populate Text
+    if (document.getElementById('dashGroupName')) document.getElementById('dashGroupName').innerText = name || 'Group Name';
+    
+    // Fix the "Loading..." Text Bug
+    const metaEl = document.getElementById('dashGroupMeta');
+    if (metaEl) metaEl.innerText = "Led by " + (leaderName || 'TBA');
+
+    modal.style.display = 'flex';
+    modal.style.zIndex = '105000';
+    modal.classList.add('active');
+    
+    // Force open the Hub (Overview) tab
+    window.switchDashTab('overview');
+};
+
+// 3. Tab Switcher
+window.switchDashTab = function(tabName) {
+    const tabs = ['overview', 'members', 'prayers', 'deepdive', 'memories'];
+    tabs.forEach(t => {
+        const elId = t === 'deepdive' ? 'dashTabDeepDive' : 'dashTab' + t.charAt(0).toUpperCase() + t.slice(1);
+        const btnId = t === 'deepdive' ? 'btnDashDeepDive' : 'btnDash' + t.charAt(0).toUpperCase() + t.slice(1);
+
+        const el = document.getElementById(elId);
+        const btn = document.getElementById(btnId);
+
+        if (el) el.style.display = (tabName === t) ? 'block' : 'none';
+        if (btn) {
+            if (tabName === t) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    });
+};
+
+// 4. Action Buttons (Using saved Global ID)
+window.launchDashCampfire = function() {
+    if (!window.currentDashboardGroupId) return alert("Group ID not detected.");
+    if (typeof window.switchTab === 'function') window.switchTab('communicationsTab');
+    if (typeof window.V4Communications !== 'undefined' && window.V4Communications.openThread) {
+        setTimeout(() => window.V4Communications.openThread(window.currentDashboardGroupId), 300);
+    } else {
+        alert("Navigating to Chat module...");
+    }
+};
+
+window.launchDashVault = function() {
+    alert("Video Vault feature is currently undergoing maintenance!");
+};
+
+// 5. Universalis Iframe Modal
+window.openLiturgicalReadings = function() {
+    const modal = document.getElementById('liturgicalReadingsModal');
+    if (modal) {
+        modal.style.display = 'flex'; 
+        modal.classList.add('active');
+        const contentArea = modal.querySelector('.modal-content') || modal;
+        let iframe = document.getElementById('readingsIframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'readingsIframe';
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+            contentArea.appendChild(iframe);
+        }
+        iframe.src = 'https://universalis.com/philippines/mass.htm';
+    }
+};
+
+window.closeLiturgicalReadings = function() {
+    const modal = document.getElementById('liturgicalReadingsModal');
+    if (modal) { modal.style.display = 'none'; modal.classList.remove('active'); }
+};
+
+// 6. Liturgical Fetcher
+window.V2Discipleship.loadLiturgicalData = async function() {
+    const c = document.getElementById("liturgicalCard");
+    if (c) c.style.display = "block";
+    try {
+        const res = await fetch("/api/liturgical/today");
+        const data = await res.json();
+        let bg = "#10B981"; 
+        const col = (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].colour : data.season_color || "green";
+        if (col === "red") bg = "#DC2626";
+        else if (col === "violet" || col === "purple") bg = "#7C3AED";
+        else if (col === "white" || col === "gold") bg = "#F59E0B";
+        else if (col === "rose" || col === "pink") bg = "#F472B6";
+
+        if (c) c.style.background = 'linear-gradient(135deg, ' + bg + ', #111)';
+        
+        const txt = (id, val) => { if(document.getElementById(id)) document.getElementById(id).innerText = val; };
+        txt("liturgicalSeason", (data.season || "Ordinary").toUpperCase() + " TIME");
+        txt("liturgicalFeast", (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].title : "Daily Mass");
+        txt("liturgicalGospel", data.daily_gospel || "I am the bread of life... (John 6:35)");
+    } catch(e) {
+        if (c) c.style.background = "linear-gradient(135deg, #10B981, #111)";
+    }
+};
+
+// ==========================================
+// HOTFIX: GROUP DASHBOARD & INNER TABS LOGIC
+// ==========================================
+
+// 1. Group State Tracking
+window.currentDashboardGroupId = null;
+window.currentDashboardGroupName = null;
+
+// 2. Open Group Dashboard & Centered Logo + Leader Name Fix
+window.openGroupDashboard = function(id, name, logo, leaderName, leaderId) {
+    const modal = document.getElementById('groupDashboardModal');
+    if (!modal) return alert("Group dashboard modal missing!");
+
+    // Save state for Inner Tabs and Action Buttons
+    window.currentDashboardGroupId = id;
+    window.currentDashboardGroupName = name;
+
+    // Fix Logo Rendering & Null String Traps
+    let safeLogo = (logo && logo !== 'null' && logo !== 'undefined') ? logo : '';
+    const logoEl = document.getElementById('dashGroupLogo');
+    if (logoEl) {
+        if (safeLogo) {
+            logoEl.outerHTML = '<div id="dashGroupLogo" style="width:80px; height:80px; margin: 0 auto 15px auto;"><img src="' + safeLogo + '" style="width:100%; height:100%; border-radius:12px; object-fit:cover; display:block; border: 1px solid rgba(255,107,0,0.2);"></div>';
+        } else {
+            logoEl.outerHTML = '<div id="dashGroupLogo" style="width:80px; height:80px; border-radius:12px; background:#FFF0E6; border: 1px solid rgba(255,107,0,0.2); display:flex; align-items:center; justify-content:center; font-size:2rem; margin: 0 auto 15px auto;">👥</div>';
+        }
+    }
+
+    // Fix Group Name
+    if (document.getElementById('dashGroupName')) {
+        document.getElementById('dashGroupName').innerText = name || 'Group Name';
+    }
+
+    // Fix "Loading..." Text Bug (Targeting the correct ID 'dashGroupMeta')
+    const metaEl = document.getElementById('dashGroupMeta');
+    if (metaEl) {
+        metaEl.innerText = "Led by " + (leaderName && leaderName !== 'null' && leaderName !== 'undefined' ? leaderName : 'TBA');
+    }
+
+    modal.style.display = 'flex';
+    modal.style.zIndex = '105000';
+    modal.classList.add('active');
+
+    // Force open the Hub (Overview) tab
+    window.switchDashTab('overview');
+};
+
+// 3. Close Group Dashboard
+window.closeGroupDashboard = function() {
+    const modal = document.getElementById('groupDashboardModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+    window.currentDashboardGroupId = null;
+    window.currentDashboardGroupName = null;
+};
+
+// 4. Inner Tab Switcher Engine
+window.switchDashTab = function(tabName) {
+    const tabs = ['overview', 'members', 'prayers', 'deepdive', 'memories'];
+    tabs.forEach(t => {
+        const elId = t === 'deepdive' ? 'dashTabDeepDive' : 'dashTab' + t.charAt(0).toUpperCase() + t.slice(1);
+        const btnId = t === 'deepdive' ? 'btnDashDeepDive' : 'btnDash' + t.charAt(0).toUpperCase() + t.slice(1);
+
+        const el = document.getElementById(elId);
+        const btn = document.getElementById(btnId);
+
+        if (el) el.style.display = (tabName === t) ? 'block' : 'none';
+        if (btn) {
+            if (tabName === t) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    });
+};
+
+// 5. Open Chat (Campfire) Routing
+window.launchDashCampfire = function() {
+    if (!window.currentDashboardGroupId) return alert("Group ID not detected.");
+    
+    // Hide Dashboard Modal
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal) { dashModal.style.display = 'none'; dashModal.classList.remove('active'); }
+    
+    // Open Campfire Modal natively mapped in HTML
+    const chatModal = document.getElementById('groupSpaceModal');
+    if (chatModal) {
+        document.getElementById('groupSpaceTitle').innerText = window.currentDashboardGroupName ? ('🔥 ' + window.currentDashboardGroupName) : '🔥 Campfire';
+        chatModal.style.display = 'flex';
+        chatModal.style.zIndex = '105000';
+        chatModal.classList.add('active');
+    }
+};
+
+window.closeGroupSpace = function() {
+    const chatModal = document.getElementById('groupSpaceModal');
+    if (chatModal) { chatModal.style.display = 'none'; chatModal.classList.remove('active'); }
+    
+    // Reopen Dashboard
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal && window.currentDashboardGroupId) { 
+        dashModal.style.display = 'flex'; 
+        dashModal.classList.add('active'); 
+    }
+};
+
+// 6. Open Video Vault Routing
+window.launchDashVault = function() {
+    if (!window.currentDashboardGroupId) return alert("Group ID not detected.");
+    
+    // Hide Dashboard Modal
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal) { dashModal.style.display = 'none'; dashModal.classList.remove('active'); }
+
+    // Open Video Vault Modal natively mapped in HTML
+    const vaultModal = document.getElementById('groupVaultModal');
+    if (vaultModal) {
+        vaultModal.style.display = 'flex';
+        vaultModal.style.zIndex = '105000';
+        vaultModal.classList.add('active');
+    }
+};
+
+window.closeGroupVault = function() {
+    const vaultModal = document.getElementById('groupVaultModal');
+    if (vaultModal) { vaultModal.style.display = 'none'; vaultModal.classList.remove('active'); }
+    
+    // Reopen Dashboard
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal && window.currentDashboardGroupId) { 
+        dashModal.style.display = 'flex'; 
+        dashModal.classList.add('active'); 
+    }
+};
