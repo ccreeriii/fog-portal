@@ -638,3 +638,467 @@ window.V8Arcade = Object.assign(window.V8Arcade || {}, {
 });
 
 document.addEventListener('DOMContentLoaded', () => { window.V10Expansion.init(); });
+
+// ==========================================
+// V100: MASTER OVERRIDE - CHAT, YOUTUBE, & FACEBOOK REACTIONS
+// ==========================================
+
+// --- 1. YOUTUBE KILL SWITCH ---
+window.closeGroupSpace = function() {
+    const chatModal = document.getElementById('groupSpaceModal');
+    if (chatModal) { chatModal.style.display = 'none'; chatModal.classList.remove('active'); }
+    
+    // Kills the iframe to stop audio/video immediately
+    const container = document.getElementById('groupChatMessages');
+    if (container) container.innerHTML = ''; 
+
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal && window.currentDashboardGroupId) { 
+        dashModal.style.display = 'flex'; 
+        dashModal.classList.add('active'); 
+    }
+};
+
+// --- 2. SECURE STATE MAPPING FOR FACEBOOK REACTIONS ---
+window.chatReactionsMap = {};
+window.memoryReactionsMap = {};
+
+window.showReactionListMaster = function(id, type) {
+    try {
+        const reacts = type === 'chat' ? window.chatReactionsMap[id] : window.memoryReactionsMap[id];
+        const modal = document.getElementById('reactionListModal');
+        const listContainer = document.getElementById('reactionListNames');
+        if (!modal || !listContainer || !reacts) return;
+        
+        let html = '';
+        Object.keys(reacts).forEach(emoji => {
+            const users = Array.isArray(reacts[emoji]) ? reacts[emoji] : [];
+            if (users.length > 0) {
+                html += `<div style="margin-bottom: 15px;">
+                    <div style="font-size: 1.2rem; margin-bottom: 6px; border-bottom: 1px solid #E2E8F0; padding-bottom: 4px; display:flex; align-items:center; gap:8px;">
+                        ${emoji} <span style="font-size: 0.85rem; color: #64748B; font-weight:bold;">${users.length}</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px; padding-left: 10px;">
+                        ${users.map(u => `<span style="font-size: 0.95rem; color: #0F172A; display:flex; align-items:center; gap:6px;">👤 ${u}</span>`).join('')}
+                    </div>
+                </div>`;
+            }
+        });
+        
+        listContainer.innerHTML = html || '<div style="text-align:center; color:#64748B;">No reactions yet.</div>';
+        
+        modal.style.setProperty('z-index', '108000', 'important');
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+    } catch(e) { console.error("Reaction Viewer Error:", e); }
+};
+
+window.toggleReactionPickerMaster = function(pickerId) {
+    document.querySelectorAll('[id^="reactPicker_"]').forEach(el => {
+        if (el.id !== 'reactPicker_' + pickerId) el.style.display = 'none';
+    });
+    const picker = document.getElementById('reactPicker_' + pickerId);
+    if (picker) picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+};
+
+window.submitReactionMaster = async function(type, id, emoji) {
+    if (!currentMember) return;
+    const picker = document.getElementById('reactPicker_' + (type==='chat'?'chat_':'mem_') + id);
+    if (picker) picker.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name })
+        });
+        if (res.ok) {
+            if (type === 'chat') window.loadGroupChatMaster();
+            if (type === 'memory') window.loadGroupMemoriesMaster();
+        }
+    } catch(e) { console.error("Reaction submission error", e); }
+};
+
+// --- 3. HIJACK V4 COMMUNICATIONS (THE CHAT FIX) ---
+if (typeof window.V4Communications === 'undefined') window.V4Communications = {};
+window.V4Communications.openThread = function(groupId) {
+    window.currentDashboardGroupId = groupId;
+    const chatModal = document.getElementById('groupSpaceModal');
+    if (chatModal) {
+        chatModal.style.setProperty('z-index', '106000', 'important');
+        chatModal.style.display = 'flex';
+        chatModal.classList.add('active');
+    }
+    window.loadGroupChatMaster();
+};
+
+window.launchDashCampfire = function(groupId) {
+    if(groupId) window.currentDashboardGroupId = groupId;
+    if (!window.currentDashboardGroupId) return;
+    window.V4Communications.openThread(window.currentDashboardGroupId);
+};
+
+window.loadGroupChatMaster = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('groupChatMessages');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/chat?last_id=0`);
+        const messages = await res.json();
+        if (messages.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Welcome to your group\'s private campfire. 🔥</p>';
+            return;
+        }
+        
+        container.innerHTML = messages.map(msg => {
+            const isMe = currentMember && msg.name === currentMember.name;
+            const align = isMe ? 'flex-end' : 'flex-start';
+            const bg = isMe ? 'var(--primary)' : '#E2E8F0';
+            const color = isMe ? '#FFF' : 'var(--text-main)';
+            const borderR = isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px';
+            const avatar = msg.profile_picture ? `<img src="${msg.profile_picture}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">` : `<div style="width:24px;height:24px;border-radius:50%;background:#CBD5E1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#FFF;font-weight:bold;">${msg.name.charAt(0)}</div>`;
+            
+            // YouTube Parser
+            let parsedMessage = msg.message;
+            const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w\-]+)/g;
+            parsedMessage = parsedMessage.replace(ytRegex, (match, videoId) => {
+                return `<div style="margin-top: 8px; border-radius: 8px; overflow: hidden; position: relative; padding-bottom: 56.25%; height: 0; width: 100%; min-width: 200px;"><iframe src="https://www.youtube.com/embed/${videoId}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen></iframe></div>`;
+            });
+
+            // Facebook Reaction Parser
+            let reactionsHtml = '';
+            try {
+                const reacts = JSON.parse(msg.reactions || '{}');
+                window.chatReactionsMap[msg.id] = reacts; 
+
+                let totalReacts = 0;
+                let reactSummary = [];
+                Object.keys(reacts).forEach(emoji => {
+                    const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+                    if (count > 0) {
+                        totalReacts += count;
+                        if(!reactSummary.includes(emoji)) reactSummary.push(emoji);
+                    }
+                });
+                
+                if (totalReacts > 0) {
+                    reactionsHtml = `<div onclick="showReactionListMaster(${msg.id}, 'chat')" style="display:flex; cursor:pointer; align-items:center; gap:4px; background:#FFF; border: 1px solid var(--border-color); border-radius:12px; padding:2px 8px; font-size:0.75rem; position:absolute; bottom:-12px; ${isMe ? 'right:10px;' : 'left:10px;'} box-shadow:0 2px 6px rgba(0,0,0,0.1); color: var(--text-main); z-index: 10; font-weight: bold;">
+                        ${reactSummary.slice(0,3).join('')} <span style="color:var(--text-muted); margin-left:4px;">${totalReacts}</span>
+                    </div>`;
+                }
+            } catch(e){}
+
+            const reactButton = `<span style="cursor:pointer; opacity:0.6; font-size:1.1rem; margin: 0 8px; user-select: none; transition: 0.2s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'" onclick="toggleReactionPickerMaster('chat_${msg.id}')" title="React">😀</span>`;
+            
+            return `
+            <div style="display:flex; flex-direction:column; align-items:${align}; margin-bottom:20px; position:relative;">
+                ${!isMe ? `<div style="display:flex; gap:6px; align-items:center; margin-bottom:4px; font-size:0.75rem; color:var(--text-muted);">${avatar} ${msg.name}</div>` : ''}
+                
+                <div style="display:flex; align-items:center; flex-direction:${isMe ? 'row-reverse' : 'row'}; gap:5px; width: 100%; justify-content:${isMe ? 'flex-start' : 'flex-start'}">
+                    <div style="background:${bg}; color:${color}; padding:10px 14px; border-radius:${borderR}; max-width:85%; font-size:0.95rem; line-height:1.4; position:relative; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        ${parsedMessage}
+                        ${reactionsHtml}
+                    </div>
+                    <div style="position:relative;">
+                        ${reactButton}
+                        <div id="reactPicker_chat_${msg.id}" style="display:none; position:absolute; bottom:100%; ${isMe ? 'right:0;' : 'left:0;'} background:#FFF; border:1px solid var(--border-color); border-radius:30px; padding:8px 14px; box-shadow:0 4px 15px rgba(0,0,0,0.15); z-index:100; gap:12px; white-space:nowrap; margin-bottom: 5px;">
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('chat', ${msg.id}, '👍')">👍</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('chat', ${msg.id}, '❤️')">❤️</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('chat', ${msg.id}, '😂')">😂</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('chat', ${msg.id}, '🙏')">🙏</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('chat', ${msg.id}, '🔥')">🔥</span>
+                        </div>
+                    </div>
+                </div>
+                <small style="font-size:0.65rem; color:var(--text-muted); margin-top:8px; ${isMe ? 'margin-right:10px;' : 'margin-left:30px;'}">${msg.created_at.split(' ')[1]}</small>
+            </div>`;
+        }).join('');
+        
+        container.scrollTop = container.scrollHeight; 
+    } catch(e) { console.error("Failed to load chat", e); }
+};
+
+// --- 4. HIJACK MEMORIES (THE REACTION FIX) ---
+window.loadGroupMemoriesMaster = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('dashMemoriesGrid');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/memories`);
+        const memories = await res.json();
+        
+        if (memories.length === 0) {
+            container.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text-muted); font-size:0.9rem;">No memories posted yet.</div>';
+            return;
+        }
+        
+        container.innerHTML = memories.map(m => {
+            let reactionsHtml = '';
+            try {
+                const reacts = JSON.parse(m.reactions || '{}');
+                window.memoryReactionsMap[m.id] = reacts;
+
+                let totalReacts = 0;
+                let reactSummary = [];
+                Object.keys(reacts).forEach(emoji => {
+                    const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+                    if (count > 0) {
+                        totalReacts += count;
+                        if(!reactSummary.includes(emoji)) reactSummary.push(emoji);
+                    }
+                });
+                
+                if (totalReacts > 0) {
+                    reactionsHtml = `<div onclick="showReactionListMaster(${m.id}, 'memory')" style="display:flex; cursor:pointer; align-items:center; gap:4px; background:#FFF; border: 1px solid var(--border-color); border-radius:12px; padding:4px 8px; font-size:0.85rem; box-shadow:0 2px 4px rgba(0,0,0,0.05); color: var(--text-main); font-weight: bold;">
+                        ${reactSummary.slice(0,3).join('')} <span style="color:var(--text-muted); margin-left:4px;">${totalReacts}</span>
+                    </div>`;
+                }
+            } catch(e){}
+
+            const reactButton = `<span style="cursor:pointer; font-size:1.3rem; opacity: 0.7; transition: 0.2s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'" onclick="toggleReactionPickerMaster('mem_${m.id}')" title="React">😀</span>`;
+
+            return `
+            <div style="background:#FFF; border-radius:12px; overflow:visible; border:1px solid var(--border-color); box-shadow:0 4px 6px rgba(0,0,0,0.02); display:flex; flex-direction:column;">
+                <img src="${m.image_data}" style="width:100%; height:150px; object-fit:cover; border-radius:12px 12px 0 0; cursor:pointer;" onclick="if(window.openImageViewer) window.openImageViewer(this.src)">
+                <div style="padding:10px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+                    <p style="font-size:0.85rem; color:var(--text-main); margin:0 0 10px 0; font-weight:600;">${m.caption}</p>
+                    <div style="display:flex; justify-content:space-between; align-items:center; position:relative;">
+                        ${reactionsHtml}
+                        <div style="position:relative; margin-left:auto;">
+                            ${reactButton}
+                            <div id="reactPicker_mem_${m.id}" style="display:none; position:absolute; bottom:100%; right:0; background:#FFF; border:1px solid var(--border-color); border-radius:30px; padding:8px 14px; box-shadow:0 4px 15px rgba(0,0,0,0.15); z-index:100; gap:12px; white-space:nowrap; margin-bottom: 5px;">
+                                <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('memory', ${m.id}, '👍')">👍</span>
+                                <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('memory', ${m.id}, '❤️')">❤️</span>
+                                <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('memory', ${m.id}, '😂')">😂</span>
+                                <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('memory', ${m.id}, '🙏')">🙏</span>
+                                <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('memory', ${m.id}, '🔥')">🔥</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) { console.error(e); }
+};
+
+// --- 5. BIND THE MASTER OVERRIDES GLOBALLY ---
+window.loadGroupChat = window.loadGroupChatMaster;
+window.loadGroupMemories = window.loadGroupMemoriesMaster;
+
+const _origSendGroupMessage = window.sendGroupMessage;
+window.sendGroupMessage = async function(e) {
+    e.preventDefault();
+    const input = document.getElementById('groupChatInput');
+    const message = input.value.trim();
+    if (!message || !window.currentDashboardGroupId || !currentMember) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/chat`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ youth_id: currentMember.id, message: message })
+        });
+        if (res.ok) {
+            input.value = '';
+            window.loadGroupChatMaster();
+        }
+    } catch(err) { console.error(err); }
+};
+
+
+// ==========================================
+// HOTFIX: ULTIMATE FACEBOOK REACTION ENGINE
+// ==========================================
+
+window.chatReactionsMap = {};
+window.memoryReactionsMap = {};
+
+// --- SECURE REACTION PICKER TOGGLE ---
+window.toggleReactionPickerMaster = function(pickerId, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    
+    // Hide all others
+    document.querySelectorAll('[id^="reactPicker_"]').forEach(el => {
+        if (el.id !== 'reactPicker_' + pickerId) el.style.display = 'none';
+    });
+    
+    // Toggle targeted picker
+    const picker = document.getElementById('reactPicker_' + pickerId);
+    if (picker) {
+        picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+    }
+};
+
+// --- SECURE SUBMIT REACTION ---
+window.submitReactionMaster = async function(type, id, emoji, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (!currentMember) return;
+    
+    const picker = document.getElementById('reactPicker_' + (type==='chat'?'chat_':'mem_') + id);
+    if (picker) picker.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name })
+        });
+        if (res.ok) {
+            // Hard Reload UI to show new counts
+            if (type === 'chat') window.loadGroupChatMaster();
+            if (type === 'memory') window.loadGroupMemoriesMaster();
+        }
+    } catch(e) { console.error("Reaction submission error", e); }
+};
+
+// --- FACEBOOK CHAT BUBBLES ---
+window.loadGroupChatMaster = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('groupChatMessages');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/chat?last_id=0`);
+        const messages = await res.json();
+        if (messages.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Welcome to your group\'s private campfire. 🔥</p>';
+            return;
+        }
+        
+        container.innerHTML = messages.map(msg => {
+            const isMe = currentMember && msg.name === currentMember.name;
+            const align = isMe ? 'flex-end' : 'flex-start';
+            const bg = isMe ? 'var(--primary)' : '#E2E8F0';
+            const color = isMe ? '#FFF' : 'var(--text-main)';
+            const borderR = isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px';
+            const avatar = msg.profile_picture ? `<img src="${msg.profile_picture}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">` : `<div style="width:24px;height:24px;border-radius:50%;background:#CBD5E1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#FFF;font-weight:bold;">${msg.name.charAt(0)}</div>`;
+            
+            // YouTube Parser
+            let parsedMessage = msg.message;
+            const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w\-]+)/g;
+            parsedMessage = parsedMessage.replace(ytRegex, (match, videoId) => {
+                return `<div style="margin-top: 8px; border-radius: 8px; overflow: hidden; position: relative; padding-bottom: 56.25%; height: 0; width: 100%; min-width: 200px;"><iframe src="https://www.youtube.com/embed/${videoId}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen></iframe></div>`;
+            });
+
+            // Facebook Reaction Counter Map
+            let reactionsHtml = '';
+            try {
+                const reacts = JSON.parse(msg.reactions || '{}');
+                window.chatReactionsMap[msg.id] = reacts; 
+
+                let totalReacts = 0;
+                let reactSummary = [];
+                Object.keys(reacts).forEach(emoji => {
+                    const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+                    if (count > 0) {
+                        totalReacts += count;
+                        if(!reactSummary.includes(emoji)) reactSummary.push(emoji);
+                    }
+                });
+                
+                if (totalReacts > 0) {
+                    reactionsHtml = `<div onclick="showReactionListMaster(${msg.id}, 'chat')" style="display:flex; cursor:pointer; align-items:center; gap:4px; background:#FFF; border: 1px solid var(--border-color); border-radius:12px; padding:2px 6px; font-size:0.75rem; position:absolute; bottom:-12px; ${isMe ? 'right:10px;' : 'left:10px;'} box-shadow:0 1px 3px rgba(0,0,0,0.1); color: var(--text-main); z-index: 10; font-weight: bold;">
+                        ${reactSummary.slice(0,3).join('')} <span style="color:var(--text-muted); margin-left:2px;">${totalReacts}</span>
+                    </div>`;
+                }
+            } catch(e){}
+
+            // High Z-Index Floating Emoji Button
+            const reactButton = `<div onclick="toggleReactionPickerMaster('chat_${msg.id}', event)" style="cursor:pointer; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 2px rgba(0,0,0,0.05); margin:0 5px; font-size:0.85rem; z-index: 20;">😀</div>`;
+            
+            return `
+            <div style="display:flex; flex-direction:column; align-items:${align}; margin-bottom:24px; position:relative;">
+                ${!isMe ? `<div style="display:flex; gap:6px; align-items:center; margin-bottom:4px; font-size:0.75rem; color:var(--text-muted);">${avatar} ${msg.name}</div>` : ''}
+                
+                <div style="display:flex; align-items:center; flex-direction:${isMe ? 'row-reverse' : 'row'}; gap:2px; width: 100%; justify-content:${isMe ? 'flex-start' : 'flex-start'}; position:relative;">
+                    <div style="background:${bg}; color:${color}; padding:10px 14px; border-radius:${borderR}; max-width:85%; font-size:0.95rem; line-height:1.4; position:relative; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        ${parsedMessage}
+                        ${reactionsHtml}
+                    </div>
+                    
+                    <div style="position:relative;">
+                        ${reactButton}
+                        <div id="reactPicker_chat_${msg.id}" style="display:none; position:absolute; bottom:100%; ${isMe ? 'right:0;' : 'left:0;'} background:#FFF; border:1px solid var(--border-color); border-radius:30px; padding:6px 12px; box-shadow:0 4px 15px rgba(0,0,0,0.2); z-index:999999; gap:12px; white-space:nowrap; margin-bottom: 8px;">
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onclick="submitReactionMaster('chat', ${msg.id}, '👍', event)">👍</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onclick="submitReactionMaster('chat', ${msg.id}, '❤️', event)">❤️</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onclick="submitReactionMaster('chat', ${msg.id}, '😂', event)">😂</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onclick="submitReactionMaster('chat', ${msg.id}, '🙏', event)">🙏</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onclick="submitReactionMaster('chat', ${msg.id}, '🔥', event)">🔥</span>
+                        </div>
+                    </div>
+                </div>
+                <small style="font-size:0.65rem; color:var(--text-muted); margin-top:8px; ${isMe ? 'margin-right:10px;' : 'margin-left:30px;'}">${msg.created_at.split(' ')[1]}</small>
+            </div>`;
+        }).join('');
+        
+        container.scrollTop = container.scrollHeight; 
+    } catch(e) { console.error("Failed to load chat", e); }
+};
+
+// --- FACEBOOK MEMORY CARDS ---
+window.loadGroupMemoriesMaster = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('dashMemoriesGrid');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/memories`);
+        const memories = await res.json();
+        
+        if (memories.length === 0) {
+            container.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text-muted); font-size:0.9rem;">No memories posted yet.</div>';
+            return;
+        }
+        
+        container.innerHTML = memories.map(m => {
+            let reactionsHtml = '';
+            try {
+                const reacts = JSON.parse(m.reactions || '{}');
+                window.memoryReactionsMap[m.id] = reacts;
+
+                let totalReacts = 0;
+                let reactSummary = [];
+                Object.keys(reacts).forEach(emoji => {
+                    const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+                    if (count > 0) {
+                        totalReacts += count;
+                        if(!reactSummary.includes(emoji)) reactSummary.push(emoji);
+                    }
+                });
+                
+                if (totalReacts > 0) {
+                    reactionsHtml = `<div onclick="showReactionListMaster(${m.id}, 'memory')" style="display:flex; cursor:pointer; align-items:center; gap:6px; color: var(--text-muted); font-size: 0.85rem; font-weight: 500;">
+                        <span>${reactSummary.slice(0,3).join('')}</span> <span>${totalReacts} ${totalReacts === 1 ? 'Reaction' : 'Reactions'}</span>
+                    </div>`;
+                }
+            } catch(e){}
+
+            const reactButton = `<button type="button" onclick="toggleReactionPickerMaster('mem_${m.id}', event)" style="background:transparent; border:none; color:var(--text-muted); font-weight:600; font-size:0.9rem; cursor:pointer; display:flex; align-items:center; gap:6px; padding: 4px 8px; border-radius: 6px; transition: 0.2s;" onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background='transparent'"><span style="font-size:1.1rem;">🤍</span> React</button>`;
+
+            return `
+            <div style="background:#FFF; border-radius:12px; overflow:visible; border:1px solid var(--border-color); box-shadow:0 4px 6px rgba(0,0,0,0.02); display:flex; flex-direction:column; position:relative; margin-bottom: 15px;">
+                <img src="${m.image_data}" style="width:100%; height:160px; object-fit:cover; border-radius:12px 12px 0 0; cursor:pointer;" onclick="if(window.openImageViewer) window.openImageViewer(this.src)">
+                <div style="padding:15px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+                    <p style="font-size:0.95rem; color:var(--text-main); margin:0 0 10px 0; font-weight:500;">${m.caption}</p>
+                    
+                    ${reactionsHtml ? `<div style="margin-bottom: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">${reactionsHtml}</div>` : `<div style="margin-bottom: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;"></div>`}
+                    
+                    <div style="display:flex; justify-content:space-between; align-items:center; position:relative;">
+                        ${reactButton}
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">By ${m.author_name}</span>
+                        
+                        <div id="reactPicker_mem_${m.id}" style="display:none; position:absolute; bottom:100%; left:0; background:#FFF; border:1px solid var(--border-color); border-radius:30px; padding:8px 14px; box-shadow:0 4px 20px rgba(0,0,0,0.15); z-index:999999; gap:12px; white-space:nowrap; margin-bottom: 10px;">
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onclick="submitReactionMaster('memory', ${m.id}, '👍', event)">👍</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onclick="submitReactionMaster('memory', ${m.id}, '❤️', event)">❤️</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onclick="submitReactionMaster('memory', ${m.id}, '😂', event)">😂</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onclick="submitReactionMaster('memory', ${m.id}, '🙏', event)">🙏</span>
+                            <span style="cursor:pointer; font-size:1.5rem; transition:transform 0.2s;" onclick="submitReactionMaster('memory', ${m.id}, '🔥', event)">🔥</span>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) { console.error(e); }
+};
+
+window.loadGroupChat = window.loadGroupChatMaster;
+window.loadGroupMemories = window.loadGroupMemoriesMaster;

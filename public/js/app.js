@@ -5714,3 +5714,31 @@ setInterval(() => {
     const container = document.getElementById('dynamicJourneyContainer');
     if (container && container.innerHTML === '') window.renderHomeJourney();
 }, 2000);
+
+// ==========================================
+// HOTFIX: PROFILE PRIORITY BUTTON FIX
+// ==========================================
+
+window.setCorePriority = async function(mappingId) {
+    if (!currentMember) return alert("Please log in.");
+    if (!confirm("Set this as your ⭐ Priority Ministry?")) return;
+    
+    try {
+        const res = await fetch('/api/ministries-v37/priority/' + mappingId, {
+            method: 'POST', 
+            headers: {'Content-Type':'application/json'}, 
+            body: JSON.stringify({ youth_id: currentMember.id })
+        });
+        
+        if (res.ok) {
+            alert('Priority Ministry Updated Successfully! ⭐');
+            // Instantly refresh the roles UI
+            if (window.loadMyV3Roles) window.loadMyV3Roles(currentMember.id, 'myMinistriesHistory');
+        } else {
+            alert('Failed to update priority.');
+        }
+    } catch(e) { 
+        console.error(e);
+        alert('Error updating priority. Please check your connection.'); 
+    }
+};
