@@ -5465,3 +5465,75 @@ window.switchGrowthSubTab = function(subTabName) {
         }
     }
 };
+
+// ========================================================
+// V44: DEFINITIVE UI ENFORCEMENT & ROUTING FIX
+// ========================================================
+
+// 1. Force Growth Tab to Reset to Home securely
+const _v44SwitchTab = window.switchTab;
+window.switchTab = async function(tabId) {
+    if (_v44SwitchTab) _v44SwitchTab(tabId);
+    if (tabId === 'discipleshipTab' && typeof window.switchGrowthSubTab === 'function') {
+        // Slight delay ensures Bottom Nav finishes re-rendering before switching sub-tabs
+        setTimeout(() => { window.switchGrowthSubTab('Home'); }, 50);
+    }
+};
+
+// 2. Clean Bottom Nav HTML (Remove dangerous inline sub-tab calls)
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+    bottomNav.classList.add('v48-processing'); // Block old observers
+
+    let bHtml = '';
+    if (context === 'discipleshipTab') {
+        bHtml = `
+        <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn active" onclick="switchTab('discipleshipTab')"><span>🌱</span>Growth</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    } else {
+        bHtml = `
+        <button class="bottom-nav-btn ${context === 'pulseDashboardTab' ? 'active' : ''}" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+        <button class="bottom-nav-btn ${context === 'profileTab' ? 'active' : ''}" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn ${context === 'arcadeTab' ? 'active' : ''}" onclick="switchTab('arcadeTab')"><span>🎯</span>Arcade</button>
+        <button class="bottom-nav-btn ${context === 'discipleshipTab' ? 'active' : ''}" onclick="switchTab('discipleshipTab')"><span>🌱</span>Grow</button>
+        <button class="bottom-nav-btn ${context === 'inboxTab' ? 'active' : ''}" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+        <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab'); setTimeout(() => { if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer'); }, 50);"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    }
+    bottomNav.innerHTML = bHtml;
+};
+
+// 3. Unbreakable Loop to Enforce Profile Gender & 8 Details
+setInterval(() => {
+    if (!document.getElementById('myEditGender') && document.getElementById('myEditName')) {
+        document.getElementById('myEditName').parentElement.insertAdjacentHTML('afterend', `
+        <div class="form-group"><label>Gender</label><select id="myEditGender" class="form-control"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>`);
+        if(typeof currentMember !== 'undefined' && currentMember && currentMember.gender) document.getElementById('myEditGender').value = currentMember.gender;
+    }
+
+    const bio = document.getElementById('myBioSummary');
+    if (bio && typeof currentMember !== 'undefined' && currentMember) {
+        const safeText = (val) => val && val !== 'null' ? val : 'N/A';
+        const correctHTML = `
+            <strong>Gender:</strong> ${safeText(currentMember.gender)}<br>
+            <strong>Email:</strong> ${safeText(currentMember.email)}<br>
+            <strong>Mobile Number:</strong> ${safeText(currentMember.mobile)}<br>
+            <strong>Address:</strong> ${safeText(currentMember.address)}<br>
+            <strong>Age:</strong> ${safeText(currentMember.age)}<br>
+            <strong>Birthday:</strong> ${safeText(currentMember.birthday)}<br>
+            <strong>Social Media Handle:</strong> ${safeText(currentMember.social_media)}<br>
+            <strong>Parents/Guardian:</strong> ${safeText(currentMember.parents_name)}
+        `;
+        if (bio.innerHTML.replace(/\s+/g, '') !== correctHTML.replace(/\s+/g, '')) {
+            bio.innerHTML = correctHTML;
+        }
+    }
+}, 1000);
