@@ -1256,3 +1256,153 @@ window.loadGroupMemoriesMaster = async function() {
 
 window.loadGroupChat = window.loadGroupChatMaster;
 window.loadGroupMemories = window.loadGroupMemoriesMaster;
+
+// ==========================================
+// V101: OPTIMISTIC UI FACEBOOK REACTION ENGINE
+// ==========================================
+
+// 1. UNIFIED REACTION UI BUILDER (With ID Fixes)
+window.buildReactUI = function(type, id, reactionsStr, isMe) {
+    let reacts = {};
+    try { reacts = JSON.parse(reactionsStr || '{}'); } catch(e){}
+    
+    if (type === 'chat') window.chatReactionsMap[id] = reacts;
+    if (type === 'memory') window.memoryReactionsMap[id] = reacts;
+
+    let totalReacts = 0;
+    let reactSummary = [];
+    Object.keys(reacts).forEach(emoji => {
+        const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+        if (count > 0) {
+            totalReacts += count;
+            if(!reactSummary.includes(emoji)) reactSummary.push(emoji);
+        }
+    });
+
+    const txtColor = (type === 'chat' && isMe) ? '#FFF' : 'var(--text-muted)';
+    const sumBg = (type === 'chat' && isMe) ? 'rgba(255,255,255,0.2)' : 'rgba(255,107,0,0.1)';
+    const sumTxt = (type === 'chat' && isMe) ? '#FFF' : 'var(--primary)';
+    const borderColor = (type === 'chat' && isMe) ? 'rgba(255,255,255,0.3)' : 'var(--border-color)';
+
+    const summaryId = `react_summary_${type}_${id}`;
+    const pickerId = `picker_${type}_${id}`;
+
+    const summaryHtml = totalReacts > 0 ? 
+        `<div id="${summaryId}" onclick="showReactionListMaster(${id}, '${type}')" style="cursor:pointer; display:flex; align-items:center; gap:6px; font-size:0.85rem; color:${sumTxt}; font-weight:bold; background:${sumBg}; padding:4px 10px; border-radius:12px; transition: 0.2s;">
+            ${reactSummary.slice(0,3).join('')} ${totalReacts}
+        </div>` : `<div id="${summaryId}" style="display:none; cursor:pointer; align-items:center; gap:6px; font-size:0.85rem; color:${sumTxt}; font-weight:bold; background:${sumBg}; padding:4px 10px; border-radius:12px; transition: 0.2s;"></div>`;
+
+    return `
+    <div style="display:flex; flex-direction:column; width:100%; margin-top:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top: 1px dashed ${borderColor}; padding-top: 8px;">
+            <button type="button" onclick="toggleReactionPickerMaster('${pickerId}')" style="background:transparent; border:none; color:${txtColor}; font-size:0.9rem; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; padding:0;">
+                <span style="font-size:1.1rem;">🤍</span> React
+            </button>
+            ${summaryHtml}
+        </div>
+        
+        <div id="${pickerId}" style="display:none; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:16px; padding:8px 12px; margin-top:10px; gap:15px; justify-content:space-around; box-shadow:inset 0 2px 4px rgba(0,0,0,0.02);">
+            <span style="cursor:pointer; font-size:1.4rem; transition:transform 0.1s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('${type}', ${id}, '👍', event)">👍</span>
+            <span style="cursor:pointer; font-size:1.4rem; transition:transform 0.1s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('${type}', ${id}, '❤️', event)">❤️</span>
+            <span style="cursor:pointer; font-size:1.4rem; transition:transform 0.1s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('${type}', ${id}, '😂', event)">😂</span>
+            <span style="cursor:pointer; font-size:1.4rem; transition:transform 0.1s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('${type}', ${id}, '🙏', event)">🙏</span>
+            <span style="cursor:pointer; font-size:1.4rem; transition:transform 0.1s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('${type}', ${id}, '🔥', event)">🔥</span>
+        </div>
+    </div>`;
+};
+
+// 2. TOGGLE & SUBMIT ACTIONS (Optimistic UI)
+window.toggleReactionPickerMaster = function(pickerId) {
+    if (window.event) { window.event.preventDefault(); window.event.stopPropagation(); }
+    document.querySelectorAll('[id^="picker_"]').forEach(el => {
+        if (el.id !== pickerId) el.style.display = 'none';
+    });
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+};
+
+window.submitReactionMaster = async function(type, id, emoji, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (!currentMember) return;
+    
+    // INSTANT FEEDBACK: Hide the picker immediately
+    const pickerId = `picker_${type}_${id}`;
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = 'none';
+
+    // INSTANT FEEDBACK: Optimistic UI update on the summary badge
+    const summaryId = `react_summary_${type}_${id}`;
+    const summaryEl = document.getElementById(summaryId);
+    if (summaryEl) {
+        summaryEl.innerHTML = `${emoji} <span style="font-size: 0.7rem; opacity: 0.8;">...</span>`;
+        summaryEl.style.display = 'flex';
+    }
+
+    try {
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name })
+        });
+        
+        if (res.ok) {
+            // Background sync successful, pull the final fresh data
+            if (type === 'chat') window.loadGroupChatMaster(true);
+            if (type === 'memory') window.loadGroupMemoriesMaster();
+        } else {
+            // Revert on failure
+            if (summaryEl) summaryEl.innerHTML = `❌ Failed`;
+        }
+    } catch(e) { 
+        console.error("Reaction submission error", e); 
+        if (summaryEl) summaryEl.innerHTML = `❌ Error`;
+    }
+};
+
+// 3. APPLY TO CHAT (With Scroll Preservation)
+window.loadGroupChatMaster = async function(preserveScroll = false) {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('groupChatMessages');
+    if (!container) return;
+    
+    // Save scroll position for smooth re-rendering
+    const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/chat?last_id=0`);
+        const messages = await res.json();
+        if (messages.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Welcome to your group\'s private campfire. 🔥</p>';
+            return;
+        }
+        
+        container.innerHTML = messages.map(msg => {
+            const isMe = currentMember && msg.name === currentMember.name;
+            const align = isMe ? 'flex-end' : 'flex-start';
+            const bg = isMe ? 'var(--primary)' : '#E2E8F0';
+            const color = isMe ? '#FFF' : 'var(--text-main)';
+            const borderR = isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px';
+            const avatar = msg.profile_picture ? `<img src="${msg.profile_picture}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">` : `<div style="width:24px;height:24px;border-radius:50%;background:#CBD5E1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#FFF;font-weight:bold;">${msg.name.charAt(0)}</div>`;
+            
+            let parsedMessage = msg.message.replace(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w\-]+)/g, 
+                (match, videoId) => `<div style="margin-top: 8px; border-radius: 8px; overflow: hidden; position: relative; padding-bottom: 56.25%; height: 0; width: 100%; min-width: 200px;"><iframe src="https://www.youtube.com/embed/${videoId}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen></iframe></div>`
+            );
+
+            return `
+            <div style="display:flex; flex-direction:column; align-items:${align}; margin-bottom:20px; width:100%;">
+                ${!isMe ? `<div style="display:flex; gap:6px; align-items:center; margin-bottom:4px; font-size:0.75rem; color:var(--text-muted);">${avatar} ${msg.name}</div>` : ''}
+                
+                <div style="background:${bg}; color:${color}; padding:14px; border-radius:${borderR}; width:100%; max-width:85%; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <div style="font-size:0.95rem; line-height:1.4; word-wrap: break-word;">${parsedMessage}</div>
+                    ${window.buildReactUI('chat', msg.id, msg.reactions, isMe)}
+                </div>
+                <small style="font-size:0.65rem; color:var(--text-muted); margin-top:6px;">${msg.created_at.split(' ')[1]}</small>
+            </div>`;
+        }).join('');
+        
+        // Restore scroll gracefully
+        if (!preserveScroll || isScrolledToBottom) {
+            container.scrollTop = container.scrollHeight; 
+        }
+    } catch(e) {}
+};
+
