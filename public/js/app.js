@@ -4983,3 +4983,124 @@ document.addEventListener('DOMContentLoaded', () => {
         navObserver.observe(bNav, { childList: true });
     }
 });
+
+// ========================================================
+// EVENT-DRIVEN NAVIGATION ARCHITECTURE
+// ========================================================
+
+window.buildNav = function() {
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    const hamburger = document.getElementById('hamburgerBtn');
+    const isAdmin = currentUser === 'celsocreeriii@gmail.com' || (userPermissions && userPermissions.length > 0);
+
+    let sidebarHtml = `<h2>Main Menu</h2>`;
+    
+    // Delegate bottom nav rendering strictly to renderBottomNav.
+    // We only enforce its flex display state here globally.
+    if (bottomNav) bottomNav.style.display = 'flex';
+
+    if (isAdmin) {
+        if(hamburger) hamburger.style.display = 'block';
+        
+        sidebarHtml += `<button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
+        sidebarHtml += `<button class="nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')">🔔 My Inbox</button>`; 
+        
+        if (window.hasPerm('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
+        if (window.hasPerm('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
+        if (window.hasPerm('access_ministries')) sidebarHtml += `<button class="nav-btn" data-target="ministriesTab" onclick="switchTab('ministriesTab')">🏛️ Ministries</button>`;
+        if (window.hasPerm('access_events')) sidebarHtml += `<button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Planner</button>`;
+        
+        sidebarHtml += `<button class="nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')">📖 Personal Growth</button>`;
+        if (window.hasPerm('access_discipleship')) sidebarHtml += `<button class="nav-btn" data-target="discipleshipAdminTab" onclick="switchTab('discipleshipAdminTab')">🌱 Discipleship Admin</button>`;
+        if (window.hasPerm('access_worship')) sidebarHtml += `<button class="nav-btn" data-target="worshipTab" onclick="switchTab('worshipTab')">🎵 Worship Hub</button>`;
+        if (window.hasPerm('access_communications')) sidebarHtml += `<button class="nav-btn" data-target="communicationsAdminTab" onclick="switchTab('communicationsAdminTab')">📢 Broadcasts</button>`;
+        if (window.hasPerm('access_ai')) sidebarHtml += `<button class="nav-btn" data-target="aiAssistantTab" onclick="switchTab('aiAssistantTab')">🤖 AI Assistant</button>`;
+        
+        if (window.hasPerm('access_attendance')) sidebarHtml += `<button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
+        if (window.hasPerm('access_activity')) sidebarHtml += `<button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
+        if (window.hasPerm('access_permissions')) sidebarHtml += `<button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔐 Permissions</button>`;
+        
+        sidebarHtml += `<button class="nav-btn text-danger" onclick="handleLogout()">🚪 Logout (${currentUser})</button>`;
+        
+        if(sidebar) sidebar.innerHTML = sidebarHtml;
+    } else {
+        if(hamburger) hamburger.style.display = 'none';
+        if(sidebar) sidebar.innerHTML = '';
+    }
+};
+
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+    
+    let bHtml = '';
+
+    if (context === 'discipleshipTab') {
+        // Growth Mode (7 Icons)
+        bHtml = `
+        <button class="bottom-nav-btn" data-target="profileTab" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn active" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')"><span>🌱</span>Growth</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    } else {
+        // Default Mode (7 Icons)
+        bHtml = `
+        <button class="bottom-nav-btn" data-target="pulseDashboardTab" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+        <button class="bottom-nav-btn" data-target="profileTab" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn" data-target="arcadeTab" onclick="switchTab('arcadeTab')"><span>🎯</span>Arcade</button>
+        <button class="bottom-nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')"><span>🌱</span>Grow</button>
+        <button class="bottom-nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+        <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab'); setTimeout(() => { if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer'); }, 50);"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    }
+    
+    bottomNav.innerHTML = bHtml;
+};
+
+window.switchTab = function(tabId) {
+    // 1. Render Navigation layout dynamically based on state first.
+    // By providing the data-target attributes inside the HTML rendering above, 
+    // the logic below inherently tracks them natively.
+    if (typeof window.renderBottomNav === 'function') window.renderBottomNav(tabId);
+
+    // 2. Safely apply native CSS routing classes without loops/observers
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+
+    document.querySelectorAll('.sidebar .nav-btn').forEach(el => el.classList.remove('active'));
+    const sidebarTarget = document.querySelector(`.sidebar .nav-btn[data-target="${tabId}"]`);
+    if(sidebarTarget) sidebarTarget.classList.add('active');
+
+    document.querySelectorAll('.bottom-nav-btn').forEach(el => el.classList.remove('active'));
+    const bottomTarget = document.querySelector(`.bottom-nav-btn[data-target="${tabId}"]`);
+    if(bottomTarget) bottomTarget.classList.add('active');
+
+    window.closeSidebar();
+
+    const targetTab = document.getElementById(tabId);
+    if (targetTab) targetTab.classList.add('active');
+    
+    // 3. Tab-specific logical triggers
+    if (tabId !== 'checkinTab' && typeof qrScanner !== 'undefined' && qrScanner) { qrScanner.clear().catch(e => console.log(e)); qrScanner = null; }
+    if (tabId === 'checkinTab') { window.switchCheckinMode('scanner'); window.updateActiveEventBanner(); }
+    if (tabId === 'directoryTab') window.loadDirectory();
+    if (tabId === 'eventsTab') window.loadEvents();
+    if (tabId === 'ministriesTab') window.loadMinistries();
+    if (tabId === 'attendanceTab') window.loadAttendanceLogs();
+    if (tabId === 'activityLogsTab') window.loadActivityLogs();
+    if (tabId === 'permissionsTab') window.resetPermUserList();
+
+    if (tabId === 'profileTab' && currentUser === 'celsocreeriii@gmail.com') {
+        const backupCard = document.getElementById('adminBackupCard');
+        if(backupCard) backupCard.style.display = 'block';
+        if(typeof window.loadBackups === 'function') window.loadBackups();
+    } else {
+        const backupCard = document.getElementById('adminBackupCard');
+        if(backupCard) backupCard.style.display = 'none';
+    }
+};
