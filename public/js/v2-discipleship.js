@@ -996,3 +996,478 @@ window.closeGroupVault = function() {
         dashModal.classList.add('active'); 
     }
 };
+
+// ==========================================
+// HOTFIX: GROUPS DASHBOARD ENGINE (ALL TABS)
+// ==========================================
+
+// --- CORE: STORE LEADER ID FOR PERMISSIONS ---
+const _origOpenGroupDashboardState = window.openGroupDashboard;
+window.openGroupDashboard = function(id, name, logo, leaderName, leaderId) {
+    window.currentDashboardLeaderId = leaderId;
+    if (_origOpenGroupDashboardState) _origOpenGroupDashboardState(id, name, logo, leaderName, leaderId);
+};
+
+// --- TAB DATA HOOKS ---
+const _origSwitchDashTabHook = window.switchDashTab;
+window.switchDashTab = function(tabName) {
+    if (_origSwitchDashTabHook) _origSwitchDashTabHook(tabName);
+    
+    // Dynamically load data when tabs are clicked
+    if (tabName === 'members') window.loadGroupMembers();
+    if (tabName === 'prayers') window.loadGroupPrayers();
+    if (tabName === 'deepdive') window.loadGroupThreads();
+    if (tabName === 'memories') window.loadGroupMemories();
+};
+
+const _origLaunchDashCampfireHook = window.launchDashCampfire;
+window.launchDashCampfire = function() {
+    if (_origLaunchDashCampfireHook) _origLaunchDashCampfireHook();
+    window.loadGroupChat();
+};
+
+const _origLaunchDashVaultHook = window.launchDashVault;
+window.launchDashVault = function() {
+    if (_origLaunchDashVaultHook) _origLaunchDashVaultHook();
+    
+    // Override the "Under Maintenance" alert from previous code natively
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal) { dashModal.style.display = 'none'; dashModal.classList.remove('active'); }
+    const vaultModal = document.getElementById('groupVaultModal');
+    if (vaultModal) {
+        vaultModal.style.display = 'flex';
+        vaultModal.style.zIndex = '105000';
+        vaultModal.classList.add('active');
+        window.loadGroupVault();
+    }
+};
+
+// --- 1. CHAT (CAMPFIRE) ENGINE ---
+window.sendGroupMessage = async function(e) {
+    e.preventDefault(); // STRICT FIX: Prevents page reload
+    const input = document.getElementById('groupChatInput');
+    const message = input.value.trim();
+    if (!message || !window.currentDashboardGroupId || !currentMember) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/chat`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ youth_id: currentMember.id, message: message })
+        });
+        if (res.ok) {
+            input.value = '';
+            window.loadGroupChat();
+        }
+    } catch(err) { console.error("Chat Error:", err); }
+};
+
+window.loadGroupChat = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('groupChatMessages');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/chat?last_id=0`);
+        const messages = await res.json();
+        if (messages.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Welcome to your group\'s private campfire. 🔥</p>';
+            return;
+        }
+        
+        container.innerHTML = messages.map(msg => {
+            const isMe = currentMember && msg.name === currentMember.name;
+            const align = isMe ? 'flex-end' : 'flex-start';
+            const bg = isMe ? 'var(--primary)' : '#E2E8F0';
+            const color = isMe ? '#FFF' : 'var(--text-main)';
+            const borderR = isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px';
+            const avatar = msg.profile_picture ? `<img src="${msg.profile_picture}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">` : `<div style="width:24px;height:24px;border-radius:50%;background:#CBD5E1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#FFF;">${msg.name.charAt(0)}</div>`;
+            
+            return `
+            <div style="display:flex; flex-direction:column; align-items:${align}; margin-bottom:5px;">
+                ${!isMe ? `<div style="display:flex; gap:6px; align-items:center; margin-bottom:4px; font-size:0.75rem; color:var(--text-muted);">${avatar} ${msg.name}</div>` : ''}
+                <div style="background:${bg}; color:${color}; padding:10px 14px; border-radius:${borderR}; max-width:85%; font-size:0.95rem; line-height:1.4;">
+                    ${msg.message}
+                </div>
+                <small style="font-size:0.65rem; color:var(--text-muted); margin-top:4px;">${msg.created_at.split(' ')[1]}</small>
+            </div>`;
+        }).join('');
+        
+        container.scrollTop = container.scrollHeight; // Auto-scroll to bottom
+    } catch(e) { console.error("Failed to load chat", e); }
+};
+
+// --- 2. MEMBERS ENGINE ---
+window.loadGroupMembers = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('dashMembersList');
+    if (!container) return;
+    
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Loading members...</p>';
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/roster-status`);
+        const members = await res.json();
+        
+        container.innerHTML = members.map(m => {
+            const avatarHtml = m.profile_picture ? `<img src="${m.profile_picture}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">` : `<div style="width:36px;height:36px;border-radius:50%;background:var(--bg-light);display:flex;align-items:center;justify-content:center;font-weight:bold;">${m.name.charAt(0)}</div>`;
+            // Simplified Online tracking - logic assumes online if active today
+            const isOnline = m.last_active && m.last_active.split(' ')[0] === new Date().toISOString().split('T')[0];
+            const statusIndicator = isOnline ? '🟢' : '⚪';
+            
+            return `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid var(--border-color); background:#FFF; border-radius:8px; margin-bottom:8px;">
+                <div style="display:flex; gap:12px; align-items:center;">
+                    ${avatarHtml}
+                    <div>
+                        <strong style="color:var(--text-main); font-size:0.95rem;">${m.name}</strong>
+                        <div style="font-size:0.75rem; color:var(--text-muted);">${statusIndicator} ${isOnline ? 'Online Today' : 'Offline'}</div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) { container.innerHTML = '<p style="text-align:center; color:var(--danger);">Failed to load members.</p>'; }
+};
+
+// --- 3. PRAYERS ENGINE ---
+window.openGroupPrayerModal = function() {
+    const modal = document.getElementById('groupPrayerModal');
+    if (modal) { modal.style.display = 'flex'; modal.classList.add('active'); }
+};
+
+window.closeGroupPrayerModal = function() {
+    const modal = document.getElementById('groupPrayerModal');
+    if (modal) { modal.style.display = 'none'; modal.classList.remove('active'); }
+};
+
+window.submitGroupPrayer = async function(e) {
+    e.preventDefault(); // STRICT FIX: Prevents page reload
+    if (!window.currentDashboardGroupId || !currentMember) return;
+    
+    const payload = {
+        youth_id: currentMember.id,
+        title: document.getElementById('gpTitle').value,
+        request: document.getElementById('gpRequest').value,
+        is_anonymous: document.getElementById('gpAnonymous').checked
+    };
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/prayers`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            document.getElementById('gpTitle').value = '';
+            document.getElementById('gpRequest').value = '';
+            document.getElementById('gpAnonymous').checked = false;
+            window.closeGroupPrayerModal();
+            window.loadGroupPrayers();
+        }
+    } catch(err) { console.error(err); }
+};
+
+window.loadGroupPrayers = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('dashPrayersList');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/prayers`);
+        const prayers = await res.json();
+        
+        if (prayers.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-top:20px;">No prayers shared yet. Be the first!</p>';
+            return;
+        }
+        
+        container.innerHTML = prayers.map(p => {
+            const author = p.is_anonymous ? 'Anonymous' : (p.author_name || 'Unknown');
+            return `
+            <div style="background:#FFF; padding:15px; border-radius:8px; border:1px solid #E2E8F0; margin-bottom:12px; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+                <div style="margin-bottom:8px;">
+                    <strong style="color:#8B5CF6; font-size:1.05rem;">${p.title}</strong>
+                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Requested by ${author} • ${p.created_at.split(' ')[0]}</div>
+                </div>
+                <p style="font-size:0.9rem; color:var(--text-main); white-space:pre-wrap; margin-bottom:12px;">${p.request}</p>
+                <div style="display:flex; justify-content:flex-end;">
+                    <button class="btn btn-outline btn-sm" onclick="intercedeGroupPrayer(${p.id})">🙏 I prayed for this</button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) { console.error(e); }
+};
+
+window.intercedeGroupPrayer = async function(prayerId) {
+    if (!currentMember) return;
+    try {
+        await fetch(`/api/small-groups/prayers/${prayerId}/intercede`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ youth_id: currentMember.id, group_name: window.currentDashboardGroupName })
+        });
+        alert('Thank you for interceding!');
+    } catch(e) {}
+};
+
+// --- 4. DEEP DIVES (FORUM) ENGINE ---
+window.submitGroupThread = async function(e) {
+    e.preventDefault(); // STRICT FIX: Prevents page reload
+    if (!window.currentDashboardGroupId || !currentMember) return;
+    
+    const payload = {
+        youth_id: currentMember.id,
+        title: document.getElementById('threadTitle').value,
+        content: document.getElementById('threadContent').value
+    };
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/threads`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            document.getElementById('threadTitle').value = '';
+            document.getElementById('threadContent').value = '';
+            window.loadGroupThreads();
+        }
+    } catch(err) { console.error(err); }
+};
+
+window.loadGroupThreads = async function() {
+    if (!window.currentDashboardGroupId) return;
+    
+    // Ensure form is visible
+    const createSection = document.getElementById('dashCreateThreadSection');
+    if (createSection) createSection.style.display = 'block';
+
+    const container = document.getElementById('dashThreadsList');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/threads`);
+        const threads = await res.json();
+        
+        if (threads.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.9rem;">No discussions started yet.</p>';
+            return;
+        }
+        
+        container.innerHTML = threads.map(t => `
+        <div style="background:#FFF; padding:15px; border-radius:12px; border:1px solid var(--border-color); margin-bottom:12px; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.02);" onclick="openThreadView(${t.id}, '${t.title.replace(/'/g, "\\'")}', '${t.content.replace(/'/g, "\\'").replace(/\n/g, "\\n")}', '${t.author_name.replace(/'/g, "\\'")}', '${t.created_at}', '${t.profile_picture || ''}')">
+            <h3 style="color:var(--primary); font-size:1.1rem; margin:0 0 5px 0;">${t.title}</h3>
+            <p style="font-size:0.85rem; color:var(--text-muted); margin:0 0 10px 0;">Started by ${t.author_name} • ${t.created_at.split(' ')[0]}</p>
+            <div style="display:flex; justify-content:flex-end;">
+                <span style="font-size:0.8rem; background:rgba(255,107,0,0.1); color:var(--primary); padding:4px 8px; border-radius:12px; font-weight:bold;">💬 ${t.reply_count || 0} Replies</span>
+            </div>
+        </div>`).join('');
+    } catch(e) { console.error(e); }
+};
+
+window.openThreadView = async function(threadId, title, content, author, date, avatar) {
+    const modal = document.getElementById('groupThreadModal');
+    if (!modal) return;
+    
+    document.getElementById('viewThreadTitle').innerText = title;
+    document.getElementById('viewThreadAuthor').innerText = author;
+    document.getElementById('viewThreadDate').innerText = date;
+    document.getElementById('viewThreadContent').innerText = content;
+    document.getElementById('replyThreadId').value = threadId;
+    
+    const avHtml = avatar ? `<img src="${avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : author.charAt(0);
+    document.getElementById('viewThreadAvatar').innerHTML = avHtml;
+    
+    // Hide dashboard temporarily
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal) dashModal.style.display = 'none';
+    
+    modal.style.display = 'flex';
+    modal.classList.add('active');
+    
+    // Load Replies
+    const repliesContainer = document.getElementById('threadRepliesList');
+    repliesContainer.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Loading replies...</p>';
+    
+    try {
+        const res = await fetch(`/api/small-groups/threads/${threadId}/replies`);
+        const replies = await res.json();
+        
+        if (replies.length === 0) {
+            repliesContainer.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem;">Be the first to reply!</p>';
+        } else {
+            repliesContainer.innerHTML = replies.map(r => {
+                const rAv = r.profile_picture ? `<img src="${r.profile_picture}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">` : `<div style="width:24px;height:24px;border-radius:50%;background:var(--bg-light);display:flex;align-items:center;justify-content:center;font-size:10px;">${r.author_name.charAt(0)}</div>`;
+                return `
+                <div style="background:#F8FAFC; padding:12px; border-radius:8px; border:1px solid #E2E8F0;">
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+                        ${rAv} <strong style="font-size:0.85rem; color:var(--text-main);">${r.author_name}</strong> <span style="font-size:0.7rem; color:var(--text-muted);">${r.created_at.split(' ')[0]}</span>
+                    </div>
+                    <p style="font-size:0.9rem; color:var(--text-main); margin:0; line-height:1.4;">${r.reply_text}</p>
+                </div>`;
+            }).join('');
+        }
+    } catch(e) { console.error(e); }
+};
+
+window.closeThreadView = function() {
+    const modal = document.getElementById('groupThreadModal');
+    if (modal) { modal.style.display = 'none'; modal.classList.remove('active'); }
+    
+    // Reopen dashboard and refresh threads list
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal) { dashModal.style.display = 'flex'; window.loadGroupThreads(); }
+};
+
+window.submitThreadReply = async function(e) {
+    e.preventDefault(); // STRICT FIX: Prevents page reload
+    if (!currentMember) return;
+    
+    const threadId = document.getElementById('replyThreadId').value;
+    const input = document.getElementById('replyThreadInput');
+    const text = input.value.trim();
+    if (!text || !threadId) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/threads/${threadId}/replies`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ youth_id: currentMember.id, reply_text: text })
+        });
+        if (res.ok) {
+            input.value = '';
+            // Refresh modal data manually without closing it
+            window.openThreadView(
+                threadId, 
+                document.getElementById('viewThreadTitle').innerText, 
+                document.getElementById('viewThreadContent').innerText, 
+                document.getElementById('viewThreadAuthor').innerText, 
+                document.getElementById('viewThreadDate').innerText, 
+                null
+            );
+        }
+    } catch(err) { console.error(err); }
+};
+
+// --- 5. MEMORIES ENGINE ---
+window.submitGroupMemory = async function(e) {
+    e.preventDefault(); // STRICT FIX: Prevents page reload
+    if (!window.currentDashboardGroupId || !currentMember) return;
+    
+    const fileInput = document.getElementById('memoryImageInput');
+    const captionInput = document.getElementById('memoryCaptionInput');
+    
+    if (fileInput.files.length === 0) return alert('Please select an image first.');
+    
+    try {
+        // Convert to Base64
+        let base64Image = null;
+        if (typeof window.getBase64 === 'function') {
+            base64Image = await window.getBase64(fileInput.files[0], 800);
+        }
+        
+        if (!base64Image) return alert("Failed to process image.");
+        
+        const payload = {
+            youth_id: currentMember.id,
+            image_data: base64Image,
+            caption: captionInput.value.trim()
+        };
+        
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/memories`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+        });
+        
+        if (res.ok) {
+            fileInput.value = '';
+            captionInput.value = '';
+            window.loadGroupMemories();
+        }
+    } catch(err) { console.error("Memory Upload Error:", err); }
+};
+
+window.loadGroupMemories = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('dashMemoriesGrid');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/memories`);
+        const memories = await res.json();
+        
+        if (memories.length === 0) {
+            container.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text-muted); font-size:0.9rem;">No memories posted yet.</div>';
+            return;
+        }
+        
+        container.innerHTML = memories.map(m => `
+        <div style="background:#FFF; border-radius:12px; overflow:hidden; border:1px solid var(--border-color); box-shadow:0 4px 6px rgba(0,0,0,0.02);">
+            <img src="${m.image_data}" style="width:100%; height:150px; object-fit:cover; cursor:pointer;" onclick="if(window.openImageViewer) window.openImageViewer(this.src)">
+            <div style="padding:10px;">
+                <p style="font-size:0.85rem; color:var(--text-main); margin:0 0 5px 0; font-weight:600;">${m.caption}</p>
+                <div style="font-size:0.7rem; color:var(--text-muted); display:flex; justify-content:space-between;">
+                    <span>By ${m.author_name}</span>
+                    <span>${m.created_at.split(' ')[0]}</span>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { console.error(e); }
+};
+
+// --- 6. VIDEO VAULT LEADER ENGINE ---
+window.loadGroupVault = async function() {
+    if (!window.currentDashboardGroupId) return;
+    
+    // Check Leader Status
+    const isLeader = currentMember && (currentMember.id == window.currentDashboardLeaderId || currentUser === 'celsocreeriii@gmail.com');
+    const leaderControls = document.getElementById('vaultLeaderControls');
+    if (leaderControls) leaderControls.style.display = isLeader ? 'block' : 'none';
+    
+    const container = document.getElementById('vaultListContainer');
+    if (!container) return;
+    
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Loading sessions...</p>';
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/sessions`);
+        const sessions = await res.json();
+        
+        if (sessions.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.9rem;">No sessions scheduled yet.</p>';
+            return;
+        }
+        
+        container.innerHTML = sessions.map(s => `
+        <div style="background:#FFF; border-radius:8px; padding:15px; margin-bottom:10px; border:1px solid var(--border-color); box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+            <strong style="color:var(--text-main); font-size:1.05rem;">${s.title}</strong>
+            <p style="font-size:0.85rem; color:var(--text-muted); margin:5px 0;">📅 ${new Date(s.scheduled_at).toLocaleString()}</p>
+            <a href="${s.meet_link}" target="_blank" class="btn btn-outline btn-sm" style="display:inline-block; margin-top:5px; border-color:#2563EB; color:#2563EB; text-decoration:none;">🎥 Join Meet</a>
+            ${isLeader ? `<button class="btn btn-danger btn-sm" style="margin-top:5px; margin-left:5px;" onclick="deleteGroupSession(${s.id})">Del</button>` : ''}
+        </div>`).join('');
+    } catch(e) { console.error(e); }
+};
+
+window.scheduleGroupSession = async function(e) {
+    e.preventDefault(); // STRICT FIX: Prevents page reload
+    if (!window.currentDashboardGroupId) return;
+    
+    const payload = {
+        title: document.getElementById('vaultSessionTitle').value,
+        scheduled_at: document.getElementById('vaultSessionDate').value,
+        meet_link: document.getElementById('vaultSessionMeet').value
+    };
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/sessions`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            document.getElementById('vaultSessionTitle').value = '';
+            document.getElementById('vaultSessionDate').value = '';
+            document.getElementById('vaultSessionMeet').value = '';
+            window.loadGroupVault();
+        }
+    } catch(err) { console.error(err); }
+};
+
+window.deleteGroupSession = async function(sessionId) {
+    if (!confirm("Delete this session?")) return;
+    try {
+        const res = await fetch(`/api/small-groups/sessions/${sessionId}`, { method: 'DELETE' });
+        if (res.ok) window.loadGroupVault();
+    } catch(e) { console.error(e); }
+};
+
