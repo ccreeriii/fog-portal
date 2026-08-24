@@ -686,3 +686,200 @@ window.fetchGroupMembers = async function() {
         `).join('');
     } catch(e) { container.innerHTML = '<p style="color:red; text-align:center;">Network error.</p>'; }
 };
+
+// 4. Force V2Discipleship Error Logging to Screen & Fallback Mass
+const attachFailsafe = (obj, fnName, containerId) => {
+    const orig = obj[fnName];
+    if(orig) {
+        obj[fnName] = async function(...args) {
+            try {
+                await orig.apply(this, args);
+                const cont = document.getElementById(containerId);
+                if (cont && cont.innerHTML.trim() === '') {
+                    cont.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No entries found in database.</p>';
+                }
+            } catch(e) {
+                const cont = document.getElementById(containerId);
+                if(cont) cont.innerHTML = `<p style="color:red; text-align:center; padding:20px;"><b>Data Load Error:</b> ${e.message}</p>`;
+                console.error(`[${fnName} Error]:`, e);
+            }
+        };
+    }
+};
+
+if (typeof V2Discipleship !== 'undefined') {
+    attachFailsafe(V2Discipleship, 'loadPrayers', 'prayerWallContainer');
+    attachFailsafe(V2Discipleship, 'loadJournals', 'journalsContainer');
+    attachFailsafe(V2Discipleship, 'loadPathways', 'pathwaysListContainer');
+    attachFailsafe(V2Discipleship, 'loadSmallGroups', 'smallGroupsContainer');
+    
+    // Force Liturgical Data gracefully if 3rd party API drops
+    const origLit = V2Discipleship.loadLiturgicalData;
+    V2Discipleship.loadLiturgicalData = async function() {
+        const container = document.getElementById('liturgicalCard');
+        if(!container) return;
+        try {
+            const res = await fetch('/api/liturgical/today');
+            const data = await res.json();
+            container.style.display = 'block';
+            document.getElementById('liturgicalSeason').innerText = (data.season || 'Ordinary').toUpperCase() + ' TIME';
+            document.getElementById('liturgicalFeast').innerText = (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].title : "Daily Mass";
+            document.getElementById('liturgicalGospel').innerText = data.daily_gospel || "I am the bread of life... (John 6:35)";
+        } catch(e) {
+            container.style.display = 'block';
+            document.getElementById('liturgicalSeason').innerText = 'ORDINARY TIME';
+            document.getElementById('liturgicalFeast').innerText = 'Daily Mass';
+            document.getElementById('liturgicalGospel').innerText = "I am the bread of life... (John 6:35)";
+        }
+    };
+}
+
+// ========================================================
+// V45: BULLETPROOF GROWTH DATA LOADERS
+// ========================================================
+
+// 1. Force Liturgical Card to Display
+window.V2Discipleship.loadLiturgicalData = async function() {
+    const container = document.getElementById('liturgicalCard');
+    if(!container) return;
+    container.style.display = 'block'; // Force visible instantly
+    try {
+        const res = await fetch('/api/liturgical/today');
+        const data = await res.json();
+        document.getElementById('liturgicalSeason').innerText = (data.season || 'Ordinary').toUpperCase() + ' TIME';
+        document.getElementById('liturgicalFeast').innerText = (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].title : "Daily Mass";
+        document.getElementById('liturgicalGospel').innerText = data.daily_gospel || "I am the bread of life... (John 6:35)";
+    } catch(e) {
+        document.getElementById('liturgicalSeason').innerText = 'ORDINARY TIME';
+        document.getElementById('liturgicalFeast').innerText = 'Daily Mass';
+        document.getElementById('liturgicalGospel').innerText = "I am the bread of life... (John 6:35)";
+    }
+};
+
+// 2. Force Journal Rendering
+window.V2Discipleship.loadJournals = async function() {
+    const container = document.getElementById('journalsContainer');
+    if (!container) return;
+    const memberId = (typeof currentMember !== 'undefined' && currentMember) ? currentMember.id : null;
+    if (!memberId) return container.innerHTML = '<p style="color:var(--text-muted); text-align:center;">Session error.</p>';
+    
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Fetching journals...</p>';
+    try {
+        const res = await fetch(`/api/journals/${memberId}`); 
+        const data = await res.json();
+        window.V2Discipleship.journalsData = data;
+        if (data.length === 0) return container.innerHTML = `<p style="color:var(--text-muted); text-align:center;">You haven't written any journals yet.</p>`;
+        
+        container.innerHTML = data.map(j => `
+            <div style="background:var(--bg-light); padding:15px; border-radius:8px; margin-bottom:15px; border:1px solid var(--border-color);">
+                <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><strong style="color:var(--primary); font-size:1.1rem;">${j.title}</strong><span class="badge badge-orange">${j.mood}</span></div>
+                <p style="font-size:0.95rem; color:var(--text-main); white-space:pre-wrap; line-height:1.5;">${j.content}</p>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px;">
+                    <button class="btn btn-outline btn-sm" onclick="V2Discipleship.deleteJournal(${j.id})">Delete</button>
+                </div>
+            </div>
+        `).join('');
+    } catch(e) { container.innerHTML = '<p style="color:red; text-align:center;">Network error.</p>'; }
+};
+
+// 3. Force Prayer Rendering
+window.V2Discipleship.loadPrayers = async function() {
+    const container = document.getElementById('prayerWallContainer'); 
+    if (!container) return;
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Fetching prayers...</p>';
+    try {
+        const res = await fetch('/api/prayers'); 
+        const data = await res.json();
+        window.V2Discipleship.prayersData = data;
+        if (data.length === 0) return container.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No active prayer requests.</p>`;
+        
+        container.innerHTML = data.map(p => `
+            <div style="background:#FFF; padding:15px; border-radius:8px; border:1px solid var(--border-color); box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px;">
+                <div style="margin-bottom:8px;">
+                    <strong style="color:var(--primary); font-size:1.1rem;">${p.title}</strong>
+                    <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">By ${p.is_anonymous ? "Anonymous" : (p.author_name || 'Unknown')} • ${p.created_at}</div>
+                </div>
+                <p style="font-size:0.95rem; color:var(--text-main); white-space:pre-wrap; margin-bottom:15px;">${p.request}</p>
+                <button class="btn btn-outline btn-sm" onclick="V2Discipleship.intercedePrayer(${p.id})">🙏 I prayed for this!</button>
+            </div>
+        `).join('');
+    } catch(e) { container.innerHTML = '<p style="color:red; text-align:center;">Network error.</p>'; }
+};
+
+// 4. Force Pathways/Milestones Rendering
+window.V2Discipleship.loadPathways = async function() {
+    const userList = document.getElementById('pathwaysListContainer');
+    if (!userList) return;
+    const memberId = (typeof currentMember !== 'undefined' && currentMember) ? currentMember.id : null;
+    if (!memberId) return;
+
+    userList.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Fetching milestones...</p>';
+    try {
+        const res = await fetch(`/api/discipleship/member-progress/${memberId}`); 
+        const data = await res.json();
+        if (data.length === 0) return userList.innerHTML = `<p style="color:var(--text-muted); text-align:center;">No active pathways available.</p>`;
+        
+        userList.innerHTML = data.map(p => {
+            const isCompleted = p.status === 'Completed'; 
+            const badge = isCompleted ? `<span class="badge badge-green">✅ Completed</span>` : `<span class="badge badge-orange">⏳ Pending</span>`; 
+            const actionBtn = !isCompleted ? `<button class="btn btn-primary btn-sm" onclick="V2Discipleship.updateMilestone(${p.pathway_id}, 'Completed')">Mark Complete</button>` : '';
+            return `<div style="background:#FFF; border: 1px solid var(--border-color); padding: 15px; margin-bottom: 10px; border-radius: 8px; display:flex; justify-content:space-between; align-items:center;"><div><strong style="color:var(--text-main); font-size:1.05rem;">${p.title}</strong><div style="margin-top:5px;">${badge}</div></div><div>${actionBtn}</div></div>`;
+        }).join('');
+    } catch(e) { userList.innerHTML = '<p style="color:red; text-align:center;">Network error.</p>'; }
+};
+
+// 5. Force Small Groups Rendering
+window.V2Discipleship.loadSmallGroups = async function() {
+    const userList = document.getElementById('smallGroupsContainer');
+    if (!userList) return;
+    const memberId = (typeof currentMember !== 'undefined' && currentMember) ? currentMember.id : 0;
+    
+    userList.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Fetching groups...</p>';
+    try {
+        const res = await fetch('/api/small-groups?youth_id=' + memberId); 
+        const data = await res.json();
+        window.V2Discipleship.groupsData = data;
+        if (data.length === 0) return userList.innerHTML = '<p style="color:var(--text-muted); text-align:center;">No small groups available right now.</p>';
+
+        let html = '';
+        data.forEach(g => {
+            const logoHtml = g.logo ? `<img src="${g.logo}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; flex-shrink:0;">` : `<div style="width: 50px; height: 50px; background: var(--bg-light); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink:0;">👥</div>`;
+            let btnHtml = `<button class="btn btn-outline btn-sm" style="width:100%; border-color:var(--primary); color:var(--primary);" onclick="V2Discipleship.joinSmallGroup(${g.id})">${g.privacy_level === 'Approval' ? 'Request to Join' : 'Join Group'}</button>`;
+            
+            if (g.user_status === 'Approved') btnHtml = `<button class="btn btn-primary btn-sm" style="width:100%; box-shadow: 0 4px 6px rgba(255,107,0,0.2);" onclick="openGroupDashboard(${g.id}, '${g.name.replace(/'/g, "\\'")}', '${g.logo}', '${(g.leader_name||'').replace(/'/g, "\\'")}', ${g.leader_id})">🚪 Enter Dashboard</button>`;
+            else if (g.user_status === 'Pending') btnHtml = `<button class="btn btn-secondary btn-sm" disabled style="width:100%;">⏳ Request Pending...</button>`;
+
+            html += `<div style="background:#FFF; border: 1px solid var(--border-color); padding: 15px; margin-bottom: 15px; border-radius: 8px; display:flex; gap:15px; align-items:center;">
+                ${logoHtml}
+                <div style="flex:1;">
+                    <h3 style="color:var(--primary); margin-bottom:5px; border:none; padding:0;">${g.name} ${g.privacy_level==='Approval'?'🔒':''}</h3>
+                    <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:12px;">📅 ${g.meeting_schedule || 'TBA'} <br>👤 Leader: ${g.leader_name || 'TBA'}</p>
+                    ${btnHtml}
+                </div>
+            </div>`;
+        });
+        userList.innerHTML = html;
+    } catch(e) { userList.innerHTML = '<p style="color:red; text-align:center;">Network error.</p>'; }
+};
+
+// 6. Hardwire the Bottom Nav Clicks to Trigger Data Loaders
+window.switchGrowthSubTab = function(subTabName) {
+    document.querySelectorAll('.growth-sub-tab').forEach(el => {
+        el.classList.remove('active');
+        el.style.display = 'none';
+    });
+    
+    const targetEl = document.getElementById('growthSub' + subTabName);
+    if (targetEl) {
+        targetEl.classList.add('active');
+        targetEl.style.display = 'block';
+    }
+
+    if (typeof V2Discipleship !== 'undefined') {
+        if (subTabName === 'Home') V2Discipleship.loadLiturgicalData();
+        if (subTabName === 'Prayer') V2Discipleship.loadPrayers();
+        if (subTabName === 'Journal') V2Discipleship.loadJournals();
+        if (subTabName === 'Milestones') V2Discipleship.loadPathways();
+        if (subTabName === 'Groups') V2Discipleship.loadSmallGroups();
+    }
+};
