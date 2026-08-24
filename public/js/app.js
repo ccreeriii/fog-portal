@@ -5602,3 +5602,115 @@ window.renderBottomNav = function(context) {
     }
     bottomNav.innerHTML = bHtml;
 };
+
+// ==========================================
+// HOTFIX: SIDEBAR MEMBERSHIP LOGS & HOME JOURNEY
+// ==========================================
+
+// --- 1. DEFINITIVE SIDEBAR MENU WITH MEMBERSHIP LOGS ---
+window.buildNav = function() {
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    const hamburger = document.getElementById('hamburgerBtn');
+    const isAdmin = window.hasPerm && (window.hasPerm('edit_entries') || currentUser === 'celsocreeriii@gmail.com');
+
+    if (bottomNav) bottomNav.style.display = 'flex';
+
+    let sidebarHtml = `
+        <div class="sidebar-header">
+            <img src="/img/logo.png" alt="Logo" class="fog-header-logo" onerror="this.style.display='none'">
+            <h2>FOG V3</h2>
+        </div>
+        <button class="nav-btn" data-target="pulseDashboardTab" onclick="switchTab('pulseDashboardTab')">🏠 Home</button>
+        <button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>
+        <button class="nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')">🔔 Inbox</button>
+        <button class="nav-btn" data-target="arcadeTab" onclick="switchTab('arcadeTab')">🎯 FOG Arcade</button>
+        <button class="nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')">🌱 Spiritual Growth</button>
+    `;
+
+    if (isAdmin) {
+        if (hamburger) hamburger.style.display = 'block';
+        sidebarHtml += `
+            <hr style="border-color: #334155; margin: 15px 0;">
+            <p style="color: #94A3B8; font-size: 0.75rem; margin-left: 15px; text-transform: uppercase;">Leadership Tools</p>
+            <button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📸 Event Check-In</button>
+            <button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Admin</button>
+            <button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>
+            <button class="nav-btn" data-target="membershipAdminTab" onclick="switchTab('membershipAdminTab'); if(window.loadMembershipAdminData) window.loadMembershipAdminData();">🛡️ Membership Logs</button>
+            <button class="nav-btn" data-target="ministriesTab" onclick="switchTab('ministriesTab')">🏛️ Ministries</button>
+            <button class="nav-btn" data-target="worshipTab" onclick="switchTab('worshipTab')">🎵 Worship Hub</button>
+            <button class="nav-btn" data-target="discipleshipAdminTab" onclick="switchTab('discipleshipAdminTab')">⚙️ Discipleship Admin</button>
+            <button class="nav-btn" data-target="communicationsAdminTab" onclick="switchTab('communicationsAdminTab')">📢 Broadcasts</button>
+            <button class="nav-btn" data-target="aiAssistantTab" onclick="switchTab('aiAssistantTab')">🤖 AI Assistant</button>
+            <button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔑 Permissions</button>
+            <button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>
+            <button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">📝 Audit Logs</button>
+        `;
+    } else {
+        if (hamburger) hamburger.style.display = 'none';
+    }
+
+    sidebarHtml += `<button class="nav-btn text-danger" onclick="logout()" style="margin-top: auto;">🚪 Logout</button>`;
+    if(sidebar) sidebar.innerHTML = sidebarHtml;
+    
+    // Ensure Membership Admin Tab exists in HTML
+    if (!document.getElementById('membershipAdminTab')) {
+        document.getElementById('mainContainer').insertAdjacentHTML('beforeend', `
+        <div id="membershipAdminTab" class="tab-content">
+            <div class="sub-nav">
+                <button id="btnSubMemCommunity" class="sub-nav-btn active" onclick="switchMemSubTab('community')">🕊️ Community Intents</button>
+                <button id="btnSubMemMinistry" class="sub-nav-btn" onclick="switchMemSubTab('ministry')">🔥 Ministry Logs</button>
+            </div>
+            <div id="subTabMemCommunity" class="mem-sub-tab" style="display:block; animation: fadeIn 0.3s ease-out;">
+                <div class="card">
+                    <h2 style="color: var(--primary);">🕊️ Community Intent Logs</h2>
+                    <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <input type="text" id="commFilterName" class="form-control" placeholder="🔍 Search name..." oninput="if(window.filterCommunityLogs) window.filterCommunityLogs()" style="flex:1; min-width:150px;">
+                    </div>
+                    <div id="communityIntentsList"></div>
+                </div>
+            </div>
+            <div id="subTabMemMinistry" class="mem-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+                <div class="card">
+                    <h2 style="color: #F59E0B;">🔥 Master Ministry Logs</h2>
+                    <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <input type="text" id="minLogFilterName" class="form-control" placeholder="🔍 Search name or ministry..." oninput="if(window.filterMinistryLogs) window.filterMinistryLogs()" style="flex:1; min-width:150px;">
+                    </div>
+                    <div id="ministryIntentsLogList"></div>
+                </div>
+            </div>
+        </div>`);
+    }
+};
+
+// --- 2. HOME DASHBOARD JOURNEY BUTTONS FIX ---
+window.renderHomeJourney = async function() {
+    const container = document.getElementById('dynamicJourneyContainer');
+    if (!container || !currentMember) return;
+    let html = '';
+    if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 3</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+    } else {
+        try {
+            const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
+            const ministries = await res.json();
+            const isApplicant = ministries.some(m => m.role === 'Applicant');
+            const isActiveMember = ministries.some(m => m.role !== 'Applicant');
+
+            if (isActiveMember) {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p>${isApplicant ? '<p style="font-size:0.75rem; color:#F59E0B; margin:0; font-weight:bold;">(Application Pending)</p>' : ''}</div><button type="button" class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
+            } else if (isApplicant) {
+                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Pending</button>`;
+            } else {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 4</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
+            }
+        } catch(e) {}
+    }
+    container.innerHTML = html;
+};
+
+// Force Failsafe Render 
+setInterval(() => {
+    const container = document.getElementById('dynamicJourneyContainer');
+    if (container && container.innerHTML === '') window.renderHomeJourney();
+}, 2000);

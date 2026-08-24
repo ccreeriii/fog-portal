@@ -1682,3 +1682,441 @@ window.submitChatReaction = async function(msgId, emoji) {
         if (res.ok) window.loadGroupChat(); // Soft-refresh chat to show updated emojis
     } catch(e) { console.error("Reaction error", e); }
 };
+
+// ==========================================
+// HOTFIX: PRAYER Z-INDEX, YOUTUBE KILL SWITCH, FACEBOOK REACTIONS
+// ==========================================
+
+// --- 1. THE ABSOLUTE Z-INDEX FORCE OVERRIDE ---
+window.openGroupPrayerModal = function() {
+    const modal = document.getElementById('groupPrayerModal');
+    if (modal) { 
+        // This physically forces the browser to ignore the CSS !important rule
+        modal.style.setProperty('z-index', '106000', 'important'); 
+        modal.style.display = 'flex'; 
+        modal.classList.add('active'); 
+    }
+};
+
+// --- 2. YOUTUBE VIDEO KILL SWITCH ---
+window.closeGroupSpace = function() {
+    const chatModal = document.getElementById('groupSpaceModal');
+    if (chatModal) { chatModal.style.display = 'none'; chatModal.classList.remove('active'); }
+    
+    // KILL THE IFRAME: Wiping the HTML stops the video/audio immediately
+    const container = document.getElementById('groupChatMessages');
+    if (container) container.innerHTML = ''; 
+
+    // Reopen Dashboard natively
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal && window.currentDashboardGroupId) { 
+        dashModal.style.display = 'flex'; 
+        dashModal.classList.add('active'); 
+    }
+};
+
+// --- 3. FACEBOOK REACTION LIST MODAL (Who Reacted) ---
+window.showReactionList = function(encodedReacts) {
+    try {
+        const reacts = JSON.parse(decodeURIComponent(encodedReacts));
+        const modal = document.getElementById('reactionListModal');
+        const listContainer = document.getElementById('reactionListNames');
+        if (!modal || !listContainer) return;
+        
+        let html = '';
+        Object.keys(reacts).forEach(emoji => {
+            const users = Array.isArray(reacts[emoji]) ? reacts[emoji] : [];
+            if (users.length > 0) {
+                html += `<div style="margin-bottom: 15px;">
+                    <div style="font-size: 1.2rem; margin-bottom: 6px; border-bottom: 1px solid #E2E8F0; padding-bottom: 4px; display:flex; align-items:center; gap:8px;">
+                        ${emoji} <span style="font-size: 0.85rem; color: #64748B; font-weight:bold;">${users.length}</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        ${users.map(u => `<span style="font-size: 0.95rem; color: #0F172A;">${u}</span>`).join('')}
+                    </div>
+                </div>`;
+            }
+        });
+        
+        listContainer.innerHTML = html || '<div style="text-align:center; color:#64748B;">No reactions yet.</div>';
+        
+        // Force Z-Index above everything
+        modal.style.setProperty('z-index', '107000', 'important');
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+    } catch(e) {}
+};
+
+window.toggleReactionPicker = function(pickerId) {
+    // Hide all other open pickers
+    document.querySelectorAll('[id^="reactPicker_"]').forEach(el => {
+        if (el.id !== 'reactPicker_' + pickerId) el.style.display = 'none';
+    });
+    
+    const picker = document.getElementById('reactPicker_' + pickerId);
+    if (picker) picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+};
+
+// --- 4. CHAT ENGINE (With YouTube & Facebook Reactions) ---
+window.submitChatReaction = async function(msgId, emoji) {
+    if (!currentMember) return;
+    const picker = document.getElementById('reactPicker_chat_' + msgId);
+    if (picker) picker.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: 'chat', id: msgId, emoji: emoji, user_name: currentMember.name })
+        });
+        if (res.ok) window.loadGroupChat(); 
+    } catch(e) { console.error("Reaction error", e); }
+};
+
+window.loadGroupChat = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('groupChatMessages');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/chat?last_id=0`);
+        const messages = await res.json();
+        if (messages.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Welcome to your group\'s private campfire. 🔥</p>';
+            return;
+        }
+        
+        container.innerHTML = messages.map(msg => {
+            const isMe = currentMember && msg.name === currentMember.name;
+            const align = isMe ? 'flex-end' : 'flex-start';
+            const bg = isMe ? 'var(--primary)' : '#E2E8F0';
+            const color = isMe ? '#FFF' : 'var(--text-main)';
+            const borderR = isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px';
+            const avatar = msg.profile_picture ? `<img src="${msg.profile_picture}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">` : `<div style="width:24px;height:24px;border-radius:50%;background:#CBD5E1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#FFF;font-weight:bold;">${msg.name.charAt(0)}</div>`;
+            
+            // YouTube Parser
+            let parsedMessage = msg.message;
+            const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w\-]+)/g;
+            parsedMessage = parsedMessage.replace(ytRegex, (match, videoId) => {
+                return `<div style="margin-top: 8px; border-radius: 8px; overflow: hidden; position: relative; padding-bottom: 56.25%; height: 0; width: 100%; min-width: 200px;"><iframe src="https://www.youtube.com/embed/${videoId}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen></iframe></div>`;
+            });
+
+            // Facebook Reaction Parser
+            let reactionsHtml = '';
+            try {
+                const reacts = JSON.parse(msg.reactions || '{}');
+                let totalReacts = 0;
+                let reactSummary = [];
+                Object.keys(reacts).forEach(emoji => {
+                    const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+                    if (count > 0) {
+                        totalReacts += count;
+                        reactSummary.push(emoji);
+                    }
+                });
+                
+                if (totalReacts > 0) {
+                    const safeReacts = encodeURIComponent(JSON.stringify(reacts));
+                    reactionsHtml = `<div onclick="showReactionList('${safeReacts}')" style="display:flex; cursor:pointer; align-items:center; gap:4px; background:#FFF; border: 1px solid var(--border-color); border-radius:12px; padding:2px 6px; font-size:0.75rem; position:absolute; bottom:-12px; ${isMe ? 'right:10px;' : 'left:10px;'} box-shadow:0 2px 4px rgba(0,0,0,0.05); color: var(--text-main); z-index: 10;">
+                        ${reactSummary.slice(0,3).join('')} <span style="color:var(--text-muted); font-weight:bold; margin-left:2px;">${totalReacts}</span>
+                    </div>`;
+                }
+            } catch(e){}
+
+            const reactButton = `<span style="cursor:pointer; opacity:0.5; font-size:0.9rem; margin: 0 5px;" onclick="toggleReactionPicker('chat_${msg.id}')" title="React">😀</span>`;
+            
+            return `
+            <div style="display:flex; flex-direction:column; align-items:${align}; margin-bottom:18px; position:relative;">
+                ${!isMe ? `<div style="display:flex; gap:6px; align-items:center; margin-bottom:4px; font-size:0.75rem; color:var(--text-muted);">${avatar} ${msg.name}</div>` : ''}
+                
+                <div style="display:flex; align-items:center; flex-direction:${isMe ? 'row-reverse' : 'row'}; gap:5px; width: 100%; justify-content:${isMe ? 'flex-start' : 'flex-start'}">
+                    <div style="background:${bg}; color:${color}; padding:10px 14px; border-radius:${borderR}; max-width:85%; font-size:0.95rem; line-height:1.4; position:relative; word-wrap: break-word;">
+                        ${parsedMessage}
+                        ${reactionsHtml}
+                    </div>
+                    <div style="position:relative;">
+                        ${reactButton}
+                        <div id="reactPicker_chat_${msg.id}" style="display:none; position:absolute; bottom:100%; ${isMe ? 'right:0;' : 'left:0;'} background:#FFF; border:1px solid var(--border-color); border-radius:20px; padding:6px 12px; box-shadow:0 4px 15px rgba(0,0,0,0.15); z-index:100; gap:10px; white-space:nowrap; margin-bottom: 5px;">
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '👍')">👍</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '❤️')">❤️</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '😂')">😂</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '🙏')">🙏</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '🔥')">🔥</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <small style="font-size:0.65rem; color:var(--text-muted); margin-top:6px; ${isMe ? 'margin-right:10px;' : 'margin-left:30px;'}">${msg.created_at.split(' ')[1]}</small>
+            </div>`;
+        }).join('');
+        
+        container.scrollTop = container.scrollHeight; // Auto-scroll to bottom
+    } catch(e) { console.error("Failed to load chat", e); }
+};
+
+// --- 5. MEMORIES ENGINE (With Facebook Reactions) ---
+window.submitMemoryReaction = async function(msgId, emoji) {
+    if (!currentMember) return;
+    const picker = document.getElementById('reactPicker_mem_' + msgId);
+    if (picker) picker.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: 'memory', id: msgId, emoji: emoji, user_name: currentMember.name })
+        });
+        if (res.ok) window.loadGroupMemories(); 
+    } catch(e) { console.error("Reaction error", e); }
+};
+
+window.loadGroupMemories = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('dashMemoriesGrid');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/memories`);
+        const memories = await res.json();
+        
+        if (memories.length === 0) {
+            container.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text-muted); font-size:0.9rem;">No memories posted yet.</div>';
+            return;
+        }
+        
+        container.innerHTML = memories.map(m => {
+            // Facebook Reaction Parser
+            let reactionsHtml = '';
+            try {
+                const reacts = JSON.parse(m.reactions || '{}');
+                let totalReacts = 0;
+                let reactSummary = [];
+                Object.keys(reacts).forEach(emoji => {
+                    const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+                    if (count > 0) {
+                        totalReacts += count;
+                        reactSummary.push(emoji);
+                    }
+                });
+                
+                if (totalReacts > 0) {
+                    const safeReacts = encodeURIComponent(JSON.stringify(reacts));
+                    reactionsHtml = `<div onclick="showReactionList('${safeReacts}')" style="display:flex; cursor:pointer; align-items:center; gap:4px; background:#FFF; border: 1px solid var(--border-color); border-radius:12px; padding:4px 8px; font-size:0.85rem; box-shadow:0 2px 4px rgba(0,0,0,0.05); color: var(--text-main);">
+                        ${reactSummary.slice(0,3).join('')} <span style="color:var(--text-muted); font-weight:bold; margin-left:2px;">${totalReacts}</span>
+                    </div>`;
+                }
+            } catch(e){}
+
+            const reactButton = `<span style="cursor:pointer; font-size:1.1rem; opacity: 0.7;" onclick="toggleReactionPicker('mem_${m.id}')" title="React">😀</span>`;
+
+            return `
+            <div style="background:#FFF; border-radius:12px; overflow:visible; border:1px solid var(--border-color); box-shadow:0 4px 6px rgba(0,0,0,0.02); display:flex; flex-direction:column;">
+                <img src="${m.image_data}" style="width:100%; height:150px; object-fit:cover; border-radius:12px 12px 0 0; cursor:pointer;" onclick="if(window.openImageViewer) window.openImageViewer(this.src)">
+                <div style="padding:10px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+                    <p style="font-size:0.85rem; color:var(--text-main); margin:0 0 10px 0; font-weight:600;">${m.caption}</p>
+                    
+                    <div style="display:flex; justify-content:space-between; align-items:center; position:relative;">
+                        ${reactionsHtml}
+                        
+                        <div style="position:relative; margin-left:auto;">
+                            ${reactButton}
+                            <div id="reactPicker_mem_${m.id}" style="display:none; position:absolute; bottom:100%; right:0; background:#FFF; border:1px solid var(--border-color); border-radius:20px; padding:6px 12px; box-shadow:0 4px 15px rgba(0,0,0,0.15); z-index:100; gap:10px; white-space:nowrap; margin-bottom: 5px;">
+                                <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitMemoryReaction(${m.id}, '👍')">👍</span>
+                                <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitMemoryReaction(${m.id}, '❤️')">❤️</span>
+                                <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitMemoryReaction(${m.id}, '😂')">😂</span>
+                                <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitMemoryReaction(${m.id}, '🙏')">🙏</span>
+                                <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitMemoryReaction(${m.id}, '🔥')">🔥</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) { console.error(e); }
+};
+
+// ==========================================
+// HOTFIX: BULLETPROOF FACEBOOK REACTION ENGINE
+// ==========================================
+
+window.chatReactionsMap = {};
+window.memoryReactionsMap = {};
+
+// 1. REACTION LIST MODAL (Who Reacted)
+window.showReactionList = function(id, type) {
+    try {
+        const reacts = type === 'chat' ? window.chatReactionsMap[id] : window.memoryReactionsMap[id];
+        const modal = document.getElementById('reactionListModal');
+        const listContainer = document.getElementById('reactionListNames');
+        if (!modal || !listContainer || !reacts) return;
+        
+        let html = '';
+        Object.keys(reacts).forEach(emoji => {
+            const users = Array.isArray(reacts[emoji]) ? reacts[emoji] : [];
+            if (users.length > 0) {
+                html += `<div style="margin-bottom: 15px;">
+                    <div style="font-size: 1.2rem; margin-bottom: 6px; border-bottom: 1px solid #E2E8F0; padding-bottom: 4px; display:flex; align-items:center; gap:8px;">
+                        ${emoji} <span style="font-size: 0.85rem; color: #64748B; font-weight:bold;">${users.length}</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        ${users.map(u => `<span style="font-size: 0.95rem; color: #0F172A;">${u}</span>`).join('')}
+                    </div>
+                </div>`;
+            }
+        });
+        
+        listContainer.innerHTML = html || '<div style="text-align:center; color:#64748B;">No reactions yet.</div>';
+        
+        modal.style.setProperty('z-index', '107000', 'important');
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+    } catch(e) { console.error("Show Reaction Error:", e); }
+};
+
+// 2. CHAT PARSER FIX
+window.loadGroupChat = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('groupChatMessages');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/chat?last_id=0`);
+        const messages = await res.json();
+        if (messages.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Welcome to your group\'s private campfire. 🔥</p>';
+            return;
+        }
+        
+        container.innerHTML = messages.map(msg => {
+            const isMe = currentMember && msg.name === currentMember.name;
+            const align = isMe ? 'flex-end' : 'flex-start';
+            const bg = isMe ? 'var(--primary)' : '#E2E8F0';
+            const color = isMe ? '#FFF' : 'var(--text-main)';
+            const borderR = isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px';
+            const avatar = msg.profile_picture ? `<img src="${msg.profile_picture}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">` : `<div style="width:24px;height:24px;border-radius:50%;background:#CBD5E1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#FFF;font-weight:bold;">${msg.name.charAt(0)}</div>`;
+            
+            // YouTube Parser
+            let parsedMessage = msg.message;
+            const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w\-]+)/g;
+            parsedMessage = parsedMessage.replace(ytRegex, (match, videoId) => {
+                return `<div style="margin-top: 8px; border-radius: 8px; overflow: hidden; position: relative; padding-bottom: 56.25%; height: 0; width: 100%; min-width: 200px;"><iframe src="https://www.youtube.com/embed/${videoId}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen></iframe></div>`;
+            });
+
+            // State Map Injection
+            let reactionsHtml = '';
+            try {
+                const reacts = JSON.parse(msg.reactions || '{}');
+                window.chatReactionsMap[msg.id] = reacts; // Store securely in memory
+
+                let totalReacts = 0;
+                let reactSummary = [];
+                Object.keys(reacts).forEach(emoji => {
+                    const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+                    if (count > 0) {
+                        totalReacts += count;
+                        reactSummary.push(emoji);
+                    }
+                });
+                
+                if (totalReacts > 0) {
+                    reactionsHtml = `<div onclick="showReactionList(${msg.id}, 'chat')" style="display:flex; cursor:pointer; align-items:center; gap:4px; background:#FFF; border: 1px solid var(--border-color); border-radius:12px; padding:2px 6px; font-size:0.75rem; position:absolute; bottom:-12px; ${isMe ? 'right:10px;' : 'left:10px;'} box-shadow:0 2px 4px rgba(0,0,0,0.05); color: var(--text-main); z-index: 10;">
+                        ${reactSummary.slice(0,3).join('')} <span style="color:var(--text-muted); font-weight:bold; margin-left:2px;">${totalReacts}</span>
+                    </div>`;
+                }
+            } catch(e){}
+
+            const reactButton = `<span style="cursor:pointer; opacity:0.5; font-size:0.9rem; margin: 0 5px;" onclick="toggleReactionPicker('chat_${msg.id}')" title="React">😀</span>`;
+            
+            return `
+            <div style="display:flex; flex-direction:column; align-items:${align}; margin-bottom:18px; position:relative;">
+                ${!isMe ? `<div style="display:flex; gap:6px; align-items:center; margin-bottom:4px; font-size:0.75rem; color:var(--text-muted);">${avatar} ${msg.name}</div>` : ''}
+                
+                <div style="display:flex; align-items:center; flex-direction:${isMe ? 'row-reverse' : 'row'}; gap:5px; width: 100%; justify-content:${isMe ? 'flex-start' : 'flex-start'}">
+                    <div style="background:${bg}; color:${color}; padding:10px 14px; border-radius:${borderR}; max-width:85%; font-size:0.95rem; line-height:1.4; position:relative; word-wrap: break-word;">
+                        ${parsedMessage}
+                        ${reactionsHtml}
+                    </div>
+                    <div style="position:relative;">
+                        ${reactButton}
+                        <div id="reactPicker_chat_${msg.id}" style="display:none; position:absolute; bottom:100%; ${isMe ? 'right:0;' : 'left:0;'} background:#FFF; border:1px solid var(--border-color); border-radius:20px; padding:6px 12px; box-shadow:0 4px 15px rgba(0,0,0,0.15); z-index:100; gap:10px; white-space:nowrap; margin-bottom: 5px;">
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '👍')">👍</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '❤️')">❤️</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '😂')">😂</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '🙏')">🙏</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '🔥')">🔥</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <small style="font-size:0.65rem; color:var(--text-muted); margin-top:6px; ${isMe ? 'margin-right:10px;' : 'margin-left:30px;'}">${msg.created_at.split(' ')[1]}</small>
+            </div>`;
+        }).join('');
+        
+        container.scrollTop = container.scrollHeight; 
+    } catch(e) { console.error("Failed to load chat", e); }
+};
+
+// --- 3. MEMORIES PARSER FIX ---
+window.loadGroupMemories = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('dashMemoriesGrid');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/memories`);
+        const memories = await res.json();
+        
+        if (memories.length === 0) {
+            container.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text-muted); font-size:0.9rem;">No memories posted yet.</div>';
+            return;
+        }
+        
+        container.innerHTML = memories.map(m => {
+            // State Map Injection
+            let reactionsHtml = '';
+            try {
+                const reacts = JSON.parse(m.reactions || '{}');
+                window.memoryReactionsMap[m.id] = reacts; // Store securely in memory
+
+                let totalReacts = 0;
+                let reactSummary = [];
+                Object.keys(reacts).forEach(emoji => {
+                    const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+                    if (count > 0) {
+                        totalReacts += count;
+                        reactSummary.push(emoji);
+                    }
+                });
+                
+                if (totalReacts > 0) {
+                    reactionsHtml = `<div onclick="showReactionList(${m.id}, 'memory')" style="display:flex; cursor:pointer; align-items:center; gap:4px; background:#FFF; border: 1px solid var(--border-color); border-radius:12px; padding:4px 8px; font-size:0.85rem; box-shadow:0 2px 4px rgba(0,0,0,0.05); color: var(--text-main);">
+                        ${reactSummary.slice(0,3).join('')} <span style="color:var(--text-muted); font-weight:bold; margin-left:2px;">${totalReacts}</span>
+                    </div>`;
+                }
+            } catch(e){}
+
+            const reactButton = `<span style="cursor:pointer; font-size:1.1rem; opacity: 0.7;" onclick="toggleReactionPicker('mem_${m.id}')" title="React">😀</span>`;
+
+            return `
+            <div style="background:#FFF; border-radius:12px; overflow:visible; border:1px solid var(--border-color); box-shadow:0 4px 6px rgba(0,0,0,0.02); display:flex; flex-direction:column;">
+                <img src="${m.image_data}" style="width:100%; height:150px; object-fit:cover; border-radius:12px 12px 0 0; cursor:pointer;" onclick="if(window.openImageViewer) window.openImageViewer(this.src)">
+                <div style="padding:10px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+                    <p style="font-size:0.85rem; color:var(--text-main); margin:0 0 10px 0; font-weight:600;">${m.caption}</p>
+                    
+                    <div style="display:flex; justify-content:space-between; align-items:center; position:relative;">
+                        ${reactionsHtml}
+                        
+                        <div style="position:relative; margin-left:auto;">
+                            ${reactButton}
+                            <div id="reactPicker_mem_${m.id}" style="display:none; position:absolute; bottom:100%; right:0; background:#FFF; border:1px solid var(--border-color); border-radius:20px; padding:6px 12px; box-shadow:0 4px 15px rgba(0,0,0,0.15); z-index:100; gap:10px; white-space:nowrap; margin-bottom: 5px;">
+                                <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitMemoryReaction(${m.id}, '👍')">👍</span>
+                                <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitMemoryReaction(${m.id}, '❤️')">❤️</span>
+                                <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitMemoryReaction(${m.id}, '😂')">😂</span>
+                                <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitMemoryReaction(${m.id}, '🙏')">🙏</span>
+                                <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitMemoryReaction(${m.id}, '🔥')">🔥</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) { console.error(e); }
+};
