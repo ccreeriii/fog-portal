@@ -1471,3 +1471,214 @@ window.deleteGroupSession = async function(sessionId) {
     } catch(e) { console.error(e); }
 };
 
+
+// ==========================================
+// HOTFIX: GROUPS DASHBOARD POLISH & FEATURES
+// ==========================================
+
+// --- 1. PRAYER MODAL Z-INDEX FIX ---
+window.openGroupPrayerModal = function() {
+    const modal = document.getElementById('groupPrayerModal');
+    if (modal) { 
+        modal.style.zIndex = '106000'; // Forces it strictly above the 105000 Dashboard
+        modal.style.display = 'flex'; 
+        modal.classList.add('active'); 
+    }
+};
+
+// --- 2. MEMORIES DOUBLE-CLICK PREVENTION ---
+window.submitGroupMemory = async function(e) {
+    e.preventDefault(); 
+    if (!window.currentDashboardGroupId || !currentMember) return;
+    
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn.disabled) return; // Prevent double submission
+    
+    const fileInput = document.getElementById('memoryImageInput');
+    const captionInput = document.getElementById('memoryCaptionInput');
+    
+    if (fileInput.files.length === 0) return alert('Please select an image first.');
+    
+    // Lock Button State
+    submitBtn.disabled = true;
+    const originalText = submitBtn.innerText;
+    submitBtn.innerText = 'Uploading... Please wait';
+    
+    try {
+        let base64Image = null;
+        if (typeof window.getBase64 === 'function') {
+            base64Image = await window.getBase64(fileInput.files[0], 800);
+        }
+        
+        if (!base64Image) {
+            submitBtn.disabled = false; submitBtn.innerText = originalText;
+            return alert("Failed to process image.");
+        }
+        
+        const payload = {
+            youth_id: currentMember.id,
+            image_data: base64Image,
+            caption: captionInput.value.trim()
+        };
+        
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/memories`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+        });
+        
+        if (res.ok) {
+            fileInput.value = '';
+            captionInput.value = '';
+            window.loadGroupMemories();
+        }
+    } catch(err) { console.error("Memory Upload Error:", err); }
+    
+    // Unlock Button State
+    submitBtn.disabled = false;
+    submitBtn.innerText = originalText;
+};
+
+// --- 3. VIDEO VAULT LEADER CONTROLS FIX ---
+window.loadGroupVault = async function() {
+    if (!window.currentDashboardGroupId) return;
+    
+    // Expanded Auth: Shows controls if user is the assigned leader, OR has 'edit_entries' permission, OR is Superadmin
+    const isLeader = currentMember && (
+        currentMember.id == window.currentDashboardLeaderId || 
+        currentUser === 'celsocreeriii@gmail.com' || 
+        (typeof window.hasPerm === 'function' && window.hasPerm('edit_entries'))
+    );
+    
+    const leaderControls = document.getElementById('vaultLeaderControls');
+    if (leaderControls) leaderControls.style.display = isLeader ? 'block' : 'none';
+    
+    const container = document.getElementById('vaultListContainer');
+    if (!container) return;
+    
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Loading sessions...</p>';
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/sessions`);
+        const sessions = await res.json();
+        
+        if (sessions.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.9rem;">No sessions scheduled yet.</p>';
+            return;
+        }
+        
+        container.innerHTML = sessions.map(s => `
+        <div style="background:#FFF; border-radius:8px; padding:15px; margin-bottom:10px; border:1px solid var(--border-color); box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+            <strong style="color:var(--text-main); font-size:1.05rem;">${s.title}</strong>
+            <p style="font-size:0.85rem; color:var(--text-muted); margin:5px 0;">📅 ${new Date(s.scheduled_at).toLocaleString()}</p>
+            <a href="${s.meet_link}" target="_blank" class="btn btn-outline btn-sm" style="display:inline-block; margin-top:5px; border-color:#2563EB; color:#2563EB; text-decoration:none;">🎥 Join Meet</a>
+            ${isLeader ? `<button class="btn btn-danger btn-sm" style="margin-top:5px; margin-left:5px;" onclick="deleteGroupSession(${s.id})">Del</button>` : ''}
+        </div>`).join('');
+    } catch(e) { console.error(e); }
+};
+
+// --- 4. CHAT: YOUTUBE EMBEDS & FACEBOOK REACTIONS ---
+window.loadGroupChat = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('groupChatMessages');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/chat?last_id=0`);
+        const messages = await res.json();
+        if (messages.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Welcome to your group\'s private campfire. 🔥</p>';
+            return;
+        }
+        
+        container.innerHTML = messages.map(msg => {
+            const isMe = currentMember && msg.name === currentMember.name;
+            const align = isMe ? 'flex-end' : 'flex-start';
+            const bg = isMe ? 'var(--primary)' : '#E2E8F0';
+            const color = isMe ? '#FFF' : 'var(--text-main)';
+            const borderR = isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px';
+            const avatar = msg.profile_picture ? `<img src="${msg.profile_picture}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">` : `<div style="width:24px;height:24px;border-radius:50%;background:#CBD5E1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#FFF;font-weight:bold;">${msg.name.charAt(0)}</div>`;
+            
+            // 4a. YouTube Embed Parser Engine
+            let parsedMessage = msg.message;
+            const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w\-]+)/g;
+            parsedMessage = parsedMessage.replace(ytRegex, (match, videoId) => {
+                return `<div style="margin-top: 8px; border-radius: 8px; overflow: hidden; position: relative; padding-bottom: 56.25%; height: 0; width: 100%; min-width: 200px;"><iframe src="https://www.youtube.com/embed/${videoId}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen></iframe></div>`;
+            });
+
+            // 4b. Reaction Parser Engine (Facebook Style)
+            let reactionsHtml = '';
+            try {
+                const reacts = JSON.parse(msg.reactions || '{}');
+                let totalReacts = 0;
+                let reactSummary = [];
+                Object.keys(reacts).forEach(emoji => {
+                    // Handle both v1 integer counts and v2 array tracking
+                    const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+                    if (count > 0) {
+                        totalReacts += count;
+                        reactSummary.push(emoji);
+                    }
+                });
+                
+                if (totalReacts > 0) {
+                    reactionsHtml = `<div style="display:flex; align-items:center; gap:4px; background:#FFF; border: 1px solid var(--border-color); border-radius:12px; padding:2px 6px; font-size:0.75rem; position:absolute; bottom:-12px; ${isMe ? 'right:10px;' : 'left:10px;'} box-shadow:0 2px 4px rgba(0,0,0,0.05); color: var(--text-main);">
+                        ${reactSummary.slice(0,3).join('')} <span style="color:var(--text-muted); font-weight:bold; margin-left:2px;">${totalReacts}</span>
+                    </div>`;
+                }
+            } catch(e){}
+
+            // Reaction Picker Toggle Button
+            const reactButton = `<span style="cursor:pointer; opacity:0.5; font-size:0.9rem; margin: 0 5px;" onclick="toggleReactionPicker(${msg.id})" title="React">😀</span>`;
+            
+            return `
+            <div style="display:flex; flex-direction:column; align-items:${align}; margin-bottom:18px; position:relative;">
+                ${!isMe ? `<div style="display:flex; gap:6px; align-items:center; margin-bottom:4px; font-size:0.75rem; color:var(--text-muted);">${avatar} ${msg.name}</div>` : ''}
+                
+                <div style="display:flex; align-items:center; flex-direction:${isMe ? 'row-reverse' : 'row'}; gap:5px; width: 100%; justify-content:${isMe ? 'flex-start' : 'flex-start'}">
+                    <div style="background:${bg}; color:${color}; padding:10px 14px; border-radius:${borderR}; max-width:85%; font-size:0.95rem; line-height:1.4; position:relative; word-wrap: break-word;">
+                        ${parsedMessage}
+                        ${reactionsHtml}
+                    </div>
+                    <div style="position:relative;">
+                        ${reactButton}
+                        <div id="reactPicker_${msg.id}" style="display:none; position:absolute; bottom:100%; ${isMe ? 'right:0;' : 'left:0;'} background:#FFF; border:1px solid var(--border-color); border-radius:20px; padding:6px 12px; box-shadow:0 4px 15px rgba(0,0,0,0.15); z-index:100; gap:10px; white-space:nowrap; margin-bottom: 5px;">
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '👍')">👍</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '❤️')">❤️</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '😂')">😂</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '🙏')">🙏</span>
+                            <span style="cursor:pointer; font-size:1.3rem; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitChatReaction(${msg.id}, '🔥')">🔥</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <small style="font-size:0.65rem; color:var(--text-muted); margin-top:6px; ${isMe ? 'margin-right:10px;' : 'margin-left:30px;'}">${msg.created_at.split(' ')[1]}</small>
+            </div>`;
+        }).join('');
+        
+        container.scrollTop = container.scrollHeight; // Auto-scroll to bottom
+    } catch(e) { console.error("Failed to load chat", e); }
+};
+
+// --- 5. REACTION HELPER FUNCTIONS ---
+window.toggleReactionPicker = function(msgId) {
+    // Hide all other open pickers first
+    document.querySelectorAll('[id^="reactPicker_"]').forEach(el => {
+        if (el.id !== 'reactPicker_' + msgId) el.style.display = 'none';
+    });
+    
+    const picker = document.getElementById('reactPicker_' + msgId);
+    if (picker) picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+};
+
+window.submitChatReaction = async function(msgId, emoji) {
+    if (!currentMember) return;
+    const picker = document.getElementById('reactPicker_' + msgId);
+    if (picker) picker.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: 'chat', id: msgId, emoji: emoji, user_name: currentMember.name })
+        });
+        if (res.ok) window.loadGroupChat(); // Soft-refresh chat to show updated emojis
+    } catch(e) { console.error("Reaction error", e); }
+};
