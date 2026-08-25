@@ -3,58 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- HARD CACHE BUSTING -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
     
-    <!-- VIRAL SOCIAL SHARE META TAGS (Messenger/Facebook) -->
-    <meta property="og:title" content="Level Up Your Faith! 🎮🔥">
-    <meta property="og:description" content="Play daily faith-based challenges, test your Bible knowledge, and climb the leaderboards. Want to join the fun?">
-    <meta property="og:image" content="https://staging.fogmin.site/img/logo.png">
-    <meta property="og:url" content="https://staging.fogmin.site/?play=arcade">
+    <meta property="og:title" content="Faith Quest Challenge | Play Now!">
+    <meta property="og:description" content="Play daily faith-based challenges, test your Bible knowledge, and climb the leaderboards. Join the fun!">
+    <meta property="og:image" content="https://staging.fogmin.site/img/faith-quest-thumb.png">
+    <meta property="og:url" content="https://staging.fogmin.site/?faith=quest">
     <meta property="og:type" content="website">
 
-    <title>Wanderer Arcade | Fire of God Ministries</title>
+    <title>Faith Quest Challenge | Fire of God Ministries</title>
     <link rel="stylesheet" href="/css/styles.css">
     <style>
         .arcade-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
         @media(min-width: 600px) { .arcade-grid { grid-template-columns: repeat(3, 1fr); gap: 15px; } }
-        
         .arcade-game-tile { background: #FFF; border-radius: 16px; padding: 12px; display: flex; flex-direction: column; align-items: center; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 1px solid var(--border-color); cursor: pointer; transition: transform 0.2s; position: relative; overflow: hidden; }
         .arcade-game-tile:hover { transform: translateY(-3px); box-shadow: 0 6px 15px rgba(0,0,0,0.1); border-color: var(--primary); }
         .arcade-game-tile.locked { opacity: 0.7; filter: grayscale(1); cursor: not-allowed; }
-        
         .game-tile-icon { font-size: 2rem; background: #F8FAFC; width: 45px; height: 45px; border-radius: 12px; display: flex; justify-content: center; align-items: center; margin-bottom: 8px; }
-        .game-tile-info { width: 100%; }
         .game-tile-info h3 { margin: 0 0 4px 0; color: var(--text-main); font-size: 0.95rem; border: none; }
         .game-tile-info p { margin: 0; font-size: 0.7rem; color: var(--text-muted); line-height: 1.2; height: 26px; overflow: hidden; }
         .game-tile-action { padding: 8px; border-radius: 12px; font-weight: bold; color: #FFF; font-size: 0.8rem; width: 100%; margin-top: 8px; box-sizing: border-box; }
         .attempts-badge { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.05); font-size: 0.6rem; padding: 2px 6px; border-radius: 8px; font-weight: bold; color: var(--text-muted); }
-        
-        /* SPLIT TABS FIXED FOR MOBILE */
-        .tab-btn { flex: 1; padding: 12px 5px; background: transparent; border: none; border-bottom: 3px solid transparent; font-weight: bold; color: var(--text-muted); cursor: pointer; transition: 0.2s; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        @media(max-width: 400px) { .tab-btn { font-size: 0.8rem; } }
+        .tab-btn { flex: 1; padding: 12px 5px; background: transparent; border: none; border-bottom: 3px solid transparent; font-weight: bold; color: var(--text-muted); cursor: pointer; transition: 0.2s; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        @media(max-width: 400px) { .tab-btn { font-size: 0.75rem; } }
         .tab-btn.active { color: #F59E0B; border-bottom-color: #F59E0B; }
-        
         .game-view { display: none; animation: fadeIn 0.3s ease-in-out; }
         .game-view.active { display: block; }
-        
         .ldr-section { background: #FFF; border-radius: 16px; padding: 15px; margin-bottom: 20px; border: 1px solid var(--border-color); box-shadow: 0 4px 10px rgba(0,0,0,0.02); }
         .ldr-title { color: #F59E0B; font-size: 1.1rem; margin-bottom: 10px; border-bottom: 1px solid #E2E8F0; padding-bottom: 5px; font-weight: bold; }
         .ldr-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1F5F9; font-size: 0.9rem; }
         .ldr-row:last-child { border-bottom: none; }
-        
         .trivia-btn { display: block; width: 100%; padding: 15px; margin-bottom: 10px; background: #FFF; border: 2px solid var(--border-color); border-radius: 12px; font-size: 1rem; cursor: pointer; text-align: left; transition: 0.2s; font-weight: 500; }
         .trivia-btn.correct { background: #10B981; color: white; border-color: #10B981; }
         .trivia-btn.wrong { background: #EF4444; color: white; border-color: #EF4444; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .hero-image-container { width: 100%; max-height: 220px; border-radius: 16px; overflow: hidden; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); background: #FFF; display: flex; align-items: center; justify-content: center; }
+        .hero-image-container img { width: 100%; height: auto; min-height: 150px; object-fit: cover; }
     </style>
+    <script>
+        // REDUNDANT HEADER FIX: Executes immediately on load
+        document.addEventListener("DOMContentLoaded", () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            if(urlParams.get('embedded') === 'true') {
+                const hdr = document.getElementById('publicHeader');
+                if(hdr) hdr.style.display = 'none';
+            }
+        });
+    </script>
 </head>
 <body style="background-color: var(--bg-light); margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
     
-    <!-- HEADER -->
-    <div style="background: #FFF; padding: 15px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; position: sticky; top: 0; z-index: 100;">
+    <div id="publicHeader" style="background: #FFF; padding: 15px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; position: sticky; top: 0; z-index: 100;">
         <h2 style="margin: 0; color: var(--primary); font-size: 1.3rem; display: flex; align-items: center; justify-content: center; gap: 8px; border: none;">
             <img src="/img/logo.png" alt="Logo" style="height: 35px; object-fit: contain;" onerror="this.style.display='none'; document.getElementById('fallbackIcon').style.display='inline';">
             <span id="fallbackIcon" style="display:none; font-size: 1.5rem;">🔥</span> 
@@ -65,43 +64,29 @@
 
     <div style="max-width: 800px; margin: 20px auto; padding: 0 15px;">
         
-        <!-- ========================================== -->
-        <!-- VIEW 1: LOBBY & TABS -->
-        <!-- ========================================== -->
         <div id="lobbyView" class="game-view active">
-            <div class="card" style="background: linear-gradient(135deg, #F59E0B, #D97706); border: none; color: #FFF; text-align: center; padding: 30px 20px; margin-bottom: 15px;">
-                <div style="font-size: 3rem; margin-bottom: 10px;">🎯</div>
-                <h2 style="color: #FFF; border: none; margin-bottom: 10px; font-size: 1.8rem;">The Wanderer Arcade</h2>
-                <p style="font-size: 1rem; opacity: 0.9; margin: 0;">Play daily faith-based challenges, climb the ranks, and earn XP!</p>
+            <div class="hero-image-container">
+                <img src="/img/faith-quest-thumb.png" alt="Faith Quest Challenge" onerror="this.src='/img/logo.png'; this.style.objectFit='contain'; this.style.padding='20px';">
             </div>
 
-            <!-- MOBILE OPTIMIZED TABS -->
             <div style="display: flex; background: #FFF; border-radius: 12px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                <button id="tabBtnGames" class="tab-btn active" onclick="toggleArcadeTabs('games')">🎮 Daily Challenge</button>
+                <button id="tabBtnGames" class="tab-btn active" onclick="toggleArcadeTabs('games')">🎮 Challenges</button>
                 <button id="tabBtnLdr" class="tab-btn" onclick="toggleArcadeTabs('leaderboard')">🏆 Leaderboard</button>
             </div>
 
-            <div id="arcadeContentGames">
-                <div class="arcade-grid" id="dailyGamesGrid">
-                    <!-- 6 Seeded Games injected here -->
-                </div>
-            </div>
-
+            <div id="arcadeContentGames"><div class="arcade-grid" id="dailyGamesGrid"></div></div>
             <div id="arcadeContentLdr" style="display:none;">
                 <div id="ldrLoading" style="text-align:center; padding: 20px; color: var(--text-muted);">Fetching ranks...</div>
                 <div id="ldrContainer" style="display:none;"></div>
             </div>
             
-            <div class="card" style="border: 2px dashed #F59E0B; background: #FFF9F5; text-align: center; margin-top: 40px; padding: 30px 20px; border-radius: 16px;">
+            <div id="guestPromoCard" class="card" style="border: 2px dashed #F59E0B; background: #FFF9F5; text-align: center; margin-top: 40px; padding: 30px 20px; border-radius: 16px;">
                 <h3 style="color: #F59E0B; margin-bottom: 12px; border: none; font-size: 1.4rem;">Join the Leaderboards 🏆</h3>
-                <p style="font-size: 1rem; color: var(--text-muted); margin-bottom: 25px;">Create a free player profile to save your high scores and compete!</p>
+                <p style="font-size: 1rem; color: var(--text-muted); margin-bottom: 25px;">Create a free player profile to permanently save your scores and compete!</p>
                 <button class="btn btn-primary" style="display:block; width: 100%; font-weight: bold; padding: 14px; font-size: 1.1rem; border-radius: 12px; background: #F59E0B; border: none;" onclick="window.location.href='/register-w.html'">Create Player Profile</button>
             </div>
         </div>
 
-        <!-- ========================================== -->
-        <!-- VIEW 2: PRE-GAME (ATTEMPTS & TOP 3) -->
-        <!-- ========================================== -->
         <div id="preGameView" class="game-view">
             <button class="btn btn-outline btn-sm" style="margin-bottom: 15px;" onclick="switchGameView('lobbyView')">← Back to Lobby</button>
             <div class="card" style="text-align: center; padding: 35px 20px; border-radius: 20px; border-top: 5px solid #3B82F6;">
@@ -109,12 +94,9 @@
                 <h2 id="pgTitle" style="color: var(--primary); margin-bottom: 5px; border: none; font-size: 1.6rem;">Game Title</h2>
                 <p id="pgDesc" style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 25px;">Game Description</p>
 
-                <!-- TOP 3 FOR THIS GAME -->
                 <div style="background: #F8FAFC; padding: 15px 20px; border-radius: 16px; margin-bottom: 25px; border: 1px solid var(--border-color); text-align: left;">
-                    <h4 style="margin: 0 0 10px 0; color: var(--text-main); font-size: 1rem; text-align:center;">Top 3 Players 🏆</h4>
-                    <div id="pgTop3Container" style="font-size: 0.9rem; color: var(--text-muted);">
-                        Loading scores...
-                    </div>
+                    <h4 style="margin: 0 0 10px 0; color: var(--text-main); font-size: 1rem; text-align:center;">Top 3 Scorers 🏆</h4>
+                    <div id="pgTop3Container" style="font-size: 0.9rem; color: var(--text-muted);">Loading scores...</div>
                 </div>
 
                 <div style="margin-bottom: 20px;">
@@ -126,9 +108,6 @@
             </div>
         </div>
 
-        <!-- ========================================== -->
-        <!-- VIEW 3: ACTIVE TRIVIA ENGINE -->
-        <!-- ========================================== -->
         <div id="playView" class="game-view">
             <button class="btn btn-outline btn-sm" style="margin-bottom: 15px;" onclick="switchGameView('lobbyView')">← Quit Game</button>
             <div class="card" style="border-top: 5px solid #059669;">
@@ -145,30 +124,29 @@
             </div>
         </div>
 
-        <!-- ========================================== -->
-        <!-- VIEW 4: GAME OVER & VIRAL SHARE -->
-        <!-- ========================================== -->
         <div id="gameOverView" class="game-view">
             <div class="card" style="text-align: center; padding: 40px 20px; border-radius: 20px; border: 2px solid #F59E0B;">
                 <div style="font-size: 4rem; margin-bottom: 10px;">🏆</div>
                 <h2 style="color: var(--text-main); margin-bottom: 5px; border: none; font-size: 1.8rem;">Game Over!</h2>
                 
                 <div style="background: #FFF9F5; padding: 20px; border-radius: 16px; margin-bottom: 25px; display: inline-block; width: 80%;">
-                    <span style="font-size: 0.9rem; color: #D97706; font-weight:bold; text-transform:uppercase;">Score Today</span><br>
+                    <span style="font-size: 0.9rem; color: #D97706; font-weight:bold; text-transform:uppercase;">Best Score Today</span><br>
                     <strong style="font-size: 3rem; color: #F59E0B;" id="finalScoreDisplay">0</strong> <span style="font-size:1.5rem; color:#F59E0B;">XP</span>
                 </div>
                 
-                <button class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 1.1rem; font-weight: bold; border-radius: 12px; background: #F59E0B; border: none; margin-bottom: 15px;" onclick="window.location.href='/register-w.html'">💾 Save Best Score</button>
+                <button id="saveScoreBtn" class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 1.1rem; font-weight: bold; border-radius: 12px; background: #F59E0B; border: none; margin-bottom: 15px;" onclick="window.location.href='/register-w.html'">💾 Save Best Score</button>
                 <button class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 1.1rem; font-weight: bold; border-radius: 12px; background: #3B82F6; border: none; margin-bottom: 15px;" onclick="shareToSocials()">📲 Challenge a Friend</button>
                 <button id="playAgainBtn" class="btn btn-outline" style="width: 100%; padding: 12px; font-size: 1rem; border-radius: 12px;" onclick="switchGameView('lobbyView')">Back to Lobby</button>
             </div>
         </div>
-
     </div>
 
     <script>
-        // GLOBAL CACHE FOR LEADERBOARDS
-        window.cachedLeaderboards = null;
+        let currentGameName = '';
+        let currentQuestions = [];
+        let currentIndex = 0;
+        let score = 0;
+        let isAnswering = false;
 
         const ALL_GAMES = [
             { name: 'Catechism Clash', icon: '⏱️', desc: '60-Second Trivia Sprint!', color: '#059669' },
@@ -176,33 +154,13 @@
             { name: 'Daily Manna Scramble', icon: '🧩', desc: 'Unscramble the verse!', color: '#14B8A6' },
             { name: 'Emoji Sermon', icon: '😀', desc: 'Decode the Bible story.', color: '#F59E0B' },
             { name: 'Shield of Faith', icon: '🛡️', desc: 'Reflex & Memory tap.', color: '#EC4899' },
-            { name: 'Who Am I?', icon: '🕵️‍♂️', desc: 'Guess the character clues.', color: '#8B5CF6' },
-            { name: 'Bible Wordle', icon: '🔤', desc: 'Guess the 5-letter word.', color: '#3B82F6' },
-            { name: 'Proverbs Hangman', icon: '🪢', desc: 'Guess the missing letters.', color: '#10B981' },
-            { name: 'Apostolic Journey', icon: '🗺️', desc: 'Map & Geography trivia.', color: '#8B5CF6' },
-            { name: 'Fruits of the Spirit', icon: '🍎', desc: 'Memory card match.', color: '#EC4899' },
-            { name: 'Goliath Defeat', icon: '🪨', desc: 'Slingshot accuracy game.', color: '#6366F1' },
-            { name: 'Noah Ark Match', icon: '🚢', desc: 'Pair the animals in time.', color: '#14B8A6' },
-            { name: 'Ten Commandments', icon: '📜', desc: 'Drag-and-drop order.', color: '#F59E0B' },
-            { name: 'Loaves & Fishes', icon: '🥖', desc: 'Resource management.', color: '#059669' },
-            { name: 'Armor of God', icon: '⚔️', desc: 'Dress the character.', color: '#8B5CF6' },
-            { name: 'Red Sea Dash', icon: '🌊', desc: 'Endless runner dodge game.', color: '#3B82F6' },
-            { name: 'Jonah Escape', icon: '🐋', desc: 'Obstacle dodger.', color: '#10B981' },
-            { name: 'Holy Spirit Typist', icon: '⌨️', desc: 'Speed-typing verses.', color: '#F59E0B' }
+            { name: 'Fruits of the Spirit', icon: '🍎', desc: 'Memory card match.', color: '#EC4899' }
         ];
-
-        let currentGameName = '';
-        let currentQuestions = [];
-        let currentIndex = 0;
-        let score = 0;
-        let isAnswering = false;
 
         const fallbackTrivia = [
             { question: "Who was swallowed by a great fish?", options: ["David", "Moses", "Jonah", "Peter"], correct_index: 2 },
             { question: "What did David use to defeat Goliath?", options: ["Sword", "Spear", "Slingshot", "Bow"], correct_index: 2 },
-            { question: "Which sea did Moses part?", options: ["Black Sea", "Red Sea", "Dead Sea", "Mediterranean"], correct_index: 1 },
-            { question: "Who stepped out of the boat to walk on water?", options: ["John", "Peter", "James", "Andrew"], correct_index: 1 },
-            { question: "What is the shortest verse in the Bible?", options: ["Jesus wept.", "Pray without ceasing.", "Rejoice always.", "God is love."], correct_index: 0 }
+            { question: "Which sea did Moses part?", options: ["Black Sea", "Red Sea", "Dead Sea", "Mediterranean"], correct_index: 1 }
         ];
 
         function getDailyGames() {
@@ -225,6 +183,13 @@
         function saveAttemptsData(data) { localStorage.setItem('fog_guest_arcade', JSON.stringify(data)); }
 
         function initLobby() {
+            // Check for logged-in user to hide guest card
+            const loggedIn = JSON.parse(localStorage.getItem('fog_user') || 'null');
+            if (loggedIn && loggedIn.member) {
+                const promo = document.getElementById('guestPromoCard');
+                if (promo) promo.style.display = 'none';
+            }
+
             const dailyGames = getDailyGames();
             const attemptsData = getAttemptsData();
             const grid = document.getElementById('dailyGamesGrid');
@@ -233,7 +198,6 @@
             dailyGames.forEach(game => {
                 const gameStats = attemptsData.games[game.name] || { plays: 0, bestScore: 0 };
                 const isLocked = gameStats.plays >= 3;
-                
                 grid.innerHTML += `
                 <div class="arcade-game-tile ${isLocked ? 'locked' : ''}" onclick="openPreGame('${game.name}')">
                     <div class="attempts-badge">${3 - gameStats.plays} Left</div>
@@ -256,7 +220,7 @@
             fetch('/api/public/arcade-leaderboards')
                 .then(res => res.json())
                 .then(data => {
-                    window.cachedLeaderboards = data; // Cache for the Pre-Game screen
+                    window.cachedLeaderboards = data;
                     document.getElementById('ldrLoading').style.display = 'none';
                     const container = document.getElementById('ldrContainer');
                     container.style.display = 'block';
@@ -293,7 +257,6 @@
         function openPreGame(gameName) {
             currentGameName = gameName;
             const gameInfo = ALL_GAMES.find(g => g.name === gameName);
-            
             document.getElementById('pgIcon').innerText = gameInfo.icon;
             document.getElementById('pgTitle').innerText = gameInfo.name;
             document.getElementById('pgDesc').innerText = gameInfo.desc;
@@ -311,11 +274,10 @@
                 startBtn.onclick = null;
             } else {
                 startBtn.style.background = '#059669';
-                startBtn.innerText = '▶️ START GAME';
+                startBtn.innerText = '▶️ PLAY NOW';
                 startBtn.onclick = startTriviaGame;
             }
 
-            // Extract Top 3 for this specific game
             const top3Container = document.getElementById('pgTop3Container');
             if (window.cachedLeaderboards && window.cachedLeaderboards.topGames) {
                 const gameScores = window.cachedLeaderboards.topGames.filter(r => r.game_name === gameName).slice(0, 3);
@@ -337,16 +299,12 @@
             document.getElementById('currentScore').innerText = score;
             switchGameView('playView');
             
-            fetch('/api/growth-games/trivia')
+            // THE ILLUSION ENGINE: Ask the backend for dynamic tailored questions!
+            fetch('/api/growth-games/funnel?game=' + encodeURIComponent(currentGameName))
                 .then(res => res.json())
                 .then(data => {
                     if (data && data.length >= 5) {
-                        currentQuestions = data.slice(0, 5).map(q => {
-                            if (typeof q.options === 'string') {
-                                try { q.options = JSON.parse(q.options); } catch(e) { q.options = ["A", "B", "C", "D"]; }
-                            }
-                            return q;
-                        });
+                        currentQuestions = data.slice(0, 5);
                         renderQuestion();
                     } else {
                         currentQuestions = fallbackTrivia;
@@ -403,46 +361,52 @@
         }
 
         function endGame() {
-            if (!window.loggedInUser) window.loggedInUser = JSON.parse(localStorage.getItem('fog_user') || 'null');
-            setTimeout(() => {
-                if (window.loggedInUser && window.loggedInUser.member) {
-                    const saveBtn = document.querySelector('button[onclick*="register-w"]');
-                    if (saveBtn) saveBtn.style.display = 'none';
-                    fetch('/api/arcade/submit', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            youth_id: window.loggedInUser.member.id,
-                            game_name: currentGameName,
-                            score: score,
-                            actor: window.loggedInUser.member.name
-                        })
-                    }).then(() => { if(typeof loadLeaderboards === 'function') loadLeaderboards(); });
-                }
-            }, 300);
             let data = getAttemptsData();
             if (!data.games[currentGameName]) data.games[currentGameName] = { plays: 0, bestScore: 0 };
             
             data.games[currentGameName].plays += 1;
-            if (score > data.games[currentGameName].bestScore) data.games[currentGameName].bestScore = score;
+            
+            if (score > data.games[currentGameName].bestScore) {
+                data.games[currentGameName].bestScore = score;
+            }
             saveAttemptsData(data);
 
+            const best = data.games[currentGameName].bestScore;
             const plays = data.games[currentGameName].plays;
 
-            document.getElementById('finalScoreDisplay').innerText = score;
-            document.getElementById('playAgainBtn').style.display = plays >= 3 ? 'none' : 'block';
+            document.getElementById('finalScoreDisplay').innerText = best;
             
+            // --- THE MEMBER AUTO-SYNC FIX ---
+            let loggedIn = JSON.parse(localStorage.getItem('fog_user') || 'null');
+            if (loggedIn && loggedIn.member) {
+                const saveBtn = document.getElementById('saveScoreBtn');
+                if (saveBtn) saveBtn.style.display = 'none'; // Hides the button safely!
+                
+                fetch('/api/arcade/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        youth_id: loggedIn.member.id,
+                        game_name: currentGameName,
+                        score: score,
+                        actor: loggedIn.member.name
+                    })
+                }).then(() => loadLeaderboards()); // Auto-syncs silently!
+            }
+
+            document.getElementById('playAgainBtn').style.display = plays >= 3 ? 'none' : 'block';
             switchGameView('gameOverView');
         }
 
         function shareToSocials() {
             let data = getAttemptsData();
             const best = data.games[currentGameName] ? data.games[currentGameName].bestScore : score;
-            const shareUrl = window.location.origin + '/?play=arcade';
-            const shareText = `Level Up Your Faith! 🎮🔥 I just scored ${best} XP playing ${currentGameName}. Test your Bible knowledge and beat my score!`;
+            
+            const shareUrl = window.location.origin + '/?faith=quest&game=' + encodeURIComponent(currentGameName);
+            const shareText = `I just scored ${best} XP playing ${currentGameName}! Can you beat my score? 🏆🔥`;
 
             if (navigator.share) {
-                navigator.share({ title: 'FOG Arcade Challenge', text: shareText, url: shareUrl }).catch(console.error);
+                navigator.share({ title: currentGameName + ' | Play Now!', text: shareText, url: shareUrl }).catch(console.error);
             } else {
                 const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
                 alert("Copied to clipboard: " + shareText + "\n\nOpening Facebook...");

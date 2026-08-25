@@ -10,7 +10,7 @@ const app = express();
 // --- V115: PUBLIC ARCADE LEADERBOARDS ---
 app.get('/api/public/arcade-leaderboards', (req, res) => {
     const queries = {
-        daily: "SELECT y.name, a.score, a.game_name FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE date(a.played_at) = date('now', 'localtime') ORDER BY a.score DESC LIMIT 5",
+        daily: "SELECT y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE date(a.played_at) = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
         weekly: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.played_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
         lastWeek: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.played_at >= datetime('now', 'localtime', '-14 days') AND a.played_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
         monthly: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE strftime('%Y-%m', a.played_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
@@ -543,6 +543,42 @@ function awardPoints(youthId, type, amount, actor, gameName = null) {
     });
 }
 
+
+// --- V118: FUNNEL ILLUSION ENGINE ---
+app.get('/api/growth-games/funnel', (req, res) => {
+    const game = req.query.game || '';
+    if (game.includes('Scramble')) {
+        res.json([
+            { question: "Unscramble: E-O-L-V", options: ["HOPE", "LOVE", "PEACE", "FAITH"], correct_index: 1 },
+            { question: "Unscramble: R-A-G-E-C", options: ["MERCY", "TRUTH", "GRACE", "LIGHT"], correct_index: 2 },
+            { question: "Unscramble: P-I-S-R-I-T", options: ["WATER", "BLOOD", "SPIRIT", "WINE"], correct_index: 2 },
+            { question: "Unscramble: T-H-F-A-I", options: ["TRUST", "HOPE", "GLORY", "FAITH"], correct_index: 3 },
+            { question: "Unscramble: C-P-E-A-E", options: ["PEACE", "JOY", "CALM", "REST"], correct_index: 0 }
+        ]);
+    } else if (game.includes('Emoji')) {
+        res.json([
+            { question: "Decode: 🍎🐍🌳", options: ["Creation", "Adam & Eve", "Noah's Ark", "Moses"], correct_index: 1 },
+            { question: "Decode: 🌊🚶‍♂️💨", options: ["Parting Red Sea", "Walking on Water", "Jonah", "Baptism"], correct_index: 1 },
+            { question: "Decode: 🍞🐟🐟", options: ["Last Supper", "Feeding 5000", "Wedding at Cana", "Manna"], correct_index: 1 },
+            { question: "Decode: 🦁🕳️🙏", options: ["Daniel", "David", "Samson", "Joseph"], correct_index: 0 },
+            { question: "Decode: 👑⭐👶🐪", options: ["Crucifixion", "Resurrection", "Birth of Jesus", "Ascension"], correct_index: 2 }
+        ]);
+    } else if (game.includes('Fruits')) {
+        res.json([
+            { question: "Which of these is a Fruit of the Spirit?", options: ["Wealth", "Patience", "Power", "Fame"], correct_index: 1 },
+            { question: "Which is NOT a Fruit of the Spirit?", options: ["Joy", "Peace", "Anger", "Goodness"], correct_index: 2 },
+            { question: "Complete: Love, Joy, Peace, ___", options: ["Hope", "Patience", "Courage", "Wisdom"], correct_index: 1 },
+            { question: "Complete: Kindness, Goodness, ___", options: ["Faithfulness", "Strength", "Boldness", "Glory"], correct_index: 0 },
+            { question: "Complete: Gentleness and ___", options: ["Self-Control", "Victory", "Prosperity", "Honor"], correct_index: 0 }
+        ]);
+    } else {
+        db.all("SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 5", [], (err, rows) => {
+            if(err || !rows) return res.json([]);
+            rows.forEach(r => { if(typeof r.options === 'string') { try{ r.options=JSON.parse(r.options); }catch(e){r.options=["A","B","C","D"];} } });
+            res.json(rows);
+        });
+    }
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res, next) => {
