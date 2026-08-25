@@ -42,11 +42,23 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 // ==========================================
 app.use((req, res, next) => {
     if (req.path === '/') {
-        // Force strict no-caching so updates reflect instantly across all devices
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-        
         if (req.query.read === 'daily-manna') return res.sendFile(require('path').join(__dirname, 'public', 'seeker-manna.html'));
-        if (req.query.play) return res.sendFile(require('path').join(__dirname, 'public', 'seeker-arcade.html'));
+        
+        // Catch faith=quest, fate=quest, or play=arcade gracefully
+        if (req.query.faith === 'quest' || req.query.fate === 'quest' || req.query.play === 'arcade') {
+            try {
+                let html = require('fs').readFileSync(require('path').join(__dirname, 'public', 'seeker-arcade.html'), 'utf8');
+                if (req.query.game) {
+                    const safeGame = req.query.game.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    const ogTitle = `<meta property="og:title" content="${safeGame} | Play Now!">`;
+                    html = html.replace(/<meta property="og:title" content=".*?">/, ogTitle);
+                }
+                return res.send(html);
+            } catch(e) {
+                return res.sendFile(require('path').join(__dirname, 'public', 'seeker-arcade.html'));
+            }
+        }
     }
     next();
 });
@@ -572,113 +584,21 @@ app.get('/apple-touch-icon.png', (req, res) => {
 });
 
 app.post('/api/settings/images', (req, res) => {
-    const { logo, prodIcon, stagingIcon, actor } = req.body;
+    const { logo, prodIcon, stagingIcon, faithQuestThumb, actor } = req.body;
     if (actor !== 'celsocreeriii@gmail.com') return res.status(403).json({ error: 'Unauthorized' });
     try {
         const saveImageToDisk = (base64Str, filename) => {
-            if (!base64Str) return;
+            if (!base64Str) return; // Safely aborts if no file was uploaded!
             const base64Data = base64Str.replace(/^data:image\/\w+;base64,/, "");
-            fs.writeFileSync(path.join(__dirname, 'public', 'img', filename), Buffer.from(base64Data, 'base64'));
+            require('fs').writeFileSync(require('path').join(__dirname, 'public', 'img', filename), Buffer.from(base64Data, 'base64'));
         };
-        saveImageToDisk(logo, 'logo.png'); saveImageToDisk(prodIcon, 'icon-prod.png'); saveImageToDisk(stagingIcon, 'icon-staging.png');
-        logActivity(actor, 'UPDATE_BRANDING', 'Updated global site logo and PWA app icons');
+        saveImageToDisk(logo, 'logo.png'); 
+        saveImageToDisk(prodIcon, 'icon-prod.png'); 
+        saveImageToDisk(stagingIcon, 'icon-staging.png');
+        saveImageToDisk(faithQuestThumb, 'faith-quest-thumb.png');
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: 'Failed to write files to disk: ' + err.message }); }
 });
-
-
-cron.schedule('*/5 * * * *', () => {
-    console.log('[CRON] Checking for upcoming group sessions...');
-    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    const nowMs = d.getTime();
-    
-    db.all(`SELECT s.*, g.name as group_name FROM group_sessions s JOIN small_groups g ON s.group_id = g.id WHERE s.notified = 0`, [], (err, sessions) => {
-        if (!sessions) return;
-        sessions.forEach(r => {
-            const schedMs = new Date(r.scheduled_at).getTime();
-            const diffMins = (schedMs - nowMs) / 60000;
-            
-            // If the meeting is between 0 and 20 minutes away, trigger the alert!
-            if (diffMins > 0 && diffMins <= 20) {
-                db.run(`UPDATE group_sessions SET notified = 1 WHERE id = ?`, [r.id]);
-                db.all(`SELECT youth_id FROM small_group_members WHERE group_id = ?`, [r.group_id], (err, members) => {
-                    if(members) {
-                        members.forEach(m => pushToUser(m.youth_id, "🎥 " + r.title + " is starting!", "Your group's Google Meet begins in a few minutes. Tap to join."));
-                    }
-                });
-            }
-        });
-    });
-});
-
-
-
-// 🤫 Secret Prayer Pals Algorithm (Runs every Monday at 9:00 AM)
-cron.schedule('0 9 * * 1', () => {
-    console.log('[CRON] Silas is assigning Secret Prayer Pals...');
-    db.all(`SELECT id, name FROM small_groups`, [], (err, groups) => {
-        if(!groups) return;
-        groups.forEach(g => {
-            // Get all approved members of this group
-            db.all(`SELECT y.id, y.name FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ? AND sgm.status='Approved'`, [g.id], (err, members) => {
-                if(!members || members?.length || 0 < 2) return; // Need at least 2 people to pair
-                
-                // Shuffle the array of members randomly
-                let shuffled = members.map(value => ({ value, sort: Math.random() })).sort((a, b) => a.sort - b.sort).map(({ value }) => value);
-                
-                // Create a circular prayer chain (A prays for B, B prays for C, C prays for A)
-                for(let i = 0; i < shuffled?.length || 0; i++) {
-                    let intercessor = shuffled[i];
-                    let target = shuffled[(i + 1) % shuffled?.length || 0];
-                    
-                    const msg = `Your Secret Prayer Pal this week in ${g.name} is ${target.name}! 🙏 Reach out, ask how they are doing, and keep them in your daily prayers.`;
-                    pushToUser(intercessor.id, "🤫 Secret Prayer Pal!", msg);
-                }
-            });
-        });
-    });
-}, { scheduled: true, timezone: "Asia/Manila" });
-
-cron.schedule('0 8 * * *', () => { // Runs daily at 8:00 AM
-    console.log('[CRON] Silas is checking for group birthdays...');
-    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    const matchStr = `-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    
-    db.all(`SELECT id, name, qr_code FROM youth WHERE birthday LIKE ?`, [`%${matchStr}`], (err, users) => {
-        if(!users) return;
-        users.forEach(u => {
-            db.all(`SELECT group_id FROM small_group_members WHERE youth_id = ?`, [u.id], (err, groups) => {
-                if(!groups) return;
-                groups.forEach(g => {
-                    const msg = `🎉 Happy Birthday to ${u.name}! 🎂 Let's shower them with blessings today!`;
-                    // Silas sends message to group chat (youth_id 0 represents System/Silas)
-                    db.run(`INSERT INTO small_group_chats (group_id, youth_id, message, created_at) VALUES (?, 0, ?, ?)`, [g.group_id, msg, getManilaTime()]);
-                    // Push Notification to the whole group
-                    db.all(`SELECT youth_id FROM small_group_members WHERE group_id = ?`, [g.group_id], (err, members) => {
-                        if(members) members.forEach(m => pushToUser(m.youth_id, "🎂 Birthday Alert!", msg));
-                    });
-                });
-            });
-        });
-    });
-}, { scheduled: true, timezone: "Asia/Manila" });
-
-cron.schedule('0 9 * * 1', () => {
-    console.log('[CRON] Running Weekly Absence Detection & AI Push Drafts...');
-    const cutoffDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    cutoffDate.setDate(cutoffDate.getDate() - 14);
-    const pad = (n) => String(n).padStart(2, '0');
-    const cutoffStr = `${cutoffDate.getFullYear()}-${pad(cutoffDate.getMonth()+1)}-${pad(cutoffDate.getDate())} 00:00:00`;
-
-    db.all(`SELECT y.id, y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id HAVING last_seen < ? OR last_seen IS NULL`, [cutoffStr], (err, rows) => {
-        if (err || !rows) return;
-        rows.forEach(user => {
-            const draftMsg = `Hi ${user.name || 'there'}, we've missed you at recent gatherings! Let us know how we can pray for you today.`;
-            db.run(`INSERT INTO ai_communication_drafts (target_youth_id, draft_type, suggested_message, created_at) VALUES (?, 'Push', ?, ?)`, [user.id, draftMsg, getManilaTime()]);
-        });
-    });
-}, { scheduled: true, timezone: "Asia/Manila" });
-
 app.get('/api/backups', (req, res) => {
     if (!fs.existsSync(backupDir)) return res.json([]);
     const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.db')).map(f => {

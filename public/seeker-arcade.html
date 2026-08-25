@@ -403,6 +403,23 @@
         }
 
         function endGame() {
+            if (!window.loggedInUser) window.loggedInUser = JSON.parse(localStorage.getItem('fog_user') || 'null');
+            setTimeout(() => {
+                if (window.loggedInUser && window.loggedInUser.member) {
+                    const saveBtn = document.querySelector('button[onclick*="register-w"]');
+                    if (saveBtn) saveBtn.style.display = 'none';
+                    fetch('/api/arcade/submit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            youth_id: window.loggedInUser.member.id,
+                            game_name: currentGameName,
+                            score: score,
+                            actor: window.loggedInUser.member.name
+                        })
+                    }).then(() => { if(typeof loadLeaderboards === 'function') loadLeaderboards(); });
+                }
+            }, 300);
             let data = getAttemptsData();
             if (!data.games[currentGameName]) data.games[currentGameName] = { plays: 0, bestScore: 0 };
             

@@ -6124,3 +6124,28 @@ window.switchTab = async function(tabId) {
         }, 100);
     }
 };
+
+// ==========================================
+// V115: COMBINE GROWTH GAMES WITH FAITH QUEST
+// ==========================================
+setTimeout(() => {
+    const origSwitchGamTab = window.V6Gamification ? window.V6Gamification.switchTab : null;
+    if (window.V6Gamification) {
+        window.V6Gamification.switchTab = function(tabName) {
+            if (origSwitchGamTab) origSwitchGamTab(tabName);
+            
+            if (tabName === 'games') {
+                const container = document.getElementById('gamTabGames');
+                if (container && !document.getElementById('faithQuestGrowthEmbed')) {
+                    container.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; font-weight:bold;">Faith Quest Challenge: Play and earn XP!</p>
+                    </div>
+                    <div style="height: 75vh; width: 100%; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); background:#FFF;">
+                        <iframe id="faithQuestGrowthEmbed" src="/?faith=quest&embedded=true" style="width:100%; height:100%; border:none;"></iframe>
+                    </div>`;
+                }
+            }
+        };
+    }
+}, 1000);
