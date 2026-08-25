@@ -7,6 +7,27 @@ const fs = require('fs');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const app = express();
+// --- V115: PUBLIC ARCADE LEADERBOARDS ---
+app.get('/api/public/arcade-leaderboards', (req, res) => {
+    const queries = {
+        daily: "SELECT y.name, a.score, a.game_name FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE date(a.played_at) = date('now', 'localtime') ORDER BY a.score DESC LIMIT 5",
+        weekly: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.played_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        lastWeek: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.played_at >= datetime('now', 'localtime', '-14 days') AND a.played_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        monthly: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE strftime('%Y-%m', a.played_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        allTime: "SELECT y.name, gp.arcade_xp as score FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id ORDER BY gp.arcade_xp DESC LIMIT 5",
+        topGames: "SELECT a.game_name, y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id GROUP BY a.game_name, y.name ORDER BY a.game_name, score DESC"
+    };
+    let results = {};
+    let pending = Object.keys(queries).length;
+    Object.keys(queries).forEach(key => {
+        db.all(queries[key], [], (err, rows) => {
+            results[key] = rows || [];
+            pending--;
+            if (pending === 0) res.json(results);
+        });
+    });
+});
+
 app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private'); next(); });
 const PORT = process.env.PORT || 3000;
 
@@ -20,11 +41,17 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 // KOINONIA PHASE B: URL QUERY INTERCEPTOR
 // ==========================================
 app.use((req, res, next) => {
-    if (req.path === '/' && req.query.read === 'daily-manna') {
-        return res.sendFile(require('path').join(__dirname, 'public', 'seeker-manna.html'));
+    if (req.path === '/') {
+        // Force strict no-caching so updates reflect instantly across all devices
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        
+        if (req.query.read === 'daily-manna') return res.sendFile(require('path').join(__dirname, 'public', 'seeker-manna.html'));
+        if (req.query.play) return res.sendFile(require('path').join(__dirname, 'public', 'seeker-arcade.html'));
     }
     next();
 });
+
+
 
 
 
