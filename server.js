@@ -347,8 +347,13 @@ db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.get(`SELECT COUNT(*) as cnt FROM discipleship_pathways`, [], (err, row) => {
         if (row && row.cnt === 0) {
             const defaultSteps = [
-                ["Step 1: Salvation & Baptism", "Accept Jesus Christ as Lord and Savior and publicly declare your faith through water baptism.", 1, 50],
-                ["Step 2: Foundation Class", "Complete the core teachings on prayer, Bible reading, and Christian lifestyle.", 2, 50]
+                ["Encounter", "Come & See. Explore faith at your own pace.", 1, 50],
+                ["Connect & Belong", "Find your circle. Walk with brothers and sisters.", 2, 50],
+                ["Step In", "Choose this family as your spiritual home.", 3, 50],
+                ["Discover Your Gifts", "Unpack the talents God has entrusted to you.", 4, 50],
+                ["Equip & Form", "Deepen your roots in character and skills.", 5, 50],
+                ["Serve with Joy", "Step into the harvest and build the Kingdom.", 6, 50],
+                ["Commissioned", "Sent forth with passion for God and compassion for all.", 7, 100]
             ];
             const stmt = db.prepare(`INSERT INTO discipleship_pathways (title, description, step_order, points, created_at) VALUES (?, ?, ?, ?, ?)`);
             defaultSteps.forEach(step => stmt.run([step[0], step[1], step[2], step[3], getManilaTime()]));

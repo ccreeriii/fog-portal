@@ -2941,7 +2941,7 @@ window.renderHomeJourney = async function() {
     if (!container || !currentMember) return;
     let html = '';
     if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
-        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 3</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
     } else {
         try {
             const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
@@ -2953,7 +2953,7 @@ window.renderHomeJourney = async function() {
             } else if (isApplicant) {
                 html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button class="btn btn-secondary btn-sm" disabled>Pending</button>`;
             } else {
-                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 4</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
             }
         } catch(e) {}
     }
@@ -3970,7 +3970,7 @@ window.renderHomeJourney = async function() {
     if (!container || !currentMember) return;
     let html = '';
     if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
-        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 3</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
     } else {
         try {
             const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
@@ -3983,7 +3983,7 @@ window.renderHomeJourney = async function() {
             } else if (isApplicant) {
                 html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Pending</button>`;
             } else {
-                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 4</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
             }
         } catch(e) {}
     }
@@ -5689,7 +5689,7 @@ window.renderHomeJourney = async function() {
     if (!container || !currentMember) return;
     let html = '';
     if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
-        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 3</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
     } else {
         try {
             const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
@@ -5702,7 +5702,7 @@ window.renderHomeJourney = async function() {
             } else if (isApplicant) {
                 html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Pending</button>`;
             } else {
-                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Phase 4</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
             }
         } catch(e) {}
     }
