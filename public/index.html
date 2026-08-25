@@ -376,7 +376,7 @@
                 reader.onload = () => resolve(reader.result); reader.onerror = error => reject(error);
             });
 
-            let payload = { actor: window.currentUser ? window.currentUser.username : 'Admin' };
+            let fogUser = JSON.parse(localStorage.getItem('fog_user') || '{}'); let payload = { actor: window.currentUser ? window.currentUser.username : (fogUser.username || 'celsocreeriii@gmail.com') };
             const logo = document.getElementById('siteLogoInput')?.files[0];
             const prod = document.getElementById('prodIconInput')?.files[0];
             const staging = document.getElementById('stagingIconInput')?.files[0];

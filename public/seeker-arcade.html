@@ -140,7 +140,7 @@
                 
                 <button id="saveScoreBtn" class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 1.1rem; font-weight: bold; border-radius: 12px; background: #F59E0B; border: none; margin-bottom: 15px;" onclick="window.location.href='/register-w.html'">💾 Save Best Score</button>
                 <button class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 1.1rem; font-weight: bold; border-radius: 12px; background: #3B82F6; border: none; margin-bottom: 15px;" onclick="shareToSocials()">📲 Challenge a Friend</button>
-                <button id="playAgainBtn" class="btn btn-outline" style="width: 100%; padding: 12px; font-size: 1rem; border-radius: 12px;" onclick="switchGameView('lobbyView')">Back to Lobby</button>
+                <button id="playAgainBtn" class="btn btn-outline" style="width: 100%; padding: 12px; font-size: 1rem; border-radius: 12px;" onclick="switchGameView('lobbyView')">🔙 Back to Hub</button>
             </div>
         </div>
     </div>
@@ -398,7 +398,7 @@
                 }).then(() => loadLeaderboards()); 
             }
 
-            document.getElementById('playAgainBtn').style.display = plays >= 3 ? 'none' : 'block';
+            document.getElementById('playAgainBtn').style.display = 'block'; // ALWAYS SHOW BACK BUTTON
             switchGameView('gameOverView');
         }
 
