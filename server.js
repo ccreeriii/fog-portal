@@ -8,145 +8,129 @@ const webpush = require('web-push');
 const cron = require('node-cron');
 const app = express();
 
-// --- V109: ROOT INTERCEPTORS FOR REACTIONS & BROADCASTS ---
+// ==========================================
+// V111: THE BULLETPROOF ROUTER (REACTIONS & BROADCASTS)
+// ==========================================
+
 app.post('/api/small-groups/react-v2', (req, res) => {
-    const { type, id, emoji, user_name } = req.body;
-    let table = '';
-    if(type === 'chat') table = 'small_group_chats';
-    else if(type === 'prayer') table = 'prayer_requests';
-    else if(type === 'memory') table = 'group_memories';
-    else return res.json({success:false});
+    try {
+        const { type, id, emoji, user_name } = req.body;
+        let table = type === 'chat' ? 'small_group_chats' : (type === 'prayer' ? 'prayer_requests' : (type === 'memory' ? 'group_memories' : ''));
+        if (!table) return res.status(400).json({success: false, error: 'Invalid type'});
 
-    db.get(`SELECT reactions FROM ${table} WHERE id = ?`, [id], (err, row) => {
-        if(!row) return res.json({success: false});
-        let reactions = {};
-        try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
+        db.get(`SELECT reactions FROM ${table} WHERE id = ?`, [id], (err, row) => {
+            if(err) return res.status(500).json({success: false, error: err.message});
+            if(!row) return res.status(404).json({success: false, error: 'Post not found'});
+            
+            let reactions = {};
+            try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
 
-        let removedFromSameEmoji = false;
-        Object.keys(reactions).forEach(e => {
-            if(typeof reactions[e] === 'number') reactions[e] = Array(reactions[e]).fill('Anonymous');
-            if(!Array.isArray(reactions[e])) reactions[e] = [];
-            const idx = reactions[e].indexOf(user_name);
-            if(idx > -1) {
-                reactions[e].splice(idx, 1);
-                if (e === emoji) removedFromSameEmoji = true;
+            let removed = false;
+            for (let key in reactions) {
+                if (!Array.isArray(reactions[key])) reactions[key] = [];
+                const idx = reactions[key].indexOf(user_name);
+                if (idx > -1) {
+                    reactions[key].splice(idx, 1);
+                    if (key === emoji) removed = true;
+                }
             }
-        });
 
-        if(!removedFromSameEmoji) {
-            if(!reactions[emoji]) reactions[emoji] = [];
-            reactions[emoji].push(user_name);
-        }
+            if(!removed) {
+                if(!reactions[emoji]) reactions[emoji] = [];
+                reactions[emoji].push(user_name);
+            }
 
-        // CRITICAL BUG FIX: Safely check array length to avoid deleting active reactions!
-        Object.keys(reactions).forEach(e => {
-            if(!reactions[e] || reactions[e].length === 0) delete reactions[e];
-        });
+            // Flawless Cleanup: Safely remove empty arrays without crashing
+            for (let key in reactions) {
+                if (reactions[key].length === 0) delete reactions[key];
+            }
 
-        db.run(`UPDATE ${table} SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), id], () => {
-            res.json({success: true, reactions});
+            db.run(`UPDATE ${table} SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), id], (err2) => {
+                if (err2) return res.status(500).json({success:false, error: err2.message});
+                res.json({success: true, reactions});
+            });
         });
-    });
+    } catch (err) { res.status(500).json({success: false, error: err.message}); }
 });
 
 app.get('/api/small-groups/:id/chat', (req, res) => {
     const lastId = parseInt(req.query.last_id) || 0;
-    // CRITICAL BUG FIX: Added c.reactions to the SELECT statement
     db.all(`SELECT c.id, c.message, c.reactions, c.created_at, y.name, y.profile_picture FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? AND c.id > ? ORDER BY c.id ASC`, [req.params.id, lastId], (err, rows) => {
+        if (err) return res.status(500).json({error: err.message});
         res.json(rows || []);
     });
 });
 
+app.get('/api/small-groups/:id/memories', (req, res) => {
+    db.all(`SELECT m.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_memories m LEFT JOIN youth y ON m.youth_id = y.id WHERE m.group_id = ? ORDER BY m.created_at DESC LIMIT 50`, [req.params.id], (err, rows) => { 
+        if (err) return res.status(500).json({error: err.message});
+        res.json(rows || []); 
+    });
+});
+
 app.post('/api/communications/broadcast', (req, res) => {
-    const { target, title, message, actor } = req.body;
-    db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', getManilaTime()], function(err) {
-        const announcementId = this.lastID;
-        
-        let targetQuery = `SELECT id, qr_code FROM youth`; let targetParams = [];
-        if (target === 'Leaders') {
-            targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`;
-        } else if (target === 'Groups') {
-            targetQuery = `SELECT DISTINCT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id`;
-        } else if (target.startsWith('Ministry:')) {
-            targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`;
-            targetParams.push(target.split(':')[1]);
-        } else if (target.startsWith('Group:')) {
-            targetQuery = `SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?`;
-            targetParams.push(target.split(':')[1]);
-        }
-        
-        db.all(targetQuery, targetParams, (err, youths) => {
-            const usernames = ['celsocreeriii@gmail.com'];
-            if (youths && youths.length > 0) {
-                const stmt = db.prepare(`INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)`);
-                youths.forEach(y => { if (y && y.id) { stmt.run([y.id, announcementId, getManilaTime()]); if (y.qr_code) usernames.push(y.qr_code); } });
-                stmt.finalize();
+    try {
+        const { target, title, message, actor } = req.body;
+        const d = new Date();
+        const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        const pad = (n) => String(n).padStart(2, '0');
+        const timeNow = `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
+
+        db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', timeNow], function(err) {
+            if (err) return res.status(500).json({success: false, error: err.message});
+            const announcementId = this.lastID;
+            
+            let targetQuery = `SELECT id, qr_code FROM youth`; let targetParams = [];
+            if (target === 'Leaders') {
+                targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`;
+            } else if (target === 'Groups') {
+                targetQuery = `SELECT DISTINCT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id`;
+            } else if (target.startsWith('Ministry:')) {
+                targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`;
+                targetParams.push(target.split(':')[1]);
+            } else if (target.startsWith('Group:')) {
+                targetQuery = `SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?`;
+                targetParams.push(target.split(':')[1]);
             }
             
-            // AGGRESSIVE PUSH NOTIFICATION: If 'All', grab EVERY subscription unconditionally!
-            const queryAll = target === 'All' ? `SELECT subscription FROM push_subscriptions` : `SELECT subscription FROM push_subscriptions WHERE username IN (${usernames.map(()=>'?').join(',')})`;
-            const paramsAll = target === 'All' ? [] : usernames;
-            
-            db.all(queryAll, paramsAll, (err, subs) => {
-                if (err || !subs || subs.length === 0) return res.json({ success: true, sentCount: 0 });
-                const payload = JSON.stringify({ title, body: message, url: '/' });
-                let sentCount = 0;
-                Promise.all(subs.map(row => {
-                    try {
-                        return webpush.sendNotification(JSON.parse(row.subscription), payload)
-                            .then(() => { sentCount++; })
-                            .catch(e => { 
-                                if (e.statusCode === 404 || e.statusCode === 410) db.run(`DELETE FROM push_subscriptions WHERE subscription = ?`, [row.subscription]); 
-                            });
-                    } catch(e) { return Promise.resolve(); }
-                })).then(() => { 
-                    try { logActivity(actor, 'BROADCAST', `Sent broadcast to ${target}`); } catch(e){}
-                    res.json({ success: true, sentCount }); 
-                });
+            db.all(targetQuery, targetParams, (err, youths) => {
+                try {
+                    const usernames = ['celsocreeriii@gmail.com'];
+                    if (youths && youths.length > 0) {
+                        const stmt = db.prepare(`INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)`);
+                        youths.forEach(y => { if (y && y.id) { stmt.run([y.id, announcementId, timeNow]); if (y.qr_code) usernames.push(y.qr_code); } });
+                        stmt.finalize();
+                    }
+                    
+                    const queryAll = target === 'All' ? `SELECT subscription FROM push_subscriptions` : `SELECT subscription FROM push_subscriptions WHERE username IN (${usernames.map(()=>'?').join(',')})`;
+                    const paramsAll = target === 'All' ? [] : usernames;
+                    
+                    db.all(queryAll, paramsAll, (err, subs) => {
+                        if (err || !subs || subs.length === 0) return res.json({ success: true, sentCount: 0 });
+                        const payload = JSON.stringify({ title, body: message, url: '/' });
+                        let sentCount = 0;
+                        Promise.all(subs.map(row => {
+                            try {
+                                return webpush.sendNotification(JSON.parse(row.subscription), payload)
+                                    .then(() => { sentCount++; })
+                                    .catch(e => { 
+                                        if (e.statusCode === 404 || e.statusCode === 410) db.run(`DELETE FROM push_subscriptions WHERE subscription = ?`, [row.subscription]); 
+                                    });
+                            } catch(e) { return Promise.resolve(); }
+                        })).then(() => { 
+                            res.json({ success: true, sentCount }); 
+                        });
+                    });
+                } catch (innerErr) {
+                    res.status(500).json({success: false, error: innerErr.message});
+                }
             });
         });
-    });
+    } catch (error) {
+        res.status(500).json({success: false, error: error.message});
+    }
 });
 
-
-
-// --- V35: ROOT INTERCEPTOR FOR MINISTRY ROLE LOGGING ---
-app.put('/api/ministries/:id/members/:mappingId', (req, res) => {
-    const { role, sub_role, actor } = req.body;
-    db.get("SELECT youth_id FROM ministry_members WHERE id = ?", [req.params.mappingId], (err, row) => {
-        if(!row) return res.status(404).json({error: 'Not found'});
-        const timeNow = typeof getManilaTime === 'function' ? getManilaTime() : new Date().toISOString();
-        const logMsg = role === 'Integration Period' ? 'Application Accepted for Integration Period' : `Role updated to ${role}`;
-        
-        db.run("UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?", [role, sub_role || '', req.params.mappingId], function(err) {
-            if(err) return res.status(500).json({error: err.message});
-            db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
-                [req.params.id, row.youth_id, role, actor || 'Admin', timeNow, logMsg], () => {
-                    res.json({success: true});
-            });
-        });
-    });
-});
-
-
-// V33: ROOT INTERCEPTOR FOR MINISTRY ROLE LOGGING
-// Because this is at the top, Express will use this route FIRST, ensuring logging always fires.
-app.put('/api/ministries/:id/members/:mappingId', (req, res) => {
-    const { role, sub_role, actor } = req.body;
-    db.get("SELECT youth_id FROM ministry_members WHERE id = ?", [req.params.mappingId], (err, row) => {
-        if(!row) return res.status(404).json({error: 'Not found'});
-        const timeNow = typeof getManilaTime === 'function' ? getManilaTime() : new Date().toISOString();
-        const logMsg = role === 'Integration Period' ? 'Application Accepted for Integration Period' : `Role updated to ${role}`;
-        
-        db.run("UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?", [role, sub_role || '', req.params.mappingId], function(err) {
-            if(err) return res.status(500).json({error: err.message});
-            db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
-                [req.params.id, row.youth_id, role, actor || 'Admin', timeNow, logMsg], () => {
-                    res.json({success: true});
-            });
-        });
-    });
-});
 
 
 app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private'); next(); });

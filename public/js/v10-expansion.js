@@ -2266,3 +2266,36 @@ window.V4Communications.sendBroadcast = async function(e) {
     btn.disabled = false;
 };
 
+if (typeof window.V4Communications !== 'undefined') {
+    window.V4Communications.sendBroadcast = async function(e) {
+        e.preventDefault();
+        const target = document.getElementById('bcTargetSelect').value;
+        const title = document.getElementById('bcTitle').value;
+        const message = document.getElementById('bcMessage').value;
+        if (!title || !message) return alert("Please fill out all fields.");
+
+        const btn = e.target.querySelector('button[type="submit"]');
+        const origText = btn.innerText;
+        btn.innerText = '📡 Broadcasting...';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/communications/broadcast', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ target, title, message, actor: currentUser || 'Admin' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(`✅ Broadcast sent successfully!\nDelivered to ${data.sentCount} connected devices.`);
+                document.getElementById('broadcastForm').reset();
+            } else {
+                alert('❌ Server Error: ' + (data.error || 'Unknown Error in Backend'));
+            }
+        } catch(err) {
+            console.error(err);
+            alert('❌ Critical Network Error. Check browser console.');
+        }
+        btn.innerText = origText;
+        btn.disabled = false;
+    };
+}
