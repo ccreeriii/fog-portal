@@ -1820,3 +1820,199 @@ window.loadGroupMemoriesMaster = async function() {
 window.loadGroupChat = window.loadGroupChatMaster;
 window.loadGroupMemories = window.loadGroupMemoriesMaster;
 
+
+// ==========================================
+// V105: FRESH LOGIN, MINISTRY UI, TRUE REACTIONS
+// ==========================================
+
+// --- 1. INSTANT TAB RENDERING FIX ---
+const origSwitchTabV105 = window.switchTab;
+window.switchTab = async function(tabId) {
+    if (origSwitchTabV105) await origSwitchTabV105(tabId);
+    
+    // Instant loads (no artificial delays)
+    if (tabId === 'profileTab' && currentMember) {
+        window.populateProfileTab(currentMember);
+    }
+    if (tabId === 'eventsTab') {
+        window.loadEvents();
+    }
+    if (tabId === 'ministriesTab') {
+        // Force the List sub-tab to render immediately on open
+        window.switchMinistrySubTab('list');
+    }
+};
+
+// --- 2. MINISTRY DETAILS MODAL OVERHAUL ---
+window.openMinistryDetailsModal = async function(id) {
+    currentMinistryId = id;
+    const m = ministriesData.find(x => x.id === id);
+    if (!m) return;
+
+    const modal = document.getElementById('ministryDetailsModal');
+    if (!modal) return;
+
+    // 30% width Logo HTML
+    const logoHtml = m.logo ? 
+        `<img src="${m.logo}" style="width:100%; height:auto; object-fit:cover; border-radius:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor:pointer;" onclick="if(window.openImageViewer) window.openImageViewer(this.src)">` : 
+        `<div style="width:100%; padding-top:100%; background:var(--bg-light); border-radius:12px; position:relative; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"><span style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:2.5rem;">🏛️</span></div>`;
+    
+    // Edit Button
+    const editBtn = window.hasPerm('edit_entries') ? 
+        `<button class="btn btn-outline btn-sm" style="margin-top:10px; font-weight:600;" onclick="openEditMinistryModal()">✏️ Edit Ministry</button>` : '';
+
+    // Assign Controls HTML
+    const assignHTML = window.hasPerm('add_entries') ? `
+        <div style="background: var(--bg-light); padding: 15px; margin-bottom: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1 1 100%; position: relative;">
+                    <input type="text" id="minSearchInput" class="form-control" placeholder="Search Member..." onkeyup="filterMinistrySearch()">
+                    <div id="minSearchDropdown" style="display:none; position:absolute; background:#FFF; width:100%; border: 1px solid var(--border-color); max-height: 200px; overflow-y: auto; z-index:100; border-radius:6px; box-shadow:0 4px 10px rgba(0,0,0,0.1);"></div>
+                </div>
+                <input type="hidden" id="minSelectedUserId">
+                <select id="minRoleSelect" class="form-control" style="flex: 1 1 45%;">
+                    <option value="Member">Member</option>
+                    <option value="Ministry Head">Ministry Head</option>
+                    <option value="Assistant Ministry Head">Assistant Ministry Head</option>
+                    <option value="Core">Core</option>
+                </select>
+                <input type="text" id="minSubRoleInput" class="form-control" placeholder="Sub-Role" style="flex: 1 1 45%;">
+                <button class="btn btn-primary" onclick="assignMinistryRole()" style="flex: 1 1 100%;">Assign Role</button>
+            </div>
+        </div>` : '';
+
+    // Reconstruct the Entire Modal HTML
+    modal.innerHTML = `
+    <div class="modal-content" style="max-width: 700px; padding: 0; background: #F8FAFC; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
+        <span class="close-modal" onclick="closeMinistryDetailsModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer; z-index: 10;">&times;</span>
+        
+        <div style="padding: 25px 25px 15px 25px; background: #FFF; border-bottom: 1px solid var(--border-color); position: relative;">
+            <div style="display:flex; gap:20px; align-items:flex-start;">
+                <div style="width: 30%; flex-shrink: 0;">${logoHtml}</div>
+                <div style="width: 70%; display:flex; flex-direction:column; justify-content:center;">
+                    <h2 style="color: var(--primary); margin:0; font-size:1.6rem; border:none; padding-bottom:5px;">${m.name}</h2>
+                    <div>${editBtn}</div>
+                </div>
+            </div>
+            <p style="color: var(--text-muted); margin-top: 15px; line-height: 1.5;">${m.description || 'No description provided.'}</p>
+        </div>
+
+        <div class="sub-nav" style="background: #FFF; border-bottom: 1px solid var(--border-color); padding: 10px 15px 0 15px; margin: 0; justify-content:center;">
+            <button id="btnMinTabList" class="sub-nav-btn active" style="flex:1; max-width: 200px;" onclick="switchMinistryDetailsTab('list')">👥 List</button>
+            <button id="btnMinTabNotes" class="sub-nav-btn" style="flex:1; max-width: 200px; display:${window.hasPerm('edit_entries') ? 'inline-block' : 'none'}" onclick="switchMinistryDetailsTab('notes')">🔒 Notes</button>
+        </div>
+
+        <div style="padding: 20px; overflow-y: auto; flex: 1;">
+            <div id="minTabListContent" style="display:block;">
+                ${assignHTML}
+                <div id="ministryRosterContainer"></div>
+            </div>
+            <div id="minTabNotesContent" style="display:none;">
+                <div style="background: #FEF3C7; padding: 15px; border-radius: 8px; border: 1px solid #FDE68A;">
+                    <h3 style="color:#D97706; margin-top:0; border:none;">🔒 Leader's Notes</h3>
+                    <textarea id="ministryDetailNotes" class="form-control" style="min-height:350px; resize:vertical; font-size:0.95rem; line-height:1.5;">${m.restricted_notes || ''}</textarea>
+                    <button class="btn btn-primary" style="background: #D97706; border:none; margin-top:15px; width:100%; font-weight:bold; padding:12px;" onclick="saveMinistryNotes()">Save Notes</button>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    modal.style.display = 'flex';
+    modal.classList.add('active');
+    
+    // Load roster data natively
+    await window.loadMinistryRoster(id);
+};
+
+window.switchMinistryDetailsTab = function(tab) {
+    const listTab = document.getElementById('minTabListContent');
+    const notesTab = document.getElementById('minTabNotesContent');
+    const btnList = document.getElementById('btnMinTabList');
+    const btnNotes = document.getElementById('btnMinTabNotes');
+
+    if (listTab) listTab.style.display = tab === 'list' ? 'block' : 'none';
+    if (notesTab) notesTab.style.display = tab === 'notes' ? 'block' : 'none';
+    if (btnList) btnList.classList.toggle('active', tab === 'list');
+    if (btnNotes) btnNotes.classList.toggle('active', tab === 'notes');
+};
+
+
+// --- 3. TRUE OPTIMISTIC FACEBOOK REACTION ENGINE ---
+
+window.refreshReactionBadgeUI = function(type, id, reactionsObj) {
+    if (type === 'chat') window.chatReactionsMap[id] = reactionsObj;
+    if (type === 'memory') window.memoryReactionsMap[id] = reactionsObj;
+
+    let totalReacts = 0;
+    let reactSummary = [];
+    
+    Object.keys(reactionsObj).forEach(emoji => {
+        const count = Array.isArray(reactionsObj[emoji]) ? reactionsObj[emoji].length : reactionsObj[emoji];
+        if (count > 0) {
+            totalReacts += count;
+            if(!reactSummary.includes(emoji)) reactSummary.push(emoji);
+        }
+    });
+
+    const summaryId = `react_summary_${type}_${id}`;
+    const summaryEl = document.getElementById(summaryId);
+    
+    if (summaryEl) {
+        if (totalReacts > 0) {
+            summaryEl.innerHTML = `${reactSummary.slice(0,3).join('')} <span style="margin-left: 4px;">${totalReacts}</span>`;
+            summaryEl.style.display = 'flex';
+        } else {
+            summaryEl.innerHTML = '';
+            summaryEl.style.display = 'none';
+        }
+    }
+};
+
+// Simplified parameterless event handling
+window.submitReactionMaster = function(type, id, emoji) {
+    if (!currentMember) return alert("Please log in to react.");
+    
+    // 1. Hide picker instantly
+    const pickerId = `picker_${type}_${id}`;
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = 'none';
+
+    // 2. Fetch current local state
+    const map = type === 'chat' ? window.chatReactionsMap : window.memoryReactionsMap;
+    let currentReacts = map[id] || {};
+    
+    // 3. Optimistically calculate new state (Toggle logic)
+    let removed = false;
+    Object.keys(currentReacts).forEach(e => {
+        if(Array.isArray(currentReacts[e])) {
+            const idx = currentReacts[e].indexOf(currentMember.name);
+            if (idx > -1) {
+                currentReacts[e].splice(idx, 1);
+                if (e === emoji) removed = true; // They clicked the same emoji, so remove it
+            }
+        }
+    });
+
+    // If they didn't toggle it off, add the new emoji
+    if (!removed) {
+        if (!currentReacts[emoji]) currentReacts[emoji] = [];
+        currentReacts[emoji].push(currentMember.name);
+    }
+
+    // Clean up empty emoji arrays
+    Object.keys(currentReacts).forEach(e => {
+        if(currentReacts[e].length === 0) delete currentReacts[e];
+    });
+
+    // 4. Update the UI IMMEDIATELY (Zero Server Lag)
+    window.refreshReactionBadgeUI(type, id, currentReacts);
+
+    // 5. Sync to server silently in the background
+    try {
+        fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name })
+        }).catch(err => console.error("Reaction Sync Failed", err));
+    } catch(e) {}
+};
+
