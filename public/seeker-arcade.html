@@ -3,14 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- HARD CACHE BUSTING TAGS -->
+    <!-- HARD CACHE BUSTING -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Arcade | Fire of God Ministries</title>
+    
+    <!-- VIRAL SOCIAL SHARE META TAGS (Messenger/Facebook) -->
+    <meta property="og:title" content="Level Up Your Faith! 🎮🔥">
+    <meta property="og:description" content="Play daily faith-based challenges, test your Bible knowledge, and climb the leaderboards. Want to join the fun?">
+    <meta property="og:image" content="https://staging.fogmin.site/img/logo.png">
+    <meta property="og:url" content="https://staging.fogmin.site/?play=arcade">
+    <meta property="og:type" content="website">
+
+    <title>Wanderer Arcade | Fire of God Ministries</title>
     <link rel="stylesheet" href="/css/styles.css">
     <style>
-        /* MOBILE-FIRST GRID: Exactly 2 Columns! */
         .arcade-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
         @media(min-width: 600px) { .arcade-grid { grid-template-columns: repeat(3, 1fr); gap: 15px; } }
         
@@ -25,8 +32,9 @@
         .game-tile-action { padding: 8px; border-radius: 12px; font-weight: bold; color: #FFF; font-size: 0.8rem; width: 100%; margin-top: 8px; box-sizing: border-box; }
         .attempts-badge { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.05); font-size: 0.6rem; padding: 2px 6px; border-radius: 8px; font-weight: bold; color: var(--text-muted); }
         
-        /* SPLIT TABS */
-        .tab-btn { flex: 1; padding: 12px; background: transparent; border: none; border-bottom: 3px solid transparent; font-weight: bold; color: var(--text-muted); cursor: pointer; transition: 0.2s; font-size: 0.95rem; }
+        /* SPLIT TABS FIXED FOR MOBILE */
+        .tab-btn { flex: 1; padding: 12px 5px; background: transparent; border: none; border-bottom: 3px solid transparent; font-weight: bold; color: var(--text-muted); cursor: pointer; transition: 0.2s; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        @media(max-width: 400px) { .tab-btn { font-size: 0.8rem; } }
         .tab-btn.active { color: #F59E0B; border-bottom-color: #F59E0B; }
         
         .game-view { display: none; animation: fadeIn 0.3s ease-in-out; }
@@ -57,7 +65,9 @@
 
     <div style="max-width: 800px; margin: 20px auto; padding: 0 15px;">
         
+        <!-- ========================================== -->
         <!-- VIEW 1: LOBBY & TABS -->
+        <!-- ========================================== -->
         <div id="lobbyView" class="game-view active">
             <div class="card" style="background: linear-gradient(135deg, #F59E0B, #D97706); border: none; color: #FFF; text-align: center; padding: 30px 20px; margin-bottom: 15px;">
                 <div style="font-size: 3rem; margin-bottom: 10px;">🎯</div>
@@ -65,10 +75,10 @@
                 <p style="font-size: 1rem; opacity: 0.9; margin: 0;">Play daily faith-based challenges, climb the ranks, and earn XP!</p>
             </div>
 
-            <!-- THE SPLIT TABS -->
+            <!-- MOBILE OPTIMIZED TABS -->
             <div style="display: flex; background: #FFF; border-radius: 12px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                <button id="tabBtnGames" class="tab-btn active" onclick="toggleArcadeTabs('games')">🎮 Challenge of the Day</button>
-                <button id="tabBtnLdr" class="tab-btn" onclick="toggleArcadeTabs('leaderboard')">🏆 Leaderboards</button>
+                <button id="tabBtnGames" class="tab-btn active" onclick="toggleArcadeTabs('games')">🎮 Daily Challenge</button>
+                <button id="tabBtnLdr" class="tab-btn" onclick="toggleArcadeTabs('leaderboard')">🏆 Leaderboard</button>
             </div>
 
             <div id="arcadeContentGames">
@@ -89,7 +99,36 @@
             </div>
         </div>
 
-        <!-- VIEW 2: GAMEPLAY ENGINE -->
+        <!-- ========================================== -->
+        <!-- VIEW 2: PRE-GAME (ATTEMPTS & TOP 3) -->
+        <!-- ========================================== -->
+        <div id="preGameView" class="game-view">
+            <button class="btn btn-outline btn-sm" style="margin-bottom: 15px;" onclick="switchGameView('lobbyView')">← Back to Lobby</button>
+            <div class="card" style="text-align: center; padding: 35px 20px; border-radius: 20px; border-top: 5px solid #3B82F6;">
+                <div id="pgIcon" style="font-size: 4rem; margin-bottom: 10px;">🎮</div>
+                <h2 id="pgTitle" style="color: var(--primary); margin-bottom: 5px; border: none; font-size: 1.6rem;">Game Title</h2>
+                <p id="pgDesc" style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 25px;">Game Description</p>
+
+                <!-- TOP 3 FOR THIS GAME -->
+                <div style="background: #F8FAFC; padding: 15px 20px; border-radius: 16px; margin-bottom: 25px; border: 1px solid var(--border-color); text-align: left;">
+                    <h4 style="margin: 0 0 10px 0; color: var(--text-main); font-size: 1rem; text-align:center;">Top 3 Players 🏆</h4>
+                    <div id="pgTop3Container" style="font-size: 0.9rem; color: var(--text-muted);">
+                        Loading scores...
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Attempts Left Today</span><br>
+                    <strong id="pgAttemptsLeft" style="font-size: 2rem; color: #F59E0B;">3</strong>
+                </div>
+
+                <button id="pgStartBtn" class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 1.2rem; font-weight: bold; border-radius: 12px; background: #059669; border: none;" onclick="startTriviaGame()">▶️ PLAY NOW</button>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- VIEW 3: ACTIVE TRIVIA ENGINE -->
+        <!-- ========================================== -->
         <div id="playView" class="game-view">
             <button class="btn btn-outline btn-sm" style="margin-bottom: 15px;" onclick="switchGameView('lobbyView')">← Quit Game</button>
             <div class="card" style="border-top: 5px solid #059669;">
@@ -106,15 +145,16 @@
             </div>
         </div>
 
-        <!-- VIEW 3: GAME OVER & VIRAL SHARE -->
+        <!-- ========================================== -->
+        <!-- VIEW 4: GAME OVER & VIRAL SHARE -->
+        <!-- ========================================== -->
         <div id="gameOverView" class="game-view">
             <div class="card" style="text-align: center; padding: 40px 20px; border-radius: 20px; border: 2px solid #F59E0B;">
                 <div style="font-size: 4rem; margin-bottom: 10px;">🏆</div>
                 <h2 style="color: var(--text-main); margin-bottom: 5px; border: none; font-size: 1.8rem;">Game Over!</h2>
-                <p id="gameOverAttempts" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 25px;">Attempt 1 of 3</p>
                 
                 <div style="background: #FFF9F5; padding: 20px; border-radius: 16px; margin-bottom: 25px; display: inline-block; width: 80%;">
-                    <span style="font-size: 0.9rem; color: #D97706; font-weight:bold; text-transform:uppercase;">Best Score Today</span><br>
+                    <span style="font-size: 0.9rem; color: #D97706; font-weight:bold; text-transform:uppercase;">Score Today</span><br>
                     <strong style="font-size: 3rem; color: #F59E0B;" id="finalScoreDisplay">0</strong> <span style="font-size:1.5rem; color:#F59E0B;">XP</span>
                 </div>
                 
@@ -127,7 +167,9 @@
     </div>
 
     <script>
-        // MASTER CATALOG OF 18 GAMES
+        // GLOBAL CACHE FOR LEADERBOARDS
+        window.cachedLeaderboards = null;
+
         const ALL_GAMES = [
             { name: 'Catechism Clash', icon: '⏱️', desc: '60-Second Trivia Sprint!', color: '#059669' },
             { name: 'The Narrow Gate', icon: '🚪', desc: 'Hardcore Theological Trivia.', color: '#6366F1' },
@@ -193,8 +235,8 @@
                 const isLocked = gameStats.plays >= 3;
                 
                 grid.innerHTML += `
-                <div class="arcade-game-tile ${isLocked ? 'locked' : ''}" onclick="${isLocked ? 'alert(\'Maximum 3 attempts reached for today! Save your score or try a different game.\')' : `startTriviaGame('${game.name}')`}">
-                    <div class="attempts-badge">${gameStats.plays}/3 Plays</div>
+                <div class="arcade-game-tile ${isLocked ? 'locked' : ''}" onclick="openPreGame('${game.name}')">
+                    <div class="attempts-badge">${3 - gameStats.plays} Left</div>
                     <div class="game-tile-icon">${game.icon}</div>
                     <div class="game-tile-info"><h3>${game.name}</h3><p>${game.desc}</p></div>
                     <div class="game-tile-action" style="background:${isLocked ? '#94A3B8' : game.color};">${isLocked ? 'LOCKED' : 'PLAY'}</div>
@@ -214,6 +256,7 @@
             fetch('/api/public/arcade-leaderboards')
                 .then(res => res.json())
                 .then(data => {
+                    window.cachedLeaderboards = data; // Cache for the Pre-Game screen
                     document.getElementById('ldrLoading').style.display = 'none';
                     const container = document.getElementById('ldrContainer');
                     container.style.display = 'block';
@@ -247,8 +290,48 @@
             if(viewId === 'lobbyView') initLobby(); 
         }
 
-        function startTriviaGame(gameName) {
+        function openPreGame(gameName) {
             currentGameName = gameName;
+            const gameInfo = ALL_GAMES.find(g => g.name === gameName);
+            
+            document.getElementById('pgIcon').innerText = gameInfo.icon;
+            document.getElementById('pgTitle').innerText = gameInfo.name;
+            document.getElementById('pgDesc').innerText = gameInfo.desc;
+
+            const attemptsData = getAttemptsData();
+            const plays = attemptsData.games[gameName] ? attemptsData.games[gameName].plays : 0;
+            const attemptsLeft = 3 - plays;
+            
+            document.getElementById('pgAttemptsLeft').innerText = attemptsLeft;
+
+            const startBtn = document.getElementById('pgStartBtn');
+            if (attemptsLeft <= 0) {
+                startBtn.style.background = '#94A3B8';
+                startBtn.innerText = '🔒 LOCKED FOR TODAY';
+                startBtn.onclick = null;
+            } else {
+                startBtn.style.background = '#059669';
+                startBtn.innerText = '▶️ START GAME';
+                startBtn.onclick = startTriviaGame;
+            }
+
+            // Extract Top 3 for this specific game
+            const top3Container = document.getElementById('pgTop3Container');
+            if (window.cachedLeaderboards && window.cachedLeaderboards.topGames) {
+                const gameScores = window.cachedLeaderboards.topGames.filter(r => r.game_name === gameName).slice(0, 3);
+                if (gameScores.length > 0) {
+                    top3Container.innerHTML = gameScores.map((s, i) => `<div style="display:flex; justify-content:space-between; padding: 6px 0; border-bottom: 1px solid #E2E8F0;"><span>${i===0?'🥇':i===1?'🥈':'🥉'} ${s.name}</span><strong>${s.score} XP</strong></div>`).join('');
+                } else {
+                    top3Container.innerHTML = '<div style="text-align:center;">Be the first to claim the top spot!</div>';
+                }
+            } else {
+                top3Container.innerHTML = '<div style="text-align:center;">Loading scores...</div>';
+            }
+
+            switchGameView('preGameView');
+        }
+
+        function startTriviaGame() {
             score = 0;
             currentIndex = 0;
             document.getElementById('currentScore').innerText = score;
@@ -327,11 +410,9 @@
             if (score > data.games[currentGameName].bestScore) data.games[currentGameName].bestScore = score;
             saveAttemptsData(data);
 
-            const best = data.games[currentGameName].bestScore;
             const plays = data.games[currentGameName].plays;
 
-            document.getElementById('finalScoreDisplay').innerText = best;
-            document.getElementById('gameOverAttempts').innerText = `Attempt ${plays} of 3`;
+            document.getElementById('finalScoreDisplay').innerText = score;
             document.getElementById('playAgainBtn').style.display = plays >= 3 ? 'none' : 'block';
             
             switchGameView('gameOverView');
@@ -341,7 +422,7 @@
             let data = getAttemptsData();
             const best = data.games[currentGameName] ? data.games[currentGameName].bestScore : score;
             const shareUrl = window.location.origin + '/?play=arcade';
-            const shareText = `I just scored ${best} XP playing ${currentGameName}! Want to join the fun and beat my score? 🏆🔥`;
+            const shareText = `Level Up Your Faith! 🎮🔥 I just scored ${best} XP playing ${currentGameName}. Test your Bible knowledge and beat my score!`;
 
             if (navigator.share) {
                 navigator.share({ title: 'FOG Arcade Challenge', text: shareText, url: shareUrl }).catch(console.error);
