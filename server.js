@@ -7,14 +7,25 @@ const fs = require('fs');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const app = express();
+app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private'); next(); });
+const PORT = process.env.PORT || 3000;
+
+process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
+process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection:', reason));
+
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+
 
 // ==========================================
-// V111: THE BULLETPROOF ROUTER (REACTIONS & BROADCASTS)
+// V112: THE PERFECTED ROUTER (POST-BODY-PARSER)
 // ==========================================
 
 app.post('/api/small-groups/react-v2', (req, res) => {
     try {
         const { type, id, emoji, user_name } = req.body;
+        if (!type || !id || !emoji || !user_name) return res.status(400).json({success: false, error: 'Missing body parameters'});
+        
         let table = type === 'chat' ? 'small_group_chats' : (type === 'prayer' ? 'prayer_requests' : (type === 'memory' ? 'group_memories' : ''));
         if (!table) return res.status(400).json({success: false, error: 'Invalid type'});
 
@@ -40,7 +51,6 @@ app.post('/api/small-groups/react-v2', (req, res) => {
                 reactions[emoji].push(user_name);
             }
 
-            // Flawless Cleanup: Safely remove empty arrays without crashing
             for (let key in reactions) {
                 if (reactions[key].length === 0) delete reactions[key];
             }
@@ -71,6 +81,8 @@ app.get('/api/small-groups/:id/memories', (req, res) => {
 app.post('/api/communications/broadcast', (req, res) => {
     try {
         const { target, title, message, actor } = req.body;
+        if (!target || !title || !message) return res.status(400).json({success: false, error: 'Missing parameters'});
+
         const d = new Date();
         const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
         const pad = (n) => String(n).padStart(2, '0');
@@ -133,14 +145,6 @@ app.post('/api/communications/broadcast', (req, res) => {
 
 
 
-app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private'); next(); });
-const PORT = process.env.PORT || 3000;
-
-process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
-process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection:', reason));
-
-app.use(express.json({ limit: '20mb' }));
-app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 const publicVapidKey = 'BPjMZjGy5VeLPQXNdkiJvfgeMAzQ0db3Pp_0ulzDv8s222iCcF6A7W0sFMdB1uVgz3QlkH7RMU93AX_epSv4IJY';
 const privateVapidKey = 'rIOhhPjfafLULXqq96N6S3g5xxVllVVrf50GkDiLmYc';
