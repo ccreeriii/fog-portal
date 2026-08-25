@@ -16,12 +16,14 @@
 </head>
 <body style="background-color: var(--bg-light); margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
     
-    <!-- Header Branding -->
+    <!-- Header Branding (Now with Image Logo Fallback) -->
     <div style="background: #FFF; padding: 15px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; position: sticky; top: 0; z-index: 100;">
         <h2 style="margin: 0; color: var(--primary); font-size: 1.3rem; display: flex; align-items: center; justify-content: center; gap: 8px; border: none;">
-            <span style="font-size: 1.5rem;">🔥</span> FIRE OF GOD <span style="color: #111;">MINISTRIES</span>
+            <img src="/img/logo.png" alt="Logo" style="height: 35px; object-fit: contain;" onerror="this.style.display='none'; document.getElementById('fallbackIcon').style.display='inline';">
+            <span id="fallbackIcon" style="display:none; font-size: 1.5rem;">🔥</span> 
+            FIRE OF GOD <span style="color: #111;">MINISTRIES</span>
         </h2>
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 0 0; font-weight: bold;">Community Portal</p>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 0 0; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Community Portal</p>
     </div>
 
     <div style="max-width: 600px; margin: 20px auto; padding: 0 15px;">
@@ -38,7 +40,6 @@
                 <h3 style="color:#FFF; border:none; padding:0; margin-bottom: 12px; font-size: 1.3rem;">📖 Daily Gospel</h3>
                 <p id="guestLitGospel" style="color:#FFF; font-size:1.05rem; font-style:italic; margin-bottom: 25px; line-height:1.6; text-shadow: 0 1px 3px rgba(0,0,0,0.3);">Fetching today's gospel...</p>
                 
-                <!-- 3 Action Buttons -->
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                     <button class="btn" style="background:#FFF; color:#111; font-weight:800; width: 100%; border-radius:12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="openReadingsModal()">📖 Full Readings</button>
                     <div style="display: flex; gap: 10px;">
@@ -53,16 +54,16 @@
         <!-- VIEW 2: REFLECT (JOURNAL) -->
         <!-- ========================================== -->
         <div id="reflectView" class="seeker-view">
-            <button class="btn btn-outline btn-sm" style="margin-bottom: 15px;" onclick="switchSeekerView('mainView')">← Back</button>
-            <div class="card">
-                <h2 style="color: var(--primary); margin-bottom: 5px;">Spiritual Reflection</h2>
-                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">
-                    Journaling is a beautiful way to listen to God. Take a moment to pause, reflect on today's Gospel, and write down what the Holy Spirit is speaking to your heart.
+            <button class="btn btn-outline btn-sm" style="margin-bottom: 15px; border-radius: 8px;" onclick="switchSeekerView('mainView')">← Back to Gospel</button>
+            <div class="card" style="border-top: 4px solid var(--primary);">
+                <h2 style="color: var(--primary); margin-bottom: 10px; border:none;">Spiritual Reflection</h2>
+                <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6;">
+                    God speaks in the stillness. Journaling is a beautiful way to anchor His promises in your heart. Let this be a safe, quiet space to pour out your soul and listen to His gentle whisper today.
                 </p>
                 <div class="form-group">
-                    <textarea class="form-control" rows="6" placeholder="Lord, today I hear you saying..." style="border-radius: 12px; padding: 15px; font-size: 1rem; resize: none;"></textarea>
+                    <textarea class="form-control" rows="6" placeholder="Lord, today I hear you saying..." style="border-radius: 12px; padding: 15px; font-size: 1rem; resize: none; background: #F8FAFC;"></textarea>
                 </div>
-                <button class="btn btn-primary" style="width: 100%; font-weight: bold; border-radius: 12px; padding: 12px;" onclick="promptConversion('save your private journal entry')">Save Entry</button>
+                <button class="btn btn-primary" style="width: 100%; font-weight: bold; border-radius: 12px; padding: 12px; font-size:1.05rem;" onclick="promptConversion('save your private journal entry')">Save My Entry</button>
             </div>
         </div>
 
@@ -70,34 +71,34 @@
         <!-- VIEW 3: PRAYER REQUEST -->
         <!-- ========================================== -->
         <div id="prayerView" class="seeker-view">
-            <button class="btn btn-outline btn-sm" style="margin-bottom: 15px;" onclick="switchSeekerView('mainView')">← Back</button>
-            <div class="card">
-                <h2 style="color: var(--primary); margin-bottom: 5px;">Prayer Request</h2>
-                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">
-                    You do not have to carry your burdens alone. Share your prayer intentions with us, and our intercessory team will lift you up in prayer this week.
+            <button class="btn btn-outline btn-sm" style="margin-bottom: 15px; border-radius: 8px;" onclick="switchSeekerView('mainView')">← Back to Gospel</button>
+            <div class="card" style="border-top: 4px solid #10B981;">
+                <h2 style="color: #10B981; margin-bottom: 10px; border:none;">Prayer Request</h2>
+                <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6;">
+                    There is immense power when a community stands together. You don't have to carry this weight alone. Share your burden with us—your requests are kept <strong>strictly private</strong> and will only be lifted up by our dedicated intercessory team.
                 </p>
                 <div class="form-group">
-                    <input type="text" class="form-control" placeholder="Prayer Title (e.g., Healing for my family)" style="margin-bottom: 10px;">
-                    <textarea class="form-control" rows="4" placeholder="Share your request here..." style="border-radius: 12px; padding: 15px; font-size: 1rem; resize: none;"></textarea>
+                    <input type="text" class="form-control" placeholder="Prayer Title (e.g., Healing for my family)" style="margin-bottom: 12px; border-radius: 8px; padding: 12px; font-size: 1rem;">
+                    <textarea class="form-control" rows="5" placeholder="Share your request here. God is listening..." style="border-radius: 12px; padding: 15px; font-size: 1rem; resize: none; background: #F8FAFC;"></textarea>
                 </div>
-                <button class="btn btn-primary" style="width: 100%; font-weight: bold; border-radius: 12px; padding: 12px; background: #10B981; border: none;" onclick="promptConversion('submit your prayer request to the community')">Submit Prayer</button>
+                <button class="btn" style="width: 100%; font-weight: bold; border-radius: 12px; padding: 12px; background: #10B981; color: #FFF; border: none; font-size:1.05rem;" onclick="promptConversion('submit your prayer request to our intercessors')">Send to Prayer Team</button>
             </div>
         </div>
 
         <!-- ========================================== -->
         <!-- PERSISTENT CTA BANNER -->
         <!-- ========================================== -->
-        <div class="card" style="border: 2px dashed var(--primary); background: #FFF9F5; text-align: center; margin-bottom: 20px; padding: 30px 20px; margin-top: 10px;">
-            <h3 style="color: var(--primary); margin-bottom: 10px; border: none; font-size: 1.4rem;">Take the Next Step 🌱</h3>
-            <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Join the community to unlock your private spiritual journal, track daily habits, and connect with cell groups!</p>
-            <button class="btn btn-primary" style="display:block; width: 100%; font-weight: bold; padding: 14px; font-size: 1.1rem; border-radius: 12px;" onclick="window.location.href='/'">Create Free Account</button>
+        <div class="card" style="border: 2px dashed var(--primary); background: #FFF9F5; text-align: center; margin-bottom: 20px; padding: 30px 20px; margin-top: 25px; border-radius: 16px;">
+            <h3 style="color: var(--primary); margin-bottom: 12px; border: none; font-size: 1.4rem;">Ready to Grow Deeper? 🌱</h3>
+            <p style="font-size: 1rem; color: var(--text-muted); margin-bottom: 25px; line-height: 1.5;">
+                Join our digital family to unlock your private spiritual journal, track your daily faith habits, and join a <strong>Connect Group</strong> to meet amazing new friends who will walk with you!
+            </p>
+            <button class="btn btn-primary" style="display:block; width: 100%; font-weight: bold; padding: 14px; font-size: 1.1rem; border-radius: 12px;" onclick="window.location.href='/seeker-register.html'">Create Free Account</button>
         </div>
 
     </div>
 
-    <!-- ========================================== -->
     <!-- UNIVERSALIS IFRAME MODAL -->
-    <!-- ========================================== -->
     <div id="readingsModal" class="seeker-modal">
         <div style="background: #FFF; width: 95%; max-width: 800px; height: 85vh; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
             <div style="background: var(--primary); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; color: #FFF;">
@@ -110,9 +111,7 @@
         </div>
     </div>
 
-    <!-- Scripts -->
     <script>
-        // Fetch Liturgical Data on Load
         fetch('/api/liturgical/today')
             .then(res => res.json())
             .then(data => {
@@ -132,27 +131,24 @@
                 document.getElementById('guestLitSeason').innerText = "ORDINARY TIME";
             });
 
-        // SPA View Switcher
         function switchSeekerView(viewId) {
             document.querySelectorAll('.seeker-view').forEach(v => v.classList.remove('active'));
             document.getElementById(viewId).classList.add('active');
-            window.scrollTo(0, 0); // Scroll to top when switching views
+            window.scrollTo(0, 0); 
         }
 
-        // Iframe Modal Handlers
         function openReadingsModal() {
             document.getElementById('readingsIframe').src = 'https://universalis.com/philippines/mass.htm';
             document.getElementById('readingsModal').classList.add('active');
         }
         function closeReadingsModal() {
             document.getElementById('readingsModal').classList.remove('active');
-            document.getElementById('readingsIframe').src = ''; // Clear source to stop processing
+            document.getElementById('readingsIframe').src = ''; 
         }
 
-        // Conversion Trigger
         function promptConversion(actionText) {
-            alert("To " + actionText + ", please create a free Fire of God Ministries account! 🌱");
-            window.location.href = '/'; // Send them directly to the main login/registration portal
+            alert("To " + actionText + ", please create your free account! 🌱");
+            window.location.href = '/seeker-register.html'; 
         }
     </script>
 </body>

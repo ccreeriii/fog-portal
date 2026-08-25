@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Create Account | Fire of God Ministries</title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body style="background-color: var(--bg-light); margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; min-height: 100vh;">
+    
+    <div style="background: #FFF; padding: 15px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center;">
+        <h2 style="margin: 0; color: var(--primary); font-size: 1.3rem; display: flex; align-items: center; justify-content: center; gap: 8px; border: none;">
+            <img src="/img/logo.png" alt="Logo" style="height: 35px; object-fit: contain;" onerror="this.style.display='none'; document.getElementById('fallbackIcon2').style.display='inline';">
+            <span id="fallbackIcon2" style="display:none; font-size: 1.5rem;">🔥</span> 
+            FIRE OF GOD
+        </h2>
+    </div>
+
+    <div style="max-width: 450px; margin: 40px auto; padding: 0 20px; width: 100%; box-sizing: border-box; flex: 1;">
+        <div class="card" style="padding: 30px 25px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center;">
+            <h2 style="color: var(--primary); margin-bottom: 5px; border: none;">Join the Family</h2>
+            <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 25px;">Create your free account to track your spiritual journey and connect with the community.</p>
+
+            <!-- Google OAuth Integration -->
+            <div style="margin-bottom: 25px; display: flex; justify-content: center;">
+                <script src="https://accounts.google.com/gsi/client" async defer></script>
+                <div id="g_id_onload"
+                     data-client_id="100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com"
+                     data-context="signup"
+                     data-ux_mode="redirect"
+                     data-login_uri="/api/auth/google/callback"
+                     data-auto_prompt="false">
+                </div>
+                <div class="g_id_signin"
+                     data-type="standard"
+                     data-shape="rectangular"
+                     data-theme="outline"
+                     data-text="signup_with"
+                     data-size="large"
+                     data-logo_alignment="left"
+                     data-width="300">
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; margin: 20px 0;">
+                <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
+                <span style="padding: 0 15px; color: var(--text-muted); font-size: 0.85rem; font-weight: bold; text-transform: uppercase;">Or register with email</span>
+                <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
+            </div>
+
+            <form onsubmit="alert('Manual registration is successfully routed! (Backend implementation pending)'); return false;" style="text-align: left;">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="font-weight: bold; font-size: 0.9rem; color: var(--text-main);">Full Name</label>
+                    <input type="text" class="form-control" placeholder="John Doe" required style="border-radius: 8px; padding: 12px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="font-weight: bold; font-size: 0.9rem; color: var(--text-main);">Email Address <span style="color:var(--danger);">*</span></label>
+                    <input type="email" class="form-control" placeholder="john@example.com" required style="border-radius: 8px; padding: 12px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="font-weight: bold; font-size: 0.9rem; color: var(--text-main);">Password</label>
+                    <input type="password" class="form-control" placeholder="Create a password" required style="border-radius: 8px; padding: 12px;">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; font-weight: bold; padding: 14px; font-size: 1.05rem; border-radius: 12px;">Create Account</button>
+            </form>
+            
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 25px;">
+                Already have an account? <a href="/" style="color: var(--primary); font-weight: bold; text-decoration: none;">Log in here</a>.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
