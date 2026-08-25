@@ -1406,3 +1406,219 @@ window.loadGroupChatMaster = async function(preserveScroll = false) {
     } catch(e) {}
 };
 
+
+// ==========================================
+// V102: TRUE FACEBOOK STATE ENGINE (NO RELOAD)
+// ==========================================
+
+// 1. DYNAMIC BADGE UPDATER (The Facebook Secret)
+window.refreshReactionBadgeUI = function(type, id, reactionsObj) {
+    // Update local memory maps
+    if (type === 'chat') window.chatReactionsMap[id] = reactionsObj;
+    if (type === 'memory') window.memoryReactionsMap[id] = reactionsObj;
+
+    let totalReacts = 0;
+    let reactSummary = [];
+    
+    Object.keys(reactionsObj).forEach(emoji => {
+        const count = Array.isArray(reactionsObj[emoji]) ? reactionsObj[emoji].length : reactionsObj[emoji];
+        if (count > 0) {
+            totalReacts += count;
+            if(!reactSummary.includes(emoji)) reactSummary.push(emoji);
+        }
+    });
+
+    const summaryId = `react_summary_${type}_${id}`;
+    const summaryEl = document.getElementById(summaryId);
+    
+    if (summaryEl) {
+        if (totalReacts > 0) {
+            // Update the HTML cleanly
+            summaryEl.innerHTML = `${reactSummary.slice(0,3).join('')} <span style="margin-left: 4px;">${totalReacts}</span>`;
+            summaryEl.style.display = 'flex';
+        } else {
+            // Hide if user removed their reaction and count is 0
+            summaryEl.innerHTML = '';
+            summaryEl.style.display = 'none';
+        }
+    }
+};
+
+// 2. THE MASTER SUBMISSION HANDLER
+window.submitReactionMaster = async function(type, id, emoji, event) {
+    // Stop any bubbling or weird click behaviors
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (!currentMember) return;
+    
+    // 1. Hide the emoji picker popup instantly
+    const pickerId = `picker_${type}_${id}`;
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = 'none';
+
+    // 2. Optimistic UI: Flash the emoji immediately so the user feels it worked
+    const summaryId = `react_summary_${type}_${id}`;
+    const summaryEl = document.getElementById(summaryId);
+    if (summaryEl) {
+        // If it was empty before, force it visible temporarily
+        if (summaryEl.style.display === 'none') {
+            summaryEl.style.display = 'flex';
+            summaryEl.innerHTML = `${emoji} <span style="font-size: 0.7rem; opacity: 0.8; margin-left:4px;">...</span>`;
+        }
+    }
+
+    try {
+        // 3. Ping the API to save the reaction
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name })
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.reactions) {
+                // 4. INSTANT INJECTION: Update the DOM directly using the exact API response!
+                // No more loadGroupChatMaster() or loadGroupMemoriesMaster() page reloads.
+                window.refreshReactionBadgeUI(type, id, data.reactions);
+            } else {
+                // Failsafe fallback
+                if (type === 'chat') window.loadGroupChatMaster(true);
+                if (type === 'memory') window.loadGroupMemoriesMaster();
+            }
+        } else {
+            if (summaryEl) summaryEl.style.display = 'none'; // Revert on failure
+        }
+    } catch(e) { 
+        console.error("Reaction submission error", e); 
+        if (summaryEl) summaryEl.style.display = 'none';
+    }
+};
+
+
+// ==========================================
+// V103: EVENT FORM CLEANUP & ROLES SPLIT-TABS
+// ==========================================
+
+// --- 1. EVENT FORM BUTTON CLEANUP ---
+const origLaunchPublicPreregV103 = window.launchPublicPrereg;
+window.launchPublicPrereg = async function(eventId) {
+    // Purify rogue DOM elements from malformed HTML immediately
+    const preregPublicTab = document.getElementById('preregPublicTab');
+    const successContainer = document.getElementById('preregStepSuccess');
+    
+    if (preregPublicTab && successContainer) {
+        // Hide duplicate download buttons outside the success container
+        Array.from(preregPublicTab.querySelectorAll('a#preregSuccessQrDownload')).forEach(btn => {
+            if (!successContainer.contains(btn)) btn.style.display = 'none';
+        });
+        
+        // Hide instructional text outside the success container
+        Array.from(preregPublicTab.querySelectorAll('p')).forEach(p => {
+            if (p.innerText.includes('long press on the QR code') || p.innerText.includes('download and keep a copy')) {
+                if (!successContainer.contains(p)) p.style.display = 'none';
+            }
+        });
+    }
+
+    if (origLaunchPublicPreregV103) await origLaunchPublicPreregV103(eventId);
+};
+
+const origExecutePreregisterV103 = window.executePreregister;
+window.executePreregister = async function(youthId, qrCode) {
+    if (origExecutePreregisterV103) await origExecutePreregisterV103(youthId, qrCode);
+    
+    // Explicitly unhide the correct button INSIDE the success container
+    const successContainer = document.getElementById('preregStepSuccess');
+    if (successContainer) {
+        const dlBtn = successContainer.querySelector('a#preregSuccessQrDownload');
+        if (dlBtn) dlBtn.style.display = 'inline-block';
+        
+        Array.from(successContainer.querySelectorAll('p')).forEach(p => {
+            if (p.innerText.includes('long press on the QR code') || p.innerText.includes('download and keep a copy')) {
+                p.style.display = 'block';
+            }
+        });
+    }
+};
+
+// --- 2. EVENT ROLES SPLIT-TABS ARCHITECTURE ---
+const origOpenAnalyticsModalV103 = window.openAnalyticsModal;
+window.openAnalyticsModal = async function(eventId) {
+    // 1. Build the sub-tabs dynamically if they don't exist
+    const rolesTabInner = document.querySelector('#analyticsTabRoles > div');
+    if (rolesTabInner && !document.getElementById('rolesSubNav')) {
+        const subNavHTML = `
+        <div id="rolesSubNav" class="sub-nav" style="background: #F8FAFC; border: 1px solid var(--border-color); border-radius: 8px; padding: 5px; margin-bottom: 20px;">
+            <button id="btnRoleTabAssignment" class="sub-nav-btn active" style="flex:1;" onclick="switchEventRolesSubTab('assignment')">👥 Assignment</button>
+            <button id="btnRoleTabNotes" class="sub-nav-btn" style="flex:1;" onclick="switchEventRolesSubTab('notes')">🔒 Notes</button>
+        </div>
+        `;
+        rolesTabInner.insertAdjacentHTML('afterbegin', subNavHTML);
+
+        const assignmentWrapper = document.createElement('div');
+        assignmentWrapper.id = 'roleTabAssignmentContent';
+        assignmentWrapper.style.display = 'block';
+
+        const notesWrapper = document.createElement('div');
+        notesWrapper.id = 'roleTabNotesContent';
+        notesWrapper.style.display = 'none';
+
+        // Migrate Assignment Elements
+        const assignControls = document.getElementById('eventRoleAssignControls');
+        const teamHeaders = Array.from(rolesTabInner.querySelectorAll('h3')).filter(h => h.innerText === 'Event Team');
+        const teamContainer = document.getElementById('eventRolesContainer');
+        
+        if (assignControls) assignmentWrapper.appendChild(assignControls);
+        teamHeaders.forEach(h => assignmentWrapper.appendChild(h));
+        if (teamContainer) assignmentWrapper.appendChild(teamContainer);
+
+        // Migrate Notes Elements
+        const notesSection = document.getElementById('eventRolesRestrictedSection');
+        if (notesSection) {
+            notesWrapper.appendChild(notesSection);
+            
+            // Expand Text Area for Leadership
+            const textarea = document.getElementById('eventRolesDetailNotes');
+            if (textarea) {
+                textarea.style.minHeight = '250px';
+                textarea.style.fontSize = '0.95rem';
+                textarea.style.lineHeight = '1.6';
+                textarea.style.backgroundColor = '#FFF';
+            }
+        }
+
+        rolesTabInner.appendChild(assignmentWrapper);
+        rolesTabInner.appendChild(notesWrapper);
+    }
+
+    // 2. Run Original Modal Logic
+    if (origOpenAnalyticsModalV103) await origOpenAnalyticsModalV103(eventId);
+
+    // 3. Enforce Permissions and Clean Up View State
+    if (window.switchEventRolesSubTab) window.switchEventRolesSubTab('assignment');
+    
+    // Override the legacy permission toggle to let our wrapper control visibility
+    const notesSection = document.getElementById('eventRolesRestrictedSection');
+    if (notesSection) notesSection.style.display = 'block'; 
+
+    const btnNotes = document.getElementById('btnRoleTabNotes');
+    if (btnNotes) {
+        if (window.hasPerm('edit_entries')) {
+            btnNotes.style.display = 'inline-flex';
+        } else {
+            btnNotes.style.display = 'none';
+        }
+    }
+};
+
+window.switchEventRolesSubTab = function(tab) {
+    const assignTab = document.getElementById('roleTabAssignmentContent');
+    const notesTab = document.getElementById('roleTabNotesContent');
+    const btnAssign = document.getElementById('btnRoleTabAssignment');
+    const btnNotes = document.getElementById('btnRoleTabNotes');
+
+    if (assignTab) assignTab.style.display = (tab === 'assignment') ? 'block' : 'none';
+    if (notesTab) notesTab.style.display = (tab === 'notes') ? 'block' : 'none';
+
+    if (btnAssign) btnAssign.classList.toggle('active', tab === 'assignment');
+    if (btnNotes) btnNotes.classList.toggle('active', tab === 'notes');
+};
