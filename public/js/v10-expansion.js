@@ -1622,3 +1622,201 @@ window.switchEventRolesSubTab = function(tab) {
     if (btnAssign) btnAssign.classList.toggle('active', tab === 'assignment');
     if (btnNotes) btnNotes.classList.toggle('active', tab === 'notes');
 };
+
+// ==========================================
+// V104: FINAL POLISH - Z-INDEX, FRESH LOGIN, TRUE REACTIONS
+// ==========================================
+
+// --- 1. Z-INDEX OVERRIDES FOR EVENT ROLES MODALS ---
+const origTriggerConfirmV104 = window.triggerActionConfirmation;
+window.triggerActionConfirmation = function(summaryText, actionFn) {
+    if (origTriggerConfirmV104) origTriggerConfirmV104(summaryText, actionFn);
+    const modal = document.getElementById('confirmModal');
+    if (modal) modal.style.setProperty('z-index', '109000', 'important');
+};
+
+const origOpenEditEventRoleV104 = window.openEditEventRoleModal;
+window.openEditEventRoleModal = function(mappingId, roleName, subRole) {
+    if (origOpenEditEventRoleV104) origOpenEditEventRoleV104(mappingId, roleName, subRole);
+    const modal = document.getElementById('editEventRoleModal');
+    if (modal) modal.style.setProperty('z-index', '109000', 'important');
+};
+
+// --- 2. FRESH LOGIN RENDER FIX ---
+const origSwitchTabV104 = window.switchTab;
+window.switchTab = async function(tabId) {
+    if (origSwitchTabV104) await origSwitchTabV104(tabId);
+    
+    // Force a re-render 100ms AFTER the tab becomes visible 
+    // This fixes the QR code canvas failing to draw on hidden elements
+    if (tabId === 'profileTab' && currentMember) {
+        setTimeout(() => window.populateProfileTab(currentMember), 100);
+    }
+    // This ensures Events are fetched immediately when looking at the tab
+    if (tabId === 'eventsTab') {
+        setTimeout(() => window.loadEvents(), 100);
+    }
+};
+
+// --- 3. TRUE FACEBOOK REACTIONS ENGINE (RESET & REBUILT) ---
+
+// Step A: Global CSS Override to stop the emoji picker from being clipped
+const styleFix = document.createElement('style');
+styleFix.innerHTML = `
+    .chat-bubble-override { overflow: visible !important; position: relative !important; }
+    .react-picker-popup { z-index: 108000 !important; }
+`;
+document.head.appendChild(styleFix);
+
+window.chatReactionsMap = {};
+window.memoryReactionsMap = {};
+
+// Step B: The UI Builder
+window.buildReactUI = function(type, id, reactionsStr) {
+    let reacts = {};
+    try { reacts = JSON.parse(reactionsStr || '{}'); } catch(e){}
+    
+    if (type === 'chat') window.chatReactionsMap[id] = reacts;
+    if (type === 'memory') window.memoryReactionsMap[id] = reacts;
+
+    let totalReacts = 0;
+    let reactSummary = [];
+    Object.keys(reacts).forEach(emoji => {
+        const count = Array.isArray(reacts[emoji]) ? reacts[emoji].length : reacts[emoji];
+        if (count > 0) {
+            totalReacts += count;
+            if(!reactSummary.includes(emoji)) reactSummary.push(emoji);
+        }
+    });
+
+    const summaryId = `react_summary_${type}_${id}`;
+    const pickerId = `picker_${type}_${id}`;
+
+    // The Facebook-style counter badge
+    const summaryHtml = totalReacts > 0 ? 
+        `<div id="${summaryId}" onclick="showReactionListMaster(${id}, '${type}')" style="cursor:pointer; display:flex; align-items:center; gap:4px; font-size:0.85rem; color:var(--primary); font-weight:bold; background:rgba(255,107,0,0.1); padding:4px 10px; border-radius:12px; margin-left: auto;">
+            ${reactSummary.slice(0,3).join('')} <span>${totalReacts}</span>
+        </div>` : `<div id="${summaryId}" style="display:none; cursor:pointer; align-items:center; gap:4px; font-size:0.85rem; color:var(--primary); font-weight:bold; background:rgba(255,107,0,0.1); padding:4px 10px; border-radius:12px; margin-left: auto;"></div>`;
+
+    // The new, unclippable action bar
+    return `
+    <div style="display:flex; align-items:center; width: 100%; margin-top: 8px; position: relative; padding-top: 8px; border-top: 1px dashed var(--border-color);">
+        <button type="button" onclick="toggleReactionPickerMaster('${pickerId}', event)" style="background:#F1F5F9; border:1px solid #E2E8F0; color:var(--text-muted); font-size:0.85rem; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; padding:4px 12px; border-radius:12px; transition:0.2s;">
+            <span style="font-size:1.1rem;">😀</span> React
+        </button>
+        
+        ${summaryHtml}
+        
+        <div id="${pickerId}" class="react-picker-popup" style="display:none; position:absolute; bottom: 100%; left: 0; background:#FFF; border:1px solid #E2E8F0; border-radius:24px; padding:8px 12px; margin-bottom: 8px; gap:12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+            <span style="cursor:pointer; font-size:1.4rem; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('${type}', ${id}, '👍', event)">👍</span>
+            <span style="cursor:pointer; font-size:1.4rem; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('${type}', ${id}, '❤️', event)">❤️</span>
+            <span style="cursor:pointer; font-size:1.4rem; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('${type}', ${id}, '😂', event)">😂</span>
+            <span style="cursor:pointer; font-size:1.4rem; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('${type}', ${id}, '🙏', event)">🙏</span>
+            <span style="cursor:pointer; font-size:1.4rem; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'" onclick="submitReactionMaster('${type}', ${id}, '🔥', event)">🔥</span>
+        </div>
+    </div>`;
+};
+
+// Step C: Submission Logic
+window.toggleReactionPickerMaster = function(pickerId, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    document.querySelectorAll('[id^="picker_"]').forEach(el => {
+        if (el.id !== pickerId) el.style.display = 'none';
+    });
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+};
+
+window.submitReactionMaster = async function(type, id, emoji, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (!currentMember) return alert("Please log in to react.");
+    
+    const pickerId = `picker_${type}_${id}`;
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name })
+        });
+        if (res.ok) {
+            if (type === 'chat') window.loadGroupChatMaster(true);
+            if (type === 'memory') window.loadGroupMemoriesMaster();
+        }
+    } catch(e) { console.error("Reaction submission error", e); }
+};
+
+// Step D: Apply to Chat
+window.loadGroupChatMaster = async function(preserveScroll = false) {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('groupChatMessages');
+    if (!container) return;
+    const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/chat?last_id=0`);
+        const messages = await res.json();
+        if (messages.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; margin-top: 20px;">Welcome to your group\'s private campfire. 🔥</p>';
+            return;
+        }
+        
+        container.innerHTML = messages.map(msg => {
+            const isMe = currentMember && msg.name === currentMember.name;
+            const align = isMe ? 'flex-end' : 'flex-start';
+            const bg = isMe ? 'var(--primary)' : '#E2E8F0';
+            const color = isMe ? '#FFF' : 'var(--text-main)';
+            const avatar = msg.profile_picture ? `<img src="${msg.profile_picture}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : `<div style="width:28px;height:28px;border-radius:50%;background:#CBD5E1;display:flex;align-items:center;justify-content:center;font-size:12px;color:#FFF;font-weight:bold;">${msg.name.charAt(0)}</div>`;
+            
+            let parsedMessage = msg.message.replace(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w\-]+)/g, 
+                (match, videoId) => `<div style="margin-top: 8px; border-radius: 8px; overflow: hidden; position: relative; padding-bottom: 56.25%; height: 0; width: 100%; min-width: 200px;"><iframe src="https://www.youtube.com/embed/${videoId}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;" allowfullscreen></iframe></div>`
+            );
+
+            // Notice the "chat-bubble-override" class protecting the overflow
+            return `
+            <div style="display:flex; flex-direction:column; align-items:${align}; margin-bottom:20px; width:100%;">
+                ${!isMe ? `<div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; font-size:0.8rem; color:var(--text-muted); font-weight:bold;">${avatar} ${msg.name}</div>` : ''}
+                
+                <div class="chat-bubble-override" style="background:${bg}; color:${color}; padding:14px; border-radius:12px; width:100%; max-width:85%; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <div style="font-size:0.95rem; line-height:1.4; word-wrap: break-word;">${parsedMessage}</div>
+                    ${window.buildReactUI('chat', msg.id, msg.reactions)}
+                </div>
+                <small style="font-size:0.65rem; color:var(--text-muted); margin-top:6px;">${msg.created_at.split(' ')[1]}</small>
+            </div>`;
+        }).join('');
+        
+        if (!preserveScroll || isScrolledToBottom) container.scrollTop = container.scrollHeight; 
+    } catch(e) {}
+};
+
+// Step E: Apply to Memories
+window.loadGroupMemoriesMaster = async function() {
+    if (!window.currentDashboardGroupId) return;
+    const container = document.getElementById('dashMemoriesGrid');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/small-groups/${window.currentDashboardGroupId}/memories`);
+        const memories = await res.json();
+        
+        if (memories.length === 0) {
+            container.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text-muted); font-size:0.9rem;">No memories posted yet.</div>';
+            return;
+        }
+        
+        container.innerHTML = memories.map(m => `
+        <div class="chat-bubble-override" style="background:#FFF; border-radius:12px; border:1px solid var(--border-color); box-shadow:0 4px 6px rgba(0,0,0,0.02); display:flex; flex-direction:column; margin-bottom: 20px;">
+            <img src="${m.image_data}" style="width:100%; height:160px; object-fit:cover; border-radius:12px 12px 0 0; cursor:pointer;" onclick="if(window.openImageViewer) window.openImageViewer(this.src)">
+            <div style="padding:15px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+                <p style="font-size:0.95rem; color:var(--text-main); margin:0 0 5px 0; font-weight:500;">${m.caption}</p>
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px;">By ${m.author_name}</div>
+                ${window.buildReactUI('memory', m.id, m.reactions)}
+            </div>
+        </div>`).join('');
+    } catch(e) {}
+};
+
+window.loadGroupChat = window.loadGroupChatMaster;
+window.loadGroupMemories = window.loadGroupMemoriesMaster;
+
