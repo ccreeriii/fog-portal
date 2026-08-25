@@ -37,11 +37,11 @@
         .trivia-btn.correct { background: #10B981; color: white; border-color: #10B981; }
         .trivia-btn.wrong { background: #EF4444; color: white; border-color: #EF4444; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
         .hero-image-container { width: 100%; max-height: 220px; border-radius: 16px; overflow: hidden; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); background: #FFF; display: flex; align-items: center; justify-content: center; }
         .hero-image-container img { width: 100%; height: auto; min-height: 150px; object-fit: cover; }
     </style>
     <script>
-        // REDUNDANT HEADER FIX: Executes immediately on load
         document.addEventListener("DOMContentLoaded", () => {
             const urlParams = new URLSearchParams(window.location.search);
             if(urlParams.get('embedded') === 'true') {
@@ -134,6 +134,10 @@
                     <strong style="font-size: 3rem; color: #F59E0B;" id="finalScoreDisplay">0</strong> <span style="font-size:1.5rem; color:#F59E0B;">XP</span>
                 </div>
                 
+                <div id="guestSaveNotice" style="background: rgba(245, 158, 11, 0.05); border: 1px dashed #F59E0B; padding: 15px; border-radius: 12px; margin-bottom: 15px; text-align: left;">
+                    <p style="font-size: 0.9rem; color: #D97706; margin: 0; line-height: 1.4;">🌟 <strong>Want to join the Leaderboards?</strong><br>Create a free profile to save your score, track your rank, and monitor your progress. Don't lose your high score!</p>
+                </div>
+                
                 <button id="saveScoreBtn" class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 1.1rem; font-weight: bold; border-radius: 12px; background: #F59E0B; border: none; margin-bottom: 15px;" onclick="window.location.href='/register-w.html'">💾 Save Best Score</button>
                 <button class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 1.1rem; font-weight: bold; border-radius: 12px; background: #3B82F6; border: none; margin-bottom: 15px;" onclick="shareToSocials()">📲 Challenge a Friend</button>
                 <button id="playAgainBtn" class="btn btn-outline" style="width: 100%; padding: 12px; font-size: 1rem; border-radius: 12px;" onclick="switchGameView('lobbyView')">Back to Lobby</button>
@@ -183,7 +187,6 @@
         function saveAttemptsData(data) { localStorage.setItem('fog_guest_arcade', JSON.stringify(data)); }
 
         function initLobby() {
-            // Check for logged-in user to hide guest card
             const loggedIn = JSON.parse(localStorage.getItem('fog_user') || 'null');
             if (loggedIn && loggedIn.member) {
                 const promo = document.getElementById('guestPromoCard');
@@ -217,7 +220,8 @@
         }
 
         function loadLeaderboards() {
-            fetch('/api/public/arcade-leaderboards')
+            // USING THE V2 ENDPOINT TO PREVENT DUPLICATES!
+            fetch('/api/public/arcade-leaderboards-v2')
                 .then(res => res.json())
                 .then(data => {
                     window.cachedLeaderboards = data;
@@ -299,7 +303,6 @@
             document.getElementById('currentScore').innerText = score;
             switchGameView('playView');
             
-            // THE ILLUSION ENGINE: Ask the backend for dynamic tailored questions!
             fetch('/api/growth-games/funnel?game=' + encodeURIComponent(currentGameName))
                 .then(res => res.json())
                 .then(data => {
@@ -376,11 +379,12 @@
 
             document.getElementById('finalScoreDisplay').innerText = best;
             
-            // --- THE MEMBER AUTO-SYNC FIX ---
             let loggedIn = JSON.parse(localStorage.getItem('fog_user') || 'null');
             if (loggedIn && loggedIn.member) {
                 const saveBtn = document.getElementById('saveScoreBtn');
-                if (saveBtn) saveBtn.style.display = 'none'; // Hides the button safely!
+                const guestNotice = document.getElementById('guestSaveNotice');
+                if (saveBtn) saveBtn.style.display = 'none'; 
+                if (guestNotice) guestNotice.style.display = 'none'; 
                 
                 fetch('/api/arcade/submit', {
                     method: 'POST',
@@ -391,7 +395,7 @@
                         score: score,
                         actor: loggedIn.member.name
                     })
-                }).then(() => loadLeaderboards()); // Auto-syncs silently!
+                }).then(() => loadLeaderboards()); 
             }
 
             document.getElementById('playAgainBtn').style.display = plays >= 3 ? 'none' : 'block';

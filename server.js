@@ -1721,3 +1721,58 @@ app.put('/api/ministries/members/:mapping_id/priority', (req, res) => {
         db.run(`UPDATE ministry_members SET is_priority = 1 WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); });
     });
 });
+
+// ==========================================
+// V120: BULLETPROOF FAITH QUEST ENDPOINTS
+// ==========================================
+// 1. Authorized Image Uploader V2
+app.post('/api/settings/images-v2', (req, res) => {
+    const { logo, prodIcon, stagingIcon, faithQuestThumb, actor } = req.body;
+    db.get('SELECT permissions FROM users WHERE username = ?', [actor], (err, user) => {
+        if (actor !== 'celsocreeriii@gmail.com' && (!user || !user.permissions.includes('edit_entries'))) {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
+        try {
+            const saveImg = (b64, fname) => {
+                if (!b64) return;
+                require('fs').writeFileSync(require('path').join(__dirname, 'public', 'img', fname), Buffer.from(b64.replace(/^data:image\/\w+;base64,/, ""), 'base64'));
+            };
+            saveImg(logo, 'logo.png'); saveImg(prodIcon, 'icon-prod.png'); saveImg(stagingIcon, 'icon-staging.png'); saveImg(faithQuestThumb, 'faith-quest-thumb.png');
+            res.json({ success: true });
+        } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+});
+
+// 2. De-duplicated Leaderboards V2
+app.get('/api/public/arcade-leaderboards-v2', (req, res) => {
+    const queries = {
+        daily: "SELECT y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE date(a.played_at) = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        weekly: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.played_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        lastWeek: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.played_at >= datetime('now', 'localtime', '-14 days') AND a.played_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        monthly: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE strftime('%Y-%m', a.played_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        allTime: "SELECT y.name, gp.arcade_xp as score FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id ORDER BY gp.arcade_xp DESC LIMIT 5",
+        topGames: "SELECT a.game_name, y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id GROUP BY a.game_name, y.name ORDER BY a.game_name, score DESC"
+    };
+    let results = {}; let pending = Object.keys(queries).length;
+    Object.keys(queries).forEach(k => {
+        db.all(queries[k], [], (err, rows) => { results[k] = rows || []; pending--; if (pending === 0) res.json(results); });
+    });
+});
+
+// 3. Funnel Illusion Engine API
+app.get('/api/growth-games/funnel', (req, res) => {
+    const game = req.query.game || '';
+    if (game.includes('Scramble')) {
+        res.json([ { question: "Unscramble: E-O-L-V", options: ["HOPE", "LOVE", "PEACE", "FAITH"], correct_index: 1 }, { question: "Unscramble: R-A-G-E-C", options: ["MERCY", "TRUTH", "GRACE", "LIGHT"], correct_index: 2 }, { question: "Unscramble: P-I-S-R-I-T", options: ["WATER", "BLOOD", "SPIRIT", "WINE"], correct_index: 2 }, { question: "Unscramble: T-H-F-A-I", options: ["TRUST", "HOPE", "GLORY", "FAITH"], correct_index: 3 }, { question: "Unscramble: C-P-E-A-E", options: ["PEACE", "JOY", "CALM", "REST"], correct_index: 0 } ]);
+    } else if (game.includes('Emoji')) {
+        res.json([ { question: "Decode: 🍎🐍🌳", options: ["Creation", "Adam & Eve", "Noah's Ark", "Moses"], correct_index: 1 }, { question: "Decode: 🌊🚶‍♂️💨", options: ["Parting Red Sea", "Walking on Water", "Jonah", "Baptism"], correct_index: 1 }, { question: "Decode: 🍞🐟🐟", options: ["Last Supper", "Feeding 5000", "Wedding at Cana", "Manna"], correct_index: 1 }, { question: "Decode: 🦁🕳️🙏", options: ["Daniel", "David", "Samson", "Joseph"], correct_index: 0 }, { question: "Decode: 👑⭐👶🐪", options: ["Crucifixion", "Resurrection", "Birth of Jesus", "Ascension"], correct_index: 2 } ]);
+    } else if (game.includes('Fruits')) {
+        res.json([ { question: "Which of these is a Fruit of the Spirit?", options: ["Wealth", "Patience", "Power", "Fame"], correct_index: 1 }, { question: "Which is NOT a Fruit of the Spirit?", options: ["Joy", "Peace", "Anger", "Goodness"], correct_index: 2 }, { question: "Complete: Love, Joy, Peace, ___", options: ["Hope", "Patience", "Courage", "Wisdom"], correct_index: 1 }, { question: "Complete: Kindness, Goodness, ___", options: ["Faithfulness", "Strength", "Boldness", "Glory"], correct_index: 0 }, { question: "Complete: Gentleness and ___", options: ["Self-Control", "Victory", "Prosperity", "Honor"], correct_index: 0 } ]);
+    } else {
+        db.all("SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 5", [], (err, rows) => {
+            if(err || !rows) return res.json([]);
+            rows.forEach(r => { if(typeof r.options === 'string') { try{ r.options=JSON.parse(r.options); }catch(e){r.options=["A","B","C","D"];} } });
+            res.json(rows);
+        });
+    }
+});

@@ -354,16 +354,50 @@
         <div id="adminSettingsCard" class="card" style="display: none; border-color: var(--primary); margin-top: 20px;">
             <h2 style="color: var(--primary);">Global Brand Settings</h2>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Upload site logo and PWA app icons.</p>
-            <form onsubmit="handleUpdateSiteImages(event)">
-                <div class="form-group"><label>Main Header Logo</label><input type="file" id="siteLogoInput" class="form-control" accept="image/png, image/jpeg"></div>
-                <div class="form-group"><label>Production App Icon</label><input type="file" id="prodIconInput" class="form-control" accept="image/png, image/jpeg"></div>
-                <div class="form-group"><label>Staging App Icon</label><input type="file" id="stagingIconInput" class="form-control" accept="image/png, image/jpeg"></div>
-                <div class="form-group" style="margin-top:15px; padding-top:15px; border-top:1px dashed var(--border-color);">
-                    <label style="color:#F59E0B;">🎯 Faith Quest Challenge Thumbnail</label>
-                    <input type="file" id="faithQuestThumbInput" class="form-control" accept="image/png, image/jpeg">
-                </div>
-                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top:15px;">Upload & Apply</button>
-            </form>
+            <form onsubmit="event.preventDefault(); window.handleUpdateSiteImages(event);">
+            <div class="form-group"><label>Main Header Logo</label><input type="file" id="siteLogoInput" class="form-control" accept="image/png, image/jpeg"></div>
+            <div class="form-group"><label>Production App Icon</label><input type="file" id="prodIconInput" class="form-control" accept="image/png, image/jpeg"></div>
+            <div class="form-group"><label>Staging App Icon</label><input type="file" id="stagingIconInput" class="form-control" accept="image/png, image/jpeg"></div>
+            <div class="form-group" style="margin-top:15px; padding-top:15px; border-top:1px dashed var(--border-color);">
+                <label style="color:#F59E0B;">🎯 Faith Quest Challenge Thumbnail</label>
+                <input type="file" id="faithQuestThumbInput" class="form-control" accept="image/png, image/jpeg">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top:15px;">Upload & Apply</button>
+        </form>
+        <script>
+        window.handleUpdateSiteImages = async function(e) {
+            if(e) e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            const origText = btn ? btn.innerText : 'Upload & Apply';
+            if(btn) { btn.innerText = 'Uploading...'; btn.disabled = true; }
+
+            const toBase64 = file => new Promise((resolve, reject) => {
+                const reader = new FileReader(); reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result); reader.onerror = error => reject(error);
+            });
+
+            let payload = { actor: window.currentUser ? window.currentUser.username : 'Admin' };
+            const logo = document.getElementById('siteLogoInput')?.files[0];
+            const prod = document.getElementById('prodIconInput')?.files[0];
+            const staging = document.getElementById('stagingIconInput')?.files[0];
+            const faithThumb = document.getElementById('faithQuestThumbInput')?.files[0];
+
+            try {
+                if (logo) payload.logo = await toBase64(logo);
+                if (prod) payload.prodIcon = await toBase64(prod);
+                if (staging) payload.stagingIcon = await toBase64(staging);
+                if (faithThumb) payload.faithQuestThumb = await toBase64(faithThumb);
+
+                if (Object.keys(payload).length === 1) { alert('Please select an image.'); if(btn) { btn.innerText=origText; btn.disabled=false; } return; }
+
+                // Using the V2 Endpoint!
+                const res = await fetch('/api/settings/images-v2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (res.ok) { alert('✅ Images updated successfully!'); e.target.reset(); } 
+                else { const d = await res.json(); alert('❌ Failed: ' + (d.error || 'Server error')); }
+            } catch(err) { alert('Network error.'); }
+            if(btn) { btn.innerText = origText; btn.disabled = false; }
+        };
+        </script>
             <hr style="margin: 25px 0; border: none; border-top: 1px solid var(--border-color);">
             <h2 style="color: #8B5CF6;">Featured Games Control</h2>
             <form id="featuredGamesForm" onsubmit="V10Expansion.saveFeaturedGames(event)">
