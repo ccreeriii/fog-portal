@@ -8,6 +8,108 @@ const webpush = require('web-push');
 const cron = require('node-cron');
 const app = express();
 
+// --- V109: ROOT INTERCEPTORS FOR REACTIONS & BROADCASTS ---
+app.post('/api/small-groups/react-v2', (req, res) => {
+    const { type, id, emoji, user_name } = req.body;
+    let table = '';
+    if(type === 'chat') table = 'small_group_chats';
+    else if(type === 'prayer') table = 'prayer_requests';
+    else if(type === 'memory') table = 'group_memories';
+    else return res.json({success:false});
+
+    db.get(`SELECT reactions FROM ${table} WHERE id = ?`, [id], (err, row) => {
+        if(!row) return res.json({success: false});
+        let reactions = {};
+        try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
+
+        let removedFromSameEmoji = false;
+        Object.keys(reactions).forEach(e => {
+            if(typeof reactions[e] === 'number') reactions[e] = Array(reactions[e]).fill('Anonymous');
+            if(!Array.isArray(reactions[e])) reactions[e] = [];
+            const idx = reactions[e].indexOf(user_name);
+            if(idx > -1) {
+                reactions[e].splice(idx, 1);
+                if (e === emoji) removedFromSameEmoji = true;
+            }
+        });
+
+        if(!removedFromSameEmoji) {
+            if(!reactions[emoji]) reactions[emoji] = [];
+            reactions[emoji].push(user_name);
+        }
+
+        // CRITICAL BUG FIX: Safely check array length to avoid deleting active reactions!
+        Object.keys(reactions).forEach(e => {
+            if(!reactions[e] || reactions[e].length === 0) delete reactions[e];
+        });
+
+        db.run(`UPDATE ${table} SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), id], () => {
+            res.json({success: true, reactions});
+        });
+    });
+});
+
+app.get('/api/small-groups/:id/chat', (req, res) => {
+    const lastId = parseInt(req.query.last_id) || 0;
+    // CRITICAL BUG FIX: Added c.reactions to the SELECT statement
+    db.all(`SELECT c.id, c.message, c.reactions, c.created_at, y.name, y.profile_picture FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? AND c.id > ? ORDER BY c.id ASC`, [req.params.id, lastId], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+app.post('/api/communications/broadcast', (req, res) => {
+    const { target, title, message, actor } = req.body;
+    db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', getManilaTime()], function(err) {
+        const announcementId = this.lastID;
+        
+        let targetQuery = `SELECT id, qr_code FROM youth`; let targetParams = [];
+        if (target === 'Leaders') {
+            targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`;
+        } else if (target === 'Groups') {
+            targetQuery = `SELECT DISTINCT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id`;
+        } else if (target.startsWith('Ministry:')) {
+            targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`;
+            targetParams.push(target.split(':')[1]);
+        } else if (target.startsWith('Group:')) {
+            targetQuery = `SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?`;
+            targetParams.push(target.split(':')[1]);
+        }
+        
+        db.all(targetQuery, targetParams, (err, youths) => {
+            const usernames = ['celsocreeriii@gmail.com'];
+            if (youths && youths.length > 0) {
+                const stmt = db.prepare(`INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)`);
+                youths.forEach(y => { if (y && y.id) { stmt.run([y.id, announcementId, getManilaTime()]); if (y.qr_code) usernames.push(y.qr_code); } });
+                stmt.finalize();
+            }
+            
+            // AGGRESSIVE PUSH NOTIFICATION: If 'All', grab EVERY subscription unconditionally!
+            const queryAll = target === 'All' ? `SELECT subscription FROM push_subscriptions` : `SELECT subscription FROM push_subscriptions WHERE username IN (${usernames.map(()=>'?').join(',')})`;
+            const paramsAll = target === 'All' ? [] : usernames;
+            
+            db.all(queryAll, paramsAll, (err, subs) => {
+                if (err || !subs || subs.length === 0) return res.json({ success: true, sentCount: 0 });
+                const payload = JSON.stringify({ title, body: message, url: '/' });
+                let sentCount = 0;
+                Promise.all(subs.map(row => {
+                    try {
+                        return webpush.sendNotification(JSON.parse(row.subscription), payload)
+                            .then(() => { sentCount++; })
+                            .catch(e => { 
+                                if (e.statusCode === 404 || e.statusCode === 410) db.run(`DELETE FROM push_subscriptions WHERE subscription = ?`, [row.subscription]); 
+                            });
+                    } catch(e) { return Promise.resolve(); }
+                })).then(() => { 
+                    try { logActivity(actor, 'BROADCAST', `Sent broadcast to ${target}`); } catch(e){}
+                    res.json({ success: true, sentCount }); 
+                });
+            });
+        });
+    });
+});
+
+
+
 // --- V35: ROOT INTERCEPTOR FOR MINISTRY ROLE LOGGING ---
 app.put('/api/ministries/:id/members/:mappingId', (req, res) => {
     const { role, sub_role, actor } = req.body;
@@ -1001,7 +1103,7 @@ app.delete('/api/small-groups/sessions/:session_id', (req, res) => {
 
 app.get('/api/small-groups/:id/chat', (req, res) => {
     const lastId = parseInt(req.query.last_id) || 0;
-    db.all(`SELECT c.id, c.message, c.created_at, y.name, y.profile_picture FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? AND c.id > ? ORDER BY c.id ASC`, [req.params.id, lastId], (err, rows) => {
+    db.all(`SELECT c.id, c.message, c.reactions, c.created_at, y.name, y.profile_picture FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? AND c.id > ? ORDER BY c.id ASC`, [req.params.id, lastId], (err, rows) => {
         res.json(rows || []);
     });
 });

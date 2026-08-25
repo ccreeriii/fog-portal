@@ -2016,3 +2016,253 @@ window.submitReactionMaster = function(type, id, emoji) {
     } catch(e) {}
 };
 
+
+// ==========================================
+// V106: TEXTAREA HEIGHT & TRUE SERVER SYNC
+// ==========================================
+
+// --- 1. FIX TEXT AREA HEIGHT ---
+const origOpenMinistryDetailsModalV106 = window.openMinistryDetailsModal;
+window.openMinistryDetailsModal = async function(id) {
+    if(origOpenMinistryDetailsModalV106) await origOpenMinistryDetailsModalV106(id);
+    
+    // Locate the textarea and reduce the height to prevent cutting off the button
+    const textarea = document.getElementById('ministryDetailNotes');
+    if (textarea) {
+        textarea.style.minHeight = '240px'; 
+    }
+};
+
+// --- 2. BULLETPROOF OPTIMISTIC SYNC ---
+window.submitReactionMaster = function(type, id, emoji) {
+    if (!currentMember) return alert("Please log in to react.");
+    
+    const pickerId = `picker_${type}_${id}`;
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = 'none';
+
+    const map = type === 'chat' ? window.chatReactionsMap : window.memoryReactionsMap;
+    
+    // Deep copy to ensure we don't accidentally corrupt local references
+    let currentReacts = JSON.parse(JSON.stringify(map[id] || {}));
+    
+    let removed = false;
+    Object.keys(currentReacts).forEach(e => {
+        if(Array.isArray(currentReacts[e])) {
+            const idx = currentReacts[e].indexOf(currentMember.name);
+            if (idx > -1) {
+                currentReacts[e].splice(idx, 1);
+                if (e === emoji) removed = true; 
+            }
+        }
+    });
+
+    if (!removed) {
+        if (!currentReacts[emoji]) currentReacts[emoji] = [];
+        currentReacts[emoji].push(currentMember.name);
+    }
+
+    Object.keys(currentReacts).forEach(e => {
+        if(currentReacts[e].length === 0) delete currentReacts[e];
+    });
+
+    // Update UI instantly
+    window.refreshReactionBadgeUI(type, id, currentReacts);
+
+    // Send to server and lock in the TRUE database state
+    try {
+        fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.reactions) {
+                // The server confirmed it! Lock in the database truth.
+                window.refreshReactionBadgeUI(type, id, data.reactions);
+            }
+        })
+        .catch(err => console.error("Reaction Sync Failed", err));
+    } catch(e) {}
+};
+
+// ==========================================
+// V107: THE KOINONIA PATCH - TRUE REACTIONS & SORTING
+// ==========================================
+
+// --- 1. PROFILE ROLES: PRIORITY SORTING ---
+window.loadMyV3Roles = async function(targetMemberId, containerId) {
+    const id = targetMemberId || (typeof currentMember !== 'undefined' && currentMember ? currentMember.id : null);
+    const cId = containerId || 'myMinistriesHistory';
+    const container = document.getElementById(cId);
+    if (!container || !id) return;
+
+    container.innerHTML = '<div style="text-align:center; padding:10px; color:var(--text-muted);">Loading roles...</div>';
+    try {
+        const [minRes, evtRes] = await Promise.all([ fetch('/api/youth/' + id + '/ministries'), fetch('/api/youth/' + id + '/event_roles') ]);
+        const ministries = await minRes.json(); const events = await evtRes.json();
+
+        let allRoles = [];
+        if(ministries && ministries.length) ministries.forEach(m => allRoles.push({...m, type: 'ministry'}));
+        if(events && events.length) events.forEach(e => allRoles.push({...e, type: 'event'}));
+        if (allRoles.length === 0) return container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:10px;">No roles assigned yet.</div>';
+
+        // NEW SORTING: Priority first, then Ministry, then Event, then Date
+        allRoles.sort((a, b) => {
+            const aPrio = a.is_priority ? 1 : 0;
+            const bPrio = b.is_priority ? 1 : 0;
+            if (aPrio !== bPrio) return bPrio - aPrio; // Forces Priority to the top!
+            if (a.type !== b.type) return a.type === 'ministry' ? -1 : 1;
+            return new Date(b.assigned_at) - new Date(a.assigned_at);
+        });
+
+        container.innerHTML = allRoles.map(r => {
+            const isPriority = r.is_priority === 1;
+            const priorityBadge = isPriority ? '<span style="background:#FEF3C7; color:#D97706; padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-left:8px;">⭐ Priority</span>' : '';
+            const badge = r.type === 'ministry' ? '<span class="badge badge-blue">🏛️ Ministry</span>' : '<span class="badge badge-orange">📅 Event</span>';
+            const title = r.type === 'ministry' ? r.ministry_name : r.event_name;
+            const actionBtn = (r.type === 'ministry' && r.role !== 'Applicant' && !isPriority && currentMember && id == currentMember.id && cId === 'myMinistriesHistory')
+                ? `<button class="btn btn-primary btn-sm" style="margin-top:10px; font-size:0.75rem; font-weight:bold;" onclick="setCorePriority(${r.mapping_id})">⭐ Make Priority</button>` : '';
+
+            return `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${isPriority ? '#F59E0B' : 'var(--border-color)'};">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><strong style="color: var(--primary); font-size: 1.05rem;">${title || 'Unknown'} ${priorityBadge}</strong>${badge}</div>
+                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:5px;"><strong>Role:</strong> ${r.role || r.role_name} ${r.sub_role ? ' | '+r.sub_role : ''}</div>${actionBtn}
+            </div>`;
+        }).join('');
+    } catch(e) { container.innerHTML = '<div style="color:var(--danger); text-align:center;">Failed to load roles.</div>'; }
+};
+
+// --- 2. FLAWLESS FACEBOOK REACTION ENGINE ---
+window.submitReactionMaster = async function(type, id, emoji, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (!currentMember) return alert("Please log in to react.");
+    
+    // 1. Hide picker instantly
+    const pickerId = `picker_${type}_${id}`;
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = 'none';
+
+    // 2. Visual Cue
+    const summaryId = `react_summary_${type}_${id}`;
+    const summaryEl = document.getElementById(summaryId);
+    if (summaryEl && summaryEl.style.display === 'none') {
+        summaryEl.style.display = 'flex';
+        summaryEl.innerHTML = `⏳`;
+    }
+
+    try {
+        // 3. Direct API Call (Let the server do the math securely)
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name || 'Member' })
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.reactions) {
+                // 4. Paint the true state from the server directly to the DOM!
+                window.refreshReactionBadgeUI(type, id, data.reactions);
+            }
+        }
+    } catch(e) { 
+        console.error("Reaction submission error", e); 
+        if (summaryEl && summaryEl.innerHTML === `⏳`) summaryEl.style.display = 'none';
+    }
+};
+
+
+// ==========================================
+// V108: TRUE OPTIMISTIC REACTIONS & BROADCAST OVERRIDE
+// ==========================================
+
+// --- 1. THE PERFECT OPTIMISTIC REACTION ENGINE (Restored & Perfected) ---
+window.submitReactionMaster = function(type, id, emoji, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (!currentMember) return alert("Please log in to react.");
+    
+    // 1. Hide picker instantly
+    const pickerId = `picker_${type}_${id}`;
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = 'none';
+
+    const map = type === 'chat' ? window.chatReactionsMap : window.memoryReactionsMap;
+    
+    // 2. Deep copy to calculate local state
+    let currentReacts = JSON.parse(JSON.stringify(map[id] || {}));
+    
+    let removed = false;
+    Object.keys(currentReacts).forEach(e => {
+        if(Array.isArray(currentReacts[e])) {
+            const idx = currentReacts[e].indexOf(currentMember.name);
+            if (idx > -1) {
+                currentReacts[e].splice(idx, 1);
+                if (e === emoji) removed = true; 
+            }
+        }
+    });
+
+    if (!removed) {
+        if (!currentReacts[emoji]) currentReacts[emoji] = [];
+        currentReacts[emoji].push(currentMember.name);
+    }
+
+    Object.keys(currentReacts).forEach(e => {
+        if(currentReacts[e].length === 0) delete currentReacts[e];
+    });
+
+    // 3. INSTANT UI UPDATE (Zero lag, zero server waiting)
+    window.refreshReactionBadgeUI(type, id, currentReacts);
+
+    // 4. Send to server silently in the background
+    try {
+        fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name })
+        }).catch(err => console.error("Reaction Sync Failed", err));
+    } catch(e) {}
+};
+
+
+// --- 2. BROADCAST PUSH NOTIFICATION OVERRIDE ---
+if (typeof window.V4Communications === 'undefined') window.V4Communications = {};
+
+window.V4Communications.sendBroadcast = async function(e) {
+    e.preventDefault(); // Stop the page from refreshing!
+    
+    const target = document.getElementById('bcTargetSelect').value;
+    const title = document.getElementById('bcTitle').value;
+    const message = document.getElementById('bcMessage').value;
+    
+    if (!title || !message) return alert("Please fill out all fields.");
+
+    const btn = e.target.querySelector('button[type="submit"]');
+    const origText = btn.innerText;
+    btn.innerText = '📡 Broadcasting...';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/communications/broadcast', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ target, title, message, actor: currentUser || 'Admin' })
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+            alert(`✅ Broadcast sent successfully!\nIt was delivered to ${data.sentCount} connected devices.`);
+            document.getElementById('broadcastForm').reset();
+            
+            // Refresh history natively if the function exists
+            if (typeof window.loadBroadcastHistory === 'function') window.loadBroadcastHistory();
+        } else {
+            alert('❌ Failed to send broadcast. Check server connection.');
+        }
+    } catch(err) {
+        console.error(err);
+        alert('❌ Network error sending broadcast.');
+    }
+    
+    btn.innerText = origText;
+    btn.disabled = false;
+};
+
