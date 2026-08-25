@@ -6019,3 +6019,108 @@ window.onload = (e) => {
     // DEFAULT SCENARIO: Normal load (No special URLs)
     if (ogOnLoadPhaseB) ogOnLoadPhaseB(e);
 };
+
+// ==========================================
+// KOINONIA PHASE B HOTFIX: SECURE GUEST ROUTING
+// ==========================================
+
+const ogSwitchTabGuestSec = window.switchTab;
+
+window.switchTab = async function(tabId) {
+    // 1. Intercept restricted tabs for Guests
+    if (window.isGuestMode) {
+        const restrictedTabs = ['eventsTab', 'discipleshipTab', 'inboxTab', 'profileTab'];
+        
+        if (restrictedTabs.includes(tabId)) {
+            // Drop them at the login screen with a warm Koinonia message
+            alert("Create a free account to unlock community events and deeper spiritual formation! 🌱");
+            if (ogSwitchTabGuestSec) await ogSwitchTabGuestSec('loginTab');
+            return; 
+        }
+    }
+    
+    // 2. Proceed with normal tab routing
+    if (ogSwitchTabGuestSec) await ogSwitchTabGuestSec(tabId);
+    
+    // 3. UI Masking: Hide the "Quick Actions" block on the Guest Dashboard
+    if (window.isGuestMode && tabId === 'pulseDashboardTab') {
+        setTimeout(() => {
+            // Find the Events quick-action button
+            const eventsBtn = document.querySelector('button[onclick="switchTab(\'eventsTab\')"]');
+            if (eventsBtn && eventsBtn.parentElement) {
+                // Hide the grid container holding the Quick Actions
+                eventsBtn.parentElement.style.display = 'none';
+            }
+        }, 150);
+    }
+};
+
+
+// ==========================================
+// KOINONIA PHASE B HOTFIX: GUEST UI & REGISTRATION MUTATION
+// ==========================================
+
+const ogSwitchTabGuestSecV2 = window.switchTab;
+
+window.switchTab = async function(tabId) {
+    // 1. GUEST RESTRICTION & REGISTRATION MUTATOR
+    if (window.isGuestMode) {
+        const restrictedTabs = ['eventsTab', 'discipleshipTab', 'inboxTab', 'profileTab'];
+        
+        if (restrictedTabs.includes(tabId)) {
+            alert("Create a free account to unlock community events and deeper spiritual formation! 🌱");
+            
+            // Transform the Login Tab into a Frictionless Registration Tab
+            const loginTitle = document.querySelector('#loginTab h2');
+            if(loginTitle) loginTitle.innerText = "Create Free Account";
+            
+            // Hide the manual username/password fields and the submit button
+            document.querySelectorAll('#loginTab form .form-group').forEach(el => el.style.display = 'none');
+            const loginBtn = document.querySelector('#loginTab form button[type="submit"]');
+            if (loginBtn) loginBtn.style.display = 'none';
+            
+            // Emphasize the 1-Tap Google Auth
+            const orText = document.querySelector('#loginTab .text-muted');
+            if (orText) orText.innerText = "Sign up instantly with Google";
+            if (!orText) { // Fallback if exact class is missed
+                document.querySelectorAll('#loginTab span').forEach(s => {
+                    if (s.innerText.includes('continue with')) s.innerText = "Sign up instantly with Google";
+                });
+            }
+
+            if (ogSwitchTabGuestSecV2) await ogSwitchTabGuestSecV2('loginTab');
+            return; 
+        }
+    }
+    
+    // 2. NORMAL TAB ROUTING
+    if (ogSwitchTabGuestSecV2) await ogSwitchTabGuestSecV2(tabId);
+    
+    // 3. GUEST DASHBOARD CLEANUP & DAILY MANNA FAILSAFE
+    if (window.isGuestMode && tabId === 'pulseDashboardTab') {
+        setTimeout(() => {
+            // Hide all unnecessary cards (Prayer Pal, Journey)
+            const dashboardCards = document.querySelectorAll('#pulseDashboardTab .card');
+            if (dashboardCards.length > 1) dashboardCards[1].style.display = 'none'; 
+            if (dashboardCards.length > 2) dashboardCards[2].style.display = 'none'; 
+
+            // Force hide the Events/Campfire buttons reliably
+            Array.from(document.querySelectorAll('#pulseDashboardTab button')).forEach(btn => {
+                if (btn.textContent.includes('Events') || btn.textContent.includes('Campfire')) {
+                    if (btn.parentElement) btn.parentElement.style.display = 'none';
+                }
+            });
+
+            // Failsafe Daily Manna Load (Bypasses the broken member profile fetch)
+            fetch('/api/liturgical/today')
+                .then(res => res.json())
+                .then(data => {
+                    const mannaText = document.getElementById('pulseDailyGospelText');
+                    if (mannaText) mannaText.innerText = data.gospel || "The Lord is my shepherd; I shall not want. (Psalm 23)";
+                }).catch(e => {
+                    const mannaText = document.getElementById('pulseDailyGospelText');
+                    if (mannaText) mannaText.innerText = "The Lord is my shepherd; I shall not want. (Psalm 23)";
+                });
+        }, 100);
+    }
+};
