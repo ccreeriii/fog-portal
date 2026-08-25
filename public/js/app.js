@@ -5742,3 +5742,120 @@ window.setCorePriority = async function(mappingId) {
         alert('Error updating priority. Please check your connection.'); 
     }
 };
+
+// ==========================================
+// HOTFIX: EVENTS BUGS & TRUE FACEBOOK REACTIONS
+// ==========================================
+
+// --- 1. EVENT FORM BUTTON FIX (Safe Null Checks) ---
+window.openPreregSettings = function(eventId) {
+    const e = eventsData.find(ev => ev.id == eventId);
+    if (!e) return;
+    
+    const idInput = document.getElementById('preregSetEventId');
+    if (idInput) idInput.value = e.id;
+    
+    const titleInput = document.getElementById('preregSetTitle');
+    if (titleInput) titleInput.value = e.prereg_title || e.name || '';
+    
+    const infoInput = document.getElementById('preregSetInfo');
+    if (infoInput) infoInput.value = e.prereg_info || '';
+    
+    const bannerInput = document.getElementById('preregSetBanner');
+    if (bannerInput) bannerInput.value = '';
+    
+    // The silent crash happened here. This safe check prevents it.
+    const bottomBannerInput = document.getElementById('preregSetBottomBanner');
+    if (bottomBannerInput) bottomBannerInput.value = ''; 
+    
+    const modal = document.getElementById('preregSettingsModal');
+    if (modal) modal.classList.add('active');
+};
+
+// --- 2. EVENT ROLES TAB FIX (Direct Display Manipulation) ---
+window.switchAnalyticsSubTab = function(tab) {
+    const overviewTab = document.getElementById('analyticsTabOverview');
+    const rolesTab = document.getElementById('analyticsTabRoles');
+    const btnOverview = document.getElementById('btnAnalyticsTabOverview');
+    const btnRoles = document.getElementById('btnAnalyticsTabRoles');
+
+    if (overviewTab) overviewTab.style.display = (tab === 'overview') ? 'block' : 'none';
+    if (rolesTab) rolesTab.style.display = (tab === 'roles') ? 'block' : 'none';
+
+    if (btnOverview) btnOverview.classList.toggle('active', tab === 'overview');
+    if (btnRoles) btnRoles.classList.toggle('active', tab === 'roles');
+};
+
+// --- 3. TRUE FACEBOOK REACTION ENGINE (Direct DOM Mutation, ZERO Reloads) ---
+window.refreshReactionBadgeUI = function(type, id, reactionsObj) {
+    // Keep local cache synced
+    if (type === 'chat') window.chatReactionsMap[id] = reactionsObj;
+    if (type === 'memory') window.memoryReactionsMap[id] = reactionsObj;
+
+    let totalReacts = 0;
+    let reactSummary = [];
+    
+    Object.keys(reactionsObj).forEach(emoji => {
+        const count = Array.isArray(reactionsObj[emoji]) ? reactionsObj[emoji].length : reactionsObj[emoji];
+        if (count > 0) {
+            totalReacts += count;
+            if(!reactSummary.includes(emoji)) reactSummary.push(emoji);
+        }
+    });
+
+    // Locate the exact badge for this specific message/memory
+    const summaryId = `react_summary_${type}_${id}`;
+    const summaryEl = document.getElementById(summaryId);
+    
+    if (summaryEl) {
+        if (totalReacts > 0) {
+            summaryEl.innerHTML = `${reactSummary.slice(0,3).join('')} <span style="margin-left: 4px; font-weight: bold;">${totalReacts}</span>`;
+            summaryEl.style.display = 'flex';
+        } else {
+            summaryEl.innerHTML = '';
+            summaryEl.style.display = 'none';
+        }
+    }
+};
+
+window.submitReactionMaster = async function(type, id, emoji, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (!currentMember) return alert("Please log in to react.");
+    
+    // 1. Instantly hide the popup picker
+    const pickerId = `picker_${type}_${id}`;
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = 'none';
+
+    // 2. Optimistic UI: Inject the emoji to give instant visual feedback
+    const summaryId = `react_summary_${type}_${id}`;
+    const summaryEl = document.getElementById(summaryId);
+    if (summaryEl) {
+        summaryEl.style.display = 'flex';
+        summaryEl.innerHTML = `${emoji} <span style="font-size: 0.7rem; opacity: 0.8; margin-left:4px;">...</span>`;
+    }
+
+    try {
+        // 3. Send to API in the background
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name })
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.reactions) {
+                // 4. Update the DOM directly using the verified API response!
+                // NO PAGE RELOADING. The UI updates natively and securely.
+                window.refreshReactionBadgeUI(type, id, data.reactions);
+            }
+        } else {
+            // Revert on failure
+            if (summaryEl) { summaryEl.innerHTML = '❌'; setTimeout(() => summaryEl.style.display = 'none', 1000); }
+        }
+    } catch(e) { 
+        console.error("Reaction submission error", e); 
+        if (summaryEl) { summaryEl.innerHTML = '❌'; setTimeout(() => summaryEl.style.display = 'none', 1000); }
+    }
+};
+
