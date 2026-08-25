@@ -16,6 +16,17 @@ process.on('unhandledRejection', (reason, promise) => console.error('Unhandled R
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
+// ==========================================
+// KOINONIA PHASE B: URL QUERY INTERCEPTOR
+// ==========================================
+app.use((req, res, next) => {
+    if (req.path === '/' && req.query.read === 'daily-manna') {
+        return res.sendFile(require('path').join(__dirname, 'public', 'seeker-manna.html'));
+    }
+    next();
+});
+
+
 
 // ==========================================
 // V112: THE PERFECTED ROUTER (POST-BODY-PARSER)
@@ -496,6 +507,7 @@ function awardPoints(youthId, type, amount, actor, gameName = null) {
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res, next) => {
+    
     const eventId = req.query.event;
     if (!eventId) return next();
     db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
