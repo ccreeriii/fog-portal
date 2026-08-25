@@ -5859,3 +5859,163 @@ window.submitReactionMaster = async function(type, id, emoji, event) {
     }
 };
 
+
+// ==========================================
+// KOINONIA PHASE B: SEEKER FUNNEL & GUEST STATE
+// ==========================================
+
+window.isGuestMode = false;
+
+// 1. URL ROUTER & LOGIN INTERCEPTOR
+const origCheckLoginStatePhaseB = window.checkLoginState;
+window.checkLoginState = function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const playParam = urlParams.get('play');
+    const readParam = urlParams.get('read');
+    const eventParam = urlParams.get('event');
+
+    const saved = localStorage.getItem('fog_user');
+
+    // SCENARIO A: User is already logged in normally
+    if (saved) {
+        origCheckLoginStatePhaseB();
+        
+        // Route them directly to their requested content
+        if (playParam) {
+            setTimeout(() => { switchTab('arcadeTab'); }, 500);
+        } else if (readParam === 'daily-manna') {
+            setTimeout(() => { switchTab('pulseDashboardTab'); if(window.loadDailyManna) window.loadDailyManna(); }, 500);
+        } else if (eventParam) {
+            setTimeout(() => { switchTab('preregPublicTab'); }, 500);
+        }
+        return;
+    }
+
+    // SCENARIO B: Unauthenticated Seeker (Guest Mode)
+    if (playParam || readParam || eventParam) {
+        window.isGuestMode = true;
+        window.currentUser = 'Guest';
+        
+        // Hide global preloader
+        const loader = document.getElementById('globalPreloader');
+        if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 500); }
+
+        // Render Guest Navigation
+        if (window.renderBottomNav) window.renderBottomNav('guest');
+
+        // Route to content
+        if (playParam) {
+            switchTab('arcadeTab');
+        } else if (readParam === 'daily-manna') {
+            switchTab('pulseDashboardTab');
+            setTimeout(() => { if(window.loadDailyManna) window.loadDailyManna(); }, 500);
+        } else if (eventParam) {
+            switchTab('preregPublicTab');
+            
+            // 2. ENFORCE EMAIL REQUIREMENT FOR DEDUPLICATION
+            const pubEmail = document.getElementById('preregPublicEmail');
+            if (pubEmail) {
+                pubEmail.required = true;
+                pubEmail.placeholder = "Email Address (Required for VIP Pass)";
+            }
+        }
+    } else {
+        // SCENARIO C: Default Unauthenticated (Send to Login)
+        origCheckLoginStatePhaseB();
+    }
+};
+
+// 3. GUEST UI MASKING (Bottom Nav)
+const origRenderBottomNavPhaseB = window.renderBottomNav;
+window.renderBottomNav = function(context) {
+    if (window.isGuestMode || context === 'guest') {
+        const bottomNav = document.getElementById('bottomNav');
+        if (bottomNav) {
+            bottomNav.innerHTML = `
+                <button class="bottom-nav-btn text-primary" style="font-weight: bold;" onclick="window.location.href='/'"><span>🚪</span>Login</button>
+                <button class="bottom-nav-btn ${window.location.search.includes('read=') ? 'active' : ''}" onclick="window.location.href='/?read=daily-manna'"><span>📖</span>Manna</button>
+                <button class="bottom-nav-btn ${window.location.search.includes('play=') ? 'active' : ''}" onclick="window.location.href='/?play=arcade'"><span>🎯</span>Arcade</button>
+            `;
+        }
+        return;
+    }
+    
+    // Normal Member Nav
+    if (origRenderBottomNavPhaseB) origRenderBottomNavPhaseB(context);
+};
+
+// ==========================================
+// KOINONIA PHASE B HOTFIX: ONLOAD MASTER OVERRIDE
+// ==========================================
+
+const ogOnLoadPhaseB = window.onload;
+
+window.onload = (e) => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const playParam = urlParams.get('play');
+    const readParam = urlParams.get('read');
+    const eventParam = urlParams.get('event');
+    const savedSession = localStorage.getItem('fog_user');
+
+    // SCENARIO 1: Unauthenticated Guest accessing Manna or Arcade
+    if (!savedSession && (playParam || readParam)) {
+        document.getElementById('mainHeader').style.display = 'block';
+        document.getElementById('mainContainer').style.display = 'block';
+
+        window.isGuestMode = true;
+        window.currentUser = 'Guest';
+
+        const loader = document.getElementById('globalPreloader');
+        if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 500); }
+
+        if (window.renderBottomNav) window.renderBottomNav('guest');
+
+        if (playParam) {
+            window.switchTab('arcadeTab');
+        } else if (readParam === 'daily-manna') {
+            window.switchTab('pulseDashboardTab');
+            setTimeout(() => { if(window.loadDailyManna) window.loadDailyManna(); }, 500);
+        }
+        
+        // CRITICAL: Return immediately to prevent the original onload from forcing loginTab!
+        return; 
+    }
+
+    // SCENARIO 2: Unauthenticated Guest accessing Event Pre-reg
+    if (!savedSession && eventParam) {
+        window.isGuestMode = true;
+        window.currentUser = 'Guest';
+        
+        // Let the original script handle the event load
+        if (ogOnLoadPhaseB) ogOnLoadPhaseB(e);
+        
+        // Enforce email deduplication & guest nav after the original load finishes
+        setTimeout(() => {
+            const pubEmail = document.getElementById('preregPublicEmail');
+            if (pubEmail) {
+                pubEmail.required = true;
+                pubEmail.placeholder = "Email Address (Required for VIP Pass)";
+            }
+            if (window.renderBottomNav) window.renderBottomNav('guest');
+        }, 500);
+        return;
+    }
+
+    // SCENARIO 3: Authenticated User overriding their default start tab
+    if (savedSession && (playParam || readParam || eventParam)) {
+        if (ogOnLoadPhaseB) ogOnLoadPhaseB(e);
+        
+        // Let original logic log them in, then yank them to their requested content
+        setTimeout(() => {
+            if (playParam) window.switchTab('arcadeTab');
+            else if (readParam === 'daily-manna') {
+                window.switchTab('pulseDashboardTab');
+                if(window.loadDailyManna) window.loadDailyManna();
+            }
+        }, 800);
+        return;
+    }
+
+    // DEFAULT SCENARIO: Normal load (No special URLs)
+    if (ogOnLoadPhaseB) ogOnLoadPhaseB(e);
+};
