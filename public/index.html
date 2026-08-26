@@ -56,65 +56,60 @@
 
 
     <!-- 📍 APP STATE MANAGER V7 (SAFEGUARDED) -->
+    
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V7 -->
+    
+    
+
+
+    <!-- 📍 APP STATE MANAGER V8 -->
     <script id="appStateManagerScript">
-        // SAFEGUARD: Only run overrides if the user is ACTUALLY authenticated!
         const isUserLoggedIn = () => {
-            try {
-                const user = JSON.parse(localStorage.getItem('fog_user'));
-                return user && user.member;
-            } catch(e) { return false; }
+            try { return !!JSON.parse(localStorage.getItem('fog_user'))?.member; } 
+            catch(e) { return false; }
         };
 
-        // 1. REFRESH & ROUTING INTERCEPTOR
-        const enforceHomeTab = () => {
-            if (!isUserLoggedIn()) return; // Let the app show the login screen safely!
-
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('tab') === 'home' || !window.location.search || window.location.search === '?tab=') {
-                if (window.V6Gamification && typeof window.V6Gamification.switchTab === 'function') {
-                    window.V6Gamification.switchTab('home');
-                }
-                const homeBtn = document.querySelector('[onclick*="home"], [onclick*="Home"]');
-                if(homeBtn) homeBtn.click();
-            }
-        };
-
+        // 1. THE ABSOLUTE REFRESH ENFORCER
         if (window.performance) {
             const navEntries = window.performance.getEntriesByType("navigation");
             if (navEntries.length > 0 && navEntries[0].type === "reload") {
-                if (isUserLoggedIn() && !window.location.search.includes('tab=home') && !window.location.search.includes('faith=quest')) {
-                    window.location.replace('/?tab=home');
+                if (isUserLoggedIn() && window.location.search !== '?tab=home' && !window.location.search.includes('faith=quest')) {
+                    // Force the browser to navigate to home immediately upon detecting a reload
+                    window.location.href = '/?tab=home';
                 }
             }
         }
 
-        document.addEventListener("DOMContentLoaded", enforceHomeTab);
-        window.addEventListener("load", () => {
-            setTimeout(enforceHomeTab, 100);
-            setTimeout(enforceHomeTab, 500);
-        });
-
-        // 2. BOTTOM NAV SWAPPER (Profile -> Home)
-        setInterval(() => {
-            if (!isUserLoggedIn()) return;
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('tab') === 'grow') {
-                const profileBtns = Array.from(document.querySelectorAll('[onclick*="profile"], [onclick*="Profile"]'));
-                profileBtns.forEach(btn => {
-                    if (btn.closest('nav') || btn.closest('.bottom-nav') || btn.closest('.footer')) {
-                        btn.innerHTML = '<span style="font-size: 1.4rem; display:block; margin-bottom:2px;">🏠</span><span style="font-size: 0.75rem; font-weight:bold;">Home</span>';
-                        btn.onclick = (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            window.location.href = '/?tab=home';
-                        };
+        // 2. THE RUTHLESS BOTTOM NAV SWAPPER (Profile -> Home)
+        document.addEventListener("DOMContentLoaded", () => {
+            setInterval(() => {
+                if (!isUserLoggedIn()) return;
+                const urlParams = new URLSearchParams(window.location.search);
+                
+                // Only execute if we are strictly on the Growth tab
+                if (urlParams.get('tab') === 'grow') {
+                    // Search EVERY possible button or nav item for the word "Profile"
+                    const allNavItems = Array.from(document.querySelectorAll('.bottom-nav *, nav *, .footer *, [class*="nav"], [class*="tab"]'));
+                    const profileItem = allNavItems.find(el => el.innerText && el.innerText.trim() === 'Profile');
+                    
+                    if (profileItem) {
+                        // Find the master container for this button to swap it cleanly
+                        const btnContainer = profileItem.closest('div, a, button, li');
+                        if (btnContainer) {
+                            btnContainer.innerHTML = '<span style="font-size: 1.3rem; display:block; margin-bottom:2px;">🏠</span><span style="font-size: 0.75rem; font-weight:bold;">Home</span>';
+                            btnContainer.onclick = (e) => {
+                                e.preventDefault(); e.stopPropagation();
+                                window.location.href = '/?tab=home';
+                            };
+                        }
                     }
-                });
-            }
-        }, 500);
+                }
+            }, 300); // Check multiple times a second to beat the native renderer
+        });
     </script>
 
-    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V7 -->
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V8 -->
     <style id="continuityHubCss">
         .continuity-card {
             transition: transform 0.05s ease-out, background-color 0.1s ease-out !important;
@@ -125,26 +120,17 @@
             background-color: #F1F5F9 !important;
         }
     </style>
-    <script id="continuityHubEngineV7">
+    <script id="continuityHubEngineV8">
         window.hubNavTo = function(tabName) {
-            if (tabName === 'arcade') {
-                window.location.href = '/?faith=quest';
-                return;
-            }
+            if (tabName === 'arcade') { window.location.href = '/?faith=quest'; return; }
+            
             if (window.V6Gamification && typeof window.V6Gamification.switchTab === 'function') {
                 window.V6Gamification.switchTab(tabName);
                 window.history.pushState(null, '', '/?tab=' + tabName);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 return;
             }
-            const navItems = Array.from(document.querySelectorAll('[onclick]'));
-            const targetNav = navItems.find(item => (item.getAttribute('onclick') || '').toLowerCase().includes(tabName));
-            if (targetNav) {
-                targetNav.click();
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            } else {
-                window.location.href = '/?tab=' + tabName;
-            }
+            window.location.href = '/?tab=' + tabName; // Ultimate fallback
         };
 
         document.addEventListener("DOMContentLoaded", () => {
@@ -154,8 +140,8 @@
                 
                 if (journeyHeader) {
                     const journeyCard = journeyHeader.closest('.card') || journeyHeader.parentElement;
-                    
                     if (journeyCard && !document.getElementById('actionHubContainer')) {
+                        
                         document.querySelectorAll('button, .btn').forEach(btn => {
                             const text = btn.innerText || '';
                             if (text.includes('Events') || text.includes('Campfire')) {
@@ -189,7 +175,8 @@
                                 </div>
                             </div>
 
-                            <div class="continuity-card" ontouchstart="" onclick="hubNavTo('inbox')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                            <!-- 🔥 FIXED CAMPFIRE ROUTING (routes to groups) -->
+                            <div class="continuity-card" ontouchstart="" onclick="hubNavTo('groups')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
                                 <div style="font-size: 1.8rem; background: #FEF2F2; padding: 10px; border-radius: 10px; line-height: 1;">🔥</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #DC2626; font-size: 1rem; font-weight: bold; border: none;">The Campfire</h4>
@@ -211,7 +198,6 @@
                     }
                 }
             }, 500); 
-            
             setTimeout(() => clearInterval(injectHub), 10000); 
         });
     </script>

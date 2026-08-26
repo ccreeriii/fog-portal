@@ -71,7 +71,7 @@
         
     <div style="position: relative; width: 100%; margin: 0; padding: 0;">
         <video id="fqVideo" src="/img/faith-quest-thumb.mp4" poster="/img/faith-quest-thumb.png" autoplay loop muted playsinline style="width: 100%; max-height: 280px; object-fit: cover; display: block; margin: 0; padding: 0;"></video>
-        <button onclick="toggleMute('fqVideo', this)" style="position: absolute; bottom: 15px; right: 15px; background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; width: 45px; height: 45px; font-size: 1.2rem; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: 0.2s;">🔇</button>
+        <button onclick="toggleMute('fqVideo', this)" style="position: absolute; top: 50%; right: 15px; transform: translateY(-50%); background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; width: 45px; height: 45px; font-size: 1.2rem; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: 0.2s;">🔇</button>
     </div>
     <script>
         window.toggleMute = function(vidId, btn) {
@@ -443,5 +443,64 @@
 
         initLobby();
     </script>
+
+    
+
+
+    
+
+
+    
+
+
+    <!-- Smart Centered Return Button Script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                const user = JSON.parse(localStorage.getItem('fog_user'));
+                if (user && user.member) {
+                    const backBtn = document.createElement('button');
+                    backBtn.id = 'fqSmartBackBtn';
+                    // Updated Icon and Text
+                    backBtn.innerHTML = '⬅️ Back to Home'; 
+                    // Perfectly Centered at the Bottom
+                    backBtn.style.cssText = 'position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); background: #F59E0B; color: #FFF; padding: 12px 24px; border-radius: 25px; border: 2px solid #FFF; font-size: 1rem; font-weight: 800; box-shadow: 0 6px 15px rgba(0,0,0,0.25); z-index: 9999; cursor: pointer; transition: transform 0.1s ease-out, opacity 0.3s ease; white-space: nowrap;';
+                    
+                    // Touch animations
+                    const shrink = () => backBtn.style.transform = 'translateX(-50%) scale(0.92)';
+                    const grow = () => backBtn.style.transform = 'translateX(-50%) scale(1)';
+                    backBtn.onmousedown = shrink; backBtn.onmouseup = grow;
+                    backBtn.ontouchstart = shrink; backBtn.ontouchend = grow;
+                    
+                    // Route to home
+                    backBtn.onclick = () => window.location.href = '/?tab=home';
+                    
+                    document.body.appendChild(backBtn);
+
+                    // SMART OBSERVER: Hide button when gameplay starts
+                    setInterval(() => {
+                        // Heuristic: If there is a 'Play' or 'Start' button visible, we are in the Lobby.
+                        // If they disappear, the game has started!
+                        const allButtons = Array.from(document.querySelectorAll('button, .btn, a'));
+                        const isLobbyVisible = allButtons.some(b => {
+                            const text = (b.innerText || '').toLowerCase();
+                            // Check if standard lobby buttons are visible on screen
+                            return (text.includes('play') || text.includes('start') || text.includes('save best score')) && b.offsetParent !== null;
+                        });
+
+                        // Show if lobby is active, hide if game is active
+                        if (isLobbyVisible) {
+                            backBtn.style.display = 'block';
+                            backBtn.style.opacity = '1';
+                        } else {
+                            backBtn.style.display = 'none';
+                            backBtn.style.opacity = '0';
+                        }
+                    }, 500);
+                }
+            } catch(e) { console.error('Error loading return button', e); }
+        });
+    </script>
+
 </body>
 </html>
