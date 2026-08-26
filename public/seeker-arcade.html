@@ -38,36 +38,30 @@
         .trivia-btn.wrong { background: #EF4444; color: white; border-color: #EF4444; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         
-        .hero-image-container { width: 100%; max-height: 220px; border-radius: 16px; overflow: hidden; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); background: #FFF; display: flex; align-items: center; justify-content: center; }
-        .hero-image-container img { width: 100%; height: auto; min-height: 150px; object-fit: cover; }
+        
+        
     </style>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             const urlParams = new URLSearchParams(window.location.search);
             if(urlParams.get('embedded') === 'true') {
-                const hdr = document.getElementById('publicHeader');
-                if(hdr) hdr.style.display = 'none';
+                
             }
         });
     </script>
 </head>
 <body style="background-color: var(--bg-light); margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
     
-    <div id="publicHeader" style="background: #FFF; padding: 15px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; position: sticky; top: 0; z-index: 100;">
-        <h2 style="margin: 0; color: var(--primary); font-size: 1.3rem; display: flex; align-items: center; justify-content: center; gap: 8px; border: none;">
-            <img src="/img/logo.png" alt="Logo" style="height: 35px; object-fit: contain;" onerror="this.style.display='none'; document.getElementById('fallbackIcon').style.display='inline';">
-            <span id="fallbackIcon" style="display:none; font-size: 1.5rem;">🔥</span> 
-            FIRE OF GOD <span style="color: #111;">MINISTRIES</span>
-        </h2>
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 0 0; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Community Portal</p>
+    
+    <!-- 🖼️ EDGE-TO-EDGE FAITH QUEST BANNER -->
+    <div id="faithQuestBanner" style="width: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; border-radius: 0;">
+        <img src="/img/faith-quest-thumb.png" alt="Faith Quest Challenge" style="width: 100%; max-height: 280px; object-fit: cover; border-radius: 0; display: block; margin: 0; padding: 0;" onerror="this.src='/img/logo.png'; this.style.objectFit='contain'; this.style.padding='20px';">
     </div>
 
     <div style="max-width: 800px; margin: 20px auto; padding: 0 15px;">
         
         <div id="lobbyView" class="game-view active">
-            <div class="hero-image-container">
-                <img src="/img/faith-quest-thumb.png" alt="Faith Quest Challenge" onerror="this.src='/img/logo.png'; this.style.objectFit='contain'; this.style.padding='20px';">
-            </div>
+            
 
             <div style="display: flex; background: #FFF; border-radius: 12px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                 <button id="tabBtnGames" class="tab-btn active" onclick="toggleArcadeTabs('games')">🎮 Challenges</button>
