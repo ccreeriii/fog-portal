@@ -8,19 +8,58 @@
 </head>
 <body style="background-color: var(--bg-light); margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; min-height: 100vh;">
 
-    <!-- 🖼️ EDGE-TO-EDGE REGISTRATION BANNER -->
-    <div id="faithRegBanner" style="width: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; border-radius: 0; margin-bottom: 20px;">
-        <img src="/img/faith-reg-banner.png" alt="Registration Banner" style="width: 100%; max-height: 280px; object-fit: cover; border-radius: 0; display: block; margin: 0; padding: 0;" onerror="this.src='/img/logo.png'; this.style.objectFit='contain'; this.style.padding='20px';">
+    <!-- 1. CENTERED LOGO ONLY -->
+    <div id="cleanRegHeader" style="background: #FFF; padding: 12px 20px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+        <img src="/img/logo.png" alt="FOG Logo" style="height: 45px; object-fit: contain; display: inline-block; vertical-align: middle;">
+    </div>
+
+    <!-- 2. EDGE-TO-EDGE BANNER -->
+    <div id="cleanRegBanner" style="width: 100%; margin: 0 0 25px 0; padding: 0; overflow: hidden; background: #000; border-radius: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+        <img src="/img/faith-reg-banner.png?v=1787721248405" alt="Registration Banner" style="width: 100%; max-height: 280px; object-fit: cover; display: block; margin: 0; padding: 0;" onerror="this.src='/img/logo.png'; this.style.objectFit='contain'; this.style.padding='20px';">
     </div>
     
-    <div style="background: #FFF; padding: 15px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; position: sticky; top: 0; z-index: 100;">
-        <h2 style="margin: 0; color: var(--primary); font-size: 1.3rem; display: flex; align-items: center; justify-content: center; gap: 8px; border: none;">
-            <img src="/img/logo.png" alt="Logo" style="height: 35px; object-fit: contain;" onerror="this.style.display='none'; document.getElementById('fallbackIconReg').style.display='inline';">
-            <span id="fallbackIconReg" style="display:none; font-size: 1.5rem;">🔥</span> 
-            FIRE OF GOD <span style="color: #111;">MINISTRIES</span>
-        </h2>
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 0 0; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Community Portal</p>
-    </div>
+    <!-- 3. PREMIUM STYLING & SAFE TEXT HIDER -->
+    
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            // Find specific text elements and safely hide ONLY the text, NOT the parent boxes!
+            const elements = document.querySelectorAll('h1, h2, h3, h4, p, span');
+            elements.forEach(el => {
+                const text = (el.innerText || '').toLowerCase().trim();
+                if (
+                    text.includes('great game') || 
+                    text.includes('proving you have what it takes') || 
+                    text.includes('level up your faith') ||
+                    text.includes('create your free player profile')
+                ) {
+                    el.style.display = 'none';
+                }
+            });
+            
+            // Rescue Protocol: Unhide the main form container if past scripts hid it
+            document.querySelectorAll('div').forEach(div => {
+                if (div.style.display === 'none' && div.querySelector('form')) {
+                    div.style.display = 'block';
+                }
+            });
+        });
+    </script>
+
+
+    
+    
+
+    
+    
+    
+    <!-- 3. CSS/JS OBLITERATOR TO HIDE OLD CLUTTER -->
+    
+
+
+    <!-- 🖼️ EDGE-TO-EDGE REGISTRATION BANNER -->
+    
+    
+    
 
     <div style="max-width: 450px; margin: 40px auto; padding: 0 20px; width: 100%; box-sizing: border-box; flex: 1;">
         <div class="card" style="padding: 35px 25px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; border-top: 5px solid #F59E0B;">
