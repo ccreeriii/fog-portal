@@ -68,7 +68,22 @@
     
     <!-- 🖼️ EDGE-TO-EDGE FAITH QUEST BANNER -->
     <div id="faithQuestBanner" style="width: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; border-radius: 0;">
-        <video src="/img/faith-quest-thumb.mp4" poster="/img/faith-quest-thumb.png" autoplay loop muted playsinline style="width: 100%; max-height: 280px; object-fit: cover; display: block; margin: 0; padding: 0;"></video>
+        
+    <div style="position: relative; width: 100%; margin: 0; padding: 0;">
+        <video id="fqVideo" src="/img/faith-quest-thumb.mp4" poster="/img/faith-quest-thumb.png" autoplay loop muted playsinline style="width: 100%; max-height: 280px; object-fit: cover; display: block; margin: 0; padding: 0;"></video>
+        <button onclick="toggleMute('fqVideo', this)" style="position: absolute; bottom: 15px; right: 15px; background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; width: 45px; height: 45px; font-size: 1.2rem; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: 0.2s;">🔇</button>
+    </div>
+    <script>
+        window.toggleMute = function(vidId, btn) {
+            const vid = document.getElementById(vidId);
+            if(vid) {
+                vid.muted = !vid.muted;
+                btn.innerText = vid.muted ? '🔇' : '🔊';
+                btn.style.background = vid.muted ? 'rgba(0,0,0,0.6)' : 'rgba(245, 158, 11, 0.9)';
+            }
+        };
+    </script>
+
     </div>
 
     <div style="max-width: 800px; margin: 20px auto; padding: 0 15px;">
