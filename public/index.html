@@ -28,44 +28,191 @@
     <style>.bottom-nav { z-index: 90 !important; } .modal { z-index: 9999 !important; }</style>
 
     <!-- 📍 APP STATE MANAGER -->
+    
+
+
+    <!-- 📍 APP STATE MANAGER V5 -->
+    
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V5 -->
+    
+    
+
+
+    <!-- 📍 APP STATE MANAGER V6 (AGGRESSIVE OVERRIDE) -->
+    
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V6 -->
+    
+    
+
+
+    <!-- 📍 APP STATE MANAGER V6 (AGGRESSIVE OVERRIDE) -->
+    
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V6 -->
+    
+    
+
+
+    <!-- 📍 APP STATE MANAGER V7 (SAFEGUARDED) -->
     <script id="appStateManagerScript">
-        // A. Refresh & Root Redirect Override
+        // SAFEGUARD: Only run overrides if the user is ACTUALLY authenticated!
+        const isUserLoggedIn = () => {
+            try {
+                const user = JSON.parse(localStorage.getItem('fog_user'));
+                return user && user.member;
+            } catch(e) { return false; }
+        };
+
+        // 1. REFRESH & ROUTING INTERCEPTOR
+        const enforceHomeTab = () => {
+            if (!isUserLoggedIn()) return; // Let the app show the login screen safely!
+
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('tab') === 'home' || !window.location.search || window.location.search === '?tab=') {
+                if (window.V6Gamification && typeof window.V6Gamification.switchTab === 'function') {
+                    window.V6Gamification.switchTab('home');
+                }
+                const homeBtn = document.querySelector('[onclick*="home"], [onclick*="Home"]');
+                if(homeBtn) homeBtn.click();
+            }
+        };
+
         if (window.performance) {
             const navEntries = window.performance.getEntriesByType("navigation");
-            // If the user refreshed the page, instantly force them to the home tab
             if (navEntries.length > 0 && navEntries[0].type === "reload") {
-                if (!window.location.search.includes('tab=home') && !window.location.search.includes('faith=quest')) {
+                if (isUserLoggedIn() && !window.location.search.includes('tab=home') && !window.location.search.includes('faith=quest')) {
                     window.location.replace('/?tab=home');
                 }
             }
         }
-        // If they access the root URL with no parameters, force them to home instead of profile
-        if (window.location.pathname === '/' && !window.location.search) {
-            window.location.replace('/?tab=home');
-        }
 
-        // B. Dynamic Bottom Navigation Manager
-        document.addEventListener("DOMContentLoaded", () => {
-            setInterval(() => {
-                const urlParams = new URLSearchParams(window.location.search);
-                const isGrow = urlParams.get('tab') === 'grow';
-                
-                const navItems = document.querySelectorAll('.bottom-nav .nav-item, nav .nav-item, [class*="nav-item"]');
-                navItems.forEach(item => {
-                    const text = item.innerText || '';
-                    
-                    // Force Menu to always be visible
-                    if (text.includes('Menu')) {
-                        item.style.display = 'flex';
-                    }
-                    
-                    // If we are on the Growth page, swap Profile for Home
-                    if (isGrow && text.includes('Profile')) {
-                        item.innerHTML = '<span style="font-size: 1.2rem; display:block; margin-bottom:2px;">🏠</span><span style="font-size: 0.75rem;">Home</span>';
-                        item.setAttribute('onclick', "window.location.href='/?tab=home'");
+        document.addEventListener("DOMContentLoaded", enforceHomeTab);
+        window.addEventListener("load", () => {
+            setTimeout(enforceHomeTab, 100);
+            setTimeout(enforceHomeTab, 500);
+        });
+
+        // 2. BOTTOM NAV SWAPPER (Profile -> Home)
+        setInterval(() => {
+            if (!isUserLoggedIn()) return;
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('tab') === 'grow') {
+                const profileBtns = Array.from(document.querySelectorAll('[onclick*="profile"], [onclick*="Profile"]'));
+                profileBtns.forEach(btn => {
+                    if (btn.closest('nav') || btn.closest('.bottom-nav') || btn.closest('.footer')) {
+                        btn.innerHTML = '<span style="font-size: 1.4rem; display:block; margin-bottom:2px;">🏠</span><span style="font-size: 0.75rem; font-weight:bold;">Home</span>';
+                        btn.onclick = (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.location.href = '/?tab=home';
+                        };
                     }
                 });
+            }
+        }, 500);
+    </script>
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V7 -->
+    <style id="continuityHubCss">
+        .continuity-card {
+            transition: transform 0.05s ease-out, background-color 0.1s ease-out !important;
+            -webkit-user-select: none; user-select: none; 
+        }
+        .continuity-card:active {
+            transform: scale(0.94) !important;
+            background-color: #F1F5F9 !important;
+        }
+    </style>
+    <script id="continuityHubEngineV7">
+        window.hubNavTo = function(tabName) {
+            if (tabName === 'arcade') {
+                window.location.href = '/?faith=quest';
+                return;
+            }
+            if (window.V6Gamification && typeof window.V6Gamification.switchTab === 'function') {
+                window.V6Gamification.switchTab(tabName);
+                window.history.pushState(null, '', '/?tab=' + tabName);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+            const navItems = Array.from(document.querySelectorAll('[onclick]'));
+            const targetNav = navItems.find(item => (item.getAttribute('onclick') || '').toLowerCase().includes(tabName));
+            if (targetNav) {
+                targetNav.click();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                window.location.href = '/?tab=' + tabName;
+            }
+        };
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const injectHub = setInterval(() => {
+                const elements = Array.from(document.querySelectorAll('div, span, p, h1, h2, h3, h4, h5'));
+                const journeyHeader = elements.find(el => el.innerText && el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
+                
+                if (journeyHeader) {
+                    const journeyCard = journeyHeader.closest('.card') || journeyHeader.parentElement;
+                    
+                    if (journeyCard && !document.getElementById('actionHubContainer')) {
+                        document.querySelectorAll('button, .btn').forEach(btn => {
+                            const text = btn.innerText || '';
+                            if (text.includes('Events') || text.includes('Campfire')) {
+                                const parent = btn.closest('div');
+                                if (parent && parent.children.length <= 2) parent.style.display = 'none';
+                                else btn.style.display = 'none';
+                            }
+                        });
+
+                        const actionHub = document.createElement('div');
+                        actionHub.id = 'actionHubContainer';
+                        actionHub.style.marginTop = '25px';
+                        actionHub.style.marginBottom = '30px';
+                        
+                        actionHub.innerHTML = `
+                            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Continue Your Journey</h3>
+
+                            <div class="continuity-card" ontouchstart="" onclick="hubNavTo('arcade')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                                <div style="font-size: 1.8rem; background: #FFF9F5; padding: 10px; border-radius: 10px; line-height: 1;">🎮</div>
+                                <div>
+                                    <h4 style="margin: 0 0 4px 0; color: #D97706; font-size: 1rem; font-weight: bold; border: none;">Faith Quest Challenge</h4>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Level up your faith! Deepen your biblical wisdom, overcome challenges, and earn Life Points.</p>
+                                </div>
+                            </div>
+
+                            <div class="continuity-card" ontouchstart="" onclick="hubNavTo('grow')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                                <div style="font-size: 1.8rem; background: #ECFDF5; padding: 10px; border-radius: 10px; line-height: 1;">🌱</div>
+                                <div>
+                                    <h4 style="margin: 0 0 4px 0; color: #059669; font-size: 1rem; font-weight: bold; border: none;">Spiritual Growth</h4>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Dive into daily readings and reflections to strengthen your spiritual formation.</p>
+                                </div>
+                            </div>
+
+                            <div class="continuity-card" ontouchstart="" onclick="hubNavTo('inbox')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                                <div style="font-size: 1.8rem; background: #FEF2F2; padding: 10px; border-radius: 10px; line-height: 1;">🔥</div>
+                                <div>
+                                    <h4 style="margin: 0 0 4px 0; color: #DC2626; font-size: 1rem; font-weight: bold; border: none;">The Campfire</h4>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Ignite true fellowship. Connect, share, and support your community around the fire.</p>
+                                </div>
+                            </div>
+
+                            <div class="continuity-card" ontouchstart="" onclick="hubNavTo('events')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                                <div style="font-size: 1.8rem; background: #EFF6FF; padding: 10px; border-radius: 10px; line-height: 1;">📅</div>
+                                <div>
+                                    <h4 style="margin: 0 0 4px 0; color: #2563EB; font-size: 1rem; font-weight: bold; border: none;">Upcoming Events</h4>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Join our face-to-face and online gatherings to experience true fellowship and worship together.</p>
+                                </div>
+                            </div>
+                        `;
+                        
+                        journeyCard.parentNode.insertBefore(actionHub, journeyCard.nextSibling);
+                        clearInterval(injectHub);
+                    }
+                }
             }, 500); 
+            
+            setTimeout(() => clearInterval(injectHub), 10000); 
         });
     </script>
 
@@ -1768,95 +1915,8 @@
 
 
     <!-- 🚀 CONTINUITY ACTION HUB ENGINE V4 -->
-    <style id="continuityHubCss">
-        /* Premium Tap Feedback Animation */
-        .continuity-card {
-            transition: transform 0.1s ease-in-out, background-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
-        }
-        .continuity-card:active {
-            transform: scale(0.96) !important;
-            background-color: #F8FAFC !important;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
-        }
-    </style>
-    <script id="continuityHubEngineV4">
-        window.hubNavTo = function(urlPath) {
-            window.location.href = urlPath;
-        };
-
-        document.addEventListener("DOMContentLoaded", () => {
-            const injectHub = setInterval(() => {
-                const elements = Array.from(document.querySelectorAll('div, span, p, h1, h2, h3, h4, h5'));
-                const journeyHeader = elements.find(el => el.innerText && el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
-                
-                if (journeyHeader) {
-                    const journeyCard = journeyHeader.closest('.card') || journeyHeader.parentElement;
-                    
-                    if (journeyCard && !document.getElementById('actionHubContainer')) {
-                        // Clean up old UI buttons
-                        document.querySelectorAll('button, .btn').forEach(btn => {
-                            const text = btn.innerText || '';
-                            if (text.includes('Events') || text.includes('Campfire')) {
-                                const parent = btn.closest('div');
-                                if (parent && parent.children.length <= 2) parent.style.display = 'none';
-                                else btn.style.display = 'none';
-                            }
-                        });
-
-                        // Build the V4 Action Hub HTML (With Animations and Correct Routing)
-                        const actionHub = document.createElement('div');
-                        actionHub.id = 'actionHubContainer';
-                        actionHub.style.marginTop = '25px';
-                        actionHub.style.marginBottom = '30px';
-                        actionHub.innerHTML = `
-                            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Continue Your Journey</h3>
-
-                            <!-- Arcade / Faith Quest Link -->
-                            <div class="continuity-card" onclick="hubNavTo('/?faith=quest')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-                                <div style="font-size: 1.8rem; background: #FFF9F5; padding: 10px; border-radius: 10px; line-height: 1;">🎮</div>
-                                <div>
-                                    <h4 style="margin: 0 0 4px 0; color: #D97706; font-size: 1rem; font-weight: bold; border: none;">Faith Quest Challenge</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Level up your faith! Deepen your biblical wisdom, overcome challenges, and earn Life Points.</p>
-                                </div>
-                            </div>
-
-                            <!-- Spiritual Growth Link -->
-                            <div class="continuity-card" onclick="hubNavTo('/?tab=grow')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-                                <div style="font-size: 1.8rem; background: #ECFDF5; padding: 10px; border-radius: 10px; line-height: 1;">🌱</div>
-                                <div>
-                                    <h4 style="margin: 0 0 4px 0; color: #059669; font-size: 1rem; font-weight: bold; border: none;">Spiritual Growth</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Dive into daily readings and reflections to strengthen your spiritual formation.</p>
-                                </div>
-                            </div>
-
-                            <!-- The Campfire Link (ROUTES TO GROUPS) -->
-                            <div class="continuity-card" onclick="hubNavTo('/?tab=groups')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-                                <div style="font-size: 1.8rem; background: #FEF2F2; padding: 10px; border-radius: 10px; line-height: 1;">🔥</div>
-                                <div>
-                                    <h4 style="margin: 0 0 4px 0; color: #DC2626; font-size: 1rem; font-weight: bold; border: none;">The Campfire</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Ignite true fellowship. Connect, share, and support your community around the fire.</p>
-                                </div>
-                            </div>
-
-                            <!-- Upcoming Events Link -->
-                            <div class="continuity-card" onclick="hubNavTo('/?tab=events')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-                                <div style="font-size: 1.8rem; background: #EFF6FF; padding: 10px; border-radius: 10px; line-height: 1;">📅</div>
-                                <div>
-                                    <h4 style="margin: 0 0 4px 0; color: #2563EB; font-size: 1rem; font-weight: bold; border: none;">Upcoming Events</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Join our face-to-face and online gatherings to experience true fellowship and worship together.</p>
-                                </div>
-                            </div>
-                        `;
-                        
-                        journeyCard.parentNode.insertBefore(actionHub, journeyCard.nextSibling);
-                        clearInterval(injectHub);
-                    }
-                }
-            }, 500); 
-            
-            setTimeout(() => clearInterval(injectHub), 10000); 
-        });
-    </script>
+    
+    
 
 </body>
 </html>
