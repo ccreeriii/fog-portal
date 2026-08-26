@@ -1667,10 +1667,44 @@
 
 
     <!-- 🚀 CONTINUITY ACTION HUB ENGINE -->
-    <script id="continuityHubEngine">
+    
+
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V2 -->
+    <script id="continuityHubEngineV2">
+        // The Bulletproof Routing Engine
+        window.hubNavTo = function(tabName, fallbackUrl) {
+            // Method 1: Try the direct Gamification API (Used in Growth Hub)
+            if (window.V6Gamification && typeof window.V6Gamification.switchTab === 'function') {
+                window.V6Gamification.switchTab(tabName);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+            
+            // Method 2: Try to find the actual bottom navigation element and click it
+            const navElements = Array.from(document.querySelectorAll('*[onclick], .nav-item, button, span, div, p'));
+            let target = navElements.find(el => {
+                const clickAttr = el.getAttribute('onclick') || '';
+                const text = el.innerText ? el.innerText.toLowerCase().trim() : '';
+                return clickAttr.includes(tabName) || text === tabName.toLowerCase();
+            });
+            
+            if (target) {
+                // If we found a text span, click its parent container!
+                if (!target.getAttribute('onclick')) target = target.closest('[onclick]') || target;
+                if (target && typeof target.click === 'function') {
+                    target.click();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
+                }
+            }
+            
+            // Method 3: Absolute Fallback
+            window.location.href = fallbackUrl;
+        };
+
         document.addEventListener("DOMContentLoaded", () => {
             const injectHub = setInterval(() => {
-                // Find the "My Journey" card to anchor our new hub right beneath it
                 const elements = Array.from(document.querySelectorAll('div, span, p, h1, h2, h3, h4, h5'));
                 const journeyHeader = elements.find(el => el.innerText && el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
                 
@@ -1678,20 +1712,17 @@
                     const journeyCard = journeyHeader.closest('.card') || journeyHeader.parentElement;
                     
                     if (journeyCard && !document.getElementById('actionHubContainer')) {
-                        // 1. Hide the old confusing floating buttons (Events / Campfire)
+                        // Clean up old elements
                         document.querySelectorAll('button, .btn').forEach(btn => {
                             const text = btn.innerText || '';
                             if (text.includes('Events') || text.includes('Campfire')) {
                                 const parent = btn.closest('div');
-                                if (parent && parent.children.length <= 2) {
-                                    parent.style.display = 'none'; // Hide the container holding the buttons
-                                } else {
-                                    btn.style.display = 'none'; // Hide just the button
-                                }
+                                if (parent && parent.children.length <= 2) parent.style.display = 'none';
+                                else btn.style.display = 'none';
                             }
                         });
 
-                        // 2. Build the new Action Hub HTML
+                        // Build the new 4-Card Action Hub HTML
                         const actionHub = document.createElement('div');
                         actionHub.id = 'actionHubContainer';
                         actionHub.style.marginTop = '25px';
@@ -1700,7 +1731,7 @@
                             <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Continue Your Journey</h3>
 
                             <!-- Arcade / Faith Quest Link -->
-                            <div onclick="const btn = document.querySelector('[onclick*=\'arcade\']'); if(btn) { btn.click(); } else { window.location.href='/?faith=quest'; }" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                            <div onclick="hubNavTo('arcade', '/?faith=quest')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
                                 <div style="font-size: 1.8rem; background: #FFF9F5; padding: 10px; border-radius: 10px; line-height: 1;">🎮</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #D97706; font-size: 1rem; font-weight: bold; border: none;">Faith Quest Challenge</h4>
@@ -1709,7 +1740,7 @@
                             </div>
 
                             <!-- Spiritual Growth Link -->
-                            <div onclick="const btn = document.querySelector('[onclick*=\'grow\']'); if(btn) btn.click();" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                            <div onclick="hubNavTo('grow', '/?tab=grow')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
                                 <div style="font-size: 1.8rem; background: #ECFDF5; padding: 10px; border-radius: 10px; line-height: 1;">🌱</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #059669; font-size: 1rem; font-weight: bold; border: none;">Spiritual Growth</h4>
@@ -1718,23 +1749,30 @@
                             </div>
 
                             <!-- The Campfire Link -->
-                            <div onclick="const btn = document.querySelector('[onclick*=\'chat\']') || document.querySelector('[onclick*=\'inbox\']'); if(btn) { btn.click(); } else { alert('Campfire module loading...'); }" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                            <div onclick="hubNavTo('inbox', '/?tab=inbox')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
                                 <div style="font-size: 1.8rem; background: #FEF2F2; padding: 10px; border-radius: 10px; line-height: 1;">🔥</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #DC2626; font-size: 1rem; font-weight: bold; border: none;">The Campfire</h4>
                                     <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Connect, chat, and fellowship with your community right here.</p>
                                 </div>
                             </div>
+
+                            <!-- Upcoming Events Link (NEW) -->
+                            <div onclick="hubNavTo('events', '/?tab=events')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                                <div style="font-size: 1.8rem; background: #EFF6FF; padding: 10px; border-radius: 10px; line-height: 1;">📅</div>
+                                <div>
+                                    <h4 style="margin: 0 0 4px 0; color: #2563EB; font-size: 1rem; font-weight: bold; border: none;">Upcoming Events</h4>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Join our physical and online gatherings to fellowship in real-time.</p>
+                                </div>
+                            </div>
                         `;
                         
-                        // Insert perfectly after the Journey card!
                         journeyCard.parentNode.insertBefore(actionHub, journeyCard.nextSibling);
                         clearInterval(injectHub);
                     }
                 }
-            }, 500); // Check every half second until it finds the dashboard card
+            }, 500); 
             
-            // Failsafe to stop checking after 10 seconds so we don't leak memory
             setTimeout(() => clearInterval(injectHub), 10000); 
         });
     </script>
