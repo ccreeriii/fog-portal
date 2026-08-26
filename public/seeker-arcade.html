@@ -51,6 +51,19 @@
     </script>
 </head>
 <body style="background-color: var(--bg-light); margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+
+    <!-- RESTORED CENTERED LOGO -->
+    <div id="publicHeader" style="background: #FFF; padding: 12px 20px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+        <img src="/img/logo.png" alt="FOG Logo" style="height: 45px; object-fit: contain; display: inline-block; vertical-align: middle;" onerror="this.style.display='none'; document.getElementById('fallbackIcon').style.display='inline-block';">
+        <span id="fallbackIcon" style="display:none; font-size: 2rem; vertical-align: middle;">🔥</span> 
+    </div>
+    <script>
+        // Safely hide this logo if the page is embedded inside the CRM Hub
+        if (new URLSearchParams(window.location.search).get('embedded') === 'true') {
+            const hdr = document.getElementById('publicHeader');
+            if (hdr) hdr.style.display = 'none';
+        }
+    </script>
     
     
     <!-- 🖼️ EDGE-TO-EDGE FAITH QUEST BANNER -->
