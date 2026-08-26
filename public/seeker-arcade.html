@@ -462,7 +462,10 @@
     
 
 
-    <!-- 🏠 Circular Smart Arcade Return Button V11 -->
+    
+
+
+    <!-- 🏠 Circular Smart Arcade Return Button V12 -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             try {
@@ -471,35 +474,40 @@
                     const backBtn = document.createElement('button');
                     backBtn.id = 'fqSmartBackBtn';
                     
-                    // Sleek, text-free Circular Icon
                     backBtn.innerHTML = '🏠'; 
-                    // Placed securely on the bottom right (or left) to avoid covering center cards
-                    backBtn.style.cssText = 'position: fixed; bottom: 25px; left: 25px; background: rgba(245,158,11,0.95); color: #FFF; width: 55px; height: 55px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); font-size: 1.8rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 15px rgba(0,0,0,0.3); z-index: 9999; cursor: pointer; transition: opacity 0.2s, transform 0.1s;';
+                    // Centered, slightly smaller (45px)
+                    backBtn.style.cssText = 'position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); background: rgba(245,158,11,0.95); color: #FFF; width: 45px; height: 45px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); font-size: 1.4rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 15px rgba(0,0,0,0.3); z-index: 9999; cursor: pointer; transition: opacity 0.2s, transform 0.1s;';
                     
-                    const shrink = () => backBtn.style.transform = 'scale(0.9)';
-                    const grow = () => backBtn.style.transform = 'scale(1)';
+                    // Maintain centering during animation
+                    const shrink = () => backBtn.style.transform = 'translateX(-50%) scale(0.9)';
+                    const grow = () => backBtn.style.transform = 'translateX(-50%) scale(1)';
                     backBtn.onmousedown = shrink; backBtn.onmouseup = grow;
                     backBtn.ontouchstart = shrink; backBtn.ontouchend = grow;
                     
-                    // Route directly to home dashboard
                     backBtn.onclick = () => window.location.href = '/?tab=home';
                     document.body.appendChild(backBtn);
 
-                    // THE SMART VISIBILITY HEURISTIC
+                    // ULTIMATE VISIBILITY HEURISTIC
                     setInterval(() => {
-                        // Check if an iframe or canvas (the actual game) is actively taking up screen space
+                        // 1. Check for active game engines
                         const gameElements = Array.from(document.querySelectorAll('iframe, canvas'));
-                        const isPlayingDeepGame = gameElements.some(el => el.offsetHeight > 100 && window.getComputedStyle(el).display !== 'none');
+                        const isPlayingDeepGame = gameElements.some(el => el.offsetHeight > 50 && window.getComputedStyle(el).display !== 'none');
                         
-                        // Check if URL indicates we are inside a specific game view
-                        const urlParams = new URLSearchParams(window.location.search);
-                        const isInGameUrl = urlParams.has('game') || urlParams.has('id') || window.location.hash.includes('game');
+                        // 2. Check for pre-game or post-game lobby texts
+                        const allButtons = Array.from(document.querySelectorAll('button, .btn, a, h1, h2'));
+                        const inSubView = allButtons.some(b => {
+                            const text = (b.innerText || '').toLowerCase();
+                            return (text.includes('start game') || text.includes('submit') || text.includes('save best score') || text.includes('leaderboard')) && b.offsetParent !== null;
+                        });
 
-                        // Hide the button ONLY if we are definitively inside a game
-                        if (isPlayingDeepGame || isInGameUrl) {
+                        // 3. Check URL parameters
+                        const isInGameUrl = window.location.search.includes('game=') || window.location.hash.includes('game');
+
+                        // Hide if ANY of the sub-view conditions are met
+                        if (isPlayingDeepGame || inSubView || isInGameUrl) {
                             backBtn.style.display = 'none';
                         } else {
-                            backBtn.style.display = 'flex'; // Visible in lobby!
+                            backBtn.style.display = 'flex'; // Main lobby only
                         }
                     }, 500);
                 }

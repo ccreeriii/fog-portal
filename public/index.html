@@ -110,7 +110,8 @@
     <style id="continuityHubCss">
         .continuity-card {
             transition: transform 0.05s ease-out, background-color 0.1s ease-out !important;
-            -webkit-user-select: none; user-select: none; 
+            -webkit-user-select: none; user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
         .continuity-card:active {
             transform: scale(0.94) !important;
@@ -121,26 +122,24 @@
         // NATIVE CLICK SIMULATOR (No more window.location reloads!)
         window.hubNavTo = function(tabName) {
             if (tabName === 'arcade') {
-                window.location.href = '/?faith=quest'; // Arcade is the only true separate URL
+                window.location.href = '/?faith=quest';
                 return;
             }
 
-            // Find the bottom navigation elements
             const navItems = Array.from(document.querySelectorAll('.bottom-nav *[onclick], nav *[onclick], .nav-item'));
-            
-            // Hunt down the button matching the tab we want (grow, inbox/groups, events)
             const targetBtn = navItems.find(n => 
                 (n.getAttribute('onclick') || '').toLowerCase().includes(tabName) || 
-                (n.innerText || '').toLowerCase().includes(tabName)
+                (n.innerText || '').toLowerCase().includes(tabName) ||
+                (tabName === 'groups' && ((n.getAttribute('onclick') || '').toLowerCase().includes('inbox') || (n.innerText || '').toLowerCase().includes('campfire')))
             );
             
             if (targetBtn) {
-                targetBtn.click(); // Flawless Native SPA Transition
-                // Force a clean, unique URL for the specific tab
+                targetBtn.click();
                 window.history.pushState(null, '', '/?tab=' + tabName);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             } else {
-                console.log('Loading native nav for:', tabName);
+                // Absolute Fallback: If the native button hides, force the route!
+                window.location.href = '/?tab=' + tabName;
             }
         };
 
@@ -169,7 +168,7 @@
                         
                         // Action Cards strictly using the Native Click Simulator!
                         actionHub.innerHTML = `
-                            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Continue Your Journey</h3>
+                            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Take Your Next Step</h3>
 
                             <div class="continuity-card" onclick="hubNavTo('arcade')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
                                 <div style="font-size: 1.8rem; background: #FFF9F5; padding: 10px; border-radius: 10px; line-height: 1;">🎮</div>
