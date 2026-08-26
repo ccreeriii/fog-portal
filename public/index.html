@@ -136,6 +136,8 @@
             
             if (targetBtn) {
                 targetBtn.click(); // Flawless Native SPA Transition
+                // Force a clean, unique URL for the specific tab
+                window.history.pushState(null, '', '/?tab=' + tabName);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             } else {
                 console.log('Loading native nav for:', tabName);
@@ -185,7 +187,7 @@
                                 </div>
                             </div>
 
-                            <div class="continuity-card" onclick="hubNavTo('inbox')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                            <div class="continuity-card" onclick="hubNavTo('groups')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
                                 <div style="font-size: 1.8rem; background: #FEF2F2; padding: 10px; border-radius: 10px; line-height: 1;">🔥</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #DC2626; font-size: 1rem; font-weight: bold; border: none;">The Campfire</h4>
