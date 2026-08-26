@@ -56,8 +56,9 @@
     </div>
 
     <!-- 2. EDGE-TO-EDGE BANNER -->
-    <div id="cleanRegBanner" style="width: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; border-radius: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
-        <video src="/img/faith-reg-banner.mp4" poster="/img/faith-reg-banner.png" autoplay loop muted playsinline style="width: 100%; max-height: 280px; object-fit: cover; display: block; margin: 0; padding: 0;"></video>
+    <div id="cleanRegBanner" style="width: 100%; margin: 0; padding: 0; background: #000; position: relative;">
+        <video id="regVideo" src="/img/faith-reg-banner.mp4" poster="/img/faith-reg-banner.png" autoplay loop muted playsinline style="width: 100%; max-height: 280px; object-fit: cover; display: block; margin: 0; padding: 0;"></video>
+        <button onclick="toggleMute('regVideo', this)" style="position: absolute; top: 50%; right: 15px; transform: translateY(-50%); background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; width: 45px; height: 45px; font-size: 1.2rem; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: 0.2s;">🔇</button>
     </div>
     
     <!-- 3. PREMIUM STYLING & SAFE TEXT HIDER -->
@@ -137,7 +138,7 @@
                 <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
             </div>
 
-            <form onsubmit="alert('Manual registration is successfully routed! (Backend implementation pending)'); return false;" style="text-align: left;">
+            <form onsubmit=" return false;" style="text-align: left;">
                 <div class="form-group" style="margin-bottom: 15px;">
                     <label style="font-weight: bold; font-size: 0.9rem; color: var(--text-main);">Player Name</label>
                     <input type="text" class="form-control" placeholder="What should we call you?" required style="border-radius: 8px; padding: 12px; background: #F8FAFC;">
@@ -184,6 +185,63 @@
                     el.style.marginBottom = '15px';
                 }
             });
+        });
+    </script>
+
+
+    <script>
+        window.toggleMute = function(vidId, btn) {
+            const vid = document.getElementById(vidId);
+            if(vid) {
+                vid.muted = !vid.muted;
+                btn.innerText = vid.muted ? '🔇' : '🔊';
+                btn.style.background = vid.muted ? 'rgba(0,0,0,0.6)' : 'rgba(245, 158, 11, 0.9)';
+            }
+        };
+    </script>
+
+    <!-- Real Database Registration Engine -->
+    <script id="realAuthEngine">
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.querySelector('form');
+            if (form) {
+                // Override whatever placeholder submit event is on the form
+                form.onsubmit = async (e) => {
+                    e.preventDefault();
+                    
+                    const btn = form.querySelector('button[type="submit"]') || form.querySelector('.btn-primary');
+                    const origText = btn ? btn.innerText : 'Register';
+                    if (btn) { btn.innerText = 'Creating Profile...'; btn.disabled = true; }
+                    
+                    // Grab form data
+                    const formData = new FormData(form);
+                    const data = Object.fromEntries(formData.entries());
+                    
+                    try {
+                        const res = await fetch('/api/public/register-wanderer', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(data)
+                        });
+                        
+                        const result = await res.json();
+                        
+                        if (res.ok) {
+                            alert('✅ Profile created successfully! Welcome to the Koinonia journey.');
+                            // Save session and redirect to dashboard
+                            localStorage.setItem('fog_user', JSON.stringify({ member: result }));
+                            window.location.href = '/'; 
+                        } else {
+                            alert('❌ Error: ' + (result.error || 'Failed to register.'));
+                        }
+                    } catch (err) {
+                        alert('Network error during registration. Please try again.');
+                        console.error(err);
+                    }
+                    
+                    if (btn) { btn.innerText = origText; btn.disabled = false; }
+                };
+            }
         });
     </script>
 

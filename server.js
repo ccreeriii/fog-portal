@@ -1779,3 +1779,24 @@ app.get('/api/growth-games/funnel', (req, res) => {
         });
     }
 });
+
+// ==========================================
+// WANDERER REGISTRATION ENDPOINT
+// ==========================================
+app.post('/api/public/register-wanderer', (req, res) => {
+    const { name, email, password } = req.body;
+    
+    if (!name || !email) {
+        return res.status(400).json({ error: "Name and email are required." });
+    }
+    
+    // Insert the new Wanderer into the database
+    db.run("INSERT INTO youth (name, email, role, created_at) VALUES (?, ?, 'Wanderer', CURRENT_TIMESTAMP)", [name, email], function(err) {
+        if (err) {
+            return res.status(500).json({ error: "Email already exists or database error." });
+        }
+        
+        // Return the newly created user object to the frontend
+        res.json({ id: this.lastID, name: name, email: email, role: 'Wanderer' });
+    });
+});

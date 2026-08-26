@@ -208,10 +208,21 @@
 
     
     <div id="pulseDashboardTab" class="tab-content active">
-        <div style="background: linear-gradient(135deg, var(--primary), #F59E0B); padding: 35px 20px 25px 20px; text-align: center; border-bottom-left-radius: 24px; border-bottom-right-radius: 24px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-            <h2 style="margin: 0; font-size: 1.8rem; border: none; color: #FFF;">Home Dashboard</h2>
-            <p id="pulseGreetingName" style="font-size: 1.1rem; opacity: 0.9; margin-top: 5px;">Welcome to your journey!</p>
+        
+    <!-- UPGRADED DYNAMIC HERO BANNER -->
+    <div id="dashboardHeroBanner" style="background: linear-gradient(135deg, #F97316 0%, #F59E0B 100%); color: white; padding: 30px 20px; border-radius: 0 0 24px 24px; text-align: center; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3); margin-bottom: 20px;">
+        <h2 id="dashWelcomeName" style="margin: 0 0 5px 0; font-size: 1.8rem; font-weight: 800; border: none; color: #FFF;">Welcome Home!</h2>
+        <p style="margin: 0 0 15px 0; font-size: 0.95rem; opacity: 0.9;">Continue your spiritual journey.</p>
+        
+        <div style="background: rgba(255,255,255,0.2); backdrop-filter: blur(5px); border-radius: 12px; padding: 10px; display: inline-flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,0.3);">
+            <span style="font-size: 1.5rem;">🏆</span>
+            <div style="text-align: left;">
+                <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Faith Quest XP</div>
+                <div id="dashXpCounter" style="font-size: 1.2rem; font-weight: 900;">0 XP</div>
+            </div>
         </div>
+    </div>
+
 
         <div style="padding: 20px; display: flex; flex-direction: column; gap: 15px; margin-top: -15px;">
             
@@ -1613,5 +1624,46 @@
         </form>
     </div>
 </div>
+
+    <!-- Dashboard Rescue & Personalization Engine -->
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            setTimeout(() => {
+                const user = JSON.parse(localStorage.getItem('fog_user') || '{}');
+                
+                // A. Personalize Greeting
+                const nameDisplay = document.getElementById('dashWelcomeName');
+                if (nameDisplay && user.member && user.member.name) {
+                    nameDisplay.innerText = 'Welcome back, ' + user.member.name.split(' ')[0] + '!';
+                }
+
+                // B. Fetch and Display XP
+                if (user.member && user.member.id) {
+                    fetch('/api/arcade/leaderboard')
+                        .then(res => res.json())
+                        .then(data => {
+                            const myData = data.allTime?.find(r => r.name === user.member.name);
+                            if (myData) {
+                                const xpCounter = document.getElementById('dashXpCounter');
+                                if (xpCounter) xpCounter.innerText = myData.score + ' XP';
+                            }
+                        }).catch(e => console.log('XP fetch error', e));
+                }
+
+                // C. Rescue "Loading..." States
+                // If Daily Manna fails to load after 3 seconds, inject a default verse
+                const mannaEls = document.querySelectorAll('p, div, span');
+                mannaEls.forEach(el => {
+                    if (el.children.length === 0 && el.innerText && el.innerText.includes('Loading Daily Manna...')) {
+                        el.innerHTML = '<strong>Philippians 4:13</strong><br>"I can do all things through Christ who strengthens me."';
+                    }
+                    if (el.children.length === 0 && el.innerText && el.innerText.includes('Your Secret Prayer Pal is Loading...')) {
+                        el.innerHTML = '<span style="color: var(--text-muted);">No Prayer Pal assigned yet this week.</span> <br><a href="#" onclick="window.V6Gamification.switchTab(\'prayer\')" style="color: #F59E0B; font-weight: bold; text-decoration: none;">Join the Prayer Wall!</a>';
+                    }
+                });
+            }, 1500); // Wait 1.5s for normal API calls to attempt loading first
+        });
+    </script>
+
 </body>
 </html>
