@@ -1727,17 +1727,20 @@ app.put('/api/ministries/members/:mapping_id/priority', (req, res) => {
 // ==========================================
 // 1. Authorized Image Uploader V2
 app.post('/api/settings/images-v2', (req, res) => {
-    const { logo, prodIcon, stagingIcon, faithQuestThumb, actor } = req.body;
+    const { logo, prodIcon, stagingIcon, faithQuestThumb, faithRegBanner, actor } = req.body;
     db.get('SELECT permissions FROM users WHERE username = ?', [actor], (err, user) => {
         if (actor !== 'celsocreeriii@gmail.com' && (!user || !user.permissions.includes('edit_entries'))) {
             return res.status(403).json({ error: 'Unauthorized' });
         }
         try {
-            const saveImg = (b64, fname) => {
-                if (!b64) return;
-                require('fs').writeFileSync(require('path').join(__dirname, 'public', 'img', fname), Buffer.from(b64.replace(/^data:image\/\w+;base64,/, ""), 'base64'));
-            };
-            saveImg(logo, 'logo.png'); saveImg(prodIcon, 'icon-prod.png'); saveImg(stagingIcon, 'icon-staging.png'); saveImg(faithQuestThumb, 'faith-quest-thumb.png');
+            const saveImg = (b64, baseFname) => {
+            if (!b64) return;
+            const isVideo = b64.includes('video');
+            const ext = isVideo ? '.mp4' : '.png';
+            const base64Data = b64.replace(/^data:(image|video)\/\w+;base64,/, "");
+            require('fs').writeFileSync(require('path').join(__dirname, 'public', 'img', baseFname + ext), Buffer.from(base64Data, 'base64'));
+        };
+            saveImg(logo, 'logo'); saveImg(prodIcon, 'icon-prod'); saveImg(stagingIcon, 'icon-staging'); saveImg(faithQuestThumb, 'faith-quest-thumb'); saveImg(faithRegBanner, 'faith-reg-banner');
             res.json({ success: true });
         } catch (err) { res.status(500).json({ error: err.message }); }
     });
