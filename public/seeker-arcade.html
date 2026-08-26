@@ -453,7 +453,13 @@
     
 
 
-    <!-- Smart Centered Return Button Script -->
+    
+
+
+    
+
+
+    <!-- Smart Lobby Return Button Script V10 -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             try {
@@ -461,40 +467,28 @@
                 if (user && user.member) {
                     const backBtn = document.createElement('button');
                     backBtn.id = 'fqSmartBackBtn';
-                    // Updated Icon and Text
+                    
+                    // Center-aligned with Arrow Icon
                     backBtn.innerHTML = '⬅️ Back to Home'; 
-                    // Perfectly Centered at the Bottom
-                    backBtn.style.cssText = 'position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); background: #F59E0B; color: #FFF; padding: 12px 24px; border-radius: 25px; border: 2px solid #FFF; font-size: 1rem; font-weight: 800; box-shadow: 0 6px 15px rgba(0,0,0,0.25); z-index: 9999; cursor: pointer; transition: transform 0.1s ease-out, opacity 0.3s ease; white-space: nowrap;';
+                    // Set explicitly to bottom 25px and centered horizontally
+                    backBtn.style.cssText = 'position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); background: #F59E0B; color: #FFF; padding: 12px 24px; border-radius: 25px; border: 2px solid #FFF; font-size: 1rem; font-weight: 800; box-shadow: 0 6px 15px rgba(0,0,0,0.25); z-index: 9999; cursor: pointer; transition: opacity 0.2s; white-space: nowrap;';
                     
-                    // Touch animations
-                    const shrink = () => backBtn.style.transform = 'translateX(-50%) scale(0.92)';
-                    const grow = () => backBtn.style.transform = 'translateX(-50%) scale(1)';
-                    backBtn.onmousedown = shrink; backBtn.onmouseup = grow;
-                    backBtn.ontouchstart = shrink; backBtn.ontouchend = grow;
-                    
-                    // Route to home
-                    backBtn.onclick = () => window.location.href = '/?tab=home';
-                    
+                    // Route to root safely to trigger the SPA interceptor on the other side
+                    backBtn.onclick = () => window.location.href = '/';
                     document.body.appendChild(backBtn);
 
-                    // SMART OBSERVER: Hide button when gameplay starts
+                    // THE LOBBY HEURISTIC: Count the cards!
                     setInterval(() => {
-                        // Heuristic: If there is a 'Play' or 'Start' button visible, we are in the Lobby.
-                        // If they disappear, the game has started!
-                        const allButtons = Array.from(document.querySelectorAll('button, .btn, a'));
-                        const isLobbyVisible = allButtons.some(b => {
-                            const text = (b.innerText || '').toLowerCase();
-                            // Check if standard lobby buttons are visible on screen
-                            return (text.includes('play') || text.includes('start') || text.includes('save best score')) && b.offsetParent !== null;
-                        });
+                        // The main lobby has a grid of game cards. 
+                        // If you click a game, the lobby disappears and is replaced by a single game view.
+                        const gameCards = document.querySelectorAll('.card, img');
+                        const isDeepInGame = document.querySelector('iframe, canvas');
 
-                        // Show if lobby is active, hide if game is active
-                        if (isLobbyVisible) {
-                            backBtn.style.display = 'block';
-                            backBtn.style.opacity = '1';
-                        } else {
+                        // Hide if we are deep in a game, OR if there are barely any cards on screen
+                        if (isDeepInGame || gameCards.length < 3) {
                             backBtn.style.display = 'none';
-                            backBtn.style.opacity = '0';
+                        } else {
+                            backBtn.style.display = 'block';
                         }
                     }, 500);
                 }

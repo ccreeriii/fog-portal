@@ -64,52 +64,49 @@
 
 
     <!-- 📍 APP STATE MANAGER V8 -->
-    <script id="appStateManagerScript">
-        const isUserLoggedIn = () => {
-            try { return !!JSON.parse(localStorage.getItem('fog_user'))?.member; } 
-            catch(e) { return false; }
-        };
-
-        // 1. THE ABSOLUTE REFRESH ENFORCER
-        if (window.performance) {
-            const navEntries = window.performance.getEntriesByType("navigation");
-            if (navEntries.length > 0 && navEntries[0].type === "reload") {
-                if (isUserLoggedIn() && window.location.search !== '?tab=home' && !window.location.search.includes('faith=quest')) {
-                    // Force the browser to navigate to home immediately upon detecting a reload
-                    window.location.href = '/?tab=home';
-                }
-            }
-        }
-
-        // 2. THE RUTHLESS BOTTOM NAV SWAPPER (Profile -> Home)
-        document.addEventListener("DOMContentLoaded", () => {
-            setInterval(() => {
-                if (!isUserLoggedIn()) return;
-                const urlParams = new URLSearchParams(window.location.search);
-                
-                // Only execute if we are strictly on the Growth tab
-                if (urlParams.get('tab') === 'grow') {
-                    // Search EVERY possible button or nav item for the word "Profile"
-                    const allNavItems = Array.from(document.querySelectorAll('.bottom-nav *, nav *, .footer *, [class*="nav"], [class*="tab"]'));
-                    const profileItem = allNavItems.find(el => el.innerText && el.innerText.trim() === 'Profile');
-                    
-                    if (profileItem) {
-                        // Find the master container for this button to swap it cleanly
-                        const btnContainer = profileItem.closest('div, a, button, li');
-                        if (btnContainer) {
-                            btnContainer.innerHTML = '<span style="font-size: 1.3rem; display:block; margin-bottom:2px;">🏠</span><span style="font-size: 0.75rem; font-weight:bold;">Home</span>';
-                            btnContainer.onclick = (e) => {
-                                e.preventDefault(); e.stopPropagation();
-                                window.location.href = '/?tab=home';
-                            };
-                        }
-                    }
-                }
-            }, 300); // Check multiple times a second to beat the native renderer
-        });
-    </script>
+    
 
     <!-- 🚀 CONTINUITY ACTION HUB ENGINE V8 -->
+    
+    
+
+
+    <!-- 📍 APP STATE MANAGER V9 (SESSION ENFORCER) -->
+    
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V9 -->
+    
+    
+
+
+    <!-- 📍 APP STATE MANAGER V10 (NATIVE CLICK ENFORCER) -->
+    <script id="appStateManagerScript">
+        let loadTime = Date.now();
+        let hasEnforcedHome = false;
+
+        setInterval(() => {
+            // Only aggressively enforce this within the first 4 seconds of the app loading/refreshing
+            if (hasEnforcedHome || Date.now() - loadTime > 4000) return;
+
+            // Check if the native app rudely dumped us on the Profile page
+            const bodyText = document.body.innerText || '';
+            if (bodyText.includes('My Profile') || bodyText.includes('Edit Profile') || window.location.search.includes('profile')) {
+                
+                // Find the actual native Home button on the bottom nav and click it!
+                const navItems = Array.from(document.querySelectorAll('.bottom-nav *[onclick], nav *[onclick], .nav-item'));
+                const homeBtn = navItems.find(n => (n.innerText || '').toLowerCase().includes('home') || (n.getAttribute('onclick') || '').toLowerCase().includes('home'));
+                
+                if (homeBtn) {
+                    homeBtn.click(); // Native SPA transition without reloading!
+                    hasEnforcedHome = true;
+                    // Clean the URL visually
+                    window.history.replaceState(null, '', '/'); 
+                }
+            }
+        }, 100);
+    </script>
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V10 -->
     <style id="continuityHubCss">
         .continuity-card {
             transition: transform 0.05s ease-out, background-color 0.1s ease-out !important;
@@ -120,17 +117,29 @@
             background-color: #F1F5F9 !important;
         }
     </style>
-    <script id="continuityHubEngineV8">
+    <script id="continuityHubEngineV10">
+        // NATIVE CLICK SIMULATOR (No more window.location reloads!)
         window.hubNavTo = function(tabName) {
-            if (tabName === 'arcade') { window.location.href = '/?faith=quest'; return; }
-            
-            if (window.V6Gamification && typeof window.V6Gamification.switchTab === 'function') {
-                window.V6Gamification.switchTab(tabName);
-                window.history.pushState(null, '', '/?tab=' + tabName);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (tabName === 'arcade') {
+                window.location.href = '/?faith=quest'; // Arcade is the only true separate URL
                 return;
             }
-            window.location.href = '/?tab=' + tabName; // Ultimate fallback
+
+            // Find the bottom navigation elements
+            const navItems = Array.from(document.querySelectorAll('.bottom-nav *[onclick], nav *[onclick], .nav-item'));
+            
+            // Hunt down the button matching the tab we want (grow, inbox/groups, events)
+            const targetBtn = navItems.find(n => 
+                (n.getAttribute('onclick') || '').toLowerCase().includes(tabName) || 
+                (n.innerText || '').toLowerCase().includes(tabName)
+            );
+            
+            if (targetBtn) {
+                targetBtn.click(); // Flawless Native SPA Transition
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                console.log('Loading native nav for:', tabName);
+            }
         };
 
         document.addEventListener("DOMContentLoaded", () => {
@@ -156,10 +165,11 @@
                         actionHub.style.marginTop = '25px';
                         actionHub.style.marginBottom = '30px';
                         
+                        // Action Cards strictly using the Native Click Simulator!
                         actionHub.innerHTML = `
                             <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Continue Your Journey</h3>
 
-                            <div class="continuity-card" ontouchstart="" onclick="hubNavTo('arcade')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                            <div class="continuity-card" onclick="hubNavTo('arcade')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
                                 <div style="font-size: 1.8rem; background: #FFF9F5; padding: 10px; border-radius: 10px; line-height: 1;">🎮</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #D97706; font-size: 1rem; font-weight: bold; border: none;">Faith Quest Challenge</h4>
@@ -167,7 +177,7 @@
                                 </div>
                             </div>
 
-                            <div class="continuity-card" ontouchstart="" onclick="hubNavTo('grow')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                            <div class="continuity-card" onclick="hubNavTo('grow')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
                                 <div style="font-size: 1.8rem; background: #ECFDF5; padding: 10px; border-radius: 10px; line-height: 1;">🌱</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #059669; font-size: 1rem; font-weight: bold; border: none;">Spiritual Growth</h4>
@@ -175,8 +185,7 @@
                                 </div>
                             </div>
 
-                            <!-- 🔥 FIXED CAMPFIRE ROUTING (routes to groups) -->
-                            <div class="continuity-card" ontouchstart="" onclick="hubNavTo('groups')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                            <div class="continuity-card" onclick="hubNavTo('inbox')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
                                 <div style="font-size: 1.8rem; background: #FEF2F2; padding: 10px; border-radius: 10px; line-height: 1;">🔥</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #DC2626; font-size: 1rem; font-weight: bold; border: none;">The Campfire</h4>
@@ -184,7 +193,7 @@
                                 </div>
                             </div>
 
-                            <div class="continuity-card" ontouchstart="" onclick="hubNavTo('events')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                            <div class="continuity-card" onclick="hubNavTo('events')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
                                 <div style="font-size: 1.8rem; background: #EFF6FF; padding: 10px; border-radius: 10px; line-height: 1;">📅</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #2563EB; font-size: 1rem; font-weight: bold; border: none;">Upcoming Events</h4>
