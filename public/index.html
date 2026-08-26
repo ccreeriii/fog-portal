@@ -217,8 +217,8 @@
         <div style="background: rgba(255,255,255,0.2); backdrop-filter: blur(5px); border-radius: 12px; padding: 10px; display: inline-flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,0.3);">
             <span style="font-size: 1.5rem;">🏆</span>
             <div style="text-align: left;">
-                <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Faith Quest XP</div>
-                <div id="dashXpCounter" style="font-size: 1.2rem; font-weight: 900;">0 XP</div>
+                <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Faith Quest Life Points</div>
+                <div id="dashXpCounter" style="font-size: 1.2rem; font-weight: 900;">0 Life Points</div>
             </div>
         </div>
     </div>
@@ -1645,7 +1645,7 @@
                             const myData = data.allTime?.find(r => r.name === user.member.name);
                             if (myData) {
                                 const xpCounter = document.getElementById('dashXpCounter');
-                                if (xpCounter) xpCounter.innerText = myData.score + ' XP';
+                                if (xpCounter) xpCounter.innerText = myData.score + ' Life Points';
                             }
                         }).catch(e => console.log('XP fetch error', e));
                 }
@@ -1671,36 +1671,14 @@
 
 
     <!-- 🚀 CONTINUITY ACTION HUB ENGINE V2 -->
-    <script id="continuityHubEngineV2">
-        // The Bulletproof Routing Engine
-        window.hubNavTo = function(tabName, fallbackUrl) {
-            // Method 1: Try the direct Gamification API (Used in Growth Hub)
-            if (window.V6Gamification && typeof window.V6Gamification.switchTab === 'function') {
-                window.V6Gamification.switchTab(tabName);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                return;
-            }
-            
-            // Method 2: Try to find the actual bottom navigation element and click it
-            const navElements = Array.from(document.querySelectorAll('*[onclick], .nav-item, button, span, div, p'));
-            let target = navElements.find(el => {
-                const clickAttr = el.getAttribute('onclick') || '';
-                const text = el.innerText ? el.innerText.toLowerCase().trim() : '';
-                return clickAttr.includes(tabName) || text === tabName.toLowerCase();
-            });
-            
-            if (target) {
-                // If we found a text span, click its parent container!
-                if (!target.getAttribute('onclick')) target = target.closest('[onclick]') || target;
-                if (target && typeof target.click === 'function') {
-                    target.click();
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                    return;
-                }
-            }
-            
-            // Method 3: Absolute Fallback
-            window.location.href = fallbackUrl;
+    
+
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V3 -->
+    <script id="continuityHubEngineV3">
+        // 100% Bulletproof Hard-Routing Engine
+        window.hubNavTo = function(urlPath) {
+            window.location.href = urlPath;
         };
 
         document.addEventListener("DOMContentLoaded", () => {
@@ -1722,7 +1700,7 @@
                             }
                         });
 
-                        // Build the new 4-Card Action Hub HTML
+                        // Build the V3 Action Hub HTML (Spiritual Copywriting)
                         const actionHub = document.createElement('div');
                         actionHub.id = 'actionHubContainer';
                         actionHub.style.marginTop = '25px';
@@ -1731,38 +1709,38 @@
                             <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Continue Your Journey</h3>
 
                             <!-- Arcade / Faith Quest Link -->
-                            <div onclick="hubNavTo('arcade', '/?faith=quest')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                            <div onclick="hubNavTo('/?faith=quest')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
                                 <div style="font-size: 1.8rem; background: #FFF9F5; padding: 10px; border-radius: 10px; line-height: 1;">🎮</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #D97706; font-size: 1rem; font-weight: bold; border: none;">Faith Quest Challenge</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Test your knowledge, beat the high score, and earn XP today!</p>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Level up your faith! Deepen your biblical wisdom, overcome challenges, and earn Life Points.</p>
                                 </div>
                             </div>
 
                             <!-- Spiritual Growth Link -->
-                            <div onclick="hubNavTo('grow', '/?tab=grow')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                            <div onclick="hubNavTo('/?tab=grow')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
                                 <div style="font-size: 1.8rem; background: #ECFDF5; padding: 10px; border-radius: 10px; line-height: 1;">🌱</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #059669; font-size: 1rem; font-weight: bold; border: none;">Spiritual Growth</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Dive into daily readings, reflections, and deepen your formation.</p>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Dive into daily readings and reflections to strengthen your spiritual formation.</p>
                                 </div>
                             </div>
 
                             <!-- The Campfire Link -->
-                            <div onclick="hubNavTo('inbox', '/?tab=inbox')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                            <div onclick="hubNavTo('/?tab=inbox')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
                                 <div style="font-size: 1.8rem; background: #FEF2F2; padding: 10px; border-radius: 10px; line-height: 1;">🔥</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #DC2626; font-size: 1rem; font-weight: bold; border: none;">The Campfire</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Connect, chat, and fellowship with your community right here.</p>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Ignite true fellowship. Connect, share, and support your community around the fire.</p>
                                 </div>
                             </div>
 
-                            <!-- Upcoming Events Link (NEW) -->
-                            <div onclick="hubNavTo('events', '/?tab=events')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                            <!-- Upcoming Events Link -->
+                            <div onclick="hubNavTo('/?tab=events')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
                                 <div style="font-size: 1.8rem; background: #EFF6FF; padding: 10px; border-radius: 10px; line-height: 1;">📅</div>
                                 <div>
                                     <h4 style="margin: 0 0 4px 0; color: #2563EB; font-size: 1rem; font-weight: bold; border: none;">Upcoming Events</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Join our physical and online gatherings to fellowship in real-time.</p>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Join our face-to-face and online gatherings to experience true fellowship and worship together.</p>
                                 </div>
                             </div>
                         `;
@@ -1774,6 +1752,52 @@
             }, 500); 
             
             setTimeout(() => clearInterval(injectHub), 10000); 
+        });
+    </script>
+
+
+    <!-- 📍 ACTIVE NAVIGATION INDICATOR -->
+    <style id="navHighlightCss">
+        .nav-item.active-tab {
+            background: rgba(245, 158, 11, 0.12); /* Subtle orange pill */
+            border-radius: 16px;
+            padding: 4px 10px;
+            transition: all 0.3s ease;
+        }
+        .nav-item.active-tab span, .nav-item.active-tab i {
+            color: #D97706 !important;
+            font-weight: bold;
+        }
+    </style>
+    <script id="navHighlightScript">
+        document.addEventListener("DOMContentLoaded", () => {
+            setTimeout(() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                let currentTab = urlParams.get('tab') || 'home';
+                if (window.location.search.includes('faith=quest')) currentTab = 'arcade';
+                
+                // Map the URL tab to the text in your bottom navigation
+                const tabMap = {
+                    'home': 'home',
+                    'profile': 'profile',
+                    'grow': 'grow',
+                    'arcade': 'arcade',
+                    'inbox': 'inbox',
+                    'groups': 'groups',
+                    'prayer': 'prayer',
+                    'events': 'events'
+                };
+
+                const activeWord = tabMap[currentTab];
+                if (activeWord) {
+                    const navItems = document.querySelectorAll('.bottom-nav .nav-item, nav .nav-item, [class*="nav"]');
+                    navItems.forEach(item => {
+                        if (item.innerText.toLowerCase().includes(activeWord)) {
+                            item.classList.add('active-tab');
+                        }
+                    });
+                }
+            }, 1000); // Give the nav bar time to render first
         });
     </script>
 
