@@ -7,6 +7,11 @@
     <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body style="background-color: var(--bg-light); margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; min-height: 100vh;">
+
+    <!-- 🖼️ EDGE-TO-EDGE REGISTRATION BANNER -->
+    <div id="faithRegBanner" style="width: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; border-radius: 0; margin-bottom: 20px;">
+        <img src="/img/faith-reg-banner.png" alt="Registration Banner" style="width: 100%; max-height: 280px; object-fit: cover; border-radius: 0; display: block; margin: 0; padding: 0;" onerror="this.src='/img/logo.png'; this.style.objectFit='contain'; this.style.padding='20px';">
+    </div>
     
     <div style="background: #FFF; padding: 15px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; position: sticky; top: 0; z-index: 100;">
         <h2 style="margin: 0; color: var(--primary); font-size: 1.3rem; display: flex; align-items: center; justify-content: center; gap: 8px; border: none;">
@@ -72,5 +77,17 @@
             </p>
         </div>
     </div>
+    <!-- Level Up Your Faith Hider -->
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const elements = document.querySelectorAll('h1, h2, h3, h4, p');
+            elements.forEach(el => {
+                const text = el.innerText.toLowerCase();
+                if (text.includes('level up your faith') || text.includes('climb the leaderboard') || text.includes('play daily faith-based')) {
+                    el.style.display = 'none';
+                }
+            });
+        });
+    </script>
 </body>
 </html>

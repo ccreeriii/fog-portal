@@ -620,7 +620,7 @@ app.get('/apple-touch-icon.png', (req, res) => {
 });
 
 app.post('/api/settings/images', (req, res) => {
-    const { logo, prodIcon, stagingIcon, faithQuestThumb, actor } = req.body;
+    const { logo, prodIcon, stagingIcon, faithQuestThumb, faithRegBanner, actor } = req.body;
     if (actor !== 'celsocreeriii@gmail.com') return res.status(403).json({ error: 'Unauthorized' });
     try {
         const saveImageToDisk = (base64Str, filename) => {
@@ -631,7 +631,7 @@ app.post('/api/settings/images', (req, res) => {
         saveImageToDisk(logo, 'logo.png'); 
         saveImageToDisk(prodIcon, 'icon-prod.png'); 
         saveImageToDisk(stagingIcon, 'icon-staging.png');
-        saveImageToDisk(faithQuestThumb, 'faith-quest-thumb.png');
+        saveImageToDisk(faithQuestThumb, 'faith-quest-thumb.png'); saveImageToDisk(faithRegBanner, 'faith-reg-banner.png');
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: 'Failed to write files to disk: ' + err.message }); }
 });

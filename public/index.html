@@ -362,6 +362,10 @@
                 <label style="color:#F59E0B;">🎯 Faith Quest Challenge Thumbnail</label>
                 <input type="file" id="faithQuestThumbInput" class="form-control" accept="image/png, image/jpeg">
             </div>
+            <div class="form-group" style="margin-top:15px; padding-top:15px; border-top:1px dashed var(--border-color);">
+                <label style="color:#3B82F6;">📝 Registration Page Banner</label>
+                <input type="file" id="faithRegBannerInput" class="form-control" accept="image/png, image/jpeg">
+            </div>
             <button type="submit" class="btn btn-primary" style="width: 100%; margin-top:15px;">Upload & Apply</button>
         </form>
         <script>
@@ -381,12 +385,14 @@
             const prod = document.getElementById('prodIconInput')?.files[0];
             const staging = document.getElementById('stagingIconInput')?.files[0];
             const faithThumb = document.getElementById('faithQuestThumbInput')?.files[0];
+            const faithRegBanner = document.getElementById('faithRegBannerInput')?.files[0];
 
             try {
                 if (logo) payload.logo = await toBase64(logo);
                 if (prod) payload.prodIcon = await toBase64(prod);
                 if (staging) payload.stagingIcon = await toBase64(staging);
                 if (faithThumb) payload.faithQuestThumb = await toBase64(faithThumb);
+                if (faithRegBanner) payload.faithRegBanner = await toBase64(faithRegBanner);
 
                 if (Object.keys(payload).length === 1) { alert('Please select an image.'); if(btn) { btn.innerText=origText; btn.disabled=false; } return; }
 
