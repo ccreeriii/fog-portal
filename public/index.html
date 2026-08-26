@@ -1665,5 +1665,79 @@
         });
     </script>
 
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE -->
+    <script id="continuityHubEngine">
+        document.addEventListener("DOMContentLoaded", () => {
+            const injectHub = setInterval(() => {
+                // Find the "My Journey" card to anchor our new hub right beneath it
+                const elements = Array.from(document.querySelectorAll('div, span, p, h1, h2, h3, h4, h5'));
+                const journeyHeader = elements.find(el => el.innerText && el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
+                
+                if (journeyHeader) {
+                    const journeyCard = journeyHeader.closest('.card') || journeyHeader.parentElement;
+                    
+                    if (journeyCard && !document.getElementById('actionHubContainer')) {
+                        // 1. Hide the old confusing floating buttons (Events / Campfire)
+                        document.querySelectorAll('button, .btn').forEach(btn => {
+                            const text = btn.innerText || '';
+                            if (text.includes('Events') || text.includes('Campfire')) {
+                                const parent = btn.closest('div');
+                                if (parent && parent.children.length <= 2) {
+                                    parent.style.display = 'none'; // Hide the container holding the buttons
+                                } else {
+                                    btn.style.display = 'none'; // Hide just the button
+                                }
+                            }
+                        });
+
+                        // 2. Build the new Action Hub HTML
+                        const actionHub = document.createElement('div');
+                        actionHub.id = 'actionHubContainer';
+                        actionHub.style.marginTop = '25px';
+                        actionHub.style.marginBottom = '30px';
+                        actionHub.innerHTML = `
+                            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Continue Your Journey</h3>
+
+                            <!-- Arcade / Faith Quest Link -->
+                            <div onclick="const btn = document.querySelector('[onclick*=\'arcade\']'); if(btn) { btn.click(); } else { window.location.href='/?faith=quest'; }" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                                <div style="font-size: 1.8rem; background: #FFF9F5; padding: 10px; border-radius: 10px; line-height: 1;">🎮</div>
+                                <div>
+                                    <h4 style="margin: 0 0 4px 0; color: #D97706; font-size: 1rem; font-weight: bold; border: none;">Faith Quest Challenge</h4>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Test your knowledge, beat the high score, and earn XP today!</p>
+                                </div>
+                            </div>
+
+                            <!-- Spiritual Growth Link -->
+                            <div onclick="const btn = document.querySelector('[onclick*=\'grow\']'); if(btn) btn.click();" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                                <div style="font-size: 1.8rem; background: #ECFDF5; padding: 10px; border-radius: 10px; line-height: 1;">🌱</div>
+                                <div>
+                                    <h4 style="margin: 0 0 4px 0; color: #059669; font-size: 1rem; font-weight: bold; border: none;">Spiritual Growth</h4>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Dive into daily readings, reflections, and deepen your formation.</p>
+                                </div>
+                            </div>
+
+                            <!-- The Campfire Link -->
+                            <div onclick="const btn = document.querySelector('[onclick*=\'chat\']') || document.querySelector('[onclick*=\'inbox\']'); if(btn) { btn.click(); } else { alert('Campfire module loading...'); }" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                                <div style="font-size: 1.8rem; background: #FEF2F2; padding: 10px; border-radius: 10px; line-height: 1;">🔥</div>
+                                <div>
+                                    <h4 style="margin: 0 0 4px 0; color: #DC2626; font-size: 1rem; font-weight: bold; border: none;">The Campfire</h4>
+                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Connect, chat, and fellowship with your community right here.</p>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Insert perfectly after the Journey card!
+                        journeyCard.parentNode.insertBefore(actionHub, journeyCard.nextSibling);
+                        clearInterval(injectHub);
+                    }
+                }
+            }, 500); // Check every half second until it finds the dashboard card
+            
+            // Failsafe to stop checking after 10 seconds so we don't leak memory
+            setTimeout(() => clearInterval(injectHub), 10000); 
+        });
+    </script>
+
 </body>
 </html>
