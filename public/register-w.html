@@ -200,12 +200,18 @@
         };
     </script>
 
+    
+
+
     <!-- Real Database Registration Engine -->
+    
+
+
+    <!-- Bulletproof Database Registration Engine -->
     <script id="realAuthEngine">
         document.addEventListener('DOMContentLoaded', () => {
             const form = document.querySelector('form');
             if (form) {
-                // Override whatever placeholder submit event is on the form
                 form.onsubmit = async (e) => {
                     e.preventDefault();
                     
@@ -213,29 +219,34 @@
                     const origText = btn ? btn.innerText : 'Register';
                     if (btn) { btn.innerText = 'Creating Profile...'; btn.disabled = true; }
                     
-                    // Grab form data
-                    const formData = new FormData(form);
-                    const data = Object.fromEntries(formData.entries());
+                    // FORCE GRAB VALUES (Bypasses missing 'name' attributes)
+                    const nameInput = form.querySelector('input[type="text"], input[placeholder*="Name"], input[id*="name"], input[placeholder*="name"]');
+                    const emailInput = form.querySelector('input[type="email"], input[placeholder*="Email"], input[id*="email"], input[placeholder*="email"]');
+                    
+                    const payload = {
+                        name: nameInput ? nameInput.value.trim() : '',
+                        email: emailInput ? emailInput.value.trim() : '',
+                        password: (form.querySelector('input[type="password"], input[placeholder*="Password"]') ? form.querySelector('input[type="password"], input[placeholder*="Password"]').value.trim() : 'defaultWandererPass') // Placeholder if no password field exists
+                    };
                     
                     try {
                         const res = await fetch('/api/public/register-wanderer', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(data)
+                            body: JSON.stringify(payload)
                         });
                         
                         const result = await res.json();
                         
                         if (res.ok) {
                             alert('✅ Profile created successfully! Welcome to the Koinonia journey.');
-                            // Save session and redirect to dashboard
                             localStorage.setItem('fog_user', JSON.stringify({ member: result }));
-                            window.location.href = '/'; 
+                            window.location.href = '/?tab=home'; 
                         } else {
                             alert('❌ Error: ' + (result.error || 'Failed to register.'));
                         }
                     } catch (err) {
-                        alert('Network error during registration. Please try again.');
+                        alert('Network error during registration. Please check your connection.');
                         console.error(err);
                     }
                     
