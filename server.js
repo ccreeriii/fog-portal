@@ -1900,3 +1900,17 @@ app.post('/api/public/register-wanderer', (req, res) => {
         res.json({ id: Date.now(), name: name, email: email, role: 'Wanderer' });
     }
 });
+
+// [KOINONIA PATCH] LIVE SEARCH FOR CAMPFIRE INVITES
+app.get('/api/admin/users/search', (req, res) => {
+    if (typeof db !== 'undefined') {
+        const q = '%' + (req.query.q || '') + '%';
+        // Securely search users by name limit to 10 results
+        db.all("SELECT id, name, profile_picture FROM youth WHERE name LIKE ? LIMIT 10", [q], (err, rows) => {
+            if (err) return res.status(500).json({error: err.message});
+            res.json(rows || []);
+        });
+    } else {
+        res.json([]);
+    }
+});

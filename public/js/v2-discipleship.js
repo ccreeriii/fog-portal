@@ -2276,3 +2276,37 @@ window.submitAdminInvite = async function() {
         alert(data.error || 'Failed to invite member.');
     }
 };
+
+
+// ==========================================
+// V104: LIVE MEMBER SEARCH FIX
+// ==========================================
+window.filterAdminInvite = async function() {
+    const q = document.getElementById('adminInviteSearch').value.toLowerCase().trim();
+    const dropdown = document.getElementById('adminInviteDropdown');
+    
+    if(q.length < 3) { 
+        dropdown.style.display = 'none'; 
+        return; 
+    }
+    
+    try {
+        const res = await fetch('/api/admin/users/search?q=' + encodeURIComponent(q));
+        const matches = await res.json();
+        
+        if(matches.length > 0) {
+            dropdown.innerHTML = matches.map(y => `
+                <div style="padding:10px; cursor:pointer; border-bottom:1px solid #E2E8F0; display:flex; align-items:center; gap:10px; transition: background 0.2s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='transparent'" onclick="window.selectAdminInvite(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')">
+                    ${y.profile_picture ? `<img src="${y.profile_picture}" style="width:28px; height:28px; border-radius:50%; object-fit:cover;">` : `<div style="width:28px; height:28px; background:#E2E8F0; color:var(--text-muted); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">👤</div>`}
+                    <span style="color:var(--text-main); font-weight:600; font-size:0.95rem;">${y.name}</span>
+                </div>
+            `).join('');
+            dropdown.style.display = 'block';
+        } else {
+            dropdown.innerHTML = '<div style="padding:10px; color:var(--text-muted); text-align:center; font-size:0.9rem;">No members found</div>';
+            dropdown.style.display = 'block';
+        }
+    } catch(e) { 
+        console.error('Search error:', e); 
+    }
+};
