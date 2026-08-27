@@ -1972,7 +1972,7 @@
                         actionHub.style.marginTop = '25px';
                         actionHub.style.marginBottom = '30px';
                         actionHub.innerHTML = `
-                            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Continue Your Journey</h3>
+                            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Grow With Your Spiritual Family</h3>
 
                             <div class="continuity-card" onclick="hubNavTo('arcade')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
                                 <div style="font-size: 1.8rem; background: #FFF9F5; padding: 10px; border-radius: 10px; line-height: 1;">🎮</div>
@@ -2001,6 +2001,49 @@
                 }
             }, 500); 
             setTimeout(() => clearInterval(injectHub), 10000); 
+        });
+    </script>
+
+
+    <!-- 🚀 KOINONIA GLOBAL DATA LOADER (Zero-Refresh Fix) -->
+    <script id="koinoniaDataLoader">
+        document.addEventListener("DOMContentLoaded", () => {
+            // This silent watcher looks for ANY tab becoming 'active' and forces it to load its data
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    // If a tab's class changes and it now contains 'active'
+                    if (mutation.attributeName === 'class' && mutation.target.classList.contains('active')) {
+                        const tabId = mutation.target.id;
+                        
+                        // 1. Instantly trigger Events data load
+                        if (tabId === 'eventsTab' && typeof window.loadEvents === 'function') {
+                            window.loadEvents();
+                        }
+                        // 2. Instantly trigger Directory data load
+                        else if (tabId === 'directoryTab' && typeof window.loadDirectory === 'function') {
+                            window.loadDirectory();
+                        }
+                        // 3. Instantly trigger Ministries data load
+                        else if (tabId === 'ministriesTab' && typeof window.loadMinistries === 'function') {
+                            window.loadMinistries();
+                        }
+                        // 4. Force Growth Hub inner components to natively refresh
+                        else if (tabId === 'discipleshipTab' && typeof window.V2Discipleship !== 'undefined') {
+                            if (typeof window.V2Discipleship.loadUserGrowthData === 'function') {
+                                window.V2Discipleship.loadUserGrowthData();
+                            }
+                        }
+                    }
+                });
+            });
+            
+            // Attach the watcher to all main tabs 1 second after the app loads
+            setTimeout(() => {
+                const tabs = document.querySelectorAll('.tab-content');
+                tabs.forEach(tab => {
+                    observer.observe(tab, { attributes: true });
+                });
+            }, 1000);
         });
     </script>
 
