@@ -2201,6 +2201,10 @@
 
 
     <!-- 🚀 V6 DAILY PRAYER COVENANT ENGINE (JUSTIFIED TEXT & BUTTON STATE) -->
+    
+
+
+    <!-- 🚀 V7 DAILY PRAYER COVENANT ENGINE (DYNAMIC CARD SWAP) -->
     <script id="dailyCovenantEngineV2">
         window.navToCovenantTab = function(tabName) {
             if (typeof window.switchTab === 'function') {
@@ -2211,12 +2215,45 @@
             }
         };
 
+        // 🔄 THE DYNAMIC SWAP ENGINE
+        window.applyDashboardOrdering = function(hasPrayed) {
+            // Safely locate the 3 main dashboard components
+            const pHeader = Array.from(document.querySelectorAll('h3')).find(el => el.innerText && el.innerText.toUpperCase().includes('DAILY PRAYER COVENANT'));
+            const prayerCardEl = pHeader ? pHeader.closest('.card') : null;
+            
+            const jHeader = Array.from(document.querySelectorAll('h3, h2')).find(el => el.innerText && el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
+            const journeyCardEl = jHeader ? jHeader.closest('.card') : null;
+            
+            const actionHubEl = document.getElementById('actionHubContainer');
+
+            if (prayerCardEl && journeyCardEl && actionHubEl) {
+                const parent = journeyCardEl.parentNode;
+                
+                if (hasPrayed) {
+                    // SWAP: Action Hub -> Journey -> Prayer Card
+                    // Only move them if they aren't already in this order to prevent DOM thrashing
+                    if (actionHubEl.nextElementSibling !== journeyCardEl) {
+                        actionHubEl.style.animation = 'slideUp 0.4s ease-out';
+                        prayerCardEl.style.animation = 'fadeIn 0.4s ease-in';
+                        
+                        parent.insertBefore(actionHubEl, journeyCardEl);
+                        parent.insertBefore(prayerCardEl, journeyCardEl.nextSibling);
+                    }
+                } else {
+                    // DEFAULT: Prayer Card -> Journey -> Action Hub
+                    if (prayerCardEl.nextElementSibling !== journeyCardEl) {
+                        parent.insertBefore(prayerCardEl, journeyCardEl);
+                        parent.insertBefore(actionHubEl, journeyCardEl.nextSibling);
+                    }
+                }
+            }
+        };
+
         window.openGuidedPrayer = function(palName, palId) {
             document.getElementById('guidedPalName').innerText = palName;
             document.getElementById('guidedPalId').value = palId;
             document.getElementById('guidedPrayerText').value = '';
             
-            // 10 Distinct Canned Prayers
             const prayers = [
                 { icon: '🕊️', title: 'Peace & Strength', text: 'Lord, I lift up my prayer pal to You today. Please grant them deep peace, physical strength, and joy in whatever they are facing. Amen.' },
                 { icon: '❤️', title: 'Blessing & Love', text: 'Father, thank You for my prayer pal. I ask that You bless their day, protect their mind, and let them feel Your overwhelming love for them. Amen.' },
@@ -2230,13 +2267,11 @@
                 { icon: '🔥', title: 'Spiritual Fire', text: 'Holy Spirit, ignite a fresh passion and hunger for Your Word in my prayer pal\'s heart. Draw them closer to You today than ever before. Amen.' }
             ];
             
-            // Fisher-Yates Shuffle Algorithm
             for (let i = prayers.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [prayers[i], prayers[j]] = [prayers[j], prayers[i]];
             }
             
-            // Render Dynamic Buttons
             const list = document.getElementById('guidedPrayerList');
             if (list) {
                 list.innerHTML = prayers.map(p => 
@@ -2275,19 +2310,23 @@
                     btn.style.background = '#10B981';
                     btn.style.borderColor = '#10B981';
 
-                    // Update the Main Card Button instantly!
                     const mainBtn = document.getElementById('mainPrayBtn');
                     if (mainBtn) {
                         mainBtn.innerText = '✓ Prayer Sent';
-                        mainBtn.style.background = '#9CA3AF'; // Grayish green
+                        mainBtn.style.background = '#9CA3AF';
                         mainBtn.style.cursor = 'not-allowed';
                         mainBtn.disabled = true;
                         mainBtn.removeAttribute('onclick');
                     }
                     
-                    // Save state so it persists on refresh
                     const todayStr = new Date().toLocaleDateString();
                     localStorage.setItem('fog_prayed_for_' + palId + '_' + todayStr, 'true');
+
+                    // 🔄 TRIGGER THE SWAP AND GUIDE THE USER'S EYES UPWARD
+                    setTimeout(() => {
+                        window.applyDashboardOrdering(true);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }, 300);
                 }
             } catch(e) { console.error(e); }
 
@@ -2317,7 +2356,6 @@
             const card = targetEl.closest('.card');
             if (!card) return;
 
-            // 🎯 NEW: text-align: justify; injected here!
             const pastoralEncouragement = `
                 <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; margin: 15px 0 0 0; padding: 15px; background: #F8FAFC; border-left: 4px solid var(--primary); border-radius: 0 8px 8px 0; text-align: justify;">
                     Prayer is the heartbeat of our spiritual family. When you intentionally pray for someone, you are standing in the gap, walking through their challenges with them, and weaving our community closer together. Take a moment <strong>today</strong> to cover them in prayer, and remind them that no one carries their burdens alone—because love has a place here.
@@ -2338,7 +2376,6 @@
                 if (pal && pal.pal_name) {
                     const avatarHtml = pal.profile_picture ? `<img src="${pal.profile_picture}" style="width:50px;height:50px;border-radius:50%;object-fit:cover; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">` : `<div style="width:50px;height:50px;border-radius:50%;background:#E2E8F0;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-muted); font-size: 1.2rem; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">${pal.pal_name.charAt(0)}</div>`;
                     
-                    // CHECK LOCAL STORAGE FOR PREVIOUSLY SENT PRAYERS TODAY
                     const todayStr = new Date().toLocaleDateString();
                     const hasPrayed = localStorage.getItem('fog_prayed_for_' + pal.pal_youth_id + '_' + todayStr);
                     
@@ -2369,7 +2406,6 @@
                         ${adminBtn}
                     `;
                 } else {
-                    // ... [Fallback UI generation remains intact]
                     let fallbackMsg = "We assign new prayer partners every day! Finding your prayer pal...";
                     let actionBtn = "";
                     
@@ -2413,12 +2449,28 @@
             } catch(e) { alert("Error triggering assignments."); }
         };
 
-        // AGGRESSIVE REFRESH WATCHER
+        // AGGRESSIVE REFRESH & LAYOUT WATCHER
         setInterval(() => {
             const card = document.querySelector('#pulseDashboardTab');
             if(card && card.style.display !== 'none' && typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
                 if(document.body.innerHTML.includes('Finding your prayer pal...')) {
                     if(typeof loadSecretPrayerPal === 'function') loadSecretPrayerPal();
+                }
+
+                // Ensure the layout matches the current prayer state (crucial for refreshes!)
+                const todayStr = new Date().toLocaleDateString();
+                const palIdInput = document.getElementById('guidedPalId');
+                let hasPrayedLocal = false;
+                
+                if (palIdInput && palIdInput.value) {
+                     hasPrayedLocal = !!localStorage.getItem('fog_prayed_for_' + palIdInput.value + '_' + todayStr);
+                } else {
+                     const mainBtn = document.getElementById('mainPrayBtn');
+                     if (mainBtn && mainBtn.innerText.includes('Prayer Sent')) hasPrayedLocal = true;
+                }
+                
+                if (typeof window.applyDashboardOrdering === 'function') {
+                    window.applyDashboardOrdering(hasPrayedLocal);
                 }
             }
         }, 1500);
