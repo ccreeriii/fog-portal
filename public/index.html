@@ -121,24 +121,21 @@
     <script id="continuityHubEngineV10">
         // NATIVE CLICK SIMULATOR (No more window.location reloads!)
         window.hubNavTo = function(tabName) {
-            if (tabName === 'arcade') {
-                window.location.href = '/?faith=quest';
-                return;
-            }
+            // Absolute URL Overrides
+            if (tabName === 'arcade') { window.location.href = '/?faith=quest'; return; }
+            if (tabName === 'groups') { window.location.href = '/?tab=groups'; return; } // Force Groups URL!
 
+            // Native SPA routing for Growth and Events
             const navItems = Array.from(document.querySelectorAll('.bottom-nav *[onclick], nav *[onclick], .nav-item'));
             const targetBtn = navItems.find(n => 
                 (n.getAttribute('onclick') || '').toLowerCase().includes(tabName) || 
-                (n.innerText || '').toLowerCase().includes(tabName) ||
-                (tabName === 'groups' && ((n.getAttribute('onclick') || '').toLowerCase().includes('inbox') || (n.innerText || '').toLowerCase().includes('campfire')))
+                (n.innerText || '').toLowerCase().includes(tabName)
             );
             
             if (targetBtn) {
                 targetBtn.click();
-                window.history.pushState(null, '', '/?tab=' + tabName);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             } else {
-                // Absolute Fallback: If the native button hides, force the route!
                 window.location.href = '/?tab=' + tabName;
             }
         };
