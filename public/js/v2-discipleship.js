@@ -2310,3 +2310,495 @@ window.filterAdminInvite = async function() {
         console.error('Search error:', e); 
     }
 };
+
+
+// ==========================================
+// V105: CAMPFIRE DASHBOARD & LIVE ADMIN MODERATION
+// ==========================================
+window.currentDashboardGroupId = null;
+
+window.openGroupDashboard = function(id, name, logo, leaderName, leaderId) {
+    const modal = document.getElementById('groupDashboardModal');
+    if (!modal) return;
+    window.currentDashboardGroupId = id;
+
+    let safeLogo = (logo && logo !== 'null' && logo !== 'undefined') ? logo : '';
+    const logoEl = document.getElementById('dashGroupLogo');
+    if (logoEl) {
+        if (safeLogo) {
+            logoEl.outerHTML = '<div id="dashGroupLogo" style="width:70px; height:70px; margin: 0 auto 15px auto;"><img src="' + safeLogo + '" style="width:100%; height:100%; border-radius:12px; object-fit:cover; display:block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>';
+        } else {
+            logoEl.outerHTML = '<div id="dashGroupLogo" style="width:70px; height:70px; border-radius:12px; background:var(--bg-light); display:flex; align-items:center; justify-content:center; font-size:2rem; margin: 0 auto 15px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🔥</div>';
+        }
+    }
+
+    if (document.getElementById('dashGroupName')) document.getElementById('dashGroupName').innerText = name || 'Campfire Name';
+    if (document.getElementById('dashGroupMeta')) document.getElementById('dashGroupMeta').innerText = "Led by " + (leaderName || 'TBA');
+
+    // Admin Access Verification
+    const adminBtn = document.getElementById('btnDashAdmin');
+    const isLeader = (typeof currentMember !== 'undefined' && currentMember && leaderId == currentMember.id);
+    const isSuperAdmin = (typeof currentMember !== 'undefined' && currentMember && currentMember.role === 'Super Admin');
+
+    if (adminBtn) adminBtn.style.display = (isLeader || isSuperAdmin) ? 'inline-block' : 'none';
+
+    if (isLeader || isSuperAdmin) {
+        if (typeof window.loadAdminPendingMembers === 'function') window.loadAdminPendingMembers(id);
+        if (V2Discipleship && V2Discipleship.groupsData) {
+            const g = V2Discipleship.groupsData.find(x => x.id === id);
+            if(g && document.getElementById('dashAdminPrivacy')) document.getElementById('dashAdminPrivacy').value = g.privacy_level || 'Open';
+        }
+    }
+
+    modal.style.display = 'flex';
+    modal.style.zIndex = '105000';
+    modal.classList.add('active');
+    window.switchDashTab('overview');
+};
+
+window.switchDashTab = function(tabName) {
+    const tabs = ['overview', 'members', 'prayers', 'deepdive', 'memories', 'admin'];
+    tabs.forEach(t => {
+        const elId = t === 'deepdive' ? 'dashTabDeepDive' : 'dashTab' + t.charAt(0).toUpperCase() + t.slice(1);
+        const btnId = t === 'deepdive' ? 'btnDashDeepDive' : 'btnDash' + t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById(elId);
+        const btn = document.getElementById(btnId);
+        if (el) el.style.display = (tabName === t) ? 'block' : 'none';
+        if (btn) {
+            if (tabName === t) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    });
+};
+
+// ADMIN: Load Pending Members
+window.loadAdminPendingMembers = async function(groupId) {
+    try {
+        const res = await fetch('/api/small-groups/' + groupId + '/roster-status');
+        const members = await res.json();
+        const pending = members.filter(m => m.status === 'Pending');
+        const container = document.getElementById('dashAdminPendingList');
+        if (!container) return;
+
+        if (pending.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted); font-size:0.9rem;">No pending requests at this time.</p>';
+            return;
+        }
+
+        container.innerHTML = pending.map(m => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; margin-bottom:8px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    ${m.profile_picture ? `<img src="${m.profile_picture}" style="width:30px; height:30px; border-radius:50%; object-fit:cover;">` : `<div style="width:30px; height:30px; background:#E2E8F0; border-radius:50%; display:flex; align-items:center; justify-content:center;">👤</div>`}
+                    <span style="font-weight:bold; color:var(--text-main);">${m.name}</span>
+                </div>
+                <div style="display:flex; gap:5px;">
+                    <button class="btn btn-primary btn-sm" onclick="window.processMemberRequest(${groupId}, ${m.id}, 'Approved')" style="padding:4px 10px; background:#10B981; border:none;">Approve</button>
+                    <button class="btn btn-danger btn-sm" onclick="window.processMemberRequest(${groupId}, ${m.id}, 'Denied')" style="padding:4px 10px; background:#EF4444; border:none;">Deny</button>
+                </div>
+            </div>
+        `).join('');
+    } catch(e) { console.error(e); }
+};
+
+// ADMIN: Process Request
+window.processMemberRequest = async function(groupId, youthId, status) {
+    await fetch('/api/small-groups/'+groupId+'/members/'+youthId+'/status', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({status: status})
+    });
+    window.loadAdminPendingMembers(groupId);
+    if (V2Discipleship && V2Discipleship.loadSmallGroups) V2Discipleship.loadSmallGroups();
+};
+
+// ADMIN: Update Privacy
+window.updateGroupPrivacy = async function() {
+    const groupId = window.currentDashboardGroupId;
+    const newPrivacy = document.getElementById('dashAdminPrivacy').value;
+    if (!groupId) return;
+    
+    await fetch('/api/small-groups/' + groupId + '/privacy', {
+        method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({privacy_level: newPrivacy})
+    });
+    alert('Campfire privacy updated to ' + newPrivacy);
+    if (V2Discipleship && V2Discipleship.loadSmallGroups) V2Discipleship.loadSmallGroups();
+};
+
+// ADMIN: Live Search API Logic
+window.filterAdminInvite = async function() {
+    const q = document.getElementById('adminInviteSearch').value.toLowerCase().trim();
+    const dropdown = document.getElementById('adminInviteDropdown');
+    
+    if(q.length < 3) { 
+        dropdown.style.display = 'none'; 
+        return; 
+    }
+    
+    try {
+        const res = await fetch('/api/admin/users/search?q=' + encodeURIComponent(q));
+        const matches = await res.json();
+        
+        if(matches.length > 0) {
+            dropdown.innerHTML = matches.map(y => `
+                <div style="padding:10px; cursor:pointer; border-bottom:1px solid #E2E8F0; display:flex; align-items:center; gap:10px; transition: background 0.2s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='transparent'" onclick="window.selectAdminInvite(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')">
+                    ${y.profile_picture ? `<img src="${y.profile_picture}" style="width:28px; height:28px; border-radius:50%; object-fit:cover;">` : `<div style="width:28px; height:28px; background:#E2E8F0; color:var(--text-muted); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">👤</div>`}
+                    <span style="color:var(--text-main); font-weight:600; font-size:0.95rem;">${y.name}</span>
+                </div>
+            `).join('');
+            dropdown.style.display = 'block';
+        } else {
+            dropdown.innerHTML = '<div style="padding:10px; color:var(--text-muted); text-align:center; font-size:0.9rem;">No members found</div>';
+            dropdown.style.display = 'block';
+        }
+    } catch(e) { console.error('Search error:', e); }
+};
+
+window.selectAdminInvite = function(id, name) {
+    document.getElementById('adminInviteYouthId').value = id;
+    document.getElementById('adminInviteSearch').value = name;
+    document.getElementById('adminInviteDropdown').style.display = 'none';
+};
+
+window.submitAdminInvite = async function() {
+    const youthId = document.getElementById('adminInviteYouthId').value;
+    const groupId = window.currentDashboardGroupId;
+    if(!youthId || !groupId) return alert("Please search and select a member first!");
+    
+    const res = await fetch('/api/small-groups/'+groupId+'/invite', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({youth_id: youthId})
+    });
+    const data = await res.json();
+    if(data.success) {
+        alert('Member successfully added to the Campfire!');
+        document.getElementById('adminInviteSearch').value = '';
+        document.getElementById('adminInviteYouthId').value = '';
+        if (V2Discipleship && V2Discipleship.loadSmallGroups) V2Discipleship.loadSmallGroups();
+    } else {
+        alert(data.error || 'Failed to invite member.');
+    }
+};
+
+
+// ==========================================
+// V106: ASSIGN LEADER LIVE SEARCH FIX
+// ==========================================
+if (typeof window.V2Discipleship !== 'undefined') {
+    window.V2Discipleship.filterLeaderSearch = async function() {
+        const q = document.getElementById('sgLeaderSearch').value.toLowerCase().trim();
+        const dropdown = document.getElementById('sgLeaderDropdown');
+        if(q.length < 3) { dropdown.style.display = 'none'; return; }
+        try {
+            const res = await fetch('/api/admin/users/search?q=' + encodeURIComponent(q));
+            const matches = await res.json();
+            if(matches.length > 0) {
+                dropdown.innerHTML = matches.map(y => `<div style="padding:10px; cursor:pointer; border-bottom:1px solid #E2E8F0; transition: background 0.2s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='transparent'" onclick="V2Discipleship.selectLeader(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')"><strong style="color:var(--text-main);">${y.name}</strong></div>`).join('');
+                dropdown.style.display = 'block';
+            } else {
+                dropdown.innerHTML = '<div style="padding:10px; color:var(--text-muted); text-align:center;">No matches found</div>';
+                dropdown.style.display = 'block';
+            }
+        } catch(e) { console.error('Leader search error:', e); }
+    };
+
+    window.V2Discipleship.filterEditLeaderSearch = async function() {
+        const q = document.getElementById('editSgLeaderSearch').value.toLowerCase().trim();
+        const dropdown = document.getElementById('editSgLeaderDropdown');
+        if(q.length < 3) { dropdown.style.display = 'none'; return; }
+        try {
+            const res = await fetch('/api/admin/users/search?q=' + encodeURIComponent(q));
+            const matches = await res.json();
+            if(matches.length > 0) {
+                dropdown.innerHTML = matches.map(y => `<div style="padding:10px; cursor:pointer; border-bottom:1px solid #E2E8F0; transition: background 0.2s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='transparent'" onclick="V2Discipleship.selectEditLeader(${y.id}, '${(y.name||'').replace(/'/g, "\\'")}')"><strong style="color:var(--text-main);">${y.name}</strong></div>`).join('');
+                dropdown.style.display = 'block';
+            } else {
+                dropdown.innerHTML = '<div style="padding:10px; color:var(--text-muted); text-align:center;">No matches found</div>';
+                dropdown.style.display = 'block';
+            }
+        } catch(e) { console.error('Leader search error:', e); }
+    };
+}
+
+
+// ==========================================
+// V108: CAMPFIRE DASHBOARD SELF-HEALING ENGINE
+// ==========================================
+
+// 🚀 THE FIX: Force the data to fetch when the tab is clicked!
+window.switchDashTab = function(tabName) {
+    const tabs = ['overview', 'members', 'prayers', 'deepdive', 'memories', 'admin'];
+    tabs.forEach(t => {
+        const elId = t === 'deepdive' ? 'dashTabDeepDive' : 'dashTab' + t.charAt(0).toUpperCase() + t.slice(1);
+        const btnId = t === 'deepdive' ? 'btnDashDeepDive' : 'btnDash' + t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById(elId);
+        const btn = document.getElementById(btnId);
+        if (el) el.style.display = (tabName === t) ? 'block' : 'none';
+        if (btn) {
+            if (tabName === t) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    });
+
+    // Fire the Data Loaders natively!
+    if (tabName === 'members') window.loadGroupMembers();
+    if (tabName === 'prayers' && typeof window.loadGroupPrayers === 'function') window.loadGroupPrayers();
+    if (tabName === 'deepdive') window.loadGroupThreads();
+    if (tabName === 'memories' && typeof window.loadGroupMemories === 'function') window.loadGroupMemories();
+};
+
+// --- 1. SELF-HEALING MEMBERS ENGINE ---
+window.loadGroupMembers = async function() {
+    if (!window.currentDashboardGroupId) return;
+    
+    let tab = document.getElementById('dashTabMembers');
+    let container = document.getElementById('dashMembersList');
+    
+    // Auto-rebuild the HTML if it is missing
+    if (tab && !container) {
+        tab.innerHTML = '<p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px; font-weight:bold;">🟢 Online Today | ⚪ Offline</p><div id="dashMembersList"></div>';
+        container = document.getElementById('dashMembersList');
+    }
+    if (!container) return;
+    
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Loading members...</p>';
+    
+    try {
+        const res = await fetch('/api/small-groups/' + window.currentDashboardGroupId + '/roster-status');
+        const members = await res.json();
+        
+        if (!members || members.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">No members found.</p>';
+            return;
+        }
+
+        container.innerHTML = members.map(m => {
+            const avatarHtml = m.profile_picture ? `<img src="${m.profile_picture}" style="width:36px;height:36px;border-radius:50%;object-fit:cover; border:2px solid #FFF; box-shadow:0 2px 4px rgba(0,0,0,0.1);">` : `<div style="width:36px;height:36px;border-radius:50%;background:#E2E8F0;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-muted); border:2px solid #FFF; box-shadow:0 2px 4px rgba(0,0,0,0.1);">${m.name.charAt(0)}</div>`;
+            
+            // Check if active today based on Manila Time
+            const todayStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }).split(',')[0];
+            const isOnline = m.last_active && new Date(m.last_active).toLocaleString('en-US', { timeZone: 'Asia/Manila' }).split(',')[0] === todayStr;
+            const statusIndicator = isOnline ? '🟢' : '⚪';
+            const roleBadge = m.status === 'Pending' ? '<span style="font-size:0.7rem; background:#FEF3C7; color:#D97706; padding:4px 8px; border-radius:6px; font-weight:bold; margin-left:6px;">Pending</span>' : '';
+            
+            return `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 15px; border-bottom:1px solid var(--border-color); background:#FFF; border-radius:10px; margin-bottom:10px; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+                <div style="display:flex; gap:12px; align-items:center;">
+                    ${avatarHtml}
+                    <div>
+                        <strong style="color:var(--text-main); font-size:0.95rem;">${m.name}</strong> ${roleBadge}
+                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">${statusIndicator} ${isOnline ? 'Online Today' : 'Offline'}</div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) { container.innerHTML = '<p style="text-align:center; color:red;">Failed to load members.</p>'; }
+};
+
+// --- 2. SELF-HEALING DEEP DIVES (FORUM) ENGINE ---
+window.loadGroupThreads = async function() {
+    if (!window.currentDashboardGroupId) return;
+    
+    let tab = document.getElementById('dashTabDeepDive');
+    let container = document.getElementById('dashThreadsList');
+    let createSection = document.getElementById('dashCreateThreadSection');
+    
+    // Auto-rebuild the Deep Dives Forum HTML if it is missing
+    if (tab && (!container || !createSection)) {
+        tab.innerHTML = `
+            <div id="dashCreateThreadSection" style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.03);">
+                <h3 style="margin-top:0; color:var(--primary); font-size:1.15rem; margin-bottom:12px; border:none; padding:0;">Create New Topic</h3>
+                <input type="text" id="threadTitle" class="form-control" placeholder="Discussion Title" style="margin-bottom:12px;">
+                <textarea id="threadContent" class="form-control" rows="3" placeholder="What's on your mind?"></textarea>
+                <button class="btn btn-primary" style="width:100%; margin-top:12px; font-weight:bold; border-radius:8px;" onclick="window.submitGroupThread(event)">Post Topic</button>
+            </div>
+            <div id="dashThreadsList"></div>
+        `;
+        container = document.getElementById('dashThreadsList');
+        createSection = document.getElementById('dashCreateThreadSection');
+    }
+    if (!container) return;
+    
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Loading topics...</p>';
+    
+    try {
+        const res = await fetch('/api/small-groups/' + window.currentDashboardGroupId + '/threads');
+        const threads = await res.json();
+        
+        if (threads.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:30px; background:#F8FAFC; border-radius:12px; border:1px dashed #CBD5E1;"><span style="font-size:2rem;">📖</span><p style="color:var(--text-muted); font-size:0.95rem; margin-top:10px;">No discussions started yet. Be the first to spark a deep dive!</p></div>';
+            return;
+        }
+        
+        container.innerHTML = threads.map(t => `
+        <div style="background:#FFF; padding:15px; border-radius:12px; border:1px solid var(--border-color); margin-bottom:12px; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.02); transition: transform 0.1s ease-in-out;" onmouseover="this.style.transform='scale(1.01)'" onmouseout="this.style.transform='scale(1)'" onclick="openThreadView(${t.id}, '${(t.title||'').replace(/'/g, "\\'")}', '${(t.content||'').replace(/'/g, "\\'").replace(/\n/g, "\\n")}', '${(t.author_name||'').replace(/'/g, "\\'")}', '${t.created_at}', '${t.profile_picture || ''}')">
+            <h3 style="color:var(--primary); font-size:1.1rem; margin:0 0 6px 0; border:none; padding:0;">${t.title}</h3>
+            <p style="font-size:0.85rem; color:var(--text-muted); margin:0 0 12px 0;">Started by ${t.author_name} • ${t.created_at.split(' ')[0]}</p>
+            <div style="display:flex; justify-content:flex-end;">
+                <span style="font-size:0.8rem; background:rgba(255,107,0,0.1); color:var(--primary); padding:4px 10px; border-radius:12px; font-weight:bold;">💬 ${t.reply_count || 0} Replies</span>
+            </div>
+        </div>`).join('');
+    } catch(e) { console.error(e); container.innerHTML = '<p style="text-align:center; color:red;">Failed to load discussions.</p>'; }
+};
+
+window.submitGroupThread = async function(e) {
+    if (e) e.preventDefault();
+    if (!window.currentDashboardGroupId || typeof currentMember === 'undefined' || !currentMember) return alert("Please log in.");
+    
+    const titleInput = document.getElementById('threadTitle');
+    const contentInput = document.getElementById('threadContent');
+    
+    const payload = {
+        youth_id: currentMember.id,
+        title: titleInput.value.trim(),
+        content: contentInput.value.trim()
+    };
+    
+    if (!payload.title || !payload.content) return alert("Please fill out both title and content.");
+    
+    try {
+        const btn = e.target;
+        const ogText = btn.innerText;
+        btn.innerText = "Posting..."; btn.disabled = true;
+        
+        const res = await fetch('/api/small-groups/' + window.currentDashboardGroupId + '/threads', {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+        });
+        
+        btn.innerText = ogText; btn.disabled = false;
+        
+        if (res.ok) {
+            titleInput.value = '';
+            contentInput.value = '';
+            window.loadGroupThreads();
+        } else {
+            alert("Failed to create topic.");
+        }
+    } catch(err) { console.error(err); }
+};
+
+// Auto-Inject the Thread View Modal if missing
+document.addEventListener("DOMContentLoaded", () => {
+    if (!document.getElementById('groupThreadModal')) {
+        const threadModalHTML = `
+        <div id="groupThreadModal" class="fullscreen-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:106000; background:#F8FAFC;">
+            <div class="modal-header" style="background:#FFF; display:flex; justify-content:space-between; align-items:center; padding:15px; border-bottom:1px solid #E2E8F0; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+                <button class="btn btn-outline btn-sm" onclick="closeThreadView()">⬅ Back</button>
+                <h3 style="margin:0; font-size:1.1rem;">Discussion</h3>
+                <div style="width:50px;"></div>
+            </div>
+            <div class="modal-content" style="padding:20px; overflow-y:auto; height:calc(100vh - 140px);">
+                <div style="background:#FFF; padding:20px; border-radius:12px; border:1px solid var(--border-color); margin-bottom:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+                    <h2 id="viewThreadTitle" style="color:var(--primary); margin-top:0; border:none; padding:0; margin-bottom:15px;"></h2>
+                    <div style="display:flex; gap:12px; align-items:center; margin-bottom:20px;">
+                        <div id="viewThreadAvatar" style="width:40px; height:40px; border-radius:50%; background:#E2E8F0; display:flex; align-items:center; justify-content:center; overflow:hidden; font-weight:bold; color:var(--text-muted);"></div>
+                        <div>
+                            <strong id="viewThreadAuthor" style="font-size:1rem; color:var(--text-main);"></strong>
+                            <div id="viewThreadDate" style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;"></div>
+                        </div>
+                    </div>
+                    <p id="viewThreadContent" style="font-size:1.05rem; line-height:1.6; color:var(--text-main); white-space:pre-wrap; margin:0;"></p>
+                </div>
+                <h3 style="font-size:1.1rem; margin-bottom:15px; border:none;">Replies</h3>
+                <div id="threadRepliesList" style="margin-bottom:80px;"></div>
+            </div>
+            <div style="position:absolute; bottom:0; left:0; width:100%; padding:15px; background:#FFF; border-top:1px solid var(--border-color); display:flex; gap:10px; box-shadow:0 -4px 10px rgba(0,0,0,0.05);">
+                <input type="hidden" id="replyThreadId">
+                <input type="text" id="replyThreadInput" class="form-control" placeholder="Write a reply..." style="flex:1;">
+                <button class="btn btn-primary" style="border-radius:8px;" onclick="submitThreadReply(event)">Send</button>
+            </div>
+        </div>`;
+        document.body.insertAdjacentHTML('beforeend', threadModalHTML);
+    }
+});
+
+window.openThreadView = async function(threadId, title, content, author, date, avatar) {
+    const modal = document.getElementById('groupThreadModal');
+    if (!modal) return;
+    
+    document.getElementById('viewThreadTitle').innerText = title;
+    document.getElementById('viewThreadAuthor').innerText = author;
+    document.getElementById('viewThreadDate').innerText = date;
+    document.getElementById('viewThreadContent').innerText = content;
+    document.getElementById('replyThreadId').value = threadId;
+    
+    const avHtml = avatar ? `<img src="${avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : author.charAt(0);
+    document.getElementById('viewThreadAvatar').innerHTML = avHtml;
+    
+    // Hide dashboard temporarily
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal) dashModal.style.display = 'none';
+    
+    modal.style.display = 'block';
+    
+    // Load Replies
+    const repliesContainer = document.getElementById('threadRepliesList');
+    if (!repliesContainer) return;
+    repliesContainer.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Loading replies...</p>';
+    
+    try {
+        const res = await fetch('/api/small-groups/threads/' + threadId + '/replies');
+        const replies = await res.json();
+        
+        if (replies.length === 0) {
+            repliesContainer.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.9rem;">Be the first to reply!</p>';
+        } else {
+            repliesContainer.innerHTML = replies.map(r => {
+                const rAv = r.profile_picture ? `<img src="${r.profile_picture}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : `<div style="width:28px;height:28px;border-radius:50%;background:#E2E8F0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;color:var(--text-muted);">${r.author_name.charAt(0)}</div>`;
+                return `
+                <div style="background:#F8FAFC; padding:15px; border-radius:10px; border:1px solid #E2E8F0; margin-bottom: 10px;">
+                    <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
+                        ${rAv} 
+                        <strong style="font-size:0.9rem; color:var(--text-main);">${r.author_name}</strong> 
+                        <span style="font-size:0.75rem; color:var(--text-muted);">${r.created_at.split(' ')[0]}</span>
+                    </div>
+                    <p style="font-size:0.95rem; color:var(--text-main); margin:0; line-height:1.5;">${r.reply_text}</p>
+                </div>`;
+            }).join('');
+        }
+    } catch(e) { console.error(e); }
+};
+
+window.closeThreadView = function() {
+    const modal = document.getElementById('groupThreadModal');
+    if (modal) modal.style.display = 'none';
+    
+    // Reopen dashboard and refresh threads list seamlessly
+    const dashModal = document.getElementById('groupDashboardModal');
+    if (dashModal) { 
+        dashModal.style.display = 'flex'; 
+        window.loadGroupThreads(); 
+    }
+};
+
+window.submitThreadReply = async function(e) {
+    if (e) e.preventDefault();
+    if (typeof currentMember === 'undefined' || !currentMember) return;
+    
+    const threadId = document.getElementById('replyThreadId').value;
+    const input = document.getElementById('replyThreadInput');
+    const text = input.value.trim();
+    if (!text || !threadId) return;
+    
+    try {
+        const btn = e.target;
+        const ogText = btn.innerText;
+        btn.innerText = '...'; btn.disabled = true;
+        
+        const res = await fetch('/api/small-groups/threads/' + threadId + '/replies', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ youth_id: currentMember.id, reply_text: text })
+        });
+        
+        btn.innerText = ogText; btn.disabled = false;
+        
+        if (res.ok) {
+            input.value = '';
+            // Refresh thread view seamlessly
+            window.openThreadView(
+                threadId, 
+                document.getElementById('viewThreadTitle').innerText, 
+                document.getElementById('viewThreadContent').innerText, 
+                document.getElementById('viewThreadAuthor').innerText, 
+                document.getElementById('viewThreadDate').innerText, 
+                null
+            );
+        }
+    } catch(err) { console.error(err); }
+};
