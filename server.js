@@ -12,6 +12,14 @@ const app = express();
 
 
 
+
+
+
+
+
+
+
+
 // [KOINONIA PATCH] SUPER ADMIN PASS-ID BY NAME
 app.get('/api/admin/pass-id-by-name/:name', (req, res) => {
     if (typeof db !== 'undefined') {
@@ -74,6 +82,143 @@ process.on('unhandledRejection', (reason, promise) => console.error('Unhandled R
 
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+
+
+// --- V114: BULLETPROOF COMMUNICATION ENGINE ---
+const sendCustomPush = (db, webpush, youthId, title, message, urlPath) => {
+    if (!webpush) return;
+    db.get("SELECT qr_code FROM youth WHERE id = ?", [youthId], (err, y) => {
+        if (y && y.qr_code) {
+            db.all("SELECT subscription FROM push_subscriptions WHERE username = ?", [y.qr_code], (err, subs) => {
+                if (subs && subs.length > 0) {
+                    const payload = JSON.stringify({ title, body: message, url: urlPath });
+                    subs.forEach(row => {
+                        try {
+                            webpush.sendNotification(JSON.parse(row.subscription), payload).catch(e => {
+                                if (e.statusCode === 404 || e.statusCode === 410) {
+                                    db.run("DELETE FROM push_subscriptions WHERE subscription = ?", [row.subscription]);
+                                }
+                            });
+                        } catch(e){}
+                    });
+                }
+            });
+        }
+    });
+};
+
+app.post('/api/prayer-pals/send', (req, res) => {
+    try {
+        if (!req.body || !req.body.sender_id) return res.status(400).json({error: "Missing body data."});
+        const { sender_id, receiver_id, message, sender_name } = req.body;
+        const d = new Date();
+        const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        const pad = (n) => String(n).padStart(2, '0');
+        const timeNow = `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
+
+        db.run('INSERT INTO personal_inbox (sender_id, receiver_id, title, message, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+            [sender_id, receiver_id, '🙏 A Prayer from ' + sender_name, message, 'Delivered', timeNow], function(err) {
+                if(err) return res.status(500).json({error: err.message});
+                
+                try { if(typeof awardPoints === 'function') awardPoints(sender_id, 'growth', 5, sender_name, 'Daily Prayer Covenant'); } catch(e){}
+
+                if (typeof webpush !== 'undefined') {
+                    sendCustomPush(db, webpush, receiver_id, '🙏 Prayer Received', 'Prayers sent to you by a prayer covenant.', '/?tab=inbox');
+                }
+                res.json({success: true});
+        });
+    } catch (e) { res.status(500).json({error: e.message}); }
+});
+
+app.post('/api/inbox/personal/:id/respond', (req, res) => {
+    try {
+        if (!req.body || !req.body.sender_id) return res.status(400).json({error: "Missing body data."});
+        const { sender_id, original_sender_id, action, sender_name } = req.body;
+        const d = new Date();
+        const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        const pad = (n) => String(n).padStart(2, '0');
+        const timeNow = `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
+
+        db.run("UPDATE personal_inbox SET status = ? WHERE id = ?", [action, req.params.id], (err) => {
+            if(err) return res.status(500).json({error: err.message});
+            
+            let title = action === 'thank_you' ? "💙 Thank You!" : "✨ Praise Report!";
+            let msg = action === 'thank_you' ? `Thank you for covering me in prayer! - ${sender_name}` : `God answered the prayer you prayed for me! Praise God! - ${sender_name}`;
+
+            db.run("INSERT INTO personal_inbox (sender_id, receiver_id, title, message, status, created_at) VALUES (?, ?, ?, ?, 'Delivered', ?)",
+                [sender_id, original_sender_id, title, msg, timeNow], (err2) => {
+                    if(err2) return res.status(500).json({error: err2.message});
+                    if (typeof webpush !== 'undefined') {
+                        sendCustomPush(db, webpush, original_sender_id, title, msg, '/?tab=inbox');
+                    }
+                    res.json({success: true});
+            });
+        });
+    } catch (e) { res.status(500).json({error: e.message}); }
+});
+
+app.post('/api/communications/broadcast', (req, res) => {
+    try {
+        if (!req.body || !req.body.target) return res.status(400).json({error: "Missing body data."});
+        const { target, title, message, actor } = req.body;
+        const d = new Date();
+        const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        const pad = (n) => String(n).padStart(2, '0');
+        const timeNow = `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
+
+        db.run("INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)", [title, message, target, actor || 'System', timeNow], function(err) {
+            if (err) return res.status(500).json({success: false, error: err.message});
+            const announcementId = this.lastID;
+            
+            let targetQuery = "SELECT id, qr_code FROM youth"; let targetParams = [];
+            if (target === 'Leaders') {
+                targetQuery = "SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'";
+            } else if (target === 'Groups') {
+                targetQuery = "SELECT DISTINCT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id";
+            } else if (target.startsWith('Ministry:')) {
+                targetQuery = "SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?";
+                targetParams.push(target.split(':')[1]);
+            } else if (target.startsWith('Group:')) {
+                targetQuery = "SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?";
+                targetParams.push(target.split(':')[1]);
+            }
+            
+            db.all(targetQuery, targetParams, (err, youths) => {
+                const usernames = ['celsocreeriii@gmail.com'];
+                if (youths && youths.length > 0) {
+                    const stmt = db.prepare("INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)");
+                    youths.forEach(y => { if (y && y.id) { stmt.run([y.id, announcementId, timeNow]); if (y.qr_code) usernames.push(y.qr_code); } });
+                    stmt.finalize();
+                }
+                
+                const queryAll = target === 'All' ? "SELECT subscription FROM push_subscriptions" : "SELECT subscription FROM push_subscriptions WHERE username IN (" + usernames.map(()=>'?').join(',') + ")";
+                const paramsAll = target === 'All' ? [] : usernames;
+                
+                db.all(queryAll, paramsAll, (err, subs) => {
+                    if (err || !subs || subs.length === 0) return res.json({ success: true, sentCount: 0 });
+                    const payload = JSON.stringify({ title, body: message, url: '/' });
+                    let sentCount = 0;
+                    Promise.all(subs.map(row => {
+                        try {
+                            return webpush.sendNotification(JSON.parse(row.subscription), payload)
+                                .then(() => { sentCount++; })
+                                .catch(e => { 
+                                    if (e.statusCode === 404 || e.statusCode === 410) db.run("DELETE FROM push_subscriptions WHERE subscription = ?", [row.subscription]); 
+                                });
+                        } catch(e) { return Promise.resolve(); }
+                    })).then(() => { 
+                        try { if(typeof logActivity === 'function') logActivity(actor, 'BROADCAST', "Sent broadcast to " + target); } catch(e){}
+                        res.json({ success: true, sentCount }); 
+                    });
+                });
+            });
+        });
+    } catch (error) { res.status(500).json({success: false, error: error.message}); }
+});
+// --- END V114 ---
+
+
+
 
 // [KOINONIA PATCH] ADMIN MANUAL PRAYER PAL TRIGGER
 app.post('/api/admin/trigger-prayer-pals', (req, res) => {
