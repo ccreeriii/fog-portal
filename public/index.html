@@ -107,120 +107,8 @@
     </script>
 
     <!-- 🚀 CONTINUITY ACTION HUB ENGINE V10 -->
-    <style id="continuityHubCss">
-        .continuity-card {
-            transition: transform 0.05s ease-out, background-color 0.1s ease-out !important;
-            -webkit-user-select: none; user-select: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .continuity-card:active {
-            transform: scale(0.94) !important;
-            background-color: #F1F5F9 !important;
-        }
-    </style>
-    <script id="continuityHubEngineV10">
-        // NATIVE CLICK SIMULATOR (No more window.location reloads!)
-        window.hubNavTo = function(tabName) {
-            // Absolute URL Overrides
-            if (tabName === 'arcade') { window.location.href = '/?faith=quest'; return; }
-            
-            if (tabName === 'groups') {
-                // 1. Change URL quietly without triggering a reload interceptor
-                window.history.pushState(null, '', '/?tab=groups');
-                
-                // 2. Trigger the SPA to load the community view natively
-                const navItems = Array.from(document.querySelectorAll('.bottom-nav *[onclick], nav *[onclick], .nav-item'));
-                const communityBtn = navItems.find(n => (n.getAttribute('onclick') || '').toLowerCase().includes('inbox') || (n.innerText || '').toLowerCase().includes('inbox') || (n.innerText || '').toLowerCase().includes('groups'));
-                if (communityBtn) communityBtn.click();
-                
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                return;
-            }
- // Force Groups URL!
-
-            // Native SPA routing for Growth and Events
-            const navItems = Array.from(document.querySelectorAll('.bottom-nav *[onclick], nav *[onclick], .nav-item'));
-            const targetBtn = navItems.find(n => 
-                (n.getAttribute('onclick') || '').toLowerCase().includes(tabName) || 
-                (n.innerText || '').toLowerCase().includes(tabName)
-            );
-            
-            if (targetBtn) {
-                targetBtn.click();
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            } else {
-                window.location.href = '/?tab=' + tabName;
-            }
-        };
-
-        document.addEventListener("DOMContentLoaded", () => {
-            const injectHub = setInterval(() => {
-                const elements = Array.from(document.querySelectorAll('div, span, p, h1, h2, h3, h4, h5'));
-                const journeyHeader = elements.find(el => el.innerText && el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
-                
-                if (journeyHeader) {
-                    const journeyCard = journeyHeader.closest('.card') || journeyHeader.parentElement;
-                    if (journeyCard && !document.getElementById('actionHubContainer')) {
-                        
-                        document.querySelectorAll('button, .btn').forEach(btn => {
-                            const text = btn.innerText || '';
-                            if (text.includes('Events') || text.includes('Campfire')) {
-                                const parent = btn.closest('div');
-                                if (parent && parent.children.length <= 2) parent.style.display = 'none';
-                                else btn.style.display = 'none';
-                            }
-                        });
-
-                        const actionHub = document.createElement('div');
-                        actionHub.id = 'actionHubContainer';
-                        actionHub.style.marginTop = '25px';
-                        actionHub.style.marginBottom = '30px';
-                        
-                        // Action Cards strictly using the Native Click Simulator!
-                        actionHub.innerHTML = `
-                            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Take Your Next Step</h3>
-
-                            <div class="continuity-card" onclick="hubNavTo('arcade')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-                                <div style="font-size: 1.8rem; background: #FFF9F5; padding: 10px; border-radius: 10px; line-height: 1;">🎮</div>
-                                <div>
-                                    <h4 style="margin: 0 0 4px 0; color: #D97706; font-size: 1rem; font-weight: bold; border: none;">Faith Quest Challenge</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Level up your faith! Deepen your biblical wisdom, overcome challenges, and earn Life Points.</p>
-                                </div>
-                            </div>
-
-                            <div class="continuity-card" onclick="hubNavTo('grow')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-                                <div style="font-size: 1.8rem; background: #ECFDF5; padding: 10px; border-radius: 10px; line-height: 1;">🌱</div>
-                                <div>
-                                    <h4 style="margin: 0 0 4px 0; color: #059669; font-size: 1rem; font-weight: bold; border: none;">Spiritual Growth</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Dive into daily readings and reflections to strengthen your spiritual formation.</p>
-                                </div>
-                            </div>
-
-                            <div class="continuity-card" onclick="hubNavTo('groups')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-                                <div style="font-size: 1.8rem; background: #FEF2F2; padding: 10px; border-radius: 10px; line-height: 1;">🔥</div>
-                                <div>
-                                    <h4 style="margin: 0 0 4px 0; color: #DC2626; font-size: 1rem; font-weight: bold; border: none;">The Campfire</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Ignite true fellowship. Connect, share, and support your community around the fire.</p>
-                                </div>
-                            </div>
-
-                            <div class="continuity-card" onclick="hubNavTo('events')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
-                                <div style="font-size: 1.8rem; background: #EFF6FF; padding: 10px; border-radius: 10px; line-height: 1;">📅</div>
-                                <div>
-                                    <h4 style="margin: 0 0 4px 0; color: #2563EB; font-size: 1rem; font-weight: bold; border: none;">Upcoming Events</h4>
-                                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Join our face-to-face and online gatherings to experience true fellowship and worship together.</p>
-                                </div>
-                            </div>
-                        `;
-                        
-                        journeyCard.parentNode.insertBefore(actionHub, journeyCard.nextSibling);
-                        clearInterval(injectHub);
-                    }
-                }
-            }, 500); 
-            setTimeout(() => clearInterval(injectHub), 10000); 
-        });
-    </script>
+    
+    
 
 </head>
 <body>
@@ -1947,42 +1835,172 @@
                 }
             }, 300);
 
-            // 2. SUPER ADMIN PASS-ID INJECTOR (EMAIL SCRAPER)
+            // 2. SUPER ADMIN PASS-ID INJECTOR (NAME & BADGE)
             setInterval(() => {
                 try {
+                    // 2. Run the Super Admin logic
                     const user = JSON.parse(localStorage.getItem('fog_user'));
                     if (user && user.member && user.member.role === 'Super Admin') {
-                        // Find any element containing an email address on the screen
-                        const allElements = Array.from(document.querySelectorAll('p, span, a, div, h3, h4, h5, li'));
-                        const emailElements = allElements.filter(el => 
-                            el.innerText && 
-                            el.innerText.includes('@') && 
-                            el.innerText.includes('.') && 
-                            el.innerText.length < 50 &&
-                            !el.hasAttribute('data-pass-id-checked') &&
-                            el.children.length === 0 // Ensure we only target the specific text node
-                        );
                         
-                        emailElements.forEach(emailEl => {
-                            emailEl.setAttribute('data-pass-id-checked', 'true');
-                            const emailTxt = emailEl.innerText.trim();
+                        // Find XP Badges to anchor our injection point
+                        const allElements = Array.from(document.querySelectorAll('div, span, p'));
+                        const xpBadges = allElements.filter(el => el.innerText && el.innerText.includes('XP') && el.children.length === 0);
+                        
+                        xpBadges.forEach(xpBadge => {
+                            const container = xpBadge.parentElement;
+                            if (!container || container.hasAttribute('data-pass-id-injected')) return;
                             
-                            fetch('/api/admin/pass-id-by-email/' + encodeURIComponent(emailTxt))
-                                .then(res => res.json())
-                                .then(data => {
-                                    if (data.unique_pass_id) {
-                                        const badge = document.createElement('div');
-                                        badge.style.cssText = 'background: #FEF2F2; border: 1px solid #FCA5A5; color: #DC2626; padding: 4px 10px; border-radius: 6px; margin-top: 6px; font-family: monospace; font-size: 0.85rem; font-weight: bold; display: inline-block;';
-                                        badge.innerHTML = '🛡️ Super Admin | Pass ID: ' + data.unique_pass_id;
-                                        
-                                        // Inject beautifully below the email
-                                        emailEl.parentNode.insertBefore(badge, emailEl.nextSibling);
-                                    }
-                                }).catch(e => console.log('Admin fetch silent error'));
+                            // Look for the user's name in the same container (usually H2 or H3)
+                            const nameEl = container.querySelector('h1, h2, h3, h4');
+                            if (nameEl && nameEl.innerText) {
+                                const nameTxt = nameEl.innerText.trim();
+                                container.setAttribute('data-pass-id-injected', 'true');
+                                
+                                fetch('/api/admin/pass-id-by-name/' + encodeURIComponent(nameTxt))
+                                    .then(res => res.json())
+                                    .then(data => {
+                                        if (data.unique_pass_id) {
+                                            const badge = document.createElement('div');
+                                            // Exact visual replication of the user's native pass ID badge
+                                            badge.style.cssText = 'background: #FFF0E6; color: #D97706; padding: 6px 15px; border-radius: 8px; margin: 10px auto; font-weight: 800; font-size: 0.9rem; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-transform: uppercase;';
+                                            badge.innerHTML = '🔑 UNIQUE PASS ID: ' + data.unique_pass_id;
+                                            
+                                            // Inject exactly between the Name and the XP badge
+                                            xpBadge.parentNode.insertBefore(badge, xpBadge);
+                                        }
+                                    }).catch(e => console.log('Admin fetch silent error'));
+                            }
                         });
                     }
                 } catch(e) {}
-            }, 1000);
+            }, 500);
+        });
+    </script>
+
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V11 -->
+    
+
+
+    <!-- 🚀 CONTINUITY ACTION HUB ENGINE V12 (RESTORED 4 CARDS) -->
+    <style id="continuityHubCss">
+        /* Premium Tap Feedback Animation */
+        .continuity-card {
+            transition: transform 0.1s ease-in-out, background-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+        }
+        .continuity-card:active {
+            transform: scale(0.96) !important;
+            background-color: #F8FAFC !important;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
+        }
+    </style>
+    
+    <script id="continuityHubEngineV12">
+        // THE NO-REFRESH NATIVE ROUTER
+        window.hubNavTo = function(tabName) {
+            // 1. Arcade is a standalone page
+            if (tabName === 'arcade') {
+                window.location.href = '/?faith=quest';
+                return;
+            }
+
+            // 2. Spiritual Growth -> Native Growth Page
+            if (tabName === 'grow') {
+                if (typeof window.switchTab === 'function') window.switchTab('discipleshipTab');
+                if (typeof window.switchGrowthSubTab === 'function') window.switchGrowthSubTab('Home');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+
+            // 3. Campfire -> Native Groups Page
+            if (tabName === 'groups') {
+                if (typeof window.switchTab === 'function') window.switchTab('discipleshipTab');
+                // Tiny delay to let the Growth DOM render before switching to Groups sub-tab
+                setTimeout(() => {
+                    if (typeof window.switchGrowthSubTab === 'function') {
+                        window.switchGrowthSubTab('Groups');
+                    } else {
+                        // Fallback finger click
+                        const btns = Array.from(document.querySelectorAll('button, .bottom-nav-btn'));
+                        const grpBtn = btns.find(b => (b.innerText || '').includes('Groups') || (b.innerText || '').includes('👥'));
+                        if (grpBtn) grpBtn.click();
+                    }
+                }, 100);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+
+            // 4. Events -> Native Events Page
+            if (tabName === 'events') {
+                if (typeof window.switchTab === 'function') {
+                    try { window.switchTab('eventsTab'); } catch(e) {}
+                }
+                setTimeout(() => {
+                    const btns = Array.from(document.querySelectorAll('button, .nav-item'));
+                    const evBtn = btns.find(b => (b.innerText || '').toLowerCase().includes('events') || (b.innerText || '').includes('📅'));
+                    if (evBtn) evBtn.click();
+                }, 50);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+        };
+
+        // DOM OBSERVER: INJECT THE 4 CARDS
+        document.addEventListener("DOMContentLoaded", () => {
+            const injectHub = setInterval(() => {
+                const elements = Array.from(document.querySelectorAll('div, span, p, h1, h2, h3, h4, h5'));
+                const journeyHeader = elements.find(el => el.innerText && el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
+                
+                if (journeyHeader) {
+                    const journeyCard = journeyHeader.closest('.card') || journeyHeader.parentElement;
+                    
+                    if (journeyCard && !document.getElementById('actionHubContainer')) {
+                        
+                        // HIDE THE OLD, UGLY NATIVE BUTTONS
+                        document.querySelectorAll('button, .btn').forEach(btn => {
+                            const text = btn.innerText || '';
+                            if (text.includes('Events') || text.includes('Campfire') || text.includes('Growth')) {
+                                const parent = btn.closest('div');
+                                if (parent && parent.children.length <= 2) parent.style.display = 'none';
+                                else btn.style.display = 'none';
+                            }
+                        });
+
+                        // INJECT THE 4 PREMIUM CARDS
+                        const actionHub = document.createElement('div');
+                        actionHub.id = 'actionHubContainer';
+                        actionHub.style.marginTop = '25px';
+                        actionHub.style.marginBottom = '30px';
+                        actionHub.innerHTML = `
+                            <h3 style="font-size: 1.05rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Continue Your Journey</h3>
+
+                            <div class="continuity-card" onclick="hubNavTo('arcade')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #F59E0B; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                                <div style="font-size: 1.8rem; background: #FFF9F5; padding: 10px; border-radius: 10px; line-height: 1;">🎮</div>
+                                <div><h4 style="margin: 0 0 4px 0; color: #D97706; font-size: 1rem; font-weight: bold; border: none;">Faith Quest Challenge</h4><p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Level up your faith! Deepen your biblical wisdom and earn Life Points.</p></div>
+                            </div>
+
+                            <div class="continuity-card" onclick="hubNavTo('grow')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                                <div style="font-size: 1.8rem; background: #ECFDF5; padding: 10px; border-radius: 10px; line-height: 1;">🌱</div>
+                                <div><h4 style="margin: 0 0 4px 0; color: #059669; font-size: 1rem; font-weight: bold; border: none;">Spiritual Growth</h4><p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Dive into daily readings and reflections to strengthen your spiritual formation.</p></div>
+                            </div>
+
+                            <div class="continuity-card" onclick="hubNavTo('groups')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #EF4444; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                                <div style="font-size: 1.8rem; background: #FEF2F2; padding: 10px; border-radius: 10px; line-height: 1;">🔥</div>
+                                <div><h4 style="margin: 0 0 4px 0; color: #DC2626; font-size: 1rem; font-weight: bold; border: none;">The Campfire</h4><p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Ignite true fellowship. Connect, share, and support your community around the fire.</p></div>
+                            </div>
+
+                            <div class="continuity-card" onclick="hubNavTo('events')" style="background: #FFF; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+                                <div style="font-size: 1.8rem; background: #EFF6FF; padding: 10px; border-radius: 10px; line-height: 1;">📅</div>
+                                <div><h4 style="margin: 0 0 4px 0; color: #2563EB; font-size: 1rem; font-weight: bold; border: none;">Upcoming Events</h4><p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">Join our face-to-face and online gatherings to experience true fellowship.</p></div>
+                            </div>
+                        `;
+                        
+                        journeyCard.parentNode.insertBefore(actionHub, journeyCard.nextSibling);
+                        clearInterval(injectHub);
+                    }
+                }
+            }, 500); 
+            setTimeout(() => clearInterval(injectHub), 10000); 
         });
     </script>
 
