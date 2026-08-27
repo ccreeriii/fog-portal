@@ -2197,6 +2197,10 @@
     </div>
 
     <!-- 🚀 V5 DAILY PRAYER COVENANT ENGINE (PERFECT REFRESH & PRIVATE INBOX) -->
+    
+
+
+    <!-- 🚀 V6 DAILY PRAYER COVENANT ENGINE (JUSTIFIED TEXT & BUTTON STATE) -->
     <script id="dailyCovenantEngineV2">
         window.navToCovenantTab = function(tabName) {
             if (typeof window.switchTab === 'function') {
@@ -2226,7 +2230,7 @@
                 { icon: '🔥', title: 'Spiritual Fire', text: 'Holy Spirit, ignite a fresh passion and hunger for Your Word in my prayer pal\'s heart. Draw them closer to You today than ever before. Amen.' }
             ];
             
-            // Fisher-Yates Shuffle Algorithm for Randomization
+            // Fisher-Yates Shuffle Algorithm
             for (let i = prayers.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [prayers[i], prayers[j]] = [prayers[j], prayers[i]];
@@ -2234,9 +2238,11 @@
             
             // Render Dynamic Buttons
             const list = document.getElementById('guidedPrayerList');
-            list.innerHTML = prayers.map(p => 
-                `<button class="btn" style="text-align:left; font-size:0.85rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:10px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='${p.text}'">${p.icon} Prayer for ${p.title}</button>`
-            ).join('');
+            if (list) {
+                list.innerHTML = prayers.map(p => 
+                    `<button class="btn" style="text-align:left; font-size:0.85rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:10px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='${p.text}'">${p.icon} Prayer for ${p.title}</button>`
+                ).join('');
+            }
 
             document.getElementById('guidedPrayerModal').style.display = 'flex';
         };
@@ -2268,6 +2274,20 @@
                     btn.innerText = 'Prayer Sent! 🙏';
                     btn.style.background = '#10B981';
                     btn.style.borderColor = '#10B981';
+
+                    // Update the Main Card Button instantly!
+                    const mainBtn = document.getElementById('mainPrayBtn');
+                    if (mainBtn) {
+                        mainBtn.innerText = '✓ Prayer Sent';
+                        mainBtn.style.background = '#9CA3AF'; // Grayish green
+                        mainBtn.style.cursor = 'not-allowed';
+                        mainBtn.disabled = true;
+                        mainBtn.removeAttribute('onclick');
+                    }
+                    
+                    // Save state so it persists on refresh
+                    const todayStr = new Date().toLocaleDateString();
+                    localStorage.setItem('fog_prayed_for_' + palId + '_' + todayStr, 'true');
                 }
             } catch(e) { console.error(e); }
 
@@ -2289,7 +2309,7 @@
                 (el.innerText.toUpperCase().includes('SECRET PRAYER PAL') || 
                  el.innerText.toUpperCase().includes('COVENANT PRAYER PARTNER') || 
                  el.innerText.toUpperCase().includes('DAILY PRAYER COVENANT') ||
-                 el.innerText.toUpperCase().includes('YOUR DAILY PRAYER COVENANT IS LOADING...')) && 
+                 el.innerText.toUpperCase().includes('FINDING YOUR PRAYER PAL...')) && 
                 el.children.length === 0
             );
             
@@ -2297,8 +2317,9 @@
             const card = targetEl.closest('.card');
             if (!card) return;
 
+            // 🎯 NEW: text-align: justify; injected here!
             const pastoralEncouragement = `
-                <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; margin: 15px 0 0 0; padding: 15px; background: #F8FAFC; border-left: 4px solid var(--primary); border-radius: 0 8px 8px 0;">
+                <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; margin: 15px 0 0 0; padding: 15px; background: #F8FAFC; border-left: 4px solid var(--primary); border-radius: 0 8px 8px 0; text-align: justify;">
                     Prayer is the heartbeat of our spiritual family. When you intentionally pray for someone, you are standing in the gap, walking through their challenges with them, and weaving our community closer together. Take a moment <strong>today</strong> to cover them in prayer, and remind them that no one carries their burdens alone—because love has a place here.
                 </p>
             `;
@@ -2317,6 +2338,14 @@
                 if (pal && pal.pal_name) {
                     const avatarHtml = pal.profile_picture ? `<img src="${pal.profile_picture}" style="width:50px;height:50px;border-radius:50%;object-fit:cover; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">` : `<div style="width:50px;height:50px;border-radius:50%;background:#E2E8F0;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-muted); font-size: 1.2rem; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">${pal.pal_name.charAt(0)}</div>`;
                     
+                    // CHECK LOCAL STORAGE FOR PREVIOUSLY SENT PRAYERS TODAY
+                    const todayStr = new Date().toLocaleDateString();
+                    const hasPrayed = localStorage.getItem('fog_prayed_for_' + pal.pal_youth_id + '_' + todayStr);
+                    
+                    const prayBtnHtml = hasPrayed ? 
+                        `<button id="mainPrayBtn" disabled class="btn btn-sm" style="background: #9CA3AF; color: #FFF; border-radius: 8px; padding: 8px 15px; font-weight: bold; border: none; cursor: not-allowed; display: flex; align-items: center; gap: 5px;">✓ Prayer Sent</button>` :
+                        `<button id="mainPrayBtn" onclick="window.openGuidedPrayer('${pal.pal_name.replace(/'/g, "\\'")}', ${pal.pal_youth_id})" class="btn btn-sm" style="background: #10B981; color: #FFF; border-radius: 8px; padding: 8px 15px; font-weight: bold; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px;">🙏 Pray</button>`;
+
                     card.innerHTML = `
                         <div style="display:flex; align-items:center; gap: 15px; margin-bottom: 15px;">
                             <span style="font-size: 2rem; background: #EEF2FF; padding: 12px; border-radius: 12px; line-height: 1;">🛡️</span>
@@ -2333,13 +2362,14 @@
                                     <strong style="font-size: 1.1rem; color: var(--text-main); display: block;">${pal.pal_name}</strong>
                                 </div>
                             </div>
-                            <button onclick="window.openGuidedPrayer('${pal.pal_name}', ${pal.pal_youth_id})" class="btn btn-sm" style="background: #10B981; color: #FFF; border-radius: 8px; padding: 8px 15px; font-weight: bold; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px;">🙏 Pray</button>
+                            ${prayBtnHtml}
                         </div>
                         
                         ${pastoralEncouragement}
                         ${adminBtn}
                     `;
                 } else {
+                    // ... [Fallback UI generation remains intact]
                     let fallbackMsg = "We assign new prayer partners every day! Finding your prayer pal...";
                     let actionBtn = "";
                     
