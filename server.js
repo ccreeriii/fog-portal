@@ -1645,7 +1645,7 @@ app.post('/api/growth-games/verse-chain/submit', (req, res) => { const { youth_i
 
 
 app.get('/api/prayer-pals/current/:youth_id', (req, res) => {
-    db.get('SELECT p.*, y.name as pal_name FROM secret_prayer_pals p JOIN youth y ON p.pal_youth_id = y.id WHERE p.youth_id = ? ORDER BY p.id DESC LIMIT 1', [req.params.youth_id], (err, row) => {
+    db.get('SELECT p.*, y.name as pal_name, y.profile_picture FROM secret_prayer_pals p JOIN youth y ON p.pal_youth_id = y.id WHERE p.youth_id = ? ORDER BY p.id DESC LIMIT 1', [req.params.youth_id], (err, row) => {
         res.json(row || null);
     });
 });
