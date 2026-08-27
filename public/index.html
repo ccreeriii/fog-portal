@@ -601,7 +601,7 @@
         <div class="sub-nav">
             <button id="btnSubAdminAnalytics" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('analytics')">📊 Analytics</button>
             <button id="btnSubAdminPathways" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('pathways')">🗺️ Pathway Builder</button>
-            <button id="btnSubAdminGroups" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('groups')">👥 Small Groups</button>
+            <button id="btnSubAdminGroups" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('groups')">🔥 Campfires</button>
             <button id="btnSubAdminGamification" class="sub-nav-btn" onclick="V6Gamification.switchAdminTab('gamification')">🎯 Gamification</button>
             <button id="btnSubAdminHabits" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('habits')">📖 Daily Habits</button>
         </div>
@@ -623,7 +623,7 @@
         </div>
         <div id="subTabAdminGroups" class="discipleship-admin-sub-tab" style="display:none;">
             <div class="card">
-                <h2>Create New Small Group</h2>
+                <h2>Create New Campfire</h2>
                 <form id="createSmallGroupForm" onsubmit="V2Discipleship.createSmallGroup(event)">
                     <div class="form-group"><label>Group Name *</label><input type="text" id="sgCreateName" class="form-control" required></div>
                     <div class="form-group"><label>Group Logo (Optional)</label><input type="file" id="sgCreateLogo" class="form-control" accept="image/*"></div>
@@ -641,7 +641,7 @@
                     <button type="submit" class="btn btn-primary" style="width:100%;">Create Group</button>
                 </form>
             </div>
-            <div class="card"><h2>Active Small Groups</h2><div id="adminSmallGroupsList"></div></div>
+            <div class="card"><h2>Active Small Groups</h2><h3 style="margin-top:20px; margin-bottom:10px;">Active Fire Circles</h3><div id="adminSmallGroupsList"></div></div>
         </div>
         <div id="subTabAdminHabits" class="discipleship-admin-sub-tab" style="display:none;">
             <div class="card">
@@ -792,7 +792,7 @@
                 <div id="prayerWallContainer"></div>
             </div>
         </div>
-        <div id="growthSubGroups" class="growth-sub-tab"><div class="card"><h2>Small Groups</h2><div id="smallGroupsContainer"></div></div></div>
+        <div id="growthSubGroups" class="growth-sub-tab"><div class="card"><h2>Campfires</h2><div id="smallGroupsContainer"></div></div></div>
     </div>
 
     <div id="leaderboardsHubTab" class="tab-content">
@@ -1459,6 +1459,7 @@
             <button class="sub-nav-btn" id="btnDashPrayers" onclick="switchDashTab('prayers')">🙏 Prayers</button>
             <button class="sub-nav-btn" id="btnDashDeepDive" onclick="switchDashTab('deepdive')">📖 Deep Dives</button>
             <button class="sub-nav-btn" id="btnDashMemories" onclick="switchDashTab('memories')">📸 Memories</button>
+            <button class="sub-nav-btn" id="btnDashAdmin" onclick="switchDashTab('admin')" style="display:none; color:#EF4444; font-weight:bold;">⚙️ Admin</button>
         </div>
 
         <div style="padding: 15px; overflow-y: auto; flex: 1;">
@@ -1484,7 +1485,7 @@
             <div id="dashTabMembers" style="display: none;">
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">🟢 Online (Active today) | ⚪ Offline</p>
                 
-        <div id="dashLeaderControls" style="display:none; background: #DBEAFE; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+        <div id="dashLeaderControlsOld" style="display:none !important;" style="display:none; background: #DBEAFE; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
             <h4 style="margin-top:0; color:#1E3A8A; margin-bottom: 10px;">👑 Leader Controls: Invite Member</h4>
             <div style="display:flex; gap:10px;">
                 <div style="flex:1; position:relative;">
@@ -1522,6 +1523,33 @@
                 </div>
                 <div id="dashMemoriesGrid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;"></div>
             </div>
+
+        <div id="dashTabAdmin" class="dash-tab-content" style="display: none; padding-bottom: 20px;">
+            <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <h4 style="margin-top:0; color:var(--primary); margin-bottom: 10px;">🔒 Campfire Privacy</h4>
+                <select id="dashAdminPrivacy" class="form-control" onchange="window.updateGroupPrivacy()">
+                    <option value="Open">🌐 Open (Anyone can join)</option>
+                    <option value="Approval">🔒 Approval (Leader must approve)</option>
+                    <option value="Invite-Only">🕵️ Invite-Only (Hidden from public)</option>
+                </select>
+            </div>
+            
+            <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <h4 style="margin-top:0; color:var(--primary); margin-bottom: 10px;">⏳ Pending Member Requests</h4>
+                <div id="dashAdminPendingList">Loading...</div>
+            </div>
+            
+            <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <h4 style="margin-top:0; color:var(--primary); margin-bottom: 10px;">➕ Search & Invite Members</h4>
+                <div style="display:flex; gap:10px; position:relative;">
+                    <input type="text" id="adminInviteSearch" class="form-control" placeholder="Search member name..." onkeyup="window.filterAdminInvite()">
+                    <div id="adminInviteDropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; background:#FFF; border:1px solid #ccc; z-index:100; max-height:150px; overflow-y:auto; border-radius:6px; box-shadow:0 4px 6px rgba(0,0,0,0.1);"></div>
+                    <input type="hidden" id="adminInviteYouthId">
+                    <button class="btn btn-primary" onclick="window.submitAdminInvite()" style="background:var(--primary); border:none;">Invite</button>
+                </div>
+            </div>
+        </div>
+    
         
 <div id="dashTabPrayers" style="display: none;">
                 <div style="text-align: center; margin-bottom: 15px;">

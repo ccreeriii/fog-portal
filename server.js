@@ -11,6 +11,18 @@ const app = express();
 
 
 
+
+// [KOINONIA PATCH] SUPER ADMIN PASS-ID BY NAME
+app.get('/api/admin/pass-id-by-name/:name', (req, res) => {
+    if (typeof db !== 'undefined') {
+        const decodedName = decodeURIComponent(req.params.name).trim();
+        db.get("SELECT unique_pass_id FROM youth WHERE name = ?", [decodedName], (err, row) => {
+            if (!err && row) res.json({ unique_pass_id: row.unique_pass_id });
+            else res.status(404).json({ error: 'Not found' });
+        });
+    }
+});
+
 // [KOINONIA PATCH] SUPER ADMIN PASS-ID BY EMAIL
 app.get('/api/admin/pass-id-by-email/:email', (req, res) => {
     if (typeof db !== 'undefined') {
@@ -1130,6 +1142,13 @@ app.get('/api/small-groups', (req, res) => {
     }); 
 });
 app.post('/api/small-groups', (req, res) => { db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, points, logo, privacy_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, getManilaTime()], function(err) { res.json({ success: true }); }); });
+
+// [KOINONIA PATCH] UPDATE CAMPFIRE PRIVACY
+app.patch('/api/small-groups/:id/privacy', (req, res) => {
+    db.run('UPDATE small_groups SET privacy_level = ? WHERE id = ?', [req.body.privacy_level, req.params.id], function(err) {
+        res.json({success: !err, error: err ? err.message : null});
+    });
+});
 app.put('/api/small-groups/:id', (req, res) => { db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=?, points=?, logo=?, privacy_level=? WHERE id=?`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, req.body.privacy_level || 'Open', req.params.id], function(err) { res.json({ success: true }); }); });
 app.delete('/api/small-groups/:id', (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
 

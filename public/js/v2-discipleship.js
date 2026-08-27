@@ -391,7 +391,7 @@ window.V2Discipleship = {
 
                 let html = '';
                 if(myGroups.length > 0) {
-                    html += '<h3 style="color:var(--text-main); margin-bottom: 10px;">My Groups</h3>';
+                    html += '<h3 style="color:var(--text-main); margin-bottom: 10px;">🔥 Fire Circles</h3>';
                     html += myGroups.map(g => renderCard(g, 'Enter')).join('');
                 }
                 if(pendingGroups.length > 0) {
@@ -399,7 +399,7 @@ window.V2Discipleship = {
                     html += pendingGroups.map(g => renderCard(g, 'Pending')).join('');
                 }
                 if(discoverGroups.length > 0) {
-                    html += '<h3 style="color:var(--text-main); margin-top: 20px; margin-bottom: 10px;">Discover Groups</h3>';
+                    html += '<h3 style="color:var(--text-main); margin-top: 20px; margin-bottom: 10px;">🏕️ Discover Campfires</h3>';
                     html += discoverGroups.map(g => renderCard(g, 'Join')).join('');
                 }
                 userList.innerHTML = html;
@@ -2119,4 +2119,160 @@ window.loadGroupMemories = async function() {
             </div>`;
         }).join('');
     } catch(e) { console.error(e); }
+};
+
+
+// ==========================================
+// V103: CAMPFIRE DASHBOARD & ADMIN MODERATION
+// ==========================================
+window.currentDashboardGroupId = null;
+
+window.openGroupDashboard = function(id, name, logo, leaderName, leaderId) {
+    const modal = document.getElementById('groupDashboardModal');
+    if (!modal) return;
+    window.currentDashboardGroupId = id;
+
+    // Centered Logo
+    let safeLogo = (logo && logo !== 'null' && logo !== 'undefined') ? logo : '';
+    const logoEl = document.getElementById('dashGroupLogo');
+    if (logoEl) {
+        if (safeLogo) {
+            logoEl.outerHTML = '<div id="dashGroupLogo" style="width:70px; height:70px; margin: 0 auto 15px auto;"><img src="' + safeLogo + '" style="width:100%; height:100%; border-radius:12px; object-fit:cover; display:block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>';
+        } else {
+            logoEl.outerHTML = '<div id="dashGroupLogo" style="width:70px; height:70px; border-radius:12px; background:var(--bg-light); display:flex; align-items:center; justify-content:center; font-size:2rem; margin: 0 auto 15px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🔥</div>';
+        }
+    }
+
+    if (document.getElementById('dashGroupName')) document.getElementById('dashGroupName').innerText = name || 'Campfire Name';
+    const metaEl = document.getElementById('dashGroupMeta');
+    if (metaEl) metaEl.innerText = "Led by " + (leaderName || 'TBA');
+
+    // Admin Access Verification
+    const adminBtn = document.getElementById('btnDashAdmin');
+    const isLeader = (typeof currentMember !== 'undefined' && currentMember && leaderId == currentMember.id);
+    const isSuperAdmin = (typeof currentMember !== 'undefined' && currentMember && currentMember.role === 'Super Admin');
+
+    if (adminBtn) adminBtn.style.display = (isLeader || isSuperAdmin) ? 'inline-block' : 'none';
+
+    if (isLeader || isSuperAdmin) {
+        if (typeof window.loadAdminPendingMembers === 'function') window.loadAdminPendingMembers(id);
+        if (V2Discipleship && V2Discipleship.groupsData) {
+            const g = V2Discipleship.groupsData.find(x => x.id === id);
+            if(g && document.getElementById('dashAdminPrivacy')) document.getElementById('dashAdminPrivacy').value = g.privacy_level || 'Open';
+        }
+    }
+
+    modal.style.display = 'flex';
+    modal.style.zIndex = '105000';
+    modal.classList.add('active');
+    window.switchDashTab('overview');
+};
+
+window.switchDashTab = function(tabName) {
+    const tabs = ['overview', 'members', 'prayers', 'deepdive', 'memories', 'admin'];
+    tabs.forEach(t => {
+        const elId = t === 'deepdive' ? 'dashTabDeepDive' : 'dashTab' + t.charAt(0).toUpperCase() + t.slice(1);
+        const btnId = t === 'deepdive' ? 'btnDashDeepDive' : 'btnDash' + t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById(elId);
+        const btn = document.getElementById(btnId);
+        if (el) el.style.display = (tabName === t) ? 'block' : 'none';
+        if (btn) {
+            if (tabName === t) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    });
+};
+
+// ADMIN: Load Pending Members
+window.loadAdminPendingMembers = async function(groupId) {
+    try {
+        const res = await fetch('/api/small-groups/' + groupId + '/roster-status');
+        const members = await res.json();
+        const pending = members.filter(m => m.status === 'Pending');
+        const container = document.getElementById('dashAdminPendingList');
+        if (!container) return;
+
+        if (pending.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted); font-size:0.9rem;">No pending requests at this time.</p>';
+            return;
+        }
+
+        container.innerHTML = pending.map(m => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; margin-bottom:8px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    ${m.profile_picture ? `<img src="${m.profile_picture}" style="width:30px; height:30px; border-radius:50%; object-fit:cover;">` : `<div style="width:30px; height:30px; background:#E2E8F0; border-radius:50%; display:flex; align-items:center; justify-content:center;">👤</div>`}
+                    <span style="font-weight:bold; color:var(--text-main);">${m.name}</span>
+                </div>
+                <div style="display:flex; gap:5px;">
+                    <button class="btn btn-primary btn-sm" onclick="window.processMemberRequest(${groupId}, ${m.id}, 'Approved')" style="padding:4px 10px; background:#10B981; border:none;">Approve</button>
+                    <button class="btn btn-danger btn-sm" onclick="window.processMemberRequest(${groupId}, ${m.id}, 'Denied')" style="padding:4px 10px; background:#EF4444; border:none;">Deny</button>
+                </div>
+            </div>
+        `).join('');
+    } catch(e) { console.error(e); }
+};
+
+// ADMIN: Process Request
+window.processMemberRequest = async function(groupId, youthId, status) {
+    await fetch('/api/small-groups/'+groupId+'/members/'+youthId+'/status', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({status: status})
+    });
+    window.loadAdminPendingMembers(groupId);
+    if (V2Discipleship && V2Discipleship.loadSmallGroups) V2Discipleship.loadSmallGroups();
+};
+
+// ADMIN: Update Privacy
+window.updateGroupPrivacy = async function() {
+    const groupId = window.currentDashboardGroupId;
+    const newPrivacy = document.getElementById('dashAdminPrivacy').value;
+    if (!groupId) return;
+    
+    await fetch('/api/small-groups/' + groupId + '/privacy', {
+        method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({privacy_level: newPrivacy})
+    });
+    alert('Campfire privacy updated to ' + newPrivacy);
+    if (V2Discipleship && V2Discipleship.loadSmallGroups) V2Discipleship.loadSmallGroups();
+};
+
+// ADMIN: Search and Invite Logic
+window.filterAdminInvite = function() {
+    const q = document.getElementById('adminInviteSearch').value.toLowerCase().trim();
+    const dropdown = document.getElementById('adminInviteDropdown');
+    if(q.length < 2) { dropdown.style.display = 'none'; return; }
+    
+    if (typeof youthData !== 'undefined') {
+        const matches = youthData.filter(y => (y.name||'').toLowerCase().includes(q));
+        if(matches.length > 0) {
+            dropdown.innerHTML = matches.map(y => `<div style="padding:10px; cursor:pointer; border-bottom:1px solid #eee;" onclick="window.selectAdminInvite(${y.id}, '${y.name.replace(/'/g, "\\'")}')">${y.name}</div>`).join('');
+            dropdown.style.display = 'block';
+        } else {
+            dropdown.innerHTML = '<div style="padding:10px; color:#888;">No matches found</div>';
+            dropdown.style.display = 'block';
+        }
+    }
+};
+
+window.selectAdminInvite = function(id, name) {
+    document.getElementById('adminInviteYouthId').value = id;
+    document.getElementById('adminInviteSearch').value = name;
+    document.getElementById('adminInviteDropdown').style.display = 'none';
+};
+
+window.submitAdminInvite = async function() {
+    const youthId = document.getElementById('adminInviteYouthId').value;
+    const groupId = window.currentDashboardGroupId;
+    if(!youthId || !groupId) return alert("Please search and select a member first!");
+    
+    const res = await fetch('/api/small-groups/'+groupId+'/invite', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({youth_id: youthId})
+    });
+    const data = await res.json();
+    if(data.success) {
+        alert('Member successfully added to the Campfire!');
+        document.getElementById('adminInviteSearch').value = '';
+        document.getElementById('adminInviteYouthId').value = '';
+        if (V2Discipleship && V2Discipleship.loadSmallGroups) V2Discipleship.loadSmallGroups();
+    } else {
+        alert(data.error || 'Failed to invite member.');
+    }
 };
