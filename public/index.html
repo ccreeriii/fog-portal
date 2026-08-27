@@ -319,7 +319,7 @@
             <!-- Phase 2: Belonging -->
             <div id="pulsePrayerPalWidget" class="card" style="margin: 0; border-left: 4px solid #8B5CF6; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
                 <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">🛡️ DAILY PRAYER COVENANT</h3>
-                <p style="font-size: 1rem; color: var(--text-main); margin: 0;">Your Secret Prayer Pal is <strong id="pulsePrayerPalName" style="color: #8B5CF6;">Loading...</strong></p>
+                <p style="font-size: 1rem; color: var(--text-main); margin: 0;">Your DAILY PRAYER COVENANT is <strong id="pulsePrayerPalName" style="color: #8B5CF6;">Loading...</strong></p>
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">Your Today's Prayer Pal is...</p>
             </div>
 
@@ -2084,7 +2084,7 @@
             try {
                 // Find the existing prayer card container gracefully
                 const allElements = Array.from(document.querySelectorAll('h1, h2, h3, h4, p, span, div'));
-                const targetEl = allElements.find(el => el.children.length === 0 && (el.innerText.includes('Your Secret Prayer Pal is Loading') || el.innerText.includes('Secret Prayer Pal') || el.innerText.includes('Covenant Prayer')));
+                const targetEl = allElements.find(el => el.children.length === 0 && (el.innerText.includes('Your DAILY PRAYER COVENANT is Loading') || el.innerText.includes('DAILY PRAYER COVENANT') || el.innerText.includes('Covenant Prayer')));
                 
                 if (!targetEl) return;
                 const card = targetEl.closest('.card');
@@ -2169,8 +2169,32 @@
 
 
     <!-- 🚀 V3 DAILY PRAYER COVENANT ENGINE (PERFECTED) -->
+    
+
+
+    <!-- 🚀 GUIDED PRAYER MODAL -->
+    <div id="guidedPrayerModal" class="fullscreen-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:106000; background:rgba(15, 23, 42, 0.6); align-items:center; justify-content:center; backdrop-filter: blur(4px);">
+        <div style="background:#FFF; width:90%; max-width:420px; border-radius:20px; padding:25px; box-shadow:0 20px 40px rgba(0,0,0,0.2); position:relative; animation: slideUp 0.3s ease-out;">
+            <button onclick="document.getElementById('guidedPrayerModal').style.display='none'" style="position:absolute; top:15px; right:15px; background:var(--bg-light); border:none; font-size:1rem; cursor:pointer; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--text-muted);">✖</button>
+            
+            <h3 style="color:var(--primary); margin-top:0; font-size:1.3rem; border:none; padding:0;">🙏 Praying for <span id="guidedPalName" style="color:var(--text-main);"></span></h3>
+            <p style="font-size:0.9rem; color:var(--text-muted); line-height:1.5; margin-bottom:20px;">Choose a guided prayer below or write your own to cover your covenant partner today. This is completely private between you and God.</p>
+            
+            <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
+                <button class="btn" style="text-align:left; font-size:0.85rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:10px 15px; border-radius:10px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Lord, I lift up my prayer pal to You today. Please grant them deep peace, physical strength, and joy in whatever they are facing. Amen.'">🕊️ Prayer for Peace & Strength</button>
+                <button class="btn" style="text-align:left; font-size:0.85rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:10px 15px; border-radius:10px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Father, thank You for my prayer pal. I ask that You bless their day, protect their mind, and let them feel Your overwhelming love for them. Amen.'">❤️ Prayer for Blessing & Love</button>
+                <button class="btn" style="text-align:left; font-size:0.85rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:10px 15px; border-radius:10px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='God, I pray for a breakthrough and clear guidance for my prayer pal today. Lead their steps and supply all their needs according to Your riches. Amen.'">✨ Prayer for Breakthrough</button>
+            </div>
+            
+            <textarea id="guidedPrayerText" class="form-control" rows="4" placeholder="Write your prayer here..." style="border-radius:12px; resize:none; padding:15px;"></textarea>
+            
+            <button id="guidedPrayerSubmitBtn" class="btn btn-primary" style="width:100%; margin-top:15px; border-radius:12px; font-weight:bold; padding:14px; font-size:1.05rem;" onclick="window.submitGuidedPrayer()">Send Prayer</button>
+        </div>
+    </div>
+
+
+    <!-- 🚀 V4 DAILY PRAYER COVENANT ENGINE (AGGRESSIVE RETRY & 1-WAY PRAYER) -->
     <script id="dailyCovenantEngineV2">
-        // Dedicated Native SPA Router helper for dynamically injected buttons
         window.navToCovenantTab = function(tabName) {
             if (typeof window.switchTab === 'function') {
                 window.switchTab(tabName + 'Tab');
@@ -2180,8 +2204,50 @@
             }
         };
 
+        window.openGuidedPrayer = function(palName) {
+            document.getElementById('guidedPalName').innerText = palName;
+            document.getElementById('guidedPrayerText').value = '';
+            document.getElementById('guidedPrayerModal').style.display = 'flex';
+        };
+
+        window.submitGuidedPrayer = async function() {
+            const btn = document.getElementById('guidedPrayerSubmitBtn');
+            const text = document.getElementById('guidedPrayerText').value.trim();
+            if (!text) return alert("Please select or write a prayer first!");
+            
+            // Visual Closure & Reward
+            btn.innerText = 'Prayer Sent! 🙏';
+            btn.style.background = '#10B981'; // Success Green
+            btn.style.borderColor = '#10B981';
+            
+            try {
+                // Silently award Growth XP for praying!
+                await fetch('/api/games/universal-submit', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ youth_id: currentMember.id, game_name: 'Daily Prayer Covenant', score: 5, type: 'growth' }) 
+                });
+            } catch(e) {}
+
+            setTimeout(() => {
+                document.getElementById('guidedPrayerModal').style.display = 'none';
+                btn.innerText = 'Send Prayer';
+                btn.style.background = 'var(--primary)';
+                btn.style.borderColor = 'var(--primary)';
+            }, 2000);
+        };
+
+        window.covRetryCount = 0;
+
         window.loadSecretPrayerPal = async function() {
-            if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
+            // Aggressive Retry: If profile data isn't loaded yet (due to refresh), wait and try again!
+            if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) {
+                if (window.covRetryCount < 10) {
+                    window.covRetryCount++;
+                    setTimeout(window.loadSecretPrayerPal, 300);
+                }
+                return;
+            }
             
             const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, p, span, div, strong, b'));
             let targetEl = allHeaders.find(el => 
@@ -2196,10 +2262,10 @@
             const card = targetEl.closest('.card');
             if (!card) return;
 
-            // MELLOW PASTORAL ENCOURAGEMENT
+            // UPDATED DAILY PASTORAL ENCOURAGEMENT
             const pastoralEncouragement = `
                 <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; margin: 15px 0 0 0; padding: 15px; background: #F8FAFC; border-left: 4px solid var(--primary); border-radius: 0 8px 8px 0;">
-                    Prayer is the heartbeat of our spiritual family. When you intentionally pray for someone, you are standing in the gap, walking through their challenges with them, and weaving our community closer together. Reach out, ask them what they are believing God for this week, and remind them that no one carries their burdens alone—because love has a place here.
+                    Prayer is the heartbeat of our spiritual family. When you intentionally pray for someone, you are standing in the gap, walking through their challenges with them, and weaving our community closer together. Take a moment <strong>today</strong> to cover them in prayer, and remind them that no one carries their burdens alone—because love has a place here.
                 </p>
             `;
 
@@ -2217,7 +2283,6 @@
                 if (pal && pal.pal_name) {
                     const avatarHtml = pal.profile_picture ? `<img src="${pal.profile_picture}" style="width:50px;height:50px;border-radius:50%;object-fit:cover; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">` : `<div style="width:50px;height:50px;border-radius:50%;background:#E2E8F0;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-muted); font-size: 1.2rem; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">${pal.pal_name.charAt(0)}</div>`;
                     
-                    // REORDERED LAYOUT: Title -> Pal -> Paragraph -> Admin
                     card.innerHTML = `
                         <div style="display:flex; align-items:center; gap: 15px; margin-bottom: 15px;">
                             <span style="font-size: 2rem; background: #EEF2FF; padding: 12px; border-radius: 12px; line-height: 1;">🛡️</span>
@@ -2234,14 +2299,14 @@
                                     <strong style="font-size: 1.1rem; color: var(--text-main); display: block;">${pal.pal_name}</strong>
                                 </div>
                             </div>
-                            <button onclick="window.navToCovenantTab('inbox')" class="btn btn-sm" style="background: var(--primary); color: #FFF; border-radius: 8px; padding: 8px 15px; font-weight: bold; border: none; cursor: pointer;">Message</button>
+                            <button onclick="window.openGuidedPrayer('${pal.pal_name}')" class="btn btn-sm" style="background: #10B981; color: #FFF; border-radius: 8px; padding: 8px 15px; font-weight: bold; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px;">🙏 Pray</button>
                         </div>
                         
                         ${pastoralEncouragement}
                         ${adminBtn}
                     `;
                 } else {
-                    let fallbackMsg = "We assign new prayer partners regularly! Finding your prayer pal...";
+                    let fallbackMsg = "We assign new prayer partners every day! Finding your prayer pal...";
                     let actionBtn = "";
                     
                     if (!currentMember.gender || currentMember.gender === 'null' || currentMember.gender === '') {
