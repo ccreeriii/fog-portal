@@ -75,6 +75,16 @@ process.on('unhandledRejection', (reason, promise) => console.error('Unhandled R
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
+// [KOINONIA PATCH V107] PENDING MEMBER REQUESTS FIX ONLY
+app.get('/api/small-groups/:id/roster-status', (req, res) => {
+    if(typeof db !== 'undefined') {
+        db.all("SELECT y.id, y.name, y.profile_picture, sgm.status, (SELECT MAX(created_at) FROM activity_logs WHERE username = y.qr_code) as last_active FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ? ORDER BY sgm.status DESC, y.name ASC", [req.params.id], (err, rows) => {
+            res.json(rows || []);
+        });
+    }
+});
+
+
 // ==========================================
 // KOINONIA PHASE B: URL QUERY INTERCEPTOR
 // ==========================================
