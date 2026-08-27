@@ -2185,15 +2185,11 @@
             
             <input type="hidden" id="guidedPalId">
             
-            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:15px; max-height: 200px; overflow-y: auto; padding-right: 5px;">
-                
-                <button class="btn" style="text-align:left; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:8px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Lord, I lift up my prayer pal to You today. Please grant them deep peace, physical strength, and joy in whatever they are facing. Amen.'">🕊️ Prayer for Peace & Strength</button>
-                <button class="btn" style="text-align:left; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:8px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Father, thank You for my prayer pal. I ask that You bless their day, protect their mind, and let them feel Your overwhelming love for them. Amen.'">❤️ Prayer for Blessing & Love</button>
-                <button class="btn" style="text-align:left; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:8px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='God, I pray for a breakthrough and clear guidance for my prayer pal today. Lead their steps and supply all their needs according to Your riches. Amen.'">✨ Prayer for Breakthrough</button>
-                <button class="btn" style="text-align:left; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:8px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Lord, I pray for absolute healing and comfort over my prayer pal. Restore their body, mind, and spirit completely. Amen.'">🌿 Prayer for Healing & Comfort</button>
-                <button class="btn" style="text-align:left; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:8px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Holy Spirit, grant my prayer pal profound wisdom and clarity in all their decisions this week. Light their path. Amen.'">💡 Prayer for Guidance & Wisdom</button>
-
+            <div id="guidedPrayerList" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px; max-height: 220px; overflow-y: auto; padding-right: 5px; border-bottom: 1px solid #E2E8F0; padding-bottom: 10px;">
+                <!-- Buttons injected dynamically -->
             </div>
+            <div style="text-align: center; font-size: 0.75rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 15px; font-weight: bold;">⬇️ Scroll for more options</div>
+            
             <textarea id="guidedPrayerText" class="form-control" rows="4" placeholder="Write your private prayer here..." style="border-radius:12px; resize:none; padding:15px;"></textarea>
             
             <button id="guidedPrayerSubmitBtn" class="btn btn-primary" style="width:100%; margin-top:15px; border-radius:12px; font-weight:bold; padding:14px; font-size:1.05rem;" onclick="window.submitGuidedPrayer()">Send Prayer</button>
@@ -2215,6 +2211,33 @@
             document.getElementById('guidedPalName').innerText = palName;
             document.getElementById('guidedPalId').value = palId;
             document.getElementById('guidedPrayerText').value = '';
+            
+            // 10 Distinct Canned Prayers
+            const prayers = [
+                { icon: '🕊️', title: 'Peace & Strength', text: 'Lord, I lift up my prayer pal to You today. Please grant them deep peace, physical strength, and joy in whatever they are facing. Amen.' },
+                { icon: '❤️', title: 'Blessing & Love', text: 'Father, thank You for my prayer pal. I ask that You bless their day, protect their mind, and let them feel Your overwhelming love for them. Amen.' },
+                { icon: '✨', title: 'Breakthrough', text: 'God, I pray for a breakthrough and clear guidance for my prayer pal today. Lead their steps and supply all their needs according to Your riches. Amen.' },
+                { icon: '🌿', title: 'Healing & Comfort', text: 'Lord, I pray for absolute healing and comfort over my prayer pal. Restore their body, mind, and spirit completely. Amen.' },
+                { icon: '💡', title: 'Guidance & Wisdom', text: 'Holy Spirit, grant my prayer pal profound wisdom and clarity in all their decisions this week. Light their path. Amen.' },
+                { icon: '🛡️', title: 'Protection', text: 'Heavenly Father, please place a hedge of protection around my prayer pal and their family. Guard them from harm and give them safe travels. Amen.' },
+                { icon: '😌', title: 'Anxiety & Worry', text: 'Lord, I ask You to quiet any anxious thoughts in my prayer pal\'s mind. Replace their worries with Your perfect peace that surpasses all understanding. Amen.' },
+                { icon: '💼', title: 'Work & Provision', text: 'God, I lift up my prayer pal\'s career, studies, and finances to You. Open doors of opportunity and bless the work of their hands. Amen.' },
+                { icon: '🤝', title: 'Relationships', text: 'Father, bless the friendships and family ties of my prayer pal. Bring reconciliation where needed and surround them with supportive people. Amen.' },
+                { icon: '🔥', title: 'Spiritual Fire', text: 'Holy Spirit, ignite a fresh passion and hunger for Your Word in my prayer pal\'s heart. Draw them closer to You today than ever before. Amen.' }
+            ];
+            
+            // Fisher-Yates Shuffle Algorithm for Randomization
+            for (let i = prayers.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [prayers[i], prayers[j]] = [prayers[j], prayers[i]];
+            }
+            
+            // Render Dynamic Buttons
+            const list = document.getElementById('guidedPrayerList');
+            list.innerHTML = prayers.map(p => 
+                `<button class="btn" style="text-align:left; font-size:0.85rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:10px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='${p.text}'">${p.icon} Prayer for ${p.title}</button>`
+            ).join('');
+
             document.getElementById('guidedPrayerModal').style.display = 'flex';
         };
 
