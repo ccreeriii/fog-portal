@@ -255,7 +255,7 @@ app.post('/api/communications/broadcast', (req, res) => {
                     
                     db.all(queryAll, paramsAll, (err, subs) => {
                         if (err || !subs || subs.length === 0) return res.json({ success: true, sentCount: 0 });
-                        const payload = JSON.stringify({ title, body: message, url: '/' });
+                        const payload = JSON.stringify({ title, body: message, url: urlPath });
                         let sentCount = 0;
                         Promise.all(subs.map(row => {
                             try {
@@ -393,6 +393,7 @@ db.serialize(() => {
 
     db.run(`CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, message TEXT, target_audience TEXT, author TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS user_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, announcement_id INTEGER, is_read INTEGER DEFAULT 0, created_at DATETIME)`);
+    db.run("ALTER TABLE personal_inbox ADD COLUMN status TEXT DEFAULT 'Delivered'", () => {});
     db.run(`CREATE TABLE IF NOT EXISTS personal_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER, receiver_id INTEGER, title TEXT, message TEXT, is_read INTEGER DEFAULT 0, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS push_subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, subscription TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS blockout_dates (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, block_date TEXT, reason TEXT, created_at DATETIME, UNIQUE(youth_id, block_date))`);
@@ -598,7 +599,7 @@ function logActivity(username, action, details) {
     db.run(`INSERT INTO activity_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)`, [username || 'System', action, details, getManilaTime()]);
 }
 
-function pushToUser(youthId, title, message) {
+function pushToUser(youthId, title, message, urlPath = '/') {
     db.get(`SELECT qr_code FROM youth WHERE id = ?`, [youthId], (err, y) => {
         if (y && y.qr_code) {
             db.all(`SELECT subscription FROM push_subscriptions WHERE username = ?`, [y.qr_code], (err, subs) => {
@@ -1467,9 +1468,26 @@ app.post('/api/prayer-pals/send', (req, res) => {
             // Award points for praying
             if(typeof awardPoints === 'function') awardPoints(sender_id, 'growth', 5, sender_name, 'Daily Prayer Covenant');
             // Send push notification
-            if(typeof pushToUser === 'function') pushToUser(receiver_id, "🙏 New Prayer Received!", "Your Covenant Partner just sent a prayer for you.");
+            if(typeof pushToUser === 'function') pushToUser(receiver_id, '🙏 Prayer Received', 'Prayers sent to you by a prayer covenant.', '/?tab=inbox');
             res.json({success: true});
         });
+});
+
+
+app.post('/api/inbox/personal/:id/respond', (req, res) => {
+    if(typeof db === 'undefined') return res.status(500).json({error: "DB not initialized"});
+    const { sender_id, original_sender_id, action, sender_name } = req.body;
+    
+    db.run("UPDATE personal_inbox SET status = ? WHERE id = ?", [action, req.params.id], () => {
+        let title = action === 'thank_you' ? "💙 Thank You!" : "✨ Praise Report!";
+        let msg = action === 'thank_you' ? `Thank you for covering me in prayer! - ${sender_name}` : `God answered the prayer you prayed for me! Praise God! - ${sender_name}`;
+
+        db.run("INSERT INTO personal_inbox (sender_id, receiver_id, title, message, created_at) VALUES (?, ?, ?, ?, ?)",
+            [sender_id, original_sender_id, title, msg, getManilaTime()], () => {
+                if(typeof pushToUser === 'function') pushToUser(original_sender_id, title, msg, '/?tab=inbox');
+                res.json({success: true});
+        });
+    });
 });
 
 app.get('/api/inbox/personal/:youth_id', (req, res) => {

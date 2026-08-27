@@ -6160,50 +6160,136 @@ setTimeout(() => {
 
 
 
-// --- V5 PRIVATE INBOX ENGINE ---
-window.loadPersonalInbox = async function() {
-    if(typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
-    const inboxTab = document.getElementById('inboxTab');
-    if(!inboxTab) return;
-
-    let privateContainer = document.getElementById('privatePrayersContainer');
-    if(!privateContainer) {
-        privateContainer = document.createElement('div');
-        privateContainer.id = 'privatePrayersContainer';
-        inboxTab.insertBefore(privateContainer, inboxTab.firstChild);
-    }
-
-    try {
-        const res = await fetch('/api/inbox/personal/' + currentMember.id);
-        const prayers = await res.json();
-        
-        if(prayers.length > 0) {
-            let html = '<h3 style="color:var(--primary); margin-bottom:15px; margin-top:10px; font-size:1.1rem; border:none; padding:0;">🙏 Personal Prayers Received</h3>';
-            prayers.forEach(p => {
-                const avatar = p.profile_picture ? `<img src="${p.profile_picture}" style="width:40px;height:40px;border-radius:50%;object-fit:cover; border: 1px solid var(--primary);">` : `<div style="width:40px;height:40px;border-radius:50%;background:#EEF2FF;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--primary); border: 1px solid var(--primary);">${p.sender_name.charAt(0)}</div>`;
-                html += `
-                <div style="background:#FFF; padding:15px; border-radius:12px; border:1px solid #E2E8F0; margin-bottom:15px; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
-                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
-                        ${avatar}
-                        <div>
-                            <strong style="color:var(--text-main); font-size:1rem; display:block;">${p.title}</strong>
-                            <span style="font-size:0.75rem; color:var(--text-muted);">${p.created_at.split(' ')[0]}</span>
-                        </div>
-                    </div>
-                    <p style="font-size:0.95rem; color:var(--text-main); line-height:1.6; margin:0; font-style:italic; padding: 10px; background: #F8FAFC; border-radius: 8px;">"${p.message}"</p>
-                </div>`;
-            });
-            privateContainer.innerHTML = html;
-        }
-    } catch(e) { console.error('Error loading private inbox', e); }
-};
-
-if (!window.ogSwitchTabInboxHookV5) {
+ {
     window.ogSwitchTabInboxHookV5 = window.switchTab;
     window.switchTab = async function(tabId) {
         if(window.ogSwitchTabInboxHookV5) await window.ogSwitchTabInboxHookV5(tabId);
         if(tabId === 'inboxTab') {
             setTimeout(window.loadPersonalInbox, 200);
+        }
+    };
+}
+
+
+// --- V6 PRIVATE INBOX SPLIT-TAB ENGINE ---
+window.switchInboxSubTab = function(tab) {
+    const pBtn = document.getElementById('btnInboxPrayers');
+    const aBtn = document.getElementById('btnInboxAnnounce');
+    const pView = document.getElementById('inboxPrayersView');
+    const aView = document.getElementById('inboxAnnounceView');
+    
+    if(!pBtn || !aBtn || !pView || !aView) return;
+
+    pBtn.style.background = tab === 'prayers' ? '#FFF' : 'transparent';
+    pBtn.style.boxShadow = tab === 'prayers' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none';
+    pBtn.style.color = tab === 'prayers' ? 'var(--primary)' : 'var(--text-muted)';
+
+    aBtn.style.background = tab === 'announcements' ? '#FFF' : 'transparent';
+    aBtn.style.boxShadow = tab === 'announcements' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none';
+    aBtn.style.color = tab === 'announcements' ? 'var(--primary)' : 'var(--text-muted)';
+
+    pView.style.display = tab === 'prayers' ? 'block' : 'none';
+    aView.style.display = tab === 'announcements' ? 'block' : 'none';
+};
+
+window.acknowledgePrayer = async function(inboxId, originalSenderId, action) {
+    try {
+        const res = await fetch('/api/inbox/personal/' + inboxId + '/respond', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ sender_id: currentMember.id, original_sender_id: originalSenderId, action: action, sender_name: currentMember.name })
+        });
+        if(res.ok) {
+            window.loadPersonalInbox(); // Instantly refresh UI to show the checkmark
+        }
+    } catch(e) { console.error(e); }
+};
+
+window.loadPersonalInbox = async function() {
+    if(typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
+    const inboxTab = document.getElementById('inboxTab');
+    if(!inboxTab) return;
+
+    // Hijack the entire native tab layout for a custom SPA feel
+    inboxTab.innerHTML = `
+        <div style="background:#FFF; padding:15px; position:sticky; top:0; z-index:10; border-bottom:1px solid #E2E8F0;">
+            <h2 style="margin:0; color:var(--primary); font-size:1.4rem;">Community Inbox</h2>
+        </div>
+        <div style="padding:15px;">
+            <div style="display:flex; background:#F1F5F9; border-radius:12px; padding:4px; margin-bottom:20px;">
+                <button id="btnInboxPrayers" onclick="switchInboxSubTab('prayers')" style="flex:1; border-radius:10px; border:none; padding:10px; font-weight:bold; background:#FFF; box-shadow:0 2px 4px rgba(0,0,0,0.05); color:var(--primary); cursor:pointer; transition: 0.2s;">🙏 Prayers</button>
+                <button id="btnInboxAnnounce" onclick="switchInboxSubTab('announcements')" style="flex:1; border-radius:10px; border:none; padding:10px; font-weight:bold; background:transparent; color:var(--text-muted); cursor:pointer; transition: 0.2s;">📢 Announcements</button>
+            </div>
+            <div id="inboxPrayersView">Loading prayers...</div>
+            <div id="inboxAnnounceView" style="display:none;">Loading announcements...</div>
+        </div>
+    `;
+
+    // 1. Load Personal Prayers
+    try {
+        const resP = await fetch('/api/inbox/personal/' + currentMember.id);
+        const prayers = await resP.json();
+        const pView = document.getElementById('inboxPrayersView');
+        if(prayers.length === 0) {
+            pView.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); background:#FFF; border-radius:12px; border:1px dashed #CBD5E1;">No personal prayers received yet.</div>';
+        } else {
+            pView.innerHTML = prayers.map(p => {
+                const avatar = p.profile_picture ? `<img src="${p.profile_picture}" style="width:45px;height:45px;border-radius:50%;object-fit:cover; border: 2px solid var(--primary);">` : `<div style="width:45px;height:45px;border-radius:50%;background:#EEF2FF;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--primary); border: 2px solid var(--primary); font-size:1.2rem;">${p.sender_name.charAt(0)}</div>`;
+                
+                // Determine 1-Tap UI State
+                let actionHtml = '';
+                if (p.status === 'Delivered' || !p.status) {
+                    actionHtml = `
+                    <div style="display:flex; gap:10px; margin-top:15px; border-top:1px solid #E2E8F0; padding-top:15px;">
+                        <button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, ${p.sender_id}, 'thank_you')" style="flex:1; background:#EFF6FF; color:#3B82F6; font-weight:bold; border-radius:8px; border:none; cursor:pointer; transition:0.2s;">💙 Send Thanks</button>
+                        <button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, ${p.sender_id}, 'answered')" style="flex:1; background:#ECFDF5; color:#10B981; font-weight:bold; border-radius:8px; border:none; cursor:pointer; transition:0.2s;">✨ Prayer Answered</button>
+                    </div>`;
+                } else if (p.status === 'thank_you') {
+                    actionHtml = `<div style="margin-top:15px; border-top:1px solid #E2E8F0; padding-top:12px; font-size:0.85rem; color:#3B82F6; font-weight:bold; text-align:center;">✓ You sent a thank you.</div>`;
+                } else if (p.status === 'answered') {
+                    actionHtml = `<div style="margin-top:15px; border-top:1px solid #E2E8F0; padding-top:12px; font-size:0.85rem; color:#10B981; font-weight:bold; text-align:center;">✓ You shared a praise report!</div>`;
+                }
+
+                return `
+                <div style="background:#FFF; padding:15px; border-radius:16px; border:1px solid #E2E8F0; margin-bottom:15px; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
+                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                        ${avatar}
+                        <div>
+                            <strong style="color:var(--text-main); font-size:1.05rem; display:block;">${p.title}</strong>
+                            <span style="font-size:0.8rem; color:var(--text-muted);">${p.created_at.split(' ')[0]}</span>
+                        </div>
+                    </div>
+                    <p style="font-size:1rem; color:var(--text-main); line-height:1.6; margin:0; font-style:italic; padding: 12px; background: #F8FAFC; border-radius: 12px; border-left: 3px solid var(--primary);">"${p.message}"</p>
+                    ${actionHtml}
+                </div>`;
+            }).join('');
+        }
+    } catch(e) { console.error(e); }
+
+    // 2. Load Global Announcements
+    try {
+        const resA = await fetch('/api/communications/inbox?username=' + currentMember.qr_code);
+        const ann = await resA.json();
+        const aView = document.getElementById('inboxAnnounceView');
+        if(ann.length === 0) {
+            aView.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); background:#FFF; border-radius:12px; border:1px dashed #CBD5E1;">No community announcements.</div>';
+        } else {
+            aView.innerHTML = ann.map(a => `
+                <div style="background:#FFF; padding:15px; border-radius:12px; border:1px solid #E2E8F0; margin-bottom:15px; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
+                    <h4 style="margin:0 0 5px 0; color:var(--primary); font-size:1.05rem;">${a.title}</h4>
+                    <p style="margin:0 0 10px 0; font-size:0.9rem; color:var(--text-main); line-height:1.5;">${a.message}</p>
+                    <small style="color:var(--text-muted);">${a.created_at}</small>
+                </div>
+            `).join('');
+        }
+    } catch(e) { console.error(e); }
+};
+
+if (!window.ogSwitchTabInboxHookV6) {
+    window.ogSwitchTabInboxHookV6 = window.switchTab;
+    window.switchTab = async function(tabId) {
+        if(window.ogSwitchTabInboxHookV6) await window.ogSwitchTabInboxHookV6(tabId);
+        if(tabId === 'inboxTab') {
+            setTimeout(window.loadPersonalInbox, 100);
         }
     };
 }
