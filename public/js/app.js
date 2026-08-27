@@ -6151,87 +6151,59 @@ setTimeout(() => {
 }, 1000);
 
 
-// == COVENANT PRAYER PARTNER ENGINE ==
-window.loadSecretPrayerPal = async function() {
-    if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
-    
-    // Find the card dynamically
-    const headers = Array.from(document.querySelectorAll('h1, h2, h3, h4, p, span, div, strong, b'));
-    let targetEl = headers.find(el => el.innerText && (el.innerText.toUpperCase().includes('SECRET PRAYER PAL') || el.innerText.toUpperCase().includes('COVENANT PRAYER PARTNER')) && el.children.length === 0);
-    
-    if (!targetEl) return;
-    const card = targetEl.closest('.card');
-    if (!card) return;
+
+
+
+
+
+
+
+
+
+// --- V5 PRIVATE INBOX ENGINE ---
+window.loadPersonalInbox = async function() {
+    if(typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
+    const inboxTab = document.getElementById('inboxTab');
+    if(!inboxTab) return;
+
+    let privateContainer = document.getElementById('privatePrayersContainer');
+    if(!privateContainer) {
+        privateContainer = document.createElement('div');
+        privateContainer.id = 'privatePrayersContainer';
+        inboxTab.insertBefore(privateContainer, inboxTab.firstChild);
+    }
 
     try {
-        const res = await fetch('/api/prayer-pals/current/' + currentMember.id);
-        const pal = await res.json();
+        const res = await fetch('/api/inbox/personal/' + currentMember.id);
+        const prayers = await res.json();
         
-        // Ensure Super Admins get the trigger button
-        const isSuperAdmin = currentMember.role === 'Super Admin' || (window.userPermissions && window.userPermissions.includes('edit_entries'));
-        const adminBtn = isSuperAdmin ? `<button onclick="window.triggerPrayerPalMatching()" style="margin-top: 15px; font-size: 0.75rem; background: #F1F5F9; color: #475569; padding: 6px 12px; border-radius: 6px; border: 1px solid #CBD5E1; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.02);"><span style="margin-right:5px;">⚙️</span> Admin: Force Weekly Pairing Now</button>` : '';
-
-        if (pal && pal.pal_name) {
-            const avatarHtml = pal.profile_picture ? `<img src="${pal.profile_picture}" style="width:45px;height:45px;border-radius:50%;object-fit:cover; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">` : `<div style="width:45px;height:45px;border-radius:50%;background:#E2E8F0;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-muted); font-size: 1.1rem; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">${pal.pal_name.charAt(0)}</div>`;
-            
-            card.innerHTML = `
-                <div style="display:flex; align-items:center; gap: 12px; margin-bottom: 15px;">
-                    <span style="font-size: 1.8rem; background: #EEF2FF; padding: 10px; border-radius: 12px; line-height: 1;">🛡️</span>
-                    <div>
-                        <h3 style="margin: 0; color: var(--primary); font-size: 1.15rem; border: none; padding: 0; font-weight: 800;">Covenant Prayer Partner</h3>
-                        <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">Stand in the gap for them this week.</p>
-                    </div>
-                </div>
-                <div style="background: #F8FAFC; padding: 12px 15px; border-radius: 12px; border: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: space-between;">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        ${avatarHtml}
+        if(prayers.length > 0) {
+            let html = '<h3 style="color:var(--primary); margin-bottom:15px; margin-top:10px; font-size:1.1rem; border:none; padding:0;">🙏 Personal Prayers Received</h3>';
+            prayers.forEach(p => {
+                const avatar = p.profile_picture ? `<img src="${p.profile_picture}" style="width:40px;height:40px;border-radius:50%;object-fit:cover; border: 1px solid var(--primary);">` : `<div style="width:40px;height:40px;border-radius:50%;background:#EEF2FF;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--primary); border: 1px solid var(--primary);">${p.sender_name.charAt(0)}</div>`;
+                html += `
+                <div style="background:#FFF; padding:15px; border-radius:12px; border:1px solid #E2E8F0; margin-bottom:15px; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
+                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+                        ${avatar}
                         <div>
-                            <strong style="font-size: 1.05rem; color: var(--text-main); display: block;">${pal.pal_name}</strong>
+                            <strong style="color:var(--text-main); font-size:1rem; display:block;">${p.title}</strong>
+                            <span style="font-size:0.75rem; color:var(--text-muted);">${p.created_at.split(' ')[0]}</span>
                         </div>
                     </div>
-                    <button onclick="if(window.hubNavTo) window.hubNavTo('inbox'); else window.location.href='/?tab=inbox';" class="btn btn-sm" style="background: var(--primary); color: #FFF; border-radius: 8px; padding: 6px 12px; font-weight: bold; border: none;">Message</button>
-                </div>
-                ${adminBtn}
-            `;
-        } else {
-            let fallbackMsg = "We assign new prayer partners every Monday! Stay tuned.";
-            let actionBtn = "";
-            
-            // Check for missing gender constraint
-            if (!currentMember.gender || currentMember.gender === 'null') {
-                fallbackMsg = "<strong>Action Required:</strong> Please update your profile with your gender (Male/Female) so we can securely pair you with a spiritual brother or sister.";
-                actionBtn = `<button onclick="if(window.hubNavTo) window.hubNavTo('profile'); else window.location.href='/?tab=profile';" style="margin-top: 10px; background: #D97706; color: #FFF; padding: 8px 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; width: 100%;">Update My Profile</button>`;
-            }
-            
-            card.innerHTML = `
-                <div style="display:flex; align-items:center; gap: 12px; margin-bottom: 15px;">
-                    <span style="font-size: 1.8rem; background: #EEF2FF; padding: 10px; border-radius: 12px; line-height: 1;">🛡️</span>
-                    <div>
-                        <h3 style="margin: 0; color: var(--primary); font-size: 1.15rem; border: none; padding: 0; font-weight: 800;">Covenant Prayer Partner</h3>
-                        <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">Weekly spiritual pairings</p>
-                    </div>
-                </div>
-                <div style="background: #FFFBEB; padding: 15px; border-radius: 12px; border: 1px solid #FDE68A;">
-                    <p style="margin: 0; font-size: 0.9rem; color: #D97706; line-height: 1.5;">${fallbackMsg}</p>
-                    ${actionBtn}
-                </div>
-                ${adminBtn}
-            `;
+                    <p style="font-size:0.95rem; color:var(--text-main); line-height:1.6; margin:0; font-style:italic; padding: 10px; background: #F8FAFC; border-radius: 8px;">"${p.message}"</p>
+                </div>`;
+            });
+            privateContainer.innerHTML = html;
         }
-    } catch (e) { console.error('Error loading prayer pal:', e); }
+    } catch(e) { console.error('Error loading private inbox', e); }
 };
 
-window.triggerPrayerPalMatching = async function() {
-    if (!confirm("Are you sure you want to force a new round of prayer partner assignments right now? This will overwrite the current week's pairings.")) return;
-    try {
-        const res = await fetch('/api/admin/trigger-prayer-pals', { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-            alert("✅ Success! " + data.message);
-            window.loadSecretPrayerPal(); // Refresh UI instantly
-        } else {
-            alert("Error: " + data.error);
+if (!window.ogSwitchTabInboxHookV5) {
+    window.ogSwitchTabInboxHookV5 = window.switchTab;
+    window.switchTab = async function(tabId) {
+        if(window.ogSwitchTabInboxHookV5) await window.ogSwitchTabInboxHookV5(tabId);
+        if(tabId === 'inboxTab') {
+            setTimeout(window.loadPersonalInbox, 200);
         }
-    } catch(e) { alert("Error triggering assignments."); }
-};
-// == END PRAYER PARTNER ==
+    };
+}

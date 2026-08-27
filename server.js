@@ -393,6 +393,7 @@ db.serialize(() => {
 
     db.run(`CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, message TEXT, target_audience TEXT, author TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS user_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, announcement_id INTEGER, is_read INTEGER DEFAULT 0, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS personal_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER, receiver_id INTEGER, title TEXT, message TEXT, is_read INTEGER DEFAULT 0, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS push_subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, subscription TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS blockout_dates (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, block_date TEXT, reason TEXT, created_at DATETIME, UNIQUE(youth_id, block_date))`);
     db.run(`CREATE TABLE IF NOT EXISTS gamification_points (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER UNIQUE, points INTEGER DEFAULT 0, arcade_xp INTEGER DEFAULT 0, growth_xp INTEGER DEFAULT 0, event_xp INTEGER DEFAULT 0, created_at DATETIME)`);
@@ -1454,6 +1455,29 @@ app.delete('/api/worship/setlists/:id', (req, res) => { db.run(`DELETE FROM setl
 app.get('/api/worship/setlists/:id/songs', (req, res) => { db.all(`SELECT ss.id as mapping_id, s.* FROM setlist_songs ss JOIN songs s ON ss.song_id = s.id WHERE ss.setlist_id = ? ORDER BY ss.sort_order ASC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 app.post('/api/worship/setlists/:id/songs', (req, res) => { db.get(`SELECT MAX(sort_order) as max_sort FROM setlist_songs WHERE setlist_id = ?`, [req.params.id], (err, row) => { const nextSort = (row && row.max_sort !== null ? row.max_sort : 0) + 1; db.run(`INSERT OR IGNORE INTO setlist_songs (setlist_id, song_id, sort_order) VALUES (?, ?, ?)`, [req.params.id, req.body.song_id, nextSort], function(err) { res.json({ success: true }); }); }); });
 app.delete('/api/worship/setlists/:setlist_id/songs/:mapping_id', (req, res) => { db.run(`DELETE FROM setlist_songs WHERE id=?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
+
+
+// [KOINONIA PATCH] PRIVATE PRAYER INBOX
+app.post('/api/prayer-pals/send', (req, res) => {
+    if(typeof db === 'undefined') return res.status(500).json({error: "DB not initialized"});
+    const { sender_id, receiver_id, message, sender_name } = req.body;
+    db.run('INSERT INTO personal_inbox (sender_id, receiver_id, title, message, created_at) VALUES (?, ?, ?, ?, ?)',
+        [sender_id, receiver_id, '🙏 A Prayer from ' + sender_name, message, getManilaTime()], function(err) {
+            if(err) return res.status(500).json({error: err.message});
+            // Award points for praying
+            if(typeof awardPoints === 'function') awardPoints(sender_id, 'growth', 5, sender_name, 'Daily Prayer Covenant');
+            // Send push notification
+            if(typeof pushToUser === 'function') pushToUser(receiver_id, "🙏 New Prayer Received!", "Your Covenant Partner just sent a prayer for you.");
+            res.json({success: true});
+        });
+});
+
+app.get('/api/inbox/personal/:youth_id', (req, res) => {
+    if(typeof db === 'undefined') return res.status(500).json({error: "DB not initialized"});
+    db.all('SELECT p.*, y.name as sender_name, y.profile_picture FROM personal_inbox p JOIN youth y ON p.sender_id = y.id WHERE p.receiver_id = ? ORDER BY p.created_at DESC', [req.params.youth_id], (err, rows) => {
+        res.json(rows || []);
+    });
+});
 
 app.post('/api/communications/subscribe', (req, res) => {
     const { username, subscription } = req.body;

@@ -2172,28 +2172,34 @@
     
 
 
+    
+
+
     <!-- 🚀 GUIDED PRAYER MODAL -->
     <div id="guidedPrayerModal" class="fullscreen-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:106000; background:rgba(15, 23, 42, 0.6); align-items:center; justify-content:center; backdrop-filter: blur(4px);">
         <div style="background:#FFF; width:90%; max-width:420px; border-radius:20px; padding:25px; box-shadow:0 20px 40px rgba(0,0,0,0.2); position:relative; animation: slideUp 0.3s ease-out;">
             <button onclick="document.getElementById('guidedPrayerModal').style.display='none'" style="position:absolute; top:15px; right:15px; background:var(--bg-light); border:none; font-size:1rem; cursor:pointer; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--text-muted);">✖</button>
             
             <h3 style="color:var(--primary); margin-top:0; font-size:1.3rem; border:none; padding:0;">🙏 Praying for <span id="guidedPalName" style="color:var(--text-main);"></span></h3>
-            <p style="font-size:0.9rem; color:var(--text-muted); line-height:1.5; margin-bottom:20px;">Choose a guided prayer below or write your own to cover your covenant partner today. This is completely private between you and God.</p>
+            <p style="font-size:0.9rem; color:var(--text-muted); line-height:1.5; margin-bottom:15px;">Choose a guided prayer below or write your own to cover your covenant partner today.</p>
             
-            <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
-                <button class="btn" style="text-align:left; font-size:0.85rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:10px 15px; border-radius:10px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Lord, I lift up my prayer pal to You today. Please grant them deep peace, physical strength, and joy in whatever they are facing. Amen.'">🕊️ Prayer for Peace & Strength</button>
-                <button class="btn" style="text-align:left; font-size:0.85rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:10px 15px; border-radius:10px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Father, thank You for my prayer pal. I ask that You bless their day, protect their mind, and let them feel Your overwhelming love for them. Amen.'">❤️ Prayer for Blessing & Love</button>
-                <button class="btn" style="text-align:left; font-size:0.85rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:10px 15px; border-radius:10px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='God, I pray for a breakthrough and clear guidance for my prayer pal today. Lead their steps and supply all their needs according to Your riches. Amen.'">✨ Prayer for Breakthrough</button>
+            <input type="hidden" id="guidedPalId">
+            
+            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:15px; max-height: 200px; overflow-y: auto; padding-right: 5px;">
+                <button class="btn" style="text-align:left; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:8px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Lord, I lift up my prayer pal to You today. Please grant them deep peace, physical strength, and joy in whatever they are facing. Amen.'">🕊️ Prayer for Peace & Strength</button>
+                <button class="btn" style="text-align:left; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:8px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Father, thank You for my prayer pal. I ask that You bless their day, protect their mind, and let them feel Your overwhelming love for them. Amen.'">❤️ Prayer for Blessing & Love</button>
+                <button class="btn" style="text-align:left; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:8px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='God, I pray for a breakthrough and clear guidance for my prayer pal today. Lead their steps and supply all their needs according to Your riches. Amen.'">✨ Prayer for Breakthrough</button>
+                <button class="btn" style="text-align:left; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:8px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Lord, I pray for absolute healing and comfort over my prayer pal. Restore their body, mind, and spirit completely. Amen.'">🌿 Prayer for Healing & Comfort</button>
+                <button class="btn" style="text-align:left; font-size:0.8rem; background:#F8FAFC; border:1px solid #E2E8F0; color:var(--text-main); padding:8px 12px; border-radius:8px; cursor:pointer;" onclick="document.getElementById('guidedPrayerText').value='Holy Spirit, grant my prayer pal profound wisdom and clarity in all their decisions this week. Light their path. Amen.'">💡 Prayer for Guidance & Wisdom</button>
             </div>
             
-            <textarea id="guidedPrayerText" class="form-control" rows="4" placeholder="Write your prayer here..." style="border-radius:12px; resize:none; padding:15px;"></textarea>
+            <textarea id="guidedPrayerText" class="form-control" rows="4" placeholder="Write your private prayer here..." style="border-radius:12px; resize:none; padding:15px;"></textarea>
             
             <button id="guidedPrayerSubmitBtn" class="btn btn-primary" style="width:100%; margin-top:15px; border-radius:12px; font-weight:bold; padding:14px; font-size:1.05rem;" onclick="window.submitGuidedPrayer()">Send Prayer</button>
         </div>
     </div>
 
-
-    <!-- 🚀 V4 DAILY PRAYER COVENANT ENGINE (AGGRESSIVE RETRY & 1-WAY PRAYER) -->
+    <!-- 🚀 V5 DAILY PRAYER COVENANT ENGINE (PERFECT REFRESH & PRIVATE INBOX) -->
     <script id="dailyCovenantEngineV2">
         window.navToCovenantTab = function(tabName) {
             if (typeof window.switchTab === 'function') {
@@ -2204,8 +2210,9 @@
             }
         };
 
-        window.openGuidedPrayer = function(palName) {
+        window.openGuidedPrayer = function(palName, palId) {
             document.getElementById('guidedPalName').innerText = palName;
+            document.getElementById('guidedPalId').value = palId;
             document.getElementById('guidedPrayerText').value = '';
             document.getElementById('guidedPrayerModal').style.display = 'flex';
         };
@@ -2213,48 +2220,52 @@
         window.submitGuidedPrayer = async function() {
             const btn = document.getElementById('guidedPrayerSubmitBtn');
             const text = document.getElementById('guidedPrayerText').value.trim();
-            if (!text) return alert("Please select or write a prayer first!");
+            const palId = document.getElementById('guidedPalId').value;
             
-            // Visual Closure & Reward
-            btn.innerText = 'Prayer Sent! 🙏';
-            btn.style.background = '#10B981'; // Success Green
-            btn.style.borderColor = '#10B981';
+            if (!text) return alert("Please select or write a prayer first!");
+            if (!palId) return alert("Error: Partner ID is missing.");
+            
+            btn.innerText = 'Sending Prayer...';
+            btn.disabled = true;
             
             try {
-                // Silently award Growth XP for praying!
-                await fetch('/api/games/universal-submit', { 
+                const res = await fetch('/api/prayer-pals/send', { 
                     method: 'POST', 
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ youth_id: currentMember.id, game_name: 'Daily Prayer Covenant', score: 5, type: 'growth' }) 
+                    body: JSON.stringify({ 
+                        sender_id: currentMember.id, 
+                        sender_name: currentMember.name,
+                        receiver_id: palId, 
+                        message: text 
+                    }) 
                 });
-            } catch(e) {}
+                
+                if (res.ok) {
+                    btn.innerText = 'Prayer Sent! 🙏';
+                    btn.style.background = '#10B981';
+                    btn.style.borderColor = '#10B981';
+                }
+            } catch(e) { console.error(e); }
 
             setTimeout(() => {
                 document.getElementById('guidedPrayerModal').style.display = 'none';
                 btn.innerText = 'Send Prayer';
                 btn.style.background = 'var(--primary)';
                 btn.style.borderColor = 'var(--primary)';
+                btn.disabled = false;
             }, 2000);
         };
 
-        window.covRetryCount = 0;
-
         window.loadSecretPrayerPal = async function() {
-            // Aggressive Retry: If profile data isn't loaded yet (due to refresh), wait and try again!
-            if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) {
-                if (window.covRetryCount < 10) {
-                    window.covRetryCount++;
-                    setTimeout(window.loadSecretPrayerPal, 300);
-                }
-                return;
-            }
+            if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
             
             const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, p, span, div, strong, b'));
             let targetEl = allHeaders.find(el => 
                 el.innerText && 
                 (el.innerText.toUpperCase().includes('SECRET PRAYER PAL') || 
                  el.innerText.toUpperCase().includes('COVENANT PRAYER PARTNER') || 
-                 el.innerText.toUpperCase().includes('DAILY PRAYER COVENANT')) && 
+                 el.innerText.toUpperCase().includes('DAILY PRAYER COVENANT') ||
+                 el.innerText.toUpperCase().includes('YOUR DAILY PRAYER COVENANT IS LOADING...')) && 
                 el.children.length === 0
             );
             
@@ -2262,7 +2273,6 @@
             const card = targetEl.closest('.card');
             if (!card) return;
 
-            // UPDATED DAILY PASTORAL ENCOURAGEMENT
             const pastoralEncouragement = `
                 <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; margin: 15px 0 0 0; padding: 15px; background: #F8FAFC; border-left: 4px solid var(--primary); border-radius: 0 8px 8px 0;">
                     Prayer is the heartbeat of our spiritual family. When you intentionally pray for someone, you are standing in the gap, walking through their challenges with them, and weaving our community closer together. Take a moment <strong>today</strong> to cover them in prayer, and remind them that no one carries their burdens alone—because love has a place here.
@@ -2299,7 +2309,7 @@
                                     <strong style="font-size: 1.1rem; color: var(--text-main); display: block;">${pal.pal_name}</strong>
                                 </div>
                             </div>
-                            <button onclick="window.openGuidedPrayer('${pal.pal_name}')" class="btn btn-sm" style="background: #10B981; color: #FFF; border-radius: 8px; padding: 8px 15px; font-weight: bold; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px;">🙏 Pray</button>
+                            <button onclick="window.openGuidedPrayer('${pal.pal_name}', ${pal.pal_youth_id})" class="btn btn-sm" style="background: #10B981; color: #FFF; border-radius: 8px; padding: 8px 15px; font-weight: bold; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px;">🙏 Pray</button>
                         </div>
                         
                         ${pastoralEncouragement}
@@ -2348,6 +2358,16 @@
                 }
             } catch(e) { alert("Error triggering assignments."); }
         };
+
+        // AGGRESSIVE REFRESH WATCHER
+        setInterval(() => {
+            const card = document.querySelector('#pulseDashboardTab');
+            if(card && card.style.display !== 'none' && typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+                if(document.body.innerHTML.includes('Finding your prayer pal...')) {
+                    if(typeof loadSecretPrayerPal === 'function') loadSecretPrayerPal();
+                }
+            }
+        }, 1500);
     </script>
 
 </body>
