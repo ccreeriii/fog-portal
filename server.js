@@ -75,6 +75,44 @@ process.on('unhandledRejection', (reason, promise) => console.error('Unhandled R
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
+// [KOINONIA PATCH] ADMIN MANUAL PRAYER PAL TRIGGER
+app.post('/api/admin/trigger-prayer-pals', (req, res) => {
+    if(typeof db === 'undefined') return res.status(500).json({error: "DB not initialized"});
+    
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const pad = (n) => String(n).padStart(2, '0');
+    const weekStart = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+    const assignPals = (gender) => {
+        return new Promise((resolve) => {
+            db.all(`SELECT id FROM youth WHERE gender = ? `, [gender], (err, members) => {
+                if (!members || members.length < 2) return resolve();
+                
+                // Fisher-Yates Shuffle
+                let shuffled = [...members];
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                }
+                
+                const stmt = db.prepare(`INSERT OR IGNORE INTO secret_prayer_pals (youth_id, pal_youth_id, week_start) VALUES (?, ?, ?)`);
+                for (let i = 0; i < shuffled.length; i++) {
+                    const current = shuffled[i];
+                    const next = shuffled[(i + 1) % shuffled.length]; // Circular pairing
+                    stmt.run([current.id, next.id, weekStart]);
+                }
+                stmt.finalize();
+                resolve();
+            });
+        });
+    };
+
+    Promise.all([assignPals('Male'), assignPals('Female')]).then(() => {
+        res.json({success: true, message: "Gender-strict prayer partners successfully assigned!"});
+    });
+});
+
+
 // [KOINONIA PATCH V107] PENDING MEMBER REQUESTS FIX ONLY
 app.get('/api/small-groups/:id/roster-status', (req, res) => {
     if(typeof db !== 'undefined') {
@@ -257,7 +295,7 @@ cron.schedule('0 9 * * 1', () => { // Every Monday at 9:00 AM
     const weekStart = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
     const assignPalsByGender = (gender) => {
-        db.all(`SELECT id FROM youth WHERE gender = ? AND account_tier != 'New Member'`, [gender], (err, members) => {
+        db.all(`SELECT id FROM youth WHERE gender = ? `, [gender], (err, members) => {
             if (!members || members?.length || 0 < 2) return;
             
             // Fisher-Yates Shuffle

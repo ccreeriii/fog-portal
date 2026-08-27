@@ -318,9 +318,9 @@
 
             <!-- Phase 2: Belonging -->
             <div id="pulsePrayerPalWidget" class="card" style="margin: 0; border-left: 4px solid #8B5CF6; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-                <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">🙏 Secret Prayer Pal</h3>
+                <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">🛡️ COVENANT PRAYER PARTNER</h3>
                 <p style="font-size: 1rem; color: var(--text-main); margin: 0;">Your Secret Prayer Pal is <strong id="pulsePrayerPalName" style="color: #8B5CF6;">Loading...</strong></p>
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">Reach out and ask how you can pray for them this week!</p>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">Stand in the gap for them this week.</p>
             </div>
 
             <!-- Your Pathway (Phases 3+) -->
@@ -1769,7 +1769,7 @@
                     if (el.children.length === 0 && el.innerText && el.innerText.includes('Loading Daily Manna...')) {
                         el.innerHTML = '<strong>Philippians 4:13</strong><br>"I can do all things through Christ who strengthens me."';
                     }
-                    if (el.children.length === 0 && el.innerText && el.innerText.includes('Your Secret Prayer Pal is Loading...')) {
+                    if (el.children.length === 0 && el.innerText && el.innerText.includes('Seeking your Covenant Prayer Partner...')) {
                         el.innerHTML = '<span style="color: var(--text-muted);">No Prayer Pal assigned yet this week.</span> <br><a href="#" onclick="window.V6Gamification.switchTab(\'prayer\')" style="color: #F59E0B; font-weight: bold; text-decoration: none;">Join the Prayer Wall!</a>';
                     }
                 });
@@ -2073,6 +2073,90 @@
                 });
             }, 1000);
         });
+    </script>
+
+
+    <!-- 🚀 KOINONIA COVENANT PRAYER PARTNER ENGINE -->
+    <script id="prayerPartnerEngine">
+        window.loadSecretPrayerPal = async function() {
+            if (!window.currentMember || !window.currentMember.id) return;
+            
+            try {
+                // Find the existing prayer card container gracefully
+                const allElements = Array.from(document.querySelectorAll('h1, h2, h3, h4, p, span, div'));
+                const targetEl = allElements.find(el => el.children.length === 0 && (el.innerText.includes('Your Secret Prayer Pal is Loading') || el.innerText.includes('Secret Prayer Pal') || el.innerText.includes('Covenant Prayer')));
+                
+                if (!targetEl) return;
+                const card = targetEl.closest('.card');
+                if (!card) return;
+
+                const res = await fetch('/api/prayer-pals/current/' + window.currentMember.id);
+                const pal = await res.json();
+                
+                // Super Admin Manual Trigger Button
+                const isSuperAdmin = window.currentMember.role === 'Super Admin' || (window.userPermissions && window.userPermissions.includes('edit_entries'));
+                const adminBtn = isSuperAdmin ? `<button onclick="triggerPrayerPalMatching()" style="margin-top: 15px; font-size: 0.75rem; background: #F1F5F9; color: #475569; padding: 6px 12px; border-radius: 6px; border: 1px solid #CBD5E1; font-weight: bold; cursor: pointer; width: 100%;"><span style="margin-right:5px;">⚙️</span> Admin: Force Weekly Pairing Now</button>` : '';
+
+                if (pal && pal.pal_name) {
+                    const avatarHtml = pal.profile_picture ? `<img src="${pal.profile_picture}" style="width:45px;height:45px;border-radius:50%;object-fit:cover; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">` : `<div style="width:45px;height:45px;border-radius:50%;background:#E2E8F0;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-muted); font-size: 1.1rem; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">${pal.pal_name.charAt(0)}</div>`;
+                    
+                    card.innerHTML = `
+                        <div style="display:flex; align-items:center; gap: 12px; margin-bottom: 15px;">
+                            <span style="font-size: 1.8rem; background: #EEF2FF; padding: 10px; border-radius: 12px; line-height: 1;">🛡️</span>
+                            <div>
+                                <h3 style="margin: 0; color: var(--primary); font-size: 1.15rem; border: none; padding: 0; font-weight: 800;">Covenant Prayer Partner</h3>
+                                <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">Stand in the gap for them this week.</p>
+                            </div>
+                        </div>
+                        <div style="background: #F8FAFC; padding: 12px 15px; border-radius: 12px; border: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                ${avatarHtml}
+                                <div>
+                                    <strong style="font-size: 1.05rem; color: var(--text-main); display: block;">${pal.pal_name}</strong>
+                                </div>
+                            </div>
+                            <button onclick="if(window.hubNavTo) window.hubNavTo('inbox'); else window.location.href='/?tab=inbox';" class="btn btn-sm" style="background: var(--primary); color: #FFF; border-radius: 8px; padding: 6px 12px; font-weight: bold; border: none;">Message</button>
+                        </div>
+                        ${adminBtn}
+                    `;
+                } else {
+                    let fallbackMsg = "We assign new prayer partners every Monday! Stay tuned.";
+                    let actionBtn = "";
+                    
+                    if (!window.currentMember.gender || window.currentMember.gender === 'null') {
+                        fallbackMsg = "<strong>Action Required:</strong> Please update your profile with your gender (Male/Female) so we can securely pair you with a spiritual brother or sister.";
+                        actionBtn = `<button onclick="if(window.hubNavTo) window.hubNavTo('profile'); else window.location.href='/?tab=profile';" style="margin-top: 10px; background: #D97706; color: #FFF; padding: 8px 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; width: 100%;">Update My Profile</button>`;
+                    }
+                    
+                    card.innerHTML = `
+                        <div style="display:flex; align-items:center; gap: 12px; margin-bottom: 15px;">
+                            <span style="font-size: 1.8rem; background: #EEF2FF; padding: 10px; border-radius: 12px; line-height: 1;">🛡️</span>
+                            <div>
+                                <h3 style="margin: 0; color: var(--primary); font-size: 1.15rem; border: none; padding: 0; font-weight: 800;">Covenant Prayer Partner</h3>
+                                <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">Weekly spiritual pairings</p>
+                            </div>
+                        </div>
+                        <div style="background: #FFFBEB; padding: 15px; border-radius: 12px; border: 1px solid #FDE68A;">
+                            <p style="margin: 0; font-size: 0.9rem; color: #D97706; line-height: 1.5;">${fallbackMsg}</p>
+                            ${actionBtn}
+                        </div>
+                        ${adminBtn}
+                    `;
+                }
+            } catch (e) { console.error('Error loading prayer pal:', e); }
+        };
+
+        window.triggerPrayerPalMatching = async function() {
+            if (!confirm("Are you sure you want to force a new round of prayer partner assignments right now? This will overwrite the current week's pairings.")) return;
+            try {
+                const res = await fetch('/api/admin/trigger-prayer-pals', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    alert("✅ Success! " + data.message);
+                    window.loadSecretPrayerPal(); // Refresh UI instantly
+                }
+            } catch(e) { alert("Error triggering assignments."); }
+        };
     </script>
 
 </body>
