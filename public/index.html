@@ -123,7 +123,20 @@
         window.hubNavTo = function(tabName) {
             // Absolute URL Overrides
             if (tabName === 'arcade') { window.location.href = '/?faith=quest'; return; }
-            if (tabName === 'groups') { window.location.href = '/?tab=groups'; return; } // Force Groups URL!
+            
+            if (tabName === 'groups') {
+                // 1. Change URL quietly without triggering a reload interceptor
+                window.history.pushState(null, '', '/?tab=groups');
+                
+                // 2. Trigger the SPA to load the community view natively
+                const navItems = Array.from(document.querySelectorAll('.bottom-nav *[onclick], nav *[onclick], .nav-item'));
+                const communityBtn = navItems.find(n => (n.getAttribute('onclick') || '').toLowerCase().includes('inbox') || (n.innerText || '').toLowerCase().includes('inbox') || (n.innerText || '').toLowerCase().includes('groups'));
+                if (communityBtn) communityBtn.click();
+                
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+ // Force Groups URL!
 
             // Native SPA routing for Growth and Events
             const navItems = Array.from(document.querySelectorAll('.bottom-nav *[onclick], nav *[onclick], .nav-item'));
@@ -1910,6 +1923,68 @@
     <!-- 🚀 CONTINUITY ACTION HUB ENGINE V4 -->
     
     
+
+
+    <!-- [KOINONIA PATCH] UI SPLITTER & ADMIN TOOLS -->
+    <script id="koinoniaSystemTools">
+        document.addEventListener("DOMContentLoaded", () => {
+            
+            // 1. THE UI SPLITTER (Inbox vs Groups)
+            setInterval(() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const currentTab = urlParams.get('tab');
+                
+                // Common IDs for the containers based on Fogmin architecture
+                const inboxUI = document.getElementById('inboxTab') || document.querySelector('.inbox-container');
+                const groupsUI = document.getElementById('groupsTab') || document.querySelector('.groups-container') || document.getElementById('groups');
+                
+                if (currentTab === 'groups') {
+                    if (inboxUI) inboxUI.style.display = 'none';
+                    if (groupsUI) groupsUI.style.display = 'block';
+                } else if (currentTab === 'inbox') {
+                    if (groupsUI) groupsUI.style.display = 'none';
+                    if (inboxUI) inboxUI.style.display = 'block';
+                }
+            }, 300);
+
+            // 2. SUPER ADMIN PASS-ID INJECTOR (EMAIL SCRAPER)
+            setInterval(() => {
+                try {
+                    const user = JSON.parse(localStorage.getItem('fog_user'));
+                    if (user && user.member && user.member.role === 'Super Admin') {
+                        // Find any element containing an email address on the screen
+                        const allElements = Array.from(document.querySelectorAll('p, span, a, div, h3, h4, h5, li'));
+                        const emailElements = allElements.filter(el => 
+                            el.innerText && 
+                            el.innerText.includes('@') && 
+                            el.innerText.includes('.') && 
+                            el.innerText.length < 50 &&
+                            !el.hasAttribute('data-pass-id-checked') &&
+                            el.children.length === 0 // Ensure we only target the specific text node
+                        );
+                        
+                        emailElements.forEach(emailEl => {
+                            emailEl.setAttribute('data-pass-id-checked', 'true');
+                            const emailTxt = emailEl.innerText.trim();
+                            
+                            fetch('/api/admin/pass-id-by-email/' + encodeURIComponent(emailTxt))
+                                .then(res => res.json())
+                                .then(data => {
+                                    if (data.unique_pass_id) {
+                                        const badge = document.createElement('div');
+                                        badge.style.cssText = 'background: #FEF2F2; border: 1px solid #FCA5A5; color: #DC2626; padding: 4px 10px; border-radius: 6px; margin-top: 6px; font-family: monospace; font-size: 0.85rem; font-weight: bold; display: inline-block;';
+                                        badge.innerHTML = '🛡️ Super Admin | Pass ID: ' + data.unique_pass_id;
+                                        
+                                        // Inject beautifully below the email
+                                        emailEl.parentNode.insertBefore(badge, emailEl.nextSibling);
+                                    }
+                                }).catch(e => console.log('Admin fetch silent error'));
+                        });
+                    }
+                } catch(e) {}
+            }, 1000);
+        });
+    </script>
 
 </body>
 </html>

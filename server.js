@@ -10,6 +10,17 @@ const app = express();
 
 
 
+
+// [KOINONIA PATCH] SUPER ADMIN PASS-ID BY EMAIL
+app.get('/api/admin/pass-id-by-email/:email', (req, res) => {
+    if (typeof db !== 'undefined') {
+        db.get("SELECT unique_pass_id FROM youth WHERE email = ?", [req.params.email], (err, row) => {
+            if (!err && row) res.json({ unique_pass_id: row.unique_pass_id });
+            else res.status(404).json({ error: 'Not found' });
+        });
+    }
+});
+
 // [KOINONIA PATCH] SUPER ADMIN PASS-ID OVERRIDE
 app.get('/api/admin/pass-id/:id', (req, res) => {
     // Basic auth check - in production, verify session role strictly
