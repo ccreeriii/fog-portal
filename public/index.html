@@ -2476,5 +2476,137 @@
         }, 1500);
     </script>
 
+
+<!-- 🚀 V13: DASHBOARD REORDER & UX ENGINE -->
+
+
+
+<!-- 🚀 V14: PRECISION DASHBOARD REORDER & UX ENGINE -->
+
+
+
+<!-- 🚀 V15: ZERO-FLASH FLEXBOX DASHBOARD ENGINE -->
+<script id="dashboardReorderEngine">
+    // OVERRIDE: Neutralize the old clunky DOM-moving script from the Covenant Engine
+    window.applyDashboardOrdering = function(hasPrayed) {
+        const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'));
+        const prayerHeader = allHeaders.find(el => el.innerText && el.innerText.toUpperCase().includes('DAILY PRAYER COVENANT') && el.children.length === 0);
+        const prayerCard = prayerHeader ? prayerHeader.closest('.card') : null;
+        const actionHub = document.getElementById('actionHubContainer');
+
+        // Instantly swap orders via CSS without detaching HTML!
+        if (prayerCard) prayerCard.style.order = hasPrayed ? '4' : '3';
+        if (actionHub) actionHub.style.order = hasPrayed ? '3' : '4';
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const reorderInterval = setInterval(() => {
+            const dashTab = document.getElementById('pulseDashboardTab');
+            const heroBanner = document.getElementById('dashboardHeroBanner');
+
+            // 1. MAKE LIFE POINTS CLICKABLE (Preserved & Protected)
+            const lpContainer = document.getElementById('dashXpCounter');
+            if (lpContainer) {
+                const clickTarget = lpContainer.parentElement.parentElement;
+                if (clickTarget && !clickTarget.hasAttribute('data-clickable')) {
+                    clickTarget.setAttribute('data-clickable', 'true');
+                    clickTarget.style.cursor = 'pointer';
+                    clickTarget.style.transition = 'all 0.2s ease-in-out';
+                    clickTarget.title = "Jump to Faith Quest Challenge";
+
+                    clickTarget.onmouseover = () => {
+                        clickTarget.style.transform = 'scale(1.05)';
+                        clickTarget.style.boxShadow = '0 4px 15px rgba(255,255,255,0.3)';
+                    };
+                    clickTarget.onmouseout = () => {
+                        clickTarget.style.transform = 'scale(1)';
+                        clickTarget.style.boxShadow = 'none';
+                    };
+
+                    clickTarget.onclick = () => {
+                        const hub = document.getElementById('actionHubContainer');
+                        if (hub) {
+                            hub.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            const fqCard = Array.from(hub.querySelectorAll('.continuity-card')).find(el => el.innerText.includes('Faith Quest'));
+                            if (fqCard) {
+                                const ogBg = fqCard.style.background;
+                                fqCard.style.background = '#FEF3C7';
+                                setTimeout(() => fqCard.style.background = ogBg, 1200);
+                            }
+                        }
+                    };
+                }
+            }
+
+            // 2. HIDE REDUNDANT DAILY MANNA (Strictly Protected)
+            const mannaHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'))
+                .filter(el => {
+                    const text = el.innerText.trim().toUpperCase();
+                    return text === 'DAILY MANNA' || text === '📖 DAILY MANNA';
+                });
+                
+            mannaHeaders.forEach(h => {
+                const card = h.closest('.card');
+                if (card && card.id !== 'guestLiturgicalCard' && !card.innerText.includes('Spiritual Growth')) {
+                    card.style.display = 'none';
+                }
+            });
+
+            // 3. ZERO-FLASH CSS REORDERING
+            if (dashTab && heroBanner) {
+                const flexContainer = heroBanner.nextElementSibling;
+                if (flexContainer && flexContainer.tagName === 'DIV') {
+                    
+                    // Activate Flexbox Stack
+                    flexContainer.style.display = 'flex';
+                    flexContainer.style.flexDirection = 'column';
+
+                    const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'));
+
+                    // Locate Target Cards
+                    const journeyHeader = allHeaders.find(el => el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
+                    const journeyCard = journeyHeader ? journeyHeader.closest('.card') : null;
+
+                    const litCard = document.getElementById('liturgicalCard');
+
+                    const prayerHeader = allHeaders.find(el => el.innerText && el.innerText.toUpperCase().includes('DAILY PRAYER COVENANT') && el.children.length === 0);
+                    const prayerCard = prayerHeader ? prayerHeader.closest('.card') : null;
+
+                    const actionHub = document.getElementById('actionHubContainer');
+
+                    // Check Local Prayer State
+                    const todayStr = new Date().toLocaleDateString();
+                    const palIdInput = document.getElementById('guidedPalId');
+                    let hasPrayedLocal = false;
+                    if (palIdInput && palIdInput.value) {
+                         hasPrayedLocal = !!localStorage.getItem('fog_prayed_for_' + palIdInput.value + '_' + todayStr);
+                    } else {
+                         const mainBtn = document.getElementById('mainPrayBtn');
+                         if (mainBtn && mainBtn.innerText.includes('Prayer Sent')) hasPrayedLocal = true;
+                    }
+
+                    // APPLY INSTANT, FLASH-FREE ORDER NUMBERS
+                    if (journeyCard) { journeyCard.style.order = '1'; }
+                    if (litCard) { litCard.style.order = '2'; litCard.style.marginBottom = '20px'; }
+                    if (prayerCard) { prayerCard.style.order = hasPrayedLocal ? '4' : '3'; }
+                    if (actionHub) { actionHub.style.order = hasPrayedLocal ? '3' : '4'; }
+
+                    // Push everything else (like Quick Actions) to the bottom safely
+                    Array.from(flexContainer.children).forEach(child => {
+                        if (child !== journeyCard && child !== litCard && child !== prayerCard && child !== actionHub) {
+                            if (!child.style.order || parseInt(child.style.order) < 5) {
+                                child.style.order = '5';
+                            }
+                        }
+                    });
+                }
+            }
+        }, 300);
+
+        // Terminate polling once layout is securely settled
+        setTimeout(() => clearInterval(reorderInterval), 6000);
+    });
+</script>
+
 </body>
 </html>
