@@ -2490,6 +2490,10 @@
 
 
 <!-- 🚀 V16: COMPLETE ZERO-FLASH DASHBOARD HIERARCHY -->
+
+
+
+<!-- 🚀 V17: ZERO-FLASH HIERARCHY & DAILY MASS AUTO-HEALER -->
 <script id="dashboardReorderEngine">
     window.applyDashboardOrdering = function(hasPrayed) {
         const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'));
@@ -2501,12 +2505,59 @@
         if (actionHub) actionHub.style.order = hasPrayed ? '3' : '4';
     };
 
+    // 🌟 THE DAILY MASS AUTO-HEALER
+    window.healLiturgicalCard = async function() {
+        const litCard = document.getElementById('liturgicalCard');
+        // Prevent infinite loops if already styled
+        if (!litCard || litCard.getAttribute('data-healed') === 'true') return;
+
+        litCard.setAttribute('data-healed', 'true');
+
+        try {
+            const res = await fetch('/api/liturgical/today');
+            const data = await res.json();
+
+            let bg = "#10B981"; // Default Green
+            const col = (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].colour : data.season_color || "green";
+            if (col === "red") bg = "#DC2626";
+            else if (col === "violet" || col === "purple") bg = "#7C3AED";
+            else if (col === "white" || col === "gold") bg = "#F59E0B";
+            else if (col === "rose" || col === "pink") bg = "#F472B6";
+
+            const season = (data.season || "Ordinary").toUpperCase() + " TIME";
+            const feast = (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].title : "Daily Mass";
+            const gospel = data.daily_gospel || "I am the bread of life... (John 6:35)";
+
+            // Forcefully apply the beautiful CSS gradients and remove the white background
+            litCard.style.background = 'linear-gradient(135deg, ' + bg + ', #064E3B)';
+            litCard.style.border = 'none';
+            litCard.style.color = '#FFF';
+
+            // Reconstruct the exact layout from Screenshot 2
+            litCard.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                    <span class="badge" style="background: rgba(255,255,255,0.25); color: #FFF; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem; padding: 5px 10px; border-radius: 6px; font-weight: bold;">${season}</span>
+                    <span style="font-size:0.85rem; color:#FFF; font-weight:800; text-align: right; max-width: 60%;">${feast}</span>
+                </div>
+                <h3 style="color:#FFF; border:none; padding:0; margin-bottom: 12px; font-size: 1.3rem;">📖 Daily Gospel</h3>
+                <p style="color:#FFF; font-size:1.05rem; font-style:italic; margin-bottom: 20px; line-height:1.6; text-shadow: 0 1px 3px rgba(0,0,0,0.3);">${gospel}</p>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-sm" style="background:#FFF; color:#064E3B; font-weight:800; flex: 1; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="if(typeof window.openLiturgicalReadings === 'function') window.openLiturgicalReadings(); else window.open('https://universalis.com/philippines/mass.htm', '_blank');">📖 Full Readings</button>
+                    <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px;" onclick="if(window.hubNavTo) window.hubNavTo('grow'); else window.switchTab('growTab');">🙏 Reflect</button>
+                </div>
+            `;
+        } catch(e) {
+            console.error('Failed to auto-heal Daily Mass card', e);
+            litCard.removeAttribute('data-healed'); // Allow retry if fetch fails
+        }
+    };
+
     document.addEventListener('DOMContentLoaded', () => {
         const reorderInterval = setInterval(() => {
             const dashTab = document.getElementById('pulseDashboardTab');
             const heroBanner = document.getElementById('dashboardHeroBanner');
 
-            // 1. MAKE LIFE POINTS CLICKABLE (Protected)
+            // 1. MAKE LIFE POINTS CLICKABLE
             const lpContainer = document.getElementById('dashXpCounter');
             if (lpContainer) {
                 const clickTarget = lpContainer.parentElement.parentElement;
@@ -2540,7 +2591,7 @@
                 }
             }
 
-            // 2. HIDE REDUNDANT DAILY MANNA (Protected)
+            // 2. HIDE REDUNDANT DAILY MANNA
             const mannaHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'))
                 .filter(el => {
                     const text = el.innerText.trim().toUpperCase();
@@ -2554,7 +2605,7 @@
                 }
             });
 
-            // 3. ZERO-FLASH CSS REORDERING & DAILY MASS MIGRATION
+            // 3. ZERO-FLASH CSS REORDERING & AUTO-HEAL
             if (dashTab && heroBanner) {
                 const flexContainer = heroBanner.nextElementSibling;
                 if (flexContainer && flexContainer.tagName === 'DIV') {
@@ -2564,23 +2615,27 @@
 
                     const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'));
 
-                    // A. Setup My Journey
+                    // A. My Journey
                     const journeyHeader = allHeaders.find(el => el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
                     const journeyCard = journeyHeader ? journeyHeader.closest('.card') : null;
 
-                    // B. Setup & Migrate Daily Mass
+                    // B. Daily Mass Migration
                     const litCard = document.getElementById('liturgicalCard');
                     if (litCard && litCard.parentElement !== flexContainer) {
-                        // Forcibly move the Daily Mass card from the Growth tab into the Dashboard's flex container
                         flexContainer.appendChild(litCard); 
                         litCard.style.marginBottom = '20px';
                     }
+                    
+                    // 🌟 INSTANTLY HEAL THE CARD UI
+                    if (litCard) {
+                        window.healLiturgicalCard();
+                    }
 
-                    // C. Setup Prayer Covenant
+                    // C. Prayer Covenant
                     const prayerHeader = allHeaders.find(el => el.innerText && el.innerText.toUpperCase().includes('DAILY PRAYER COVENANT') && el.children.length === 0);
                     const prayerCard = prayerHeader ? prayerHeader.closest('.card') : null;
 
-                    // D. Setup Action Hub
+                    // D. Action Hub
                     const actionHub = document.getElementById('actionHubContainer');
 
                     // E. Check Local Prayer State
@@ -2594,13 +2649,12 @@
                          if (mainBtn && mainBtn.innerText.includes('Prayer Sent')) hasPrayedLocal = true;
                     }
 
-                    // F. APPLY INSTANT, FLASH-FREE ORDER NUMBERS
+                    // F. CSS ORDERING
                     if (journeyCard) { journeyCard.style.order = '1'; }
                     if (litCard) { litCard.style.order = '2'; }
                     if (prayerCard) { prayerCard.style.order = hasPrayedLocal ? '4' : '3'; }
                     if (actionHub) { actionHub.style.order = hasPrayedLocal ? '3' : '4'; }
 
-                    // Push everything else to the bottom safely
                     Array.from(flexContainer.children).forEach(child => {
                         if (child !== journeyCard && child !== litCard && child !== prayerCard && child !== actionHub) {
                             if (!child.style.order || parseInt(child.style.order) < 5) {
