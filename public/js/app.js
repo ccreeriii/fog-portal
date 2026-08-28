@@ -6298,33 +6298,118 @@ if (!window.ogSwitchTabInboxHookV6) {
 }
 
 
-// --- V18: DYNAMIC JOURNEY ENGINE ---
-window.renderMyJourneyCard = async function() {
+
+
+
+// --- V19: DUAL RENDER ENGINE ---
+
+// 1. RESTORE "MY JOURNEY" FOR HOME DASHBOARD
+window.renderHomeJourneyCard = async function() {
     if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
     
-    // Safely locate the My Journey card container
-    const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'));
+    const dashTab = document.getElementById('pulseDashboardTab');
+    if (!dashTab || dashTab.style.display === 'none') return;
+
+    const allHeaders = Array.from(dashTab.querySelectorAll('h1, h2, h3, h4, h5'));
     const journeyHeader = allHeaders.find(el => el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
     if (!journeyHeader) return;
     
     const journeyCard = journeyHeader.closest('.card');
     if (!journeyCard) return;
 
+    let container = document.getElementById('dynamicHomeJourneyBox');
+    if (!container) {
+        journeyCard.innerHTML = `<h3 style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin: 0 0 15px 0; font-weight: 800; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; border:none; padding:0;"><span style="color: var(--primary);">📍</span> MY JOURNEY</h3><div id="dynamicHomeJourneyBox"></div>`;
+        container = document.getElementById('dynamicHomeJourneyBox');
+    }
+
+    let title = "Begin Your Walk";
+    let desc = "Join an upcoming gathering to see what our family is all about.";
+    let btnText = "View Events";
+    let btnAction = "if(window.hubNavTo) window.hubNavTo('/?tab=events'); else window.location.href='/?tab=events';";
+    let statusColor = "#3B82F6";
+
+    if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
+        title = "Membership Intent";
+        desc = "Take the community pledge and explicitly choose this spiritual family as your home.";
+        btnText = "Intent to Join";
+        btnAction = "if(typeof openCommitmentModal === 'function') openCommitmentModal(); else alert('Feature pending implementation.');";
+        statusColor = "#F59E0B";
+    } else {
+        try {
+            const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
+            const ministries = await res.json();
+            const isApplicant = ministries.some(m => m.role === 'Applicant');
+            const isActiveMember = ministries.some(m => m.role !== 'Applicant');
+
+            if (isActiveMember) {
+                title = "Serve & Grow";
+                desc = "You are an active servant! Feel called to do more? You can always expand your borders and join another ministry.";
+                btnText = "Expand Service";
+                btnAction = "if(typeof openMinistryIntentModal === 'function') openMinistryIntentModal(); else alert('Feature pending implementation.');";
+                statusColor = "#10B981";
+            } else if (isApplicant) {
+                title = "⏳ Under Review";
+                desc = "Your intent to join a ministry is currently being discerned by the leadership team. Please wait for an update.";
+                btnText = "Pending Discernment";
+                btnAction = "";
+                statusColor = "#64748B";
+            } else {
+                title = "Discern Ministry";
+                desc = "Unpack the unique talents God has entrusted to you. Submit your intent to serve when you feel ready.";
+                btnText = "Discern";
+                btnAction = "if(typeof openMinistryIntentModal === 'function') openMinistryIntentModal(); else alert('Feature pending implementation.');";
+                statusColor = "#8B5CF6";
+            }
+        } catch(e) {}
+    }
+
+    const btnHtml = btnAction === "" ? 
+        `<button class="btn" disabled style="background: #E2E8F0; color: #64748B; width: 100%; border-radius: 10px; font-weight: bold; padding: 12px; cursor: not-allowed; box-shadow: none;">${btnText}</button>` : 
+        `<button class="btn btn-primary" onclick="${btnAction}" style="width: 100%; border-radius: 10px; font-weight: bold; padding: 12px; background: ${statusColor}; border-color: ${statusColor}; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">${btnText}</button>`;
+
+    container.innerHTML = `
+        <div style="background: #F8FAFC; border-radius: 12px; padding: 15px; border-left: 4px solid ${statusColor}; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+            <strong style="color: var(--text-main); font-size: 1.05rem; display: block; margin-bottom: 6px;">${title}</strong>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.5;">${desc}</p>
+        </div>
+        ${btnHtml}
+        <button onclick="document.getElementById('journeyExplanationModal').style.display='flex'" style="background: transparent; color: var(--primary); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px; font-size: 0.8rem; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.2s;">
+            🌱 About The Growth Pathway
+        </button>
+    `;
+};
+
+// 2. INJECT 7-STAGE PATHWAY FOR GROWTH PAGE
+window.renderGrowthPathwayCard = async function() {
+    if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
+    const growTab = document.getElementById('growTab');
+    if (!growTab || growTab.style.display === 'none') return;
+
+    let container = document.getElementById('dynamicGrowthPathwayBox');
+    
+    if (!container) {
+        // Find and replace the old green Next Step card
+        const cards = Array.from(growTab.querySelectorAll('.card'));
+        const oldCard = cards.find(c => c.innerText.includes('Salvation') || c.innerText.includes('Baptism'));
+        
+        const htmlShell = `<div id="dynamicGrowthPathwayBox" class="card" style="padding:0; border:none; box-shadow:none; background:transparent; margin-bottom:20px;"></div>`;
+        if (oldCard) { oldCard.outerHTML = htmlShell; } 
+        else { growTab.insertAdjacentHTML('afterbegin', htmlShell); }
+        
+        container = document.getElementById('dynamicGrowthPathwayBox');
+    }
+
     try {
         const res = await fetch('/api/discipleship/next-step/' + currentMember.id);
         const data = await res.json();
         
         let title = "Start Your Journey";
-        let desc = "Take the first step to explore faith at your own pace.";
-        let btnText = "View";
+        let desc = "Explore faith at your own pace.";
         let stageIndex = 1;
         
-        if (data && data.nextStep) {
-            title = data.nextStep.title || title;
-            desc = data.nextStep.description || desc;
-        }
+        if (data && data.nextStep) { title = data.nextStep.title || title; desc = data.nextStep.description || desc; }
 
-        // Map titles to the 7 Blueprint Stages to calculate Progress Percentage
         const titleLower = title.toLowerCase();
         if (titleLower.includes('encounter') || titleLower.includes('come')) stageIndex = 1;
         else if (titleLower.includes('connect') || titleLower.includes('belong') || titleLower.includes('group')) stageIndex = 2;
@@ -6336,69 +6421,37 @@ window.renderMyJourneyCard = async function() {
 
         const progressPercent = Math.round((stageIndex / 7) * 100);
 
-        // Generate Pastoral Context dynamically based on the stage
-        let pastoralContext = "";
-        switch(stageIndex) {
-            case 1: pastoralContext = "God is inviting you to experience His love in a fresh way. Take this bold first step to explore your faith and see what He has in store."; break;
-            case 2: pastoralContext = "We are not meant to walk alone. Finding your spiritual family will anchor your faith and provide brothers and sisters to support you."; break;
-            case 3: pastoralContext = "You are laying a firm foundation. By committing to this spiritual home, you are planting roots that will yield immense spiritual fruit."; break;
-            case 4: pastoralContext = "God has entrusted you with unique talents meant to bless others. Unpack those gifts now so you can prepare to serve His Kingdom."; break;
-            case 5: pastoralContext = "This is a season of deep refinement. Lean into your formation to sharpen your character, skills, and heart for ministry."; break;
-            case 6: pastoralContext = "The harvest is ready! Step out in faith to actively serve and experience the profound joy of building up your community."; break;
-            case 7: pastoralContext = "You are fully equipped. Go forth with a burning passion for God and deep compassion for all, shining His light wherever you go."; break;
-        }
-
-        journeyCard.style.padding = '0';
-        journeyCard.style.background = 'transparent';
-        journeyCard.style.boxShadow = 'none';
-        journeyCard.style.border = 'none';
-
-        journeyCard.innerHTML = `
+        container.innerHTML = `
             <div style="background: linear-gradient(145deg, #ffffff, #f8fafc); border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); border: 1px solid #E2E8F0; position: relative; overflow: hidden;">
-                
-                <!-- Background Accent -->
-                <div style="position: absolute; top: 0; right: 0; width: 150px; height: 150px; background: radial-gradient(circle, rgba(245,158,11,0.1) 0%, rgba(255,255,255,0) 70%); border-radius: 50%; transform: translate(30%, -30%); pointer-events: none;"></div>
-
+                <div style="position: absolute; top: 0; right: 0; width: 150px; height: 150px; background: radial-gradient(circle, rgba(16,185,129,0.1) 0%, rgba(255,255,255,0) 70%); border-radius: 50%; transform: translate(30%, -30%); pointer-events: none;"></div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; position: relative; z-index: 2;">
                     <h3 style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin: 0; font-weight: 800; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; border:none; padding:0;">
-                        <span style="color: var(--primary);">📍</span> MY JOURNEY
+                        <span style="color: #10B981;">🌱</span> GROWTH PATHWAY
                     </h3>
-                    <button onclick="document.getElementById('journeyExplanationModal').style.display='flex'" style="background: #FEF3C7; color: #D97706; border: none; border-radius: 20px; padding: 5px 12px; font-size: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.2s;">
-                        ℹ️ About My Journey
+                    <button onclick="document.getElementById('journeyExplanationModal').style.display='flex'" style="background: #ECFDF5; color: #059669; border: none; border-radius: 20px; padding: 5px 12px; font-size: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                        ℹ️ Pathway Details
                     </button>
                 </div>
-
                 <div style="position: relative; z-index: 2;">
-                    <strong style="color: var(--primary); font-size: 1.25rem; display: block; margin-bottom: 5px; line-height: 1.3;">${title}</strong>
-                    
-                    <!-- Progress Bar -->
+                    <strong style="color: var(--primary); font-size: 1.25rem; display: block; margin-bottom: 5px;">${title}</strong>
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
                         <div style="flex: 1; height: 8px; background: #E2E8F0; border-radius: 10px; overflow: hidden;">
-                            <div style="height: 100%; width: ${progressPercent}%; background: linear-gradient(90deg, #F59E0B, #F97316); border-radius: 10px; transition: width 1s ease-out;"></div>
+                            <div style="height: 100%; width: ${progressPercent}%; background: linear-gradient(90deg, #10B981, #059669); border-radius: 10px;"></div>
                         </div>
                         <span style="font-size: 0.75rem; font-weight: bold; color: var(--text-muted);">Step ${stageIndex} of 7</span>
                     </div>
-
-                    <div style="background: #FFF; padding: 15px; border-radius: 12px; border-left: 4px solid var(--primary); margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
-                        <p style="font-size: 0.95rem; color: var(--text-main); margin: 0 0 10px 0; font-style: italic; line-height: 1.5;">"${pastoralContext}"</p>
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; font-weight: 600;">🎯 Action: ${desc}</p>
+                    <div style="background: #FFF; padding: 15px; border-radius: 12px; border-left: 4px solid #10B981; margin-bottom: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; font-weight: 600;">🎯 Active Milestone: ${desc}</p>
                     </div>
-
-                    <button class="btn btn-primary" onclick="if(window.hubNavTo) window.hubNavTo('/?tab=events'); else window.location.href='/?tab=events';" style="width: 100%; border-radius: 10px; font-weight: bold; padding: 12px; box-shadow: 0 4px 10px rgba(245, 158, 11, 0.2);">Take Your Next Step</button>
                 </div>
             </div>
         `;
-    } catch(e) { console.error('Error rendering dynamic journey card:', e); }
+    } catch(e) { console.error('Error rendering growth pathway:', e); }
 };
 
-// Hook into the layout observer to constantly heal/render the card
-const ogIntervalV18 = setInterval(() => {
-    const dashTab = document.getElementById('pulseDashboardTab');
-    if (dashTab && dashTab.style.display !== 'none') {
-        const h = Array.from(document.querySelectorAll('h3, h2')).find(el => el.innerText.includes('MY JOURNEY'));
-        if (h && !h.closest('.card').innerHTML.includes('About My Journey')) {
-            window.renderMyJourneyCard();
-        }
-    }
+// 3. HOOK INTERVALS
+const ogIntervalV19 = setInterval(() => {
+    window.renderHomeJourneyCard();
+    window.renderGrowthPathwayCard();
 }, 1500);
-// --- END V18 ---
+// --- END V19 ---
