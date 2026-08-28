@@ -2486,15 +2486,17 @@
 
 
 <!-- 🚀 V15: ZERO-FLASH FLEXBOX DASHBOARD ENGINE -->
+
+
+
+<!-- 🚀 V16: COMPLETE ZERO-FLASH DASHBOARD HIERARCHY -->
 <script id="dashboardReorderEngine">
-    // OVERRIDE: Neutralize the old clunky DOM-moving script from the Covenant Engine
     window.applyDashboardOrdering = function(hasPrayed) {
         const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'));
         const prayerHeader = allHeaders.find(el => el.innerText && el.innerText.toUpperCase().includes('DAILY PRAYER COVENANT') && el.children.length === 0);
         const prayerCard = prayerHeader ? prayerHeader.closest('.card') : null;
         const actionHub = document.getElementById('actionHubContainer');
 
-        // Instantly swap orders via CSS without detaching HTML!
         if (prayerCard) prayerCard.style.order = hasPrayed ? '4' : '3';
         if (actionHub) actionHub.style.order = hasPrayed ? '3' : '4';
     };
@@ -2504,7 +2506,7 @@
             const dashTab = document.getElementById('pulseDashboardTab');
             const heroBanner = document.getElementById('dashboardHeroBanner');
 
-            // 1. MAKE LIFE POINTS CLICKABLE (Preserved & Protected)
+            // 1. MAKE LIFE POINTS CLICKABLE (Protected)
             const lpContainer = document.getElementById('dashXpCounter');
             if (lpContainer) {
                 const clickTarget = lpContainer.parentElement.parentElement;
@@ -2538,7 +2540,7 @@
                 }
             }
 
-            // 2. HIDE REDUNDANT DAILY MANNA (Strictly Protected)
+            // 2. HIDE REDUNDANT DAILY MANNA (Protected)
             const mannaHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'))
                 .filter(el => {
                     const text = el.innerText.trim().toUpperCase();
@@ -2552,29 +2554,36 @@
                 }
             });
 
-            // 3. ZERO-FLASH CSS REORDERING
+            // 3. ZERO-FLASH CSS REORDERING & DAILY MASS MIGRATION
             if (dashTab && heroBanner) {
                 const flexContainer = heroBanner.nextElementSibling;
                 if (flexContainer && flexContainer.tagName === 'DIV') {
                     
-                    // Activate Flexbox Stack
                     flexContainer.style.display = 'flex';
                     flexContainer.style.flexDirection = 'column';
 
                     const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'));
 
-                    // Locate Target Cards
+                    // A. Setup My Journey
                     const journeyHeader = allHeaders.find(el => el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
                     const journeyCard = journeyHeader ? journeyHeader.closest('.card') : null;
 
+                    // B. Setup & Migrate Daily Mass
                     const litCard = document.getElementById('liturgicalCard');
+                    if (litCard && litCard.parentElement !== flexContainer) {
+                        // Forcibly move the Daily Mass card from the Growth tab into the Dashboard's flex container
+                        flexContainer.appendChild(litCard); 
+                        litCard.style.marginBottom = '20px';
+                    }
 
+                    // C. Setup Prayer Covenant
                     const prayerHeader = allHeaders.find(el => el.innerText && el.innerText.toUpperCase().includes('DAILY PRAYER COVENANT') && el.children.length === 0);
                     const prayerCard = prayerHeader ? prayerHeader.closest('.card') : null;
 
+                    // D. Setup Action Hub
                     const actionHub = document.getElementById('actionHubContainer');
 
-                    // Check Local Prayer State
+                    // E. Check Local Prayer State
                     const todayStr = new Date().toLocaleDateString();
                     const palIdInput = document.getElementById('guidedPalId');
                     let hasPrayedLocal = false;
@@ -2585,13 +2594,13 @@
                          if (mainBtn && mainBtn.innerText.includes('Prayer Sent')) hasPrayedLocal = true;
                     }
 
-                    // APPLY INSTANT, FLASH-FREE ORDER NUMBERS
+                    // F. APPLY INSTANT, FLASH-FREE ORDER NUMBERS
                     if (journeyCard) { journeyCard.style.order = '1'; }
-                    if (litCard) { litCard.style.order = '2'; litCard.style.marginBottom = '20px'; }
+                    if (litCard) { litCard.style.order = '2'; }
                     if (prayerCard) { prayerCard.style.order = hasPrayedLocal ? '4' : '3'; }
                     if (actionHub) { actionHub.style.order = hasPrayedLocal ? '3' : '4'; }
 
-                    // Push everything else (like Quick Actions) to the bottom safely
+                    // Push everything else to the bottom safely
                     Array.from(flexContainer.children).forEach(child => {
                         if (child !== journeyCard && child !== litCard && child !== prayerCard && child !== actionHub) {
                             if (!child.style.order || parseInt(child.style.order) < 5) {
@@ -2603,7 +2612,6 @@
             }
         }, 300);
 
-        // Terminate polling once layout is securely settled
         setTimeout(() => clearInterval(reorderInterval), 6000);
     });
 </script>
