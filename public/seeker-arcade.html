@@ -515,5 +515,39 @@
         });
     </script>
 
+
+<!-- Smart Arcade Return Button -->
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const backBtn = document.createElement('button');
+        backBtn.innerHTML = '⬅️ Back to Home'; 
+        backBtn.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #F59E0B; color: #FFF; padding: 12px 24px; border-radius: 25px; border: 2px solid #FFF; font-size: 1rem; font-weight: 800; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 9999; cursor: pointer; transition: transform 0.1s ease, opacity 0.3s ease; white-space: nowrap;';
+        
+        const shrink = () => backBtn.style.transform = 'translateX(-50%) scale(0.95)';
+        const grow = () => backBtn.style.transform = 'translateX(-50%) scale(1)';
+        backBtn.onmousedown = shrink; backBtn.onmouseup = grow;
+        backBtn.ontouchstart = shrink; backBtn.ontouchend = grow;
+        
+        backBtn.onclick = () => window.location.href = '/?tab=home';
+        document.body.appendChild(backBtn);
+
+        setInterval(() => {
+            const allButtons = Array.from(document.querySelectorAll('button, .btn, .game-tile-action'));
+            const isLobbyVisible = allButtons.some(b => {
+                const text = (b.innerText || '').toLowerCase();
+                return (text.includes('play') || text.includes('start')) && b.offsetParent !== null;
+            });
+
+            if (isLobbyVisible) {
+                backBtn.style.display = 'block';
+                setTimeout(() => backBtn.style.opacity = '1', 50);
+            } else {
+                backBtn.style.opacity = '0';
+                setTimeout(() => backBtn.style.display = 'none', 300);
+            }
+        }, 500);
+    });
+</script>
+
 </body>
 </html>

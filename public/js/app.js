@@ -6455,3 +6455,41 @@ const ogIntervalV19 = setInterval(() => {
     window.renderGrowthPathwayCard();
 }, 1500);
 // --- END V19 ---
+
+
+// ==========================================
+// KIONONIA CORE UX OVERRIDES
+// ==========================================
+const _origCheckLoginState = window.checkLoginState;
+window.checkLoginState = function() {
+    if (_origCheckLoginState) _origCheckLoginState();
+    
+    // Aggressively force Dashboard 300ms later to override background scripts
+    setTimeout(() => {
+        const saved = localStorage.getItem('fog_user');
+        if (saved && !window.location.search.includes('faith=quest')) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            const dash = document.getElementById('pulseDashboardTab');
+            if (dash) dash.classList.add('active');
+            if (typeof window.renderBottomNav === 'function') window.renderBottomNav('pulseDashboardTab');
+            window.scrollTo(0,0);
+        }
+    }, 300);
+};
+
+const _origRenderBottomNav = window.renderBottomNav;
+window.renderBottomNav = function(context) {
+    if (_origRenderBottomNav) _origRenderBottomNav(context);
+    
+    // Wait for native rendering to finish, then swap the icon
+    setTimeout(() => {
+        if (context === 'discipleshipTab') {
+            const navItems = Array.from(document.querySelectorAll('.bottom-nav-btn'));
+            const profileBtn = navItems.find(btn => btn.innerText.includes('Profile'));
+            if (profileBtn) {
+                profileBtn.innerHTML = '<span>🏠</span>Home';
+                profileBtn.setAttribute('onclick', "switchTab('pulseDashboardTab')");
+            }
+        }
+    }, 50);
+};
