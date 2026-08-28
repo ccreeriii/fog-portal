@@ -6384,19 +6384,18 @@ window.renderHomeJourneyCard = async function() {
 window.renderGrowthPathwayCard = async function() {
     if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
     const growTab = document.getElementById('growTab');
-    if (!growTab || growTab.style.display === 'none') return;
+    if (!growTab) return;
+
+    // Eradicate the native green card
+    Array.from(growTab.querySelectorAll('.card')).forEach(c => {
+        if (c.id !== 'dynamicGrowthPathwayBox' && (c.innerText.includes('Your Next Step') || c.innerText.includes('Salvation') || c.className.includes('bg-success'))) {
+            c.style.display = 'none';
+        }
+    });
 
     let container = document.getElementById('dynamicGrowthPathwayBox');
-    
     if (!container) {
-        // Find and replace the old green Next Step card
-        const cards = Array.from(growTab.querySelectorAll('.card'));
-        const oldCard = cards.find(c => c.innerText.includes('Salvation') || c.innerText.includes('Baptism'));
-        
-        const htmlShell = `<div id="dynamicGrowthPathwayBox" class="card" style="padding:0; border:none; box-shadow:none; background:transparent; margin-bottom:20px;"></div>`;
-        if (oldCard) { oldCard.outerHTML = htmlShell; } 
-        else { growTab.insertAdjacentHTML('afterbegin', htmlShell); }
-        
+        growTab.insertAdjacentHTML('afterbegin', '<div id="dynamicGrowthPathwayBox" style="margin-bottom:20px;"></div>');
         container = document.getElementById('dynamicGrowthPathwayBox');
     }
 
@@ -6404,46 +6403,60 @@ window.renderGrowthPathwayCard = async function() {
         const res = await fetch('/api/discipleship/next-step/' + currentMember.id);
         const data = await res.json();
         
-        let title = "Start Your Journey";
-        let desc = "Explore faith at your own pace.";
+        let title = "Salvation & Baptism";
+        let desc = "Accept Jesus Christ as Lord and Savior and publicly declare your faith through water baptism.";
         let stageIndex = 1;
         
         if (data && data.nextStep) { title = data.nextStep.title || title; desc = data.nextStep.description || desc; }
 
         const titleLower = title.toLowerCase();
-        if (titleLower.includes('encounter') || titleLower.includes('come')) stageIndex = 1;
-        else if (titleLower.includes('connect') || titleLower.includes('belong') || titleLower.includes('group')) stageIndex = 2;
+        if (titleLower.includes('encounter') || titleLower.includes('come') || titleLower.includes('salvation')) stageIndex = 1;
+        else if (titleLower.includes('connect') || titleLower.includes('belong')) stageIndex = 2;
         else if (titleLower.includes('pledge') || titleLower.includes('commit')) stageIndex = 3;
-        else if (titleLower.includes('gift') || titleLower.includes('discover') || titleLower.includes('intent')) stageIndex = 4;
+        else if (titleLower.includes('gift') || titleLower.includes('discover')) stageIndex = 4;
         else if (titleLower.includes('equip') || titleLower.includes('form')) stageIndex = 5;
         else if (titleLower.includes('serve') || titleLower.includes('participate')) stageIndex = 6;
         else if (titleLower.includes('commission') || titleLower.includes('sent')) stageIndex = 7;
 
         const progressPercent = Math.round((stageIndex / 7) * 100);
 
+        let pastoralContext = "";
+        switch(stageIndex) {
+            case 1: pastoralContext = "God is inviting you to experience His love in a fresh way. Take this bold first step to explore your faith and see what He has in store."; break;
+            case 2: pastoralContext = "We are not meant to walk alone. Finding your spiritual family will anchor your faith and provide brothers and sisters to support you."; break;
+            case 3: pastoralContext = "You are laying a firm foundation. By committing to this spiritual home, you are planting roots that will yield immense spiritual fruit."; break;
+            case 4: pastoralContext = "God has entrusted you with unique talents meant to bless others. Unpack those gifts now so you can prepare to serve His Kingdom."; break;
+            case 5: pastoralContext = "This is a season of deep refinement. Lean into your formation to sharpen your character, skills, and heart for ministry."; break;
+            case 6: pastoralContext = "The harvest is ready! Step out in faith to actively serve and experience the profound joy of building up your community."; break;
+            case 7: pastoralContext = "You are fully equipped. Go forth with a burning passion for God and deep compassion for all, shining His light wherever you go."; break;
+        }
+
         container.innerHTML = `
-            <div style="background: linear-gradient(145deg, #ffffff, #f8fafc); border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); border: 1px solid #E2E8F0; position: relative; overflow: hidden;">
-                <div style="position: absolute; top: 0; right: 0; width: 150px; height: 150px; background: radial-gradient(circle, rgba(16,185,129,0.1) 0%, rgba(255,255,255,0) 70%); border-radius: 50%; transform: translate(30%, -30%); pointer-events: none;"></div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; position: relative; z-index: 2;">
+            <div class="card" style="background: #FFF; border-radius: 16px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #E2E8F0; margin: 0;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
                     <h3 style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin: 0; font-weight: 800; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; border:none; padding:0;">
-                        <span style="color: #10B981;">🌱</span> GROWTH PATHWAY
+                        <span style="color: #F97316;">📍</span> MY JOURNEY
                     </h3>
-                    <button onclick="document.getElementById('journeyExplanationModal').style.display='flex'" style="background: #ECFDF5; color: #059669; border: none; border-radius: 20px; padding: 5px 12px; font-size: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                        ℹ️ Pathway Details
+                    <button onclick="document.getElementById('journeyExplanationModal').style.display='flex'" style="background: #FFFBEB; color: #D97706; border: none; border-radius: 20px; padding: 5px 12px; font-size: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                        ℹ️ About My Journey
                     </button>
                 </div>
-                <div style="position: relative; z-index: 2;">
-                    <strong style="color: var(--primary); font-size: 1.25rem; display: block; margin-bottom: 5px;">${title}</strong>
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                        <div style="flex: 1; height: 8px; background: #E2E8F0; border-radius: 10px; overflow: hidden;">
-                            <div style="height: 100%; width: ${progressPercent}%; background: linear-gradient(90deg, #10B981, #059669); border-radius: 10px;"></div>
-                        </div>
-                        <span style="font-size: 0.75rem; font-weight: bold; color: var(--text-muted);">Step ${stageIndex} of 7</span>
+                
+                <strong style="color: #F97316; font-size: 1.4rem; display: block; margin-bottom: 8px;">Step ${stageIndex}: ${title}</strong>
+                
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                    <div style="flex: 1; height: 8px; background: #E2E8F0; border-radius: 10px; overflow: hidden;">
+                        <div style="height: 100%; width: ${progressPercent}%; background: #F97316; border-radius: 10px;"></div>
                     </div>
-                    <div style="background: #FFF; padding: 15px; border-radius: 12px; border-left: 4px solid #10B981; margin-bottom: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; font-weight: 600;">🎯 Active Milestone: ${desc}</p>
-                    </div>
+                    <span style="font-size: 0.75rem; font-weight: bold; color: var(--text-muted);">Step ${stageIndex} of 7</span>
                 </div>
+
+                <div style="background: #FFF; padding: 15px; border-radius: 12px; border-left: 4px solid #F97316; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                    <p style="font-size: 0.95rem; color: var(--text-main); font-style: italic; margin: 0 0 10px 0; line-height: 1.5;">"${pastoralContext}"</p>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; font-weight: 600;">🎯 Action: ${desc}</p>
+                </div>
+
+                <button class="btn btn-primary" onclick="if(window.hubNavTo) window.hubNavTo('events'); else window.location.href='/?tab=events';" style="width: 100%; border-radius: 10px; font-weight: bold; padding: 14px; background: #F97316; border-color: #F97316; font-size: 1.05rem; box-shadow: 0 4px 10px rgba(249, 115, 22, 0.2);">Take Your Next Step</button>
             </div>
         `;
     } catch(e) { console.error('Error rendering growth pathway:', e); }

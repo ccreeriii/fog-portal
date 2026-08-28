@@ -2708,7 +2708,8 @@
                     <span style="font-size:0.85rem; color:var(--text-muted);">You are sent forth with passion for God and deep compassion for all.</span>
                 </div>
             </div>
-            <button class="btn btn-primary" style="width:100%; margin-top:20px; border-radius:12px; font-weight:bold; padding:14px;" onclick="document.getElementById('journeyExplanationModal').style.display='none'">Continue My Journey</button>
+            <button class="btn btn-primary" style="width:100%; margin-top:20px; border-radius:12px; font-weight:bold; padding:14px; font-size:1.05rem;" onclick=" document.getElementById('journeyExplanationModal').style.display='none'; const executeScroll = () => { const hub = document.getElementById('actionHubContainer'); if (hub) { hub.scrollIntoView({ behavior: 'smooth', block: 'center' }); const fqCard = Array.from(hub.querySelectorAll('.continuity-card')).find(el => el.innerText.includes('Faith Quest')); if (fqCard) { const ogBg = fqCard.style.background; fqCard.style.background = '#FEF3C7'; setTimeout(() => fqCard.style.background = ogBg, 1200); } } }; const dashTab = document.getElementById('pulseDashboardTab'); if (dashTab && dashTab.style.display !== 'none' && dashTab.classList.contains('active')) { executeScroll(); } else { if (typeof window.switchTab === 'function') window.switchTab('pulseDashboardTab'); else window.location.href = '/?tab=home'; setTimeout(executeScroll, 400); }
+">Continue My Journey</button>
         </div>
     </div>
 
