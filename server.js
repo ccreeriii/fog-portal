@@ -783,6 +783,36 @@ function awardPoints(youthId, type, amount, actor, gameName = null) {
 
 
 // --- V118: FUNNEL ILLUSION ENGINE ---
+
+// --- ARCHITECT INJECTION: Daily Arcade Stats ---
+app.get('/api/arcade/game-stats', (req, res) => {
+    const gameName = req.query.game || '';
+    const youthId = req.query.youth_id || '';
+    
+    // 1. Fetch Today's Top 3 Scorers
+    const top3Query = `SELECT COALESCE(u.full_name, 'Anonymous') as name, p.points 
+                       FROM user_points p 
+                       LEFT JOIN users u ON p.youth_id = u.youth_id 
+                       WHERE p.game_name = ? AND date(p.created_at, 'localtime') = date('now', 'localtime') 
+                       ORDER BY p.points DESC LIMIT 3`;
+                       
+    db.all(top3Query, [gameName], (err, topRows) => {
+        const top3 = topRows || [];
+        
+        // 2. Fetch User's Attempts Today
+        const attemptQuery = `SELECT points 
+                              FROM user_points 
+                              WHERE youth_id = ? AND game_name = ? AND date(created_at, 'localtime') = date('now', 'localtime') 
+                              ORDER BY created_at ASC LIMIT 3`;
+                              
+        db.all(attemptQuery, [youthId, gameName], (err, attemptRows) => {
+            const attempts = attemptRows ? attemptRows.map(r => r.points) : [];
+            res.json({ top3, attempts });
+        });
+    });
+});
+// --- END ARCHITECT INJECTION ---
+
 app.get('/api/growth-games/funnel', (req, res) => {
     const game = req.query.game || '';
     

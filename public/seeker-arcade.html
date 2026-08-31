@@ -125,8 +125,9 @@
                 <p id="pgDesc" style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 25px;">Game Description</p>
 
                 <div style="background: #F8FAFC; padding: 15px 20px; border-radius: 16px; margin-bottom: 25px; border: 1px solid var(--border-color); text-align: left;">
-                    <h4 style="margin: 0 0 10px 0; color: var(--text-main); font-size: 1rem; text-align:center;">Top 3 Scorers 🏆</h4>
+                    <h4 style="margin: 0 0 10px 0; color: var(--text-main); font-size: 1rem; text-align:center;">Today's Top 3 Scorers 🏆</h4>
                     <div id="pgTop3Container" style="font-size: 0.9rem; color: var(--text-muted);">Loading scores...</div>
+                    <div id="pgAttemptsContainer" style="margin-top:15px; padding-top:15px; border-top:1px dashed var(--border-color); font-size: 0.85rem; color: var(--text-main); text-align: left;"></div>
                 </div>
 
                 <div style="margin-bottom: 20px;">
@@ -678,6 +679,57 @@
                     }
                 };
                 window.fqBannerPatched = true;
+            }
+        });
+    </script>
+
+    <!-- FQ STATS PATCH -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof window.openPreGame === 'function' && !window.fqStatsPatched) {
+                const originalOpen = window.openPreGame;
+                window.openPreGame = function(gameName) {
+                    originalOpen(gameName);
+                    
+                    const top3Cont = document.getElementById('pgTop3Container');
+                    const attCont = document.getElementById('pgAttemptsContainer');
+                    if (top3Cont) top3Cont.innerHTML = 'Loading today\'s scores...';
+                    if (attCont) attCont.innerHTML = '';
+                    
+                    const user = JSON.parse(localStorage.getItem('fog_user') || '{}');
+                    const youthId = user.youth_id || '';
+                    
+                    fetch(`/api/arcade/game-stats?game=${encodeURIComponent(gameName)}&youth_id=${encodeURIComponent(youthId)}`)
+                        .then(res => res.json())
+                        .then(data => {
+                            // Render Today's Top 3
+                            if (top3Cont) {
+                                if (data.top3 && data.top3.length > 0) {
+                                    top3Cont.innerHTML = data.top3.map((r, i) => `<div style="margin-bottom:4px;">${i+1}. ${r.name} - <strong>${Number(r.points).toFixed(1)} XP</strong></div>`).join('');
+                                } else {
+                                    top3Cont.innerHTML = '<em>No scores today yet. Be the first!</em>';
+                                }
+                            }
+                            
+                            // Render User's Attempts
+                            if (attCont) {
+                                let attHtml = '<strong style="display:block; margin-bottom:8px;">Your Attempts Today:</strong>';
+                                if (data.attempts && data.attempts.length > 0) {
+                                    for (let i = 0; i < 3; i++) {
+                                        const pts = data.attempts[i] !== undefined ? Number(data.attempts[i]).toFixed(1) + ' XP' : '--';
+                                        attHtml += `<div style="display:flex; justify-content:space-between; margin-bottom:4px; padding: 4px 8px; background: rgba(0,0,0,0.03); border-radius: 6px;"><span>Attempt ${i+1}:</span> <strong>${pts}</strong></div>`;
+                                    }
+                                } else {
+                                    attHtml += '<div style="opacity:0.7; font-style:italic;">No attempts yet.</div>';
+                                }
+                                attCont.innerHTML = attHtml;
+                            }
+                        })
+                        .catch(err => {
+                            if (top3Cont) top3Cont.innerHTML = 'Failed to load scores.';
+                        });
+                };
+                window.fqStatsPatched = true;
             }
         });
     </script>
