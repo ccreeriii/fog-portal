@@ -142,7 +142,7 @@
             <button class="btn btn-outline btn-sm" style="margin-bottom: 15px;" onclick="switchGameView('lobbyView')">← Quit Game</button>
             <div class="card" style="border-top: 5px solid #059669;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <span style="font-weight: bold; color: var(--text-muted);" id="questionCounter">Question 1 of 5</span>
+                    <span style="font-weight: bold; color: var(--text-muted);" id="questionCounter">Question 1 of 10</span>
                     <span style="background: #059669; color: #FFF; padding: 5px 12px; border-radius: 20px; font-weight: bold;">Score: <span id="currentScore">0</span></span>
                 </div>
                 <h2 id="questionText" style="color: var(--text-main); margin-bottom: 25px; line-height: 1.4; border:none; font-size: 1.2rem;">Loading challenge...</h2>
@@ -328,6 +328,66 @@
         }
 
         function startTriviaGame() {
+        // --- ARCHITECT INJECTION: Level 3 UI ---
+        let pv = document.getElementById('playView');
+        if (pv && !document.getElementById('fqLevel3Header')) {
+            const l3Html = `<div id="fqLevel3Header" style="background: var(--primary, #059669); color: #fff; padding: 12px 15px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                
+                <!-- Left Side: Icon & Text -->
+                <div style="display: flex; align-items: center; gap: 12px; overflow: hidden;">
+                    <img id="fqL3GameIcon" src="/img/logo.png" alt="Icon" style="width: 45px; height: 45px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.2); padding: 4px; flex-shrink: 0;">
+                    <div style="display: flex; flex-direction: column; text-align: left; overflow: hidden;">
+                        <h3 id="fqL3GameName" style="margin:0; font-size:1.1rem; font-weight:800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Challenge</h3>
+                        <span id="fqL3Tagline" style="font-size:0.75rem; opacity:0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Play and earn Life Points!</span>
+                    </div>
+                </div>
+
+                <!-- Right Side: Timer -->
+                <div style="animation: pulse 1s infinite; flex-shrink: 0;">
+                    <span style="background:#EF4444; color:#FFF; font-weight:800; padding:6px 16px; border-radius:25px; font-size:1.2rem; box-shadow:0 4px 15px rgba(239,68,68,0.4);">⏱️ <span id="fqL3TimerText">15</span>s</span>
+                </div>
+                
+            </div>`;
+            pv.insertAdjacentHTML('afterbegin', l3Html);
+        }
+        
+        if (document.getElementById('fqLevel3Header')) {
+            // Populate Title
+            document.getElementById('fqL3GameName').innerText = (typeof currentGameName !== 'undefined') ? currentGameName : 'Faith Quest Challenge';
+            
+            // Populate Icon from Level 2
+            const iconEl = document.getElementById('pgIcon');
+            if (iconEl && iconEl.src) document.getElementById('fqL3GameIcon').src = iconEl.src;
+            
+            // Populate Tagline from Level 2 (targets the first paragraph)
+            const preGame = document.getElementById('preGameView');
+            if (preGame) {
+                const tagEl = preGame.querySelector('p');
+                if (tagEl && tagEl.innerText) document.getElementById('fqL3Tagline').innerText = tagEl.innerText;
+            }
+            
+            // Reset Timer
+            document.getElementById('fqL3TimerText').innerText = '15';
+        }
+
+        window.gameTimeLeft = 15;
+        if (window.gameTimerInterval) clearInterval(window.gameTimerInterval);
+        
+        window.gameTimerInterval = setInterval(() => {
+            window.gameTimeLeft--;
+            const tText = document.getElementById('fqL3TimerText');
+            if (tText) tText.innerText = window.gameTimeLeft;
+            
+            if (window.gameTimeLeft <= 0) {
+                clearInterval(window.gameTimerInterval);
+                if(typeof currentQuestions !== 'undefined' && typeof renderQuestion === 'function') {
+                    currentIndex = currentQuestions.length; 
+                    renderQuestion(); 
+                }
+            }
+        }, 1000);
+        // --- END ARCHITECT INJECTION ---
+        
             score = 0;
             currentIndex = 0;
             document.getElementById('currentScore').innerText = score.toFixed(1);
@@ -394,6 +454,10 @@
         }
 
         function endGame() {
+    if (window.gameTimerInterval) clearInterval(window.gameTimerInterval);
+    const tc = document.getElementById('timerContainer');
+    if (tc) tc.style.display = 'none';
+    
             let data = getAttemptsData();
             if (!data.games[currentGameName]) data.games[currentGameName] = { plays: 0, bestScore: 0 };
             
@@ -478,5 +542,127 @@
 
 
 
+
+    <!-- FQ EXPERT UI LOGIC -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. IDENTIFY THE HERO VIDEO/BANNER
+            const heroVideo = document.querySelector('iframe:not(#gameIframe), video');
+            let heroContainer = null;
+            if (heroVideo) {
+                heroContainer = heroVideo.closest('div') || heroVideo;
+            } else {
+                // Fallback: target the element directly below the header
+                const hdr = document.getElementById('publicHeader');
+                if(hdr && hdr.nextElementSibling && hdr.nextElementSibling.id !== 'mainView') {
+                    heroContainer = hdr.nextElementSibling;
+                }
+            }
+
+            const preGameLobby = document.getElementById('preGameLobby');
+            const mainView = document.getElementById('mainView');
+            const gameView = document.getElementById('gameView');
+
+            // 2. VIEW OBSERVER: TOGGLE VIDEO & INJECT GAME HEADER
+            const viewObserver = new MutationObserver(() => {
+                const isPreGame = preGameLobby && window.getComputedStyle(preGameLobby).display !== 'none';
+                const isGame = gameView && window.getComputedStyle(gameView).display !== 'none';
+                
+                // Hide Video on Level 2 & Level 3
+                if (heroContainer) {
+                    heroContainer.style.display = (isPreGame || isGame) ? 'none' : '';
+                }
+
+                // Level 3: Inject Custom Header & Indestructible Timer
+                if (isGame) {
+                    let header = document.getElementById('fqInGameHeader');
+                    if (!header) {
+                        header = document.createElement('div');
+                        header.id = 'fqInGameHeader';
+                        header.style.cssText = 'background: var(--primary, #059669); color: #fff; padding: 15px; text-align: center; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);';
+                        // Insert safely ABOVE the game content so it never gets deleted
+                        gameView.parentNode.insertBefore(header, gameView);
+                    }
+                    header.style.display = 'block';
+                    
+                    const gameName = document.querySelector('#preGameLobby h2') ? document.querySelector('#preGameLobby h2').innerText : 'Faith Quest Challenge';
+                    
+                    let bestScore = '0.0';
+                    const bestEl = document.getElementById('finalScoreDisplay');
+                    if (bestEl && bestEl.innerText) bestScore = bestEl.innerText;
+                    
+                    header.innerHTML = `
+                        <h3 style="margin:0; font-size:1.5rem; font-weight:800;">${gameName}</h3>
+                        <p style="margin:5px 0 15px 0; font-size:0.9rem; opacity:0.9;">Today's Best: <strong>${bestScore} XP</strong></p>
+                        <div style="animation: pulse 1s infinite;">
+                            <span style="background:#EF4444; color:#FFF; font-weight:800; padding:8px 25px; border-radius:25px; font-size:1.4rem; box-shadow:0 4px 15px rgba(239,68,68,0.4);">⏱️ <span id="fqTimeText">15</span>s</span>
+                        </div>
+                    `;
+                } else {
+                    const header = document.getElementById('fqInGameHeader');
+                    if (header) header.style.display = 'none';
+                }
+            });
+
+            if (preGameLobby) viewObserver.observe(preGameLobby, { attributes: true, attributeFilter: ['style'] });
+            if (mainView) viewObserver.observe(mainView, { attributes: true, attributeFilter: ['style'] });
+            if (gameView) viewObserver.observe(gameView, { attributes: true, attributeFilter: ['style'] });
+
+            // 3. SECURE TIMER LOGIC
+            const originalStart = window.startGame;
+            window.startGame = function(...args) {
+                if (originalStart) originalStart.apply(this, args);
+                
+                window.gameTimeLeft = 15;
+                const txt = document.getElementById('fqTimeText');
+                if (txt) txt.innerText = '15';
+
+                if (window.fqTimerInterval) clearInterval(window.fqTimerInterval);
+                window.fqTimerInterval = setInterval(() => {
+                    window.gameTimeLeft--;
+                    const timerSpan = document.getElementById('fqTimeText');
+                    if (timerSpan) timerSpan.innerText = window.gameTimeLeft;
+                    
+                    if (window.gameTimeLeft <= 0) {
+                        clearInterval(window.fqTimerInterval);
+                        if (typeof window.endGame === 'function') window.endGame();
+                    }
+                }, 1000);
+            };
+
+            const originalEnd = window.endGame;
+            window.endGame = function(...args) {
+                if (window.fqTimerInterval) clearInterval(window.fqTimerInterval);
+                if (originalEnd) originalEnd.apply(this, args);
+            };
+        });
+    </script>
+    
+
+    <!-- FQ ARCHITECT UI PATCH -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof window.switchGameView === 'function' && !window.fqBannerPatched) {
+                const originalSwitch = window.switchGameView;
+                window.switchGameView = function(viewId) {
+                    // Execute original routing
+                    originalSwitch(viewId);
+                    
+                    // Securely control the Video Banner
+                    const banner = document.getElementById('faithQuestBanner');
+                    if (banner) {
+                        // Only display video on Level 1 (lobbyView)
+                        banner.style.display = (viewId === 'lobbyView') ? 'block' : 'none';
+                    }
+                    
+                    // Cleanup timer if leaving Level 3 early
+                    if (viewId !== 'playView' && window.gameTimerInterval) {
+                        clearInterval(window.gameTimerInterval);
+                    }
+                };
+                window.fqBannerPatched = true;
+            }
+        });
+    </script>
 </body>
 </html>
