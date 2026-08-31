@@ -120,7 +120,12 @@ app.post('/api/prayer-pals/send', (req, res) => {
             [sender_id, receiver_id, '🙏 A Prayer from ' + sender_name, message, 'Delivered', timeNow], function(err) {
                 if(err) return res.status(500).json({error: err.message});
                 
-                try { if(typeof awardPoints === 'function') awardPoints(sender_id, 'growth', 5, sender_name, 'Daily Prayer Covenant'); } catch(e){}
+                const todayStr = getManilaTime().split(' ')[0];
+                db.get("SELECT id FROM point_transactions WHERE youth_id = ? AND game_name = 'Daily Prayer Covenant' AND created_at LIKE ?", [sender_id, todayStr + '%'], (err, ptRow) => {
+                    if (!ptRow && typeof awardPoints === 'function') {
+                        awardPoints(sender_id, 'growth', 50, sender_name, 'Daily Prayer Covenant');
+                    }
+                });
 
                 if (typeof webpush !== 'undefined') {
                     sendCustomPush(db, webpush, receiver_id, '🙏 Prayer Received', 'Prayers sent to you by a prayer covenant.', '/?tab=inbox');
@@ -780,32 +785,52 @@ function awardPoints(youthId, type, amount, actor, gameName = null) {
 // --- V118: FUNNEL ILLUSION ENGINE ---
 app.get('/api/growth-games/funnel', (req, res) => {
     const game = req.query.game || '';
+    
+    // Helper to shuffle arrays
+    const shuffle = (arr) => arr.sort(() => 0.5 - Math.random());
+    
     if (game.includes('Scramble')) {
-        res.json([
-            { question: "Unscramble: E-O-L-V", options: ["HOPE", "LOVE", "PEACE", "FAITH"], correct_index: 1 },
-            { question: "Unscramble: R-A-G-E-C", options: ["MERCY", "TRUTH", "GRACE", "LIGHT"], correct_index: 2 },
-            { question: "Unscramble: P-I-S-R-I-T", options: ["WATER", "BLOOD", "SPIRIT", "WINE"], correct_index: 2 },
-            { question: "Unscramble: T-H-F-A-I", options: ["TRUST", "HOPE", "GLORY", "FAITH"], correct_index: 3 },
-            { question: "Unscramble: C-P-E-A-E", options: ["PEACE", "JOY", "CALM", "REST"], correct_index: 0 }
-        ]);
+        const words = ["FAITH","HOPE","LOVE","PEACE","GRACE","MERCY","TRUTH","LIGHT","GLORY","JESUS","CHRIST","SAVIOR","HEAVEN","GOSPEL","BIBLE","CHURCH","CROSS","PRAYER","AMEN","HOLY","SPIRIT","WATER","BLOOD","WINE","BREAD","FISH","SHEEP","LAMB","LION","DOVE","MOSES","DAVID","MARY","PETER","JOHN","PAUL","SAUL","ROMANS","ACTS","LUKE","MARK","PSALM","PROVERB","WISDOM","JOY","CALM","REST","HEAL","KING","LORD"];
+        let pool = words.map(w => {
+            let scrambled = w.split('').sort(() => 0.5 - Math.random()).join('');
+            while(scrambled === w) scrambled = w.split('').sort(() => 0.5 - Math.random()).join(''); // Ensure it's actually scrambled
+            let options = shuffle([w, "BIBLE", "FAITH", "GRACE", "JESUS", "PEACE", "MERCY"].filter(x => x !== w).slice(0,3));
+            options.push(w);
+            options = shuffle(options);
+            return { question: "Unscramble: " + scrambled.split('').join('-'), options: options, correct_index: options.indexOf(w) };
+        });
+        res.json(shuffle(pool).slice(0, 10));
     } else if (game.includes('Emoji')) {
-        res.json([
-            { question: "Decode: 🍎🐍🌳", options: ["Creation", "Adam & Eve", "Noah's Ark", "Moses"], correct_index: 1 },
-            { question: "Decode: 🌊🚶‍♂️💨", options: ["Parting Red Sea", "Walking on Water", "Jonah", "Baptism"], correct_index: 1 },
-            { question: "Decode: 🍞🐟🐟", options: ["Last Supper", "Feeding 5000", "Wedding at Cana", "Manna"], correct_index: 1 },
-            { question: "Decode: 🦁🕳️🙏", options: ["Daniel", "David", "Samson", "Joseph"], correct_index: 0 },
-            { question: "Decode: 👑⭐👶🐪", options: ["Crucifixion", "Resurrection", "Birth of Jesus", "Ascension"], correct_index: 2 }
-        ]);
+        const emojiPool = [
+            {q: "🍎🐍🌳", a: "Adam & Eve"}, {q: "🌊🚶‍♂️💨", a: "Walking on Water"}, {q: "🍞🐟🐟", a: "Feeding 5000"}, {q: "🦁🕳️🙏", a: "Daniel in Lion's Den"}, {q: "👑⭐👶🐪", a: "Birth of Jesus"},
+            {q: "🚢🌈🕊️", a: "Noah's Ark"}, {q: "🔥🌳🗣️", a: "Burning Bush"}, {q: "✝️🩸👑", a: "The Crucifixion"}, {q: "🪨👦🎯", a: "David & Goliath"}, {q: "🐋🌊🏃", a: "Jonah"},
+            {q: "🍞🍷🙏", a: "Last Supper"}, {q: "🔥🌪️👅", a: "Pentecost"}, {q: "🎺🧱💥", a: "Walls of Jericho"}, {q: "☀️🌑🛑", a: "Joshua stops the Sun"}, {q: "🔥🌋🐴", a: "Elijah's Chariot"},
+            {q: "💰🐖💋", a: "Judas Betrayal"}, {q: "💧👶🕊️", a: "Jesus Baptism"}, {q: "🐍🔥⛺", a: "Paul & the Viper"}, {q: "🥖🐦🦅", a: "Elijah fed by Ravens"}, {q: "🐑👑🛡️", a: "The Lord is my Shepherd"}
+        ];
+        // Duplicate/Expand pool dynamically to reach 50 for depth
+        let expandedPool = [];
+        for(let i=0; i<50; i++) expandedPool.push(emojiPool[i % emojiPool.length]);
+        
+        let finalPool = expandedPool.map(item => {
+            let options = shuffle([item.a, "Moses", "Resurrection", "Samson", "Exodus"].filter(x => x !== item.a).slice(0,3));
+            options.push(item.a);
+            options = shuffle(options);
+            return { question: "Decode: " + item.q, options: options, correct_index: options.indexOf(item.a) };
+        });
+        res.json(shuffle(finalPool).slice(0, 10));
     } else if (game.includes('Fruits')) {
-        res.json([
-            { question: "Which of these is a Fruit of the Spirit?", options: ["Wealth", "Patience", "Power", "Fame"], correct_index: 1 },
-            { question: "Which is NOT a Fruit of the Spirit?", options: ["Joy", "Peace", "Anger", "Goodness"], correct_index: 2 },
-            { question: "Complete: Love, Joy, Peace, ___", options: ["Hope", "Patience", "Courage", "Wisdom"], correct_index: 1 },
-            { question: "Complete: Kindness, Goodness, ___", options: ["Faithfulness", "Strength", "Boldness", "Glory"], correct_index: 0 },
-            { question: "Complete: Gentleness and ___", options: ["Self-Control", "Victory", "Prosperity", "Honor"], correct_index: 0 }
-        ]);
+        const fruits = ["Love","Joy","Peace","Patience","Kindness","Goodness","Faithfulness","Gentleness","Self-Control"];
+        let pool = [];
+        for(let i=0; i<50; i++) {
+            let f = fruits[i % fruits.length];
+            let options = shuffle([f, "Wealth", "Power", "Fame", "Anger", "Pride"].filter(x => x !== f).slice(0,3));
+            options.push(f);
+            options = shuffle(options);
+            pool.push({ question: "Which is a Fruit of the Spirit?", options: options, correct_index: options.indexOf(f) });
+        }
+        res.json(shuffle(pool).slice(0, 10));
     } else {
-        db.all("SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 5", [], (err, rows) => {
+        db.all("SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 10", [], (err, rows) => {
             if(err || !rows) return res.json([]);
             rows.forEach(r => { if(typeof r.options === 'string') { try{ r.options=JSON.parse(r.options); }catch(e){r.options=["A","B","C","D"];} } });
             res.json(rows);
@@ -1616,7 +1641,12 @@ app.post('/api/prayer-pals/send', (req, res) => {
         [sender_id, receiver_id, '🙏 A Prayer from ' + sender_name, message, getManilaTime()], function(err) {
             if(err) return res.status(500).json({error: err.message});
             // Award points for praying
-            if(typeof awardPoints === 'function') awardPoints(sender_id, 'growth', 5, sender_name, 'Daily Prayer Covenant');
+            const todayStr = getManilaTime().split(' ')[0];
+                db.get("SELECT id FROM point_transactions WHERE youth_id = ? AND game_name = 'Daily Prayer Covenant' AND created_at LIKE ?", [sender_id, todayStr + '%'], (err, ptRow) => {
+                    if (!ptRow && typeof awardPoints === 'function') {
+                        awardPoints(sender_id, 'growth', 50, sender_name, 'Daily Prayer Covenant');
+                    }
+                });
             // Send push notification
             if(typeof pushToUser === 'function') pushToUser(receiver_id, '🙏 Prayer Received', 'Prayers sent to you by a prayer covenant.', '/?tab=inbox');
             res.json({success: true});
@@ -1765,7 +1795,24 @@ app.get('/api/gamification/game-top/:game_name', (req, res) => {
     db.all(`SELECT y.name, y.profile_picture, MAX(pt.amount) as high_score FROM point_transactions pt JOIN youth y ON pt.youth_id = y.id WHERE pt.game_name = ? GROUP BY pt.youth_id ORDER BY high_score DESC LIMIT 3`, [gameName], (err, rows) => { res.json(rows || []); });
 });
 
-app.get('/api/gamification/points/:youth_id', (req, res) => { db.get(`SELECT points, arcade_xp, growth_xp, event_xp FROM gamification_points WHERE youth_id = ?`, [req.params.youth_id], (err, row) => { res.json(row ? row : { points: 0, arcade_xp: 0, growth_xp: 0, event_xp: 0 }); }); });
+app.get('/api/gamification/points/:youth_id', (req, res) => {
+    db.get(`SELECT points, arcade_xp, growth_xp, event_xp FROM gamification_points WHERE youth_id = ?`, [req.params.youth_id], (err, row) => {
+        let result = row ? row : { points: 0, arcade_xp: 0, growth_xp: 0, event_xp: 0 };
+        
+        // Calculate current week's points (Manila Time, starting Monday)
+        const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        const day = d.getDay();
+        const diffToMonday = d.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(d.setDate(diffToMonday));
+        const pad = (n) => String(n).padStart(2, '0');
+        const startOfWeek = `${monday.getFullYear()}-${pad(monday.getMonth()+1)}-${pad(monday.getDate())} 00:00:00`;
+
+        db.get(`SELECT SUM(amount) as weekly_points FROM point_transactions WHERE youth_id = ? AND created_at >= ?`, [req.params.youth_id, startOfWeek], (err, weekRow) => {
+            result.weekly_points = (weekRow && weekRow.weekly_points) ? weekRow.weekly_points : 0;
+            res.json(result);
+        });
+    });
+});
 app.get('/api/gamification/group-leaderboard', (req, res) => { db.all(`SELECT sg.id, sg.name, SUM(gp.points) as total_points, COUNT(DISTINCT sgm.youth_id) as member_count FROM small_groups sg JOIN small_group_members sgm ON sg.id = sgm.group_id JOIN gamification_points gp ON sgm.youth_id = gp.youth_id GROUP BY sg.id ORDER BY total_points DESC LIMIT 10`, [], (err, rows) => { res.json(rows || []); }); });
 app.get('/api/gamification/challenges', (req, res) => {
     const youthId = req.query.youth_id;
@@ -1794,14 +1841,14 @@ app.post('/api/gamification/challenges', (req, res) => { db.run(`INSERT INTO wee
 app.post('/api/games/universal-submit', (req, res) => {
     const { youth_id, game_name, score, type, actor } = req.body;
     const gameType = type || 'growth';
-    awardPoints(youth_id, gameType, score, actor || 'System', game_name || 'Mini Game');
+    awardPoints(youth_id, gameType, Math.min(score, 5), actor || 'System', game_name || 'Mini Game');
     res.json({ success: true, pointsAwarded: score });
 });
 
 app.post('/api/arcade/submit', (req, res) => {
     const { youth_id, game_name, score, actor } = req.body;
     db.run(`INSERT INTO arcade_score_logs (youth_id, game_name, score, played_at) VALUES (?, ?, ?, ?)`, [youth_id, game_name, score, getManilaTime()], function(err) {
-            awardPoints(youth_id, 'arcade', score, actor || 'System', game_name);
+            awardPoints(youth_id, 'arcade', Math.min(score, 5), actor || 'System', game_name);
             res.json({ success: true, pointsAwarded: score });
     });
 });
@@ -2102,14 +2149,52 @@ app.get('/api/public/arcade-leaderboards-v2', (req, res) => {
 // 3. Funnel Illusion Engine API
 app.get('/api/growth-games/funnel', (req, res) => {
     const game = req.query.game || '';
+    
+    // Helper to shuffle arrays
+    const shuffle = (arr) => arr.sort(() => 0.5 - Math.random());
+    
     if (game.includes('Scramble')) {
-        res.json([ { question: "Unscramble: E-O-L-V", options: ["HOPE", "LOVE", "PEACE", "FAITH"], correct_index: 1 }, { question: "Unscramble: R-A-G-E-C", options: ["MERCY", "TRUTH", "GRACE", "LIGHT"], correct_index: 2 }, { question: "Unscramble: P-I-S-R-I-T", options: ["WATER", "BLOOD", "SPIRIT", "WINE"], correct_index: 2 }, { question: "Unscramble: T-H-F-A-I", options: ["TRUST", "HOPE", "GLORY", "FAITH"], correct_index: 3 }, { question: "Unscramble: C-P-E-A-E", options: ["PEACE", "JOY", "CALM", "REST"], correct_index: 0 } ]);
+        const words = ["FAITH","HOPE","LOVE","PEACE","GRACE","MERCY","TRUTH","LIGHT","GLORY","JESUS","CHRIST","SAVIOR","HEAVEN","GOSPEL","BIBLE","CHURCH","CROSS","PRAYER","AMEN","HOLY","SPIRIT","WATER","BLOOD","WINE","BREAD","FISH","SHEEP","LAMB","LION","DOVE","MOSES","DAVID","MARY","PETER","JOHN","PAUL","SAUL","ROMANS","ACTS","LUKE","MARK","PSALM","PROVERB","WISDOM","JOY","CALM","REST","HEAL","KING","LORD"];
+        let pool = words.map(w => {
+            let scrambled = w.split('').sort(() => 0.5 - Math.random()).join('');
+            while(scrambled === w) scrambled = w.split('').sort(() => 0.5 - Math.random()).join(''); // Ensure it's actually scrambled
+            let options = shuffle([w, "BIBLE", "FAITH", "GRACE", "JESUS", "PEACE", "MERCY"].filter(x => x !== w).slice(0,3));
+            options.push(w);
+            options = shuffle(options);
+            return { question: "Unscramble: " + scrambled.split('').join('-'), options: options, correct_index: options.indexOf(w) };
+        });
+        res.json(shuffle(pool).slice(0, 10));
     } else if (game.includes('Emoji')) {
-        res.json([ { question: "Decode: 🍎🐍🌳", options: ["Creation", "Adam & Eve", "Noah's Ark", "Moses"], correct_index: 1 }, { question: "Decode: 🌊🚶‍♂️💨", options: ["Parting Red Sea", "Walking on Water", "Jonah", "Baptism"], correct_index: 1 }, { question: "Decode: 🍞🐟🐟", options: ["Last Supper", "Feeding 5000", "Wedding at Cana", "Manna"], correct_index: 1 }, { question: "Decode: 🦁🕳️🙏", options: ["Daniel", "David", "Samson", "Joseph"], correct_index: 0 }, { question: "Decode: 👑⭐👶🐪", options: ["Crucifixion", "Resurrection", "Birth of Jesus", "Ascension"], correct_index: 2 } ]);
+        const emojiPool = [
+            {q: "🍎🐍🌳", a: "Adam & Eve"}, {q: "🌊🚶‍♂️💨", a: "Walking on Water"}, {q: "🍞🐟🐟", a: "Feeding 5000"}, {q: "🦁🕳️🙏", a: "Daniel in Lion's Den"}, {q: "👑⭐👶🐪", a: "Birth of Jesus"},
+            {q: "🚢🌈🕊️", a: "Noah's Ark"}, {q: "🔥🌳🗣️", a: "Burning Bush"}, {q: "✝️🩸👑", a: "The Crucifixion"}, {q: "🪨👦🎯", a: "David & Goliath"}, {q: "🐋🌊🏃", a: "Jonah"},
+            {q: "🍞🍷🙏", a: "Last Supper"}, {q: "🔥🌪️👅", a: "Pentecost"}, {q: "🎺🧱💥", a: "Walls of Jericho"}, {q: "☀️🌑🛑", a: "Joshua stops the Sun"}, {q: "🔥🌋🐴", a: "Elijah's Chariot"},
+            {q: "💰🐖💋", a: "Judas Betrayal"}, {q: "💧👶🕊️", a: "Jesus Baptism"}, {q: "🐍🔥⛺", a: "Paul & the Viper"}, {q: "🥖🐦🦅", a: "Elijah fed by Ravens"}, {q: "🐑👑🛡️", a: "The Lord is my Shepherd"}
+        ];
+        // Duplicate/Expand pool dynamically to reach 50 for depth
+        let expandedPool = [];
+        for(let i=0; i<50; i++) expandedPool.push(emojiPool[i % emojiPool.length]);
+        
+        let finalPool = expandedPool.map(item => {
+            let options = shuffle([item.a, "Moses", "Resurrection", "Samson", "Exodus"].filter(x => x !== item.a).slice(0,3));
+            options.push(item.a);
+            options = shuffle(options);
+            return { question: "Decode: " + item.q, options: options, correct_index: options.indexOf(item.a) };
+        });
+        res.json(shuffle(finalPool).slice(0, 10));
     } else if (game.includes('Fruits')) {
-        res.json([ { question: "Which of these is a Fruit of the Spirit?", options: ["Wealth", "Patience", "Power", "Fame"], correct_index: 1 }, { question: "Which is NOT a Fruit of the Spirit?", options: ["Joy", "Peace", "Anger", "Goodness"], correct_index: 2 }, { question: "Complete: Love, Joy, Peace, ___", options: ["Hope", "Patience", "Courage", "Wisdom"], correct_index: 1 }, { question: "Complete: Kindness, Goodness, ___", options: ["Faithfulness", "Strength", "Boldness", "Glory"], correct_index: 0 }, { question: "Complete: Gentleness and ___", options: ["Self-Control", "Victory", "Prosperity", "Honor"], correct_index: 0 } ]);
+        const fruits = ["Love","Joy","Peace","Patience","Kindness","Goodness","Faithfulness","Gentleness","Self-Control"];
+        let pool = [];
+        for(let i=0; i<50; i++) {
+            let f = fruits[i % fruits.length];
+            let options = shuffle([f, "Wealth", "Power", "Fame", "Anger", "Pride"].filter(x => x !== f).slice(0,3));
+            options.push(f);
+            options = shuffle(options);
+            pool.push({ question: "Which is a Fruit of the Spirit?", options: options, correct_index: options.indexOf(f) });
+        }
+        res.json(shuffle(pool).slice(0, 10));
     } else {
-        db.all("SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 5", [], (err, rows) => {
+        db.all("SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 10", [], (err, rows) => {
             if(err || !rows) return res.json([]);
             rows.forEach(r => { if(typeof r.options === 'string') { try{ r.options=JSON.parse(r.options); }catch(e){r.options=["A","B","C","D"];} } });
             res.json(rows);

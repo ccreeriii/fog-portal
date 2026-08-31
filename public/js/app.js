@@ -6647,7 +6647,7 @@ window.updateDashboardLifePoints = function() {
                 
                 // Update Dashboard Hero Banner
                 const xpCounter = document.getElementById('dashXpCounter');
-                if (xpCounter) xpCounter.innerText = (data.points || 0) + ' Life Points 🖱️';
+                if (xpCounter) xpCounter.innerText = (data.weekly_points || 0) + ' Life Points This Week 🖱️';
                 
                 // Silently update Profile Tooltip variables
                 const elA = document.getElementById('myArcadeXp');
@@ -6919,3 +6919,89 @@ window.loadEvents = async function() {
         console.error("CRITICAL: Failed to load events data from database.", e);
     }
 };
+
+// ==========================================
+// V59: WEEKLY LIFE POINTS OVERRIDE
+// ==========================================
+window.updateDashboardLifePoints = function() {
+    if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+        fetch('/api/gamification/points/' + currentMember.id)
+            .then(res => res.json())
+            .then(data => {
+                window.currentLifePointsData = data;
+                const xpCounter = document.getElementById('dashXpCounter');
+                if (xpCounter) {
+                    const text = (data.weekly_points || 0) + ' Life Points This Week';
+                    if (xpCounter.innerText.includes('🖱️')) xpCounter.innerText = text + ' 🖱️';
+                    else xpCounter.innerText = text;
+                }
+            }).catch(e => console.log('Points sync error', e));
+    }
+};
+
+const ogSwitchTabV59 = window.switchTab;
+window.switchTab = async function(tabId, subTabId) {
+    if (ogSwitchTabV59) await ogSwitchTabV59(tabId, subTabId);
+    if (tabId === 'pulseDashboardTab' && typeof window.updateDashboardLifePoints === 'function') {
+        window.updateDashboardLifePoints();
+    }
+};
+
+// ==========================================
+// V60: FOG ARCADE PRE-GAME MODAL
+// ==========================================
+window.openArcadePreGame = function(gameName, icon, desc, color) {
+    document.getElementById('fpgTitle').innerText = gameName;
+    document.getElementById('fpgIcon').innerText = icon;
+    document.getElementById('fpgDesc').innerText = desc;
+    document.getElementById('fpgTop3Container').innerHTML = '<div style="text-align:center;">Loading scores...</div>';
+    
+    // Fetch Top 3 Scorers for this specific game
+    fetch('/api/gamification/game-top/' + encodeURIComponent(gameName))
+        .then(res => res.json())
+        .then(scores => {
+            const container = document.getElementById('fpgTop3Container');
+            if (scores && scores.length > 0) {
+                container.innerHTML = scores.map((s, i) => `<div style="display:flex; justify-content:space-between; padding: 6px 0; border-bottom: 1px solid #E2E8F0;"><span>${i===0?'🥇':i===1?'🥈':'🥉'} ${s.name}</span><strong>${Number(s.high_score).toFixed(1)} XP</strong></div>`).join('');
+            } else {
+                container.innerHTML = '<div style="text-align:center;">Be the first to claim the top spot!</div>';
+            }
+        }).catch(e => {
+            document.getElementById('fpgTop3Container').innerHTML = '<div style="text-align:center; color: var(--danger);">Failed to load ranks.</div>';
+        });
+
+    const startBtn = document.getElementById('fpgStartBtn');
+    startBtn.style.background = color || '#059669';
+    startBtn.onclick = function() {
+        document.getElementById('arcadePreGameModal').classList.remove('active');
+        // Trigger simulated gameplay (capped at 5)
+        setTimeout(() => {
+            const simulatedScore = Math.floor(Math.random() * 6); // Max 5
+            fetch('/api/arcade/submit', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ youth_id: currentMember.id, game_name: gameName, score: simulatedScore, actor: currentMember.name })
+            }).then(() => {
+                alert(`Game Over! You scored ${simulatedScore}.0 XP.`);
+                if(window.updateDashboardLifePoints) window.updateDashboardLifePoints();
+            });
+        }, 500);
+    };
+
+    document.getElementById('arcadePreGameModal').classList.add('active');
+};
+
+// Bind tiles dynamically
+setInterval(() => {
+    document.querySelectorAll('.arcade-game-tile').forEach(tile => {
+        if (!tile.hasAttribute('data-modal-bound') && !tile.classList.contains('growth-game-indiv') && !tile.classList.contains('growth-game-groups')) {
+            const gameName = tile.getAttribute('data-game-name');
+            const icon = tile.querySelector('.game-tile-icon').innerText;
+            const desc = tile.querySelector('p').innerText;
+            const actionBtn = tile.querySelector('.game-tile-action');
+            const color = actionBtn ? window.getComputedStyle(actionBtn).backgroundColor : '#059669';
+            
+            tile.onclick = () => window.openArcadePreGame(gameName, icon, desc, color);
+            tile.setAttribute('data-modal-bound', 'true');
+        }
+    });
+}, 1000);

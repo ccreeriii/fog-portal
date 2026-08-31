@@ -2713,5 +2713,26 @@
         </div>
     </div>
 
+
+<div id="arcadePreGameModal" class="modal" style="z-index: 106000 !important;">
+    <div class="modal-content" style="max-width: 450px; text-align: center; padding: 35px 20px; border-top: 5px solid var(--primary);">
+        <span class="close-modal" onclick="document.getElementById('arcadePreGameModal').classList.remove('active')" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer;">&times;</span>
+        <div id="fpgIcon" style="font-size: 4rem; margin-bottom: 10px;">🎮</div>
+        <h2 id="fpgTitle" style="color: var(--primary); margin-bottom: 5px; font-size: 1.6rem; border: none;">Game Title</h2>
+        <p id="fpgDesc" style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 25px;">Game Description</p>
+        
+        <div style="background: #F8FAFC; padding: 15px 20px; border-radius: 16px; margin-bottom: 25px; border: 1px solid var(--border-color); text-align: left;">
+            <h4 style="margin: 0 0 10px 0; color: var(--text-main); font-size: 1rem; text-align:center;">Top 3 Scorers 🏆</h4>
+            <div id="fpgTop3Container" style="font-size: 0.9rem; color: var(--text-muted);">Loading scores...</div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Maximum Points Available</span><br>
+            <strong style="font-size: 2rem; color: #F59E0B;">5.0 XP</strong>
+        </div>
+        
+        <button id="fpgStartBtn" class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 1.2rem; font-weight: bold; border-radius: 12px; background: #059669; border: none;">▶️ PLAY NOW</button>
+    </div>
+</div>
 </body>
 </html>

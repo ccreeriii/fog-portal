@@ -322,14 +322,14 @@
         function startTriviaGame() {
             score = 0;
             currentIndex = 0;
-            document.getElementById('currentScore').innerText = score;
+            document.getElementById('currentScore').innerText = score.toFixed(1);
             switchGameView('playView');
             
             fetch('/api/growth-games/funnel?game=' + encodeURIComponent(currentGameName))
                 .then(res => res.json())
                 .then(data => {
                     if (data && data.length >= 5) {
-                        currentQuestions = data.slice(0, 5);
+                        currentQuestions = data.slice(0, 10);
                         renderQuestion();
                     } else {
                         currentQuestions = fallbackTrivia;
@@ -342,7 +342,7 @@
         function renderQuestion() {
             isAnswering = false;
             document.getElementById('feedbackContainer').style.display = 'none';
-            document.getElementById('questionCounter').innerText = `Question ${currentIndex + 1} of 5`;
+            document.getElementById('questionCounter').innerText = `Question ${currentIndex + 1} of 10`;
             
             const q = currentQuestions[currentIndex];
             document.getElementById('questionText').innerText = q.question;
@@ -366,9 +366,9 @@
             
             if (selectedIdx === correctIdx) {
                 btn.classList.add('correct');
-                score += 10;
-                document.getElementById('currentScore').innerText = score;
-                document.getElementById('feedbackText').innerText = "✅ Correct! +10 XP";
+                score += 0.5;
+                document.getElementById('currentScore').innerText = score.toFixed(1);
+                document.getElementById('feedbackText').innerText = "✅ Correct! +0.5 XP";
                 document.getElementById('feedbackText').style.color = "#10B981";
             } else {
                 btn.classList.add('wrong');
@@ -381,7 +381,7 @@
 
         function nextQuestion() {
             currentIndex++;
-            if (currentIndex < 5 && currentIndex < currentQuestions.length) renderQuestion();
+            if (currentIndex < 10 && currentIndex < currentQuestions.length) renderQuestion();
             else endGame();
         }
 
@@ -399,7 +399,7 @@
             const best = data.games[currentGameName].bestScore;
             const plays = data.games[currentGameName].plays;
 
-            document.getElementById('finalScoreDisplay').innerText = best;
+            document.getElementById('finalScoreDisplay').innerText = Number(best).toFixed(1);
             
             let loggedIn = JSON.parse(localStorage.getItem('fog_user') || 'null');
             if (loggedIn && loggedIn.member) {
