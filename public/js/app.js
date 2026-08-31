@@ -6788,3 +6788,114 @@ window.updateActiveEventBanner = async function() {
     }
     if (typeof window.filterManualCheckin === 'function') window.filterManualCheckin();
 };
+
+
+// ==========================================
+// V56: SAFE UI ENFORCER & SPEED OPTIMIZATION
+// ==========================================
+try {
+    // A. INDESTRUCTIBLE PERMISSIONS ENFORCER
+    // Runs silently and forces the "Create" tabs to show for authorized users, bypassing CSS conflicts.
+    setInterval(() => {
+        try {
+            const session = JSON.parse(localStorage.getItem('fog_user'));
+            if (!session || !session.username) return;
+            
+            const isSuperAdmin = session.username === 'celsocreeriii@gmail.com';
+            const hasAddPerm = session.permissions && session.permissions.includes('add_entries');
+            
+            if (isSuperAdmin || hasAddPerm) {
+                const targets = ['btnSubEventCreate', 'btnSubMinistryCreate'];
+                targets.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el && el.style.display !== 'inline-flex') {
+                        el.style.setProperty('display', 'inline-flex', 'important');
+                    }
+                });
+            }
+        } catch(e) {}
+    }, 1000);
+
+    // B. OPTIMISTIC UI FOR EVENTS
+    // Prevents the blank screen delay by rendering cached data instantly.
+    let isFetchingEventsFast = false;
+    window.loadEvents = async function() {
+        if (isFetchingEventsFast) return;
+        isFetchingEventsFast = true;
+
+        // Instant Render Local
+        if (typeof eventsData !== 'undefined' && eventsData.length > 0) {
+            if (document.getElementById('eventsTab') && document.getElementById('eventsTab').classList.contains('active')) {
+                if (typeof window.setEventViewMode === 'function') window.setEventViewMode(eventViewMode);
+            }
+        }
+
+        // Background Sync
+        try {
+            const res = await fetch('/api/events');
+            eventsData = await res.json();
+            
+            const dropdown = document.getElementById('activeEventDropdown');
+            if (dropdown) {
+                const currentVal = dropdown.value;
+                dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name || 'Event'} (${e.event_date || ''})</option>`).join('');
+                if (currentVal && eventsData.find(e => e.id == currentVal)) dropdown.value = currentVal;
+            }
+            
+            if (document.getElementById('eventsTab') && document.getElementById('eventsTab').classList.contains('active')) {
+                if (typeof window.setEventViewMode === 'function') window.setEventViewMode(eventViewMode);
+            }
+            
+            const checkinTab = document.getElementById('checkinTab');
+            if (checkinTab && checkinTab.classList.contains('active')) {
+                if (typeof window.updateActiveEventBanner === 'function') window.updateActiveEventBanner();
+            }
+        } catch(e) {
+        } finally {
+            isFetchingEventsFast = false;
+        }
+    };
+
+    // C. OPTIMISTIC UI FOR CHECK-IN ANALYTICS
+    let isFetchingBannerFast = false;
+    window.updateActiveEventBanner = async function() {
+        if (isFetchingBannerFast) return;
+        
+        const dropdown = document.getElementById('activeEventDropdown');
+        if(!dropdown) return;
+        const eventId = dropdown.value;
+        if (typeof checkedInYouthIds !== 'undefined') checkedInYouthIds.clear();
+        
+        if(eventId) {
+            isFetchingBannerFast = true;
+            const counters = document.getElementById('checkinCounters');
+            if (counters) counters.style.display = 'grid';
+            
+            try {
+                const res = await fetch('/api/events/' + eventId + '/analytics');
+                const data = await res.json();
+                if(data && data.roster && data.roster.length > 0) {
+                    data.roster.forEach(r => checkedInYouthIds.add(r.youth_id));
+                    document.getElementById('liveTotal').innerText = data.totalTurnout || 0;
+                    document.getElementById('livePreRegTotal').innerText = data.totalPreRegistered || 0;
+                    document.getElementById('livePreReg').innerText = data.preReg || 0;
+                    document.getElementById('liveWalkin').innerText = data.walkins || 0;
+                } else {
+                    document.getElementById('liveTotal').innerText = '0';
+                    document.getElementById('livePreRegTotal').innerText = (data && data.totalPreRegistered) ? data.totalPreRegistered : '0';
+                    document.getElementById('livePreReg').innerText = '0';
+                    document.getElementById('liveWalkin').innerText = '0';
+                }
+            } catch(e) {} finally {
+                isFetchingBannerFast = false;
+            }
+        } else {
+            const counters = document.getElementById('checkinCounters');
+            if (counters) counters.style.display = 'none';
+        }
+        if (typeof window.filterManualCheckin === 'function') window.filterManualCheckin();
+    };
+
+} catch (globalErr) {
+    console.error("V56 Patch Initialization Error:", globalErr);
+}
