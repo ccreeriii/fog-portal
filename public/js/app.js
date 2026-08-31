@@ -6677,3 +6677,114 @@ window.switchTab = async function(tabId, subTabId) {
         }, 100);
     }
 };
+
+// ==========================================
+// V53: ULTIMATE PERMISSION & SPEED OPTIMIZATION
+// ==========================================
+
+// 1. INDESTRUCTIBLE PERMISSION ENFORCER
+// Runs every 1 second in the background to guarantee UI is unlocked for admins
+setInterval(() => {
+    if (typeof currentUser === 'undefined' || !currentUser) return;
+    const canAdd = (typeof window.hasPerm === 'function' && window.hasPerm('add_entries')) || currentUser === 'celsocreeriii@gmail.com';
+    
+    const idsToUnlock = ['btnSubEventCreate', 'btnSubMinistryCreate', 'btnCheckinWalkin', 'addEntryAnalyticsBtn', 'btnDirectoryAddMember'];
+    
+    idsToUnlock.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            if (canAdd) {
+                if (el.style.display === 'none' || el.style.display === '') {
+                    el.style.setProperty('display', 'inline-flex', 'important');
+                }
+            } else {
+                el.style.setProperty('display', 'none', 'important');
+            }
+        }
+    });
+}, 1000);
+
+// 2. OPTIMISTIC UI & DEBOUNCING FOR EVENTS
+// Prevents double-fetching and renders instantly using cached data
+let isFetchingEvents = false;
+window.loadEvents = async function() {
+    if (isFetchingEvents) return;
+    isFetchingEvents = true;
+
+    // Instant Render (Optimistic UI)
+    if (typeof eventsData !== 'undefined' && eventsData.length > 0) {
+        const eventsTab = document.getElementById('eventsTab');
+        if (eventsTab && eventsTab.classList.contains('active')) {
+            window.setEventViewMode(eventViewMode);
+        }
+    }
+
+    try {
+        const res = await fetch('/api/events');
+        eventsData = await res.json();
+        
+        const dropdown = document.getElementById('activeEventDropdown');
+        if (dropdown) {
+            const currentVal = dropdown.value;
+            dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name || 'Event'} (${e.event_date || ''})</option>`).join('');
+            if (currentVal && eventsData.find(e => e.id == currentVal)) {
+                dropdown.value = currentVal;
+            }
+        }
+        
+        // Re-render UI with fresh data
+        const eventsTab = document.getElementById('eventsTab');
+        if (eventsTab && eventsTab.classList.contains('active')) {
+            window.setEventViewMode(eventViewMode);
+        }
+        
+        const checkinTab = document.getElementById('checkinTab');
+        if (checkinTab && checkinTab.classList.contains('active')) {
+            window.updateActiveEventBanner();
+        }
+    } catch(e) {
+        console.error("Failed loading events.", e);
+    } finally {
+        isFetchingEvents = false;
+    }
+};
+
+// 3. OPTIMISTIC UI & DEBOUNCING FOR CHECK-IN ANALYTICS
+let isFetchingBanner = false;
+window.updateActiveEventBanner = async function() {
+    if (isFetchingBanner) return;
+    
+    const dropdown = document.getElementById('activeEventDropdown');
+    if(!dropdown) return;
+    const eventId = dropdown.value;
+    if (typeof checkedInYouthIds !== 'undefined') checkedInYouthIds.clear();
+    
+    if(eventId) {
+        isFetchingBanner = true;
+        document.getElementById('checkinCounters').style.display = 'grid';
+        
+        try {
+            const res = await fetch(`/api/events/${eventId}/analytics`);
+            const data = await res.json();
+            if(data && data.roster && data.roster.length > 0) {
+                data.roster.forEach(r => checkedInYouthIds.add(r.youth_id));
+                document.getElementById('liveTotal').innerText = data.totalTurnout || 0;
+                document.getElementById('livePreRegTotal').innerText = data.totalPreRegistered || 0;
+                document.getElementById('livePreReg').innerText = data.preReg || 0;
+                document.getElementById('liveWalkin').innerText = data.walkins || 0;
+            } else {
+                document.getElementById('liveTotal').innerText = '0';
+                document.getElementById('livePreRegTotal').innerText = (data && data.totalPreRegistered) ? data.totalPreRegistered : '0';
+                document.getElementById('livePreReg').innerText = '0';
+                document.getElementById('liveWalkin').innerText = '0';
+            }
+        } catch(e) { 
+            console.error("Failed to load active banner stats", e); 
+        } finally {
+            isFetchingBanner = false;
+        }
+    } else {
+        document.getElementById('checkinCounters').style.display = 'none';
+    }
+    if (typeof window.filterManualCheckin === 'function') window.filterManualCheckin();
+};
