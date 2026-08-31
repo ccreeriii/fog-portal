@@ -785,38 +785,15 @@ function awardPoints(youthId, type, amount, actor, gameName = null) {
 // --- V118: FUNNEL ILLUSION ENGINE ---
 
 // --- ARCHITECT INJECTION: Daily Arcade Stats ---
-app.get('/api/arcade/game-stats', (req, res) => {
+app.get('/api/arcade/daily-stats', (req, res) => {
     const gameName = req.query.game || '';
-    
-    // Probe standard FOG schema (life_points_log using description)
-    const query1 = `SELECT u.full_name as name, p.points 
-                   FROM life_points_log p 
+    const query = `SELECT u.full_name as name, p.points 
+                   FROM arcade_score_logs p 
                    LEFT JOIN users u ON p.youth_id = u.youth_id 
-                   WHERE p.description = ? AND date(p.created_at, 'localtime') = date('now', 'localtime') 
+                   WHERE p.game_name = ? AND date(p.created_at, 'localtime') = date('now', 'localtime') 
                    ORDER BY p.points DESC LIMIT 3`;
-                   
-    db.all(query1, [gameName], (err, rows) => {
-        if (!err && rows && rows.length > 0) return res.json({ top3: rows });
-        
-        // Fallback: life_points_log using source
-        const query2 = `SELECT u.full_name as name, p.points 
-                       FROM life_points_log p 
-                       LEFT JOIN users u ON p.youth_id = u.youth_id 
-                       WHERE p.source = ? AND date(p.created_at, 'localtime') = date('now', 'localtime') 
-                       ORDER BY p.points DESC LIMIT 3`;
-                       
-        db.all(query2, [gameName], (err2, rows2) => {
-            if (!err2 && rows2 && rows2.length > 0) return res.json({ top3: rows2 });
-            
-            // Final Fallback: user_points
-            const query3 = `SELECT COALESCE(u.full_name, 'Anonymous') as name, p.points 
-                           FROM user_points p 
-                           LEFT JOIN users u ON p.youth_id = u.youth_id 
-                           WHERE p.game_name = ? AND date(p.created_at, 'localtime') = date('now', 'localtime') 
-                           ORDER BY p.points DESC LIMIT 3`;
-                           
-            db.all(query3, [gameName], (err3, rows3) => { res.json({ top3: rows3 || [] }); });
-        });
+    db.all(query, [gameName], (err, rows) => {
+        res.json({ top3: rows || [] });
     });
 });
 // --- END ARCHITECT INJECTION ---

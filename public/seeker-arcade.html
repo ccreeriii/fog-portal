@@ -663,46 +663,71 @@
 
     
 
-    <!-- FQ ARCHITECT MASTER V3 -->
+    
+
+    <!-- FQ ARCHITECT MASTER V4 -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             
-            // A. Routing Hook: Block Redundant Game Over Screen
-            if (typeof window.switchGameView === 'function' && !window.fqV3Patched) {
-                const originalSwitch = window.switchGameView;
+            // A. Block Redundant Game Over View
+            if (typeof window.switchGameView === 'function' && !window.fqV4_switch) {
+                const origSwitch = window.switchGameView;
                 window.switchGameView = function(viewId) {
-                    // BLOCK the old redundant native UI layer
                     if (viewId === 'gameOverView') {
                         triggerResultPopup();
-                        return; 
+                        return;
                     }
-                    originalSwitch(viewId);
-                    
+                    origSwitch(viewId);
                     const banner = document.getElementById('faithQuestBanner');
                     if (banner) banner.style.display = (viewId === 'lobbyView') ? 'block' : 'none';
                     if (viewId !== 'playView' && window.gameTimerInterval) clearInterval(window.gameTimerInterval);
                 };
-                window.fqV3Patched = true;
+                window.fqV4_switch = true;
             }
 
-            // B. Pre-Game Stats Hook (Bulletproof Local Cache)
-            if (typeof window.openPreGame === 'function' && !window.fqPreGameV3) {
-                const originalOpen = window.openPreGame;
+            // B. Secure Score to Native Storage BEFORE Native End
+            if (typeof window.endGame === 'function' && !window.fqV4_end) {
+                const origEnd = window.endGame;
+                window.endGame = function(...args) {
+                    if (window.gameTimerInterval) clearInterval(window.gameTimerInterval);
+                    
+                    if (typeof score !== 'undefined' && typeof currentGameName !== 'undefined' && typeof getAttemptsData === 'function') {
+                        let data = getAttemptsData();
+                        if (!data.games[currentGameName]) data.games[currentGameName] = { plays: 0, bestScore: 0 };
+                        if (!data.games[currentGameName].history) data.games[currentGameName].history = [];
+                        data.games[currentGameName].history.push(score);
+                        if (typeof saveAttemptsData === 'function') saveAttemptsData(data);
+                    }
+                    origEnd.apply(this, args); // Triggers native backend save + gameOverView route
+                };
+                window.fqV4_end = true;
+            }
+
+            // C. Native UI Overwrite (Attempts + Daily Top 3)
+            if (typeof window.openPreGame === 'function' && !window.fqV4_preGame) {
+                const origOpen = window.openPreGame;
                 window.openPreGame = function(gameName) {
-                    originalOpen(gameName);
+                    origOpen(gameName); // Runs native logic
                     
-                    const top3Cont = document.getElementById('pgTop3Container');
-                    const attCont = document.getElementById('pgAttemptsContainer');
-                    if (top3Cont) top3Cont.innerHTML = 'Loading today\'s scores...';
-                    
-                    const user = JSON.parse(localStorage.getItem('fog_user') || '{}');
-                    const youthId = user.youth_id || '';
-                    const today = new Date().toISOString().split('T')[0];
-                    const attKey = `fq_attempts_${youthId}_${gameName}_${today}`;
-                    
-                    // Render Fast Attempt History
-                    if (attCont) {
-                        let history = JSON.parse(localStorage.getItem(attKey) || '[]');
+                    // Rename Header Natively
+                    const h4 = Array.from(document.querySelectorAll('#preGameView h4')).find(el => el.innerText.includes('Top 3'));
+                    if (h4) h4.innerText = "Today's Top 3 Scorers 🏆";
+
+                    // Ensure Attempts Container Exists Natively
+                    const pgTop3 = document.getElementById('pgTop3Container');
+                    let attCont = document.getElementById('pgAttemptsContainer');
+                    if (pgTop3 && !attCont) {
+                        attCont = document.createElement('div');
+                        attCont.id = 'pgAttemptsContainer';
+                        attCont.style.cssText = 'margin-top:15px; padding-top:15px; border-top:1px dashed var(--border-color); font-size: 0.85rem; color: var(--text-main); text-align: left;';
+                        pgTop3.parentNode.appendChild(attCont);
+                    }
+
+                    // Render Native Attempts History
+                    if (attCont && typeof getAttemptsData === 'function') {
+                        const data = getAttemptsData();
+                        const history = (data.games[gameName] && data.games[gameName].history) ? data.games[gameName].history : [];
+                        
                         let attHtml = '<strong style="display:block; margin-bottom:8px;">Your Attempts Today:</strong>';
                         if (history.length > 0) {
                             for (let i = 0; i < 3; i++) {
@@ -715,36 +740,29 @@
                         attCont.innerHTML = attHtml;
                     }
 
-                    // Fetch Global Top 3
-                    fetch(`/api/arcade/game-stats?game=${encodeURIComponent(gameName)}&youth_id=${encodeURIComponent(youthId)}`)
-                        .then(res => res.json())
-                        .then(data => {
-                            if (top3Cont && data.top3 && data.top3.length > 0) {
-                                top3Cont.innerHTML = data.top3.map((r, i) => `<div style="margin-bottom:4px;">${i+1}. ${r.name} - <strong>${Number(r.points).toFixed(1)} XP</strong></div>`).join('');
-                            } else if (top3Cont) {
-                                top3Cont.innerHTML = '<em>No scores today yet. Be the first!</em>';
-                            }
-                        }).catch(() => { if (top3Cont) top3Cont.innerHTML = 'Scores loaded.'; });
+                    // Render Verified Daily Top 3
+                    if (pgTop3) {
+                        pgTop3.innerHTML = 'Loading today\'s scores...';
+                        fetch(`/api/arcade/daily-stats?game=${encodeURIComponent(gameName)}`)
+                            .then(res => res.json())
+                            .then(resData => {
+                                if (resData.top3 && resData.top3.length > 0) {
+                                    pgTop3.innerHTML = resData.top3.map((r, i) => `<div style="margin-bottom:4px;">${i+1}. ${r.name} - <strong>${Number(r.points).toFixed(1)} XP</strong></div>`).join('');
+                                } else {
+                                    pgTop3.innerHTML = '<em>No scores today yet. Be the first!</em>';
+                                }
+                            }).catch(() => { pgTop3.innerHTML = 'Scores loaded.'; });
+                    }
                 };
-                window.fqPreGameV3 = true;
+                window.fqV4_preGame = true;
             }
 
-            // C. Native Hook: Ensure Logic Runs
-            if (typeof window.endGame === 'function' && !window.fqEndV3) {
-                const originalEnd = window.endGame;
-                window.endGame = function(...args) {
-                    if (window.gameTimerInterval) clearInterval(window.gameTimerInterval);
-                    // Runs native score/attempt save, which triggers switchGameView('gameOverView') natively.
-                    originalEnd.apply(this, args); 
-                };
-                window.fqEndV3 = true;
-            }
-
-            // D. Header Initialization
-            if (typeof window.startTriviaGame === 'function' && !window.fqStartV3) {
-                const originalStart = window.startTriviaGame;
+            // D. Start Game Hook (Timer & Header)
+            if (typeof window.startTriviaGame === 'function' && !window.fqV4_start) {
+                const origStart = window.startTriviaGame;
                 window.startTriviaGame = function(...args) {
-                    originalStart.apply(this, args);
+                    origStart.apply(this, args);
+                    
                     let pv = document.getElementById('playView');
                     let oldHeader = document.getElementById('fqLevel3Header');
                     if (oldHeader) oldHeader.remove();
@@ -788,26 +806,13 @@
                         }
                     }, 1000);
                 };
-                window.fqStartV3 = true;
+                window.fqV4_start = true;
             }
 
-            // E. Single Active Custom Overlay
+            // E. Single Overlay Engine
             window.triggerResultPopup = function() {
                 let finalScore = (typeof score !== 'undefined') ? Number(score).toFixed(1) : '0.0';
                 let gName = (typeof currentGameName !== 'undefined') ? currentGameName : 'Game';
-                let user = JSON.parse(localStorage.getItem('fog_user') || '{}');
-                let youthId = user.youth_id || '';
-
-                // Secure Local History Write
-                if (youthId) {
-                    const today = new Date().toISOString().split('T')[0];
-                    const attKey = `fq_attempts_${youthId}_${gName}_${today}`;
-                    let history = JSON.parse(localStorage.getItem(attKey) || '[]');
-                    if (history.length < 3) {
-                        history.push(finalScore);
-                        localStorage.setItem(attKey, JSON.stringify(history));
-                    }
-                }
 
                 let overlay = document.getElementById('fqResultOverlay');
                 if (!overlay) {
@@ -834,7 +839,7 @@
                 overlay.style.display = 'flex';
 
                 setTimeout(() => {
-                    fetch(`/api/arcade/game-stats?game=${encodeURIComponent(gName)}&youth_id=${encodeURIComponent(youthId)}`)
+                    fetch(`/api/arcade/daily-stats?game=${encodeURIComponent(gName)}`)
                         .then(res => res.json())
                         .then(data => {
                             const msgBox = document.getElementById('fqTop3Message');
