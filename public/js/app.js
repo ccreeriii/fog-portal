@@ -365,21 +365,19 @@ window.buildNav = function() {
 };
 
 window.applyGranularPermissions = function() {
-    const canAdd = window.hasPerm('add_entries');
-
-    const btnSubEventCreate = document.getElementById('btnSubEventCreate');
-    if(btnSubEventCreate) btnSubEventCreate.style.display = canAdd ? 'inline-block' : 'none';
-
-    const btnSubMinistryCreate = document.getElementById('btnSubMinistryCreate');
-    if(btnSubMinistryCreate) btnSubMinistryCreate.style.display = canAdd ? 'inline-block' : 'none';
-
-    const btnCheckinWalkin = document.getElementById('btnCheckinWalkin');
-    if(btnCheckinWalkin) btnCheckinWalkin.style.display = canAdd ? 'inline-block' : 'none';
-    const addEntryAnalyticsBtn = document.getElementById('addEntryAnalyticsBtn');
-    if(addEntryAnalyticsBtn) addEntryAnalyticsBtn.style.display = canAdd ? 'flex' : 'none';
-
-    const btnDirectoryAddMember = document.getElementById('btnDirectoryAddMember');
-    if(btnDirectoryAddMember) btnDirectoryAddMember.style.display = canAdd ? 'inline-block' : 'none';
+    const canAdd = window.hasPerm('add_entries') || currentUser === 'celsocreeriii@gmail.com';
+    
+    // Safely enforce display with !important to bypass CSS conflicts
+    const setDisp = (id) => { 
+        const el = document.getElementById(id); 
+        if (el) el.style.setProperty('display', canAdd ? 'inline-flex' : 'none', 'important'); 
+    };
+    
+    setDisp('btnSubEventCreate');
+    setDisp('btnSubMinistryCreate');
+    setDisp('btnCheckinWalkin');
+    setDisp('addEntryAnalyticsBtn');
+    setDisp('btnDirectoryAddMember');
 };
 
 window.resetPermUserList = function() {
@@ -6520,3 +6518,162 @@ document.addEventListener('click', (e) => {
         profTooltip.style.display = 'none';
     }
 });
+
+// ==========================================
+// V51: EVENT PLANNER & PERMISSIONS FIX
+// ==========================================
+
+// 1. Safe overriding of Granular Permissions (ensuring Super Admins get access)
+window.applyGranularPermissions = function() {
+    const canAdd = window.hasPerm('add_entries') || currentUser === 'celsocreeriii@gmail.com';
+    
+    // Safely enforce display with !important to bypass CSS conflicts
+    const setDisp = (id) => { 
+        const el = document.getElementById(id); 
+        if (el) el.style.setProperty('display', canAdd ? 'inline-flex' : 'none', 'important'); 
+    };
+    
+    setDisp('btnSubEventCreate');
+    setDisp('btnSubMinistryCreate');
+    setDisp('btnCheckinWalkin');
+    setDisp('addEntryAnalyticsBtn');
+    setDisp('btnDirectoryAddMember');
+};
+
+// 2. Ensuring the Sidebar lists "Event Planner" properly
+const ogBuildNavV51 = window.buildNav;
+window.buildNav = function() {
+    if (ogBuildNavV51) ogBuildNavV51();
+    const sidebar = document.getElementById('sidebarNav');
+    if (sidebar) {
+        const evBtn = Array.from(sidebar.querySelectorAll('.nav-btn')).find(b => b.innerText.includes('Events Admin'));
+        if (evBtn) evBtn.innerHTML = '📅 Event Planner';
+        window.applyGranularPermissions();
+    }
+};
+
+// 3. Bulletproof Event Editor & Submitter
+window.openEditEventModal = function(eventId) {
+    try {
+        const e = eventsData.find(ev => ev.id == eventId);
+        if (!e) return alert("Event data could not be found locally. Please refresh.");
+
+        const safeSet = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
+        safeSet('editEvtId', e.id);
+        safeSet('editEvtName', e.name || '');
+        safeSet('editEvtDate', e.event_date || '');
+        safeSet('editEvtTime', e.time_start || '');
+        safeSet('editEvtVenue', e.venue || '');
+        safeSet('editEvtPoints', e.event_points || 10);
+        safeSet('editEvtPhotosUrl', e.photos_url || '');
+        safeSet('editEvtMaterialsUrl', e.materials_url || '');
+        safeSet('editEvtPoster', '');
+
+        window.closeAnalyticsModal();
+        const modal = document.getElementById('editEventModal');
+        if (modal) modal.classList.add('active');
+    } catch (err) {
+        console.error("Edit Event Error:", err);
+        alert("An error occurred opening the Event Editor.");
+    }
+};
+
+window.submitEditEvent = async function() {
+    const form = document.getElementById('editEventForm');
+    if(!form.checkValidity()) { form.reportValidity(); return; }
+    
+    const id = document.getElementById('editEvtId').value;
+    const fileInput = document.getElementById('editEvtPoster');
+    
+    window.triggerActionConfirmation(`Confirm saving changes to event?`, async () => {
+        let posterBase64 = null;
+        if (fileInput && fileInput.files && fileInput.files.length > 0) {
+            posterBase64 = await window.getBase64(fileInput.files[0], 1200);
+        }
+        
+        const safeGet = (elId) => { const el = document.getElementById(elId); return el ? el.value : ''; };
+        const payload = {
+            name: safeGet('editEvtName'), 
+            event_date: safeGet('editEvtDate'),
+            time_start: safeGet('editEvtTime'), 
+            venue: safeGet('editEvtVenue'),
+            poster: posterBase64, 
+            photos_url: safeGet('editEvtPhotosUrl'),
+            materials_url: safeGet('editEvtMaterialsUrl'), 
+            event_points: safeGet('editEvtPoints') || 10,
+            actor: currentUser
+        };
+        
+        try {
+            const res = await fetch(`/api/events/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+            if(res.ok) { window.closeEditEventModal(); alert("Event updated successfully!"); window.loadEvents(); }
+            else { const d = await res.json(); alert(d.error || "Error updating event"); }
+        } catch(e) { alert("Error connecting to server."); throw e; }
+    });
+};
+
+// 4. Restore Home Dashboard "Life Points" Scroll Behavior (And suppress tooltip)
+document.addEventListener('click', (e) => {
+    const homeTarget = e.target.closest('#dashXpClickTarget');
+    if (homeTarget) {
+        e.stopPropagation();
+        
+        // Suppress tooltip if it was previously injected
+        const homeTooltip = document.getElementById('homeXpTooltip');
+        if (homeTooltip) homeTooltip.style.display = 'none';
+
+        const hub = document.getElementById('actionHubContainer');
+        if (hub) {
+            hub.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const fqCard = Array.from(hub.querySelectorAll('.continuity-card')).find(el => el.innerText.includes('Faith Quest'));
+            if (fqCard) {
+                const ogBg = fqCard.style.background;
+                fqCard.style.background = '#FEF3C7';
+                setTimeout(() => fqCard.style.background = ogBg, 1200);
+            }
+        }
+    }
+});
+
+// ==========================================
+// V52: DYNAMIC DASHBOARD POINTS & EVENT TAB FIX
+// ==========================================
+window.updateDashboardLifePoints = function() {
+    if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+        fetch('/api/gamification/points/' + currentMember.id)
+            .then(res => res.json())
+            .then(data => {
+                window.currentLifePointsData = data;
+                
+                // Update Dashboard Hero Banner
+                const xpCounter = document.getElementById('dashXpCounter');
+                if (xpCounter) xpCounter.innerText = (data.points || 0) + ' Life Points 🖱️';
+                
+                // Silently update Profile Tooltip variables
+                const elA = document.getElementById('myArcadeXp');
+                const elG = document.getElementById('myGrowthXp');
+                const elE = document.getElementById('myEventXp');
+                if(elA) elA.innerText = data.arcade_xp || 0;
+                if(elG) elG.innerText = data.growth_xp || 0;
+                if(elE) elE.innerText = data.event_xp || 0;
+            }).catch(e => console.log('Points sync error', e));
+    }
+};
+
+// Bind the updater to the tab switching mechanism
+const ogSwitchTabV52 = window.switchTab;
+window.switchTab = async function(tabId, subTabId) {
+    if (ogSwitchTabV52) await ogSwitchTabV52(tabId, subTabId);
+    
+    // Auto-refresh points when visiting the Home Dashboard
+    if (tabId === 'pulseDashboardTab') {
+        if (typeof window.updateDashboardLifePoints === 'function') window.updateDashboardLifePoints();
+    }
+    
+    // Ensure "Create Event" tab renders correctly when Events tab opens
+    if (tabId === 'eventsTab') {
+        setTimeout(() => { 
+            if (typeof window.applyGranularPermissions === 'function') window.applyGranularPermissions(); 
+        }, 100);
+    }
+};
