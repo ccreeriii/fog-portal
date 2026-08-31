@@ -6506,3 +6506,17 @@ window.renderBottomNav = function(context) {
         }
     }, 50);
 };
+
+// ==========================================
+// V50: PROFILE TOOLTIP LOGIC
+// ==========================================
+document.addEventListener('click', (e) => {
+    const profTarget = e.target.closest('#overallXpBadgeToggle');
+    const profTooltip = document.getElementById('xpTooltip');
+    if (profTarget && profTooltip) {
+        e.stopPropagation();
+        profTooltip.style.display = profTooltip.style.display === 'flex' ? 'none' : 'flex';
+    } else if (profTooltip) {
+        profTooltip.style.display = 'none';
+    }
+});

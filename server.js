@@ -768,7 +768,7 @@ function awardPoints(youthId, type, amount, actor, gameName = null) {
     db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at) VALUES (?, ?, ?, ?, ?)`, [youthId, type, gameName, amt, getManilaTime()]);
     db.get(`SELECT SUM(CASE WHEN type='arcade' THEN amount ELSE 0 END) as arc, SUM(CASE WHEN type='growth' THEN amount ELSE 0 END) as gro, SUM(CASE WHEN type='event' THEN amount ELSE 0 END) as eve FROM point_transactions WHERE youth_id = ?`, [youthId], (err, row) => {
         let arcade = row ? (row.arc || 0) : 0; let growth = row ? (row.gro || 0) : 0; let event = row ? (row.eve || 0) : 0;
-        const overall = Math.floor((arcade * 0.4) + (growth * 0.6) + event);
+        const overall = arcade + growth + event;
         db.run(`INSERT INTO gamification_points (youth_id, arcade_xp, growth_xp, event_xp, points, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(youth_id) DO UPDATE SET arcade_xp = excluded.arcade_xp, growth_xp = excluded.growth_xp, event_xp = excluded.event_xp, points = excluded.points`,
             [youthId, arcade, growth, event, overall, getManilaTime()],
             function(err2) { if(!err2 && actor) logActivity(actor, 'POINTS_AWARDED', `Awarded ${amt} ${type} XP to Youth ID ${youthId}. Game: ${gameName||'N/A'}`); }
@@ -1135,11 +1135,16 @@ app.post('/api/checkin', (req, res) => {
         db.get(`SELECT id FROM attendance WHERE youth_id = ? AND event_id = ?`, [targetYouthId, event_id], (err, row) => {
             if (row) return res.status(400).json({ error: 'Member is ALREADY checked in for this event.' });
             db.run(`INSERT INTO attendance (youth_id, event_id, is_walkin, checked_in_at) VALUES (?, ?, ?, ?)`, [targetYouthId, event_id, is_walkin ? 1 : 0, getManilaTime()], function (err) {
+                const logId = this.lastID;
                 db.get(`SELECT event_points FROM events WHERE id = ?`, [event_id], (err, evt) => {
                     const pts = (evt && evt.event_points !== null) ? evt.event_points : 10;
-                    awardPoints(targetYouthId, 'event', pts, actor, 'Event Check-In');
+                    db.get(`SELECT id FROM pre_registrations WHERE youth_id = ? AND event_id = ?`, [targetYouthId, event_id], (err, pre) => {
+                        const preRegBonus = pre ? Math.floor(pts * 0.5) : 0;
+                        const finalPts = pts + preRegBonus;
+                        awardPoints(targetYouthId, 'event', finalPts, actor, pre ? 'Event Check-In + Pre-Reg Bonus' : 'Event Check-In');
+                        db.get(`SELECT name FROM youth WHERE id = ?`, [targetYouthId], (e, y) => { res.json({ success: true, member_name: y ? y.name : 'Member', youth_id: targetYouthId, log_id: logId, points: finalPts }); });
+                    });
                 });
-                db.get(`SELECT name FROM youth WHERE id = ?`, [targetYouthId], (e, y) => { res.json({ success: true, member_name: y ? y.name : 'Member', youth_id: targetYouthId, log_id: this.lastID }); });
             });
         });
     };
@@ -1948,6 +1953,9 @@ app.put('/api/ministries-v34/:id/members/:mappingId', (req, res) => {
             if(err) return res.status(500).json({error: err.message});
             db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
                 [req.params.id, row.youth_id, role, actor || 'Admin', timeNow, logMsg], () => {
+                    if (role === 'Integration Period' || role === 'Member') {
+                        awardPoints(row.youth_id, 'growth', 50, actor || 'Admin', 'Ministry Advancement: ' + role);
+                    }
                     res.json({success: true});
             });
         });
@@ -1982,6 +1990,9 @@ app.put('/api/ministries-v36/:id/members/:mappingId', (req, res) => {
             if(err) return res.status(500).json({error: err.message});
             db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
                 [req.params.id, row.youth_id, role, actor || 'Admin', timeNow, logMsg], () => {
+                    if (role === 'Integration Period' || role === 'Member') {
+                        awardPoints(row.youth_id, 'growth', 50, actor || 'Admin', 'Ministry Advancement: ' + role);
+                    }
                     res.json({success: true});
             });
         });
