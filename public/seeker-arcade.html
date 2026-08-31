@@ -328,23 +328,29 @@
         }
 
         function startTriviaGame() {
-        // --- ARCHITECT INJECTION: Level 3 UI ---
+// --- ARCHITECT INJECTION: Level 3 UI ---
         let pv = document.getElementById('playView');
-        if (pv && !document.getElementById('fqLevel3Header')) {
+        
+        // Remove old header if it somehow persisted
+        const oldHeader = document.getElementById('fqLevel3Header');
+        if (oldHeader) oldHeader.remove();
+
+        // Inject Fresh Header
+        if (pv) {
             const l3Html = `<div id="fqLevel3Header" style="background: var(--primary, #059669); color: #fff; padding: 12px 15px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
                 
-                <!-- Left Side: Icon & Text -->
+                <!-- Left Side: Dynamic Icon & Text -->
                 <div style="display: flex; align-items: center; gap: 12px; overflow: hidden;">
-                    <img id="fqL3GameIcon" src="/img/logo.png" alt="Icon" style="width: 45px; height: 45px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.2); padding: 4px; flex-shrink: 0;">
+                    <div id="fqL3GameIconContainer" style="width: 45px; height: 45px; display: flex; justify-content: center; align-items: center; border-radius: 8px; background: rgba(255,255,255,0.2); padding: 4px; flex-shrink: 0; font-size: 1.8rem;"></div>
                     <div style="display: flex; flex-direction: column; text-align: left; overflow: hidden;">
                         <h3 id="fqL3GameName" style="margin:0; font-size:1.1rem; font-weight:800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Challenge</h3>
                         <span id="fqL3Tagline" style="font-size:0.75rem; opacity:0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Play and earn Life Points!</span>
                     </div>
                 </div>
 
-                <!-- Right Side: Timer -->
+                <!-- Right Side: 30s Timer -->
                 <div style="animation: pulse 1s infinite; flex-shrink: 0;">
-                    <span style="background:#EF4444; color:#FFF; font-weight:800; padding:6px 16px; border-radius:25px; font-size:1.2rem; box-shadow:0 4px 15px rgba(239,68,68,0.4);">⏱️ <span id="fqL3TimerText">15</span>s</span>
+                    <span style="background:#EF4444; color:#FFF; font-weight:800; padding:6px 16px; border-radius:25px; font-size:1.2rem; box-shadow:0 4px 15px rgba(239,68,68,0.4);">⏱️ <span id="fqL3TimerText">30</span>s</span>
                 </div>
                 
             </div>`;
@@ -355,22 +361,31 @@
             // Populate Title
             document.getElementById('fqL3GameName').innerText = (typeof currentGameName !== 'undefined') ? currentGameName : 'Faith Quest Challenge';
             
-            // Populate Icon from Level 2
+            // Strictly extract the exact game icon (emoji or image) from Level 2
             const iconEl = document.getElementById('pgIcon');
-            if (iconEl && iconEl.src) document.getElementById('fqL3GameIcon').src = iconEl.src;
+            const l3IconContainer = document.getElementById('fqL3GameIconContainer');
+            if (iconEl && l3IconContainer) {
+                if (iconEl.tagName === 'IMG') {
+                    l3IconContainer.innerHTML = `<img src="${iconEl.src}" style="width:100%; height:100%; object-fit:contain;">`;
+                } else {
+                    l3IconContainer.innerHTML = iconEl.innerHTML || iconEl.innerText || '🎮';
+                }
+            } else if (l3IconContainer) {
+                l3IconContainer.innerHTML = '🎮'; // Safe fallback
+            }
             
-            // Populate Tagline from Level 2 (targets the first paragraph)
+            // Populate Tagline
             const preGame = document.getElementById('preGameView');
             if (preGame) {
                 const tagEl = preGame.querySelector('p');
                 if (tagEl && tagEl.innerText) document.getElementById('fqL3Tagline').innerText = tagEl.innerText;
             }
             
-            // Reset Timer
-            document.getElementById('fqL3TimerText').innerText = '15';
+            // Reset Timer to 30
+            document.getElementById('fqL3TimerText').innerText = '30';
         }
 
-        window.gameTimeLeft = 15;
+        window.gameTimeLeft = 30;
         if (window.gameTimerInterval) clearInterval(window.gameTimerInterval);
         
         window.gameTimerInterval = setInterval(() => {
@@ -378,15 +393,17 @@
             const tText = document.getElementById('fqL3TimerText');
             if (tText) tText.innerText = window.gameTimeLeft;
             
+            // 30s Time-Up Protocol
             if (window.gameTimeLeft <= 0) {
                 clearInterval(window.gameTimerInterval);
-                if(typeof currentQuestions !== 'undefined' && typeof renderQuestion === 'function') {
+                if (typeof currentQuestions !== 'undefined' && typeof renderQuestion === 'function') {
                     currentIndex = currentQuestions.length; 
                     renderQuestion(); 
                 }
             }
         }, 1000);
         // --- END ARCHITECT INJECTION ---
+        
         
             score = 0;
             currentIndex = 0;
