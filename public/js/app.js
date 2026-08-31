@@ -6873,3 +6873,49 @@ window.loadEvents = async function() {
         console.error("Network sync failed for events.", e);
     }
 };
+
+
+// ==========================================
+// V58: BULLETPROOF EVENT DATA LOADER
+// ==========================================
+window.loadEvents = async function() {
+    try {
+        // 1. Force a fresh fetch directly from the source of truth
+        const res = await fetch('/api/events');
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        
+        eventsData = await res.json();
+        
+        // 2. Force Render the Check-In Dropdown
+        const dropdown = document.getElementById('activeEventDropdown');
+        if (dropdown) {
+            const currentVal = dropdown.value;
+            dropdown.innerHTML = '<option value="">Select an Event...</option>' + 
+                eventsData.map(e => `<option value="${e.id}">${e.name || 'Event'} (${e.event_date || ''})</option>`).join('');
+            
+            // Restore previous selection if it still exists
+            if (currentVal && eventsData.find(e => e.id == currentVal)) {
+                dropdown.value = currentVal;
+            }
+        }
+        
+        // 3. Force Render the Event Planner List
+        const eventsTab = document.getElementById('eventsTab');
+        if (eventsTab && eventsTab.classList.contains('active')) {
+            if (typeof window.setEventViewMode === 'function') {
+                window.setEventViewMode(eventViewMode || 'list');
+            }
+        }
+        
+        // 4. Force Update the Check-In Banner if active
+        const checkinTab = document.getElementById('checkinTab');
+        if (checkinTab && checkinTab.classList.contains('active')) {
+            if (typeof window.updateActiveEventBanner === 'function') {
+                window.updateActiveEventBanner();
+            }
+        }
+        
+    } catch(e) {
+        console.error("CRITICAL: Failed to load events data from database.", e);
+    }
+};
