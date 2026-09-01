@@ -665,32 +665,38 @@
 
     
 
-    <!-- FQ ARCHITECT MASTER V4 -->
+    
+
+    
+
+    
+
+    <!-- FQ ARCHITECT EXACT CLONE -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             
-            // A. Block Redundant Game Over View
-            if (typeof window.switchGameView === 'function' && !window.fqV4_switch) {
+            // A. Routing Hook (Blocks redundant native UI)
+            if (typeof window.switchGameView === 'function' && !window.fqExact_switch) {
                 const origSwitch = window.switchGameView;
                 window.switchGameView = function(viewId) {
-                    if (viewId === 'gameOverView') {
-                        triggerResultPopup();
-                        return;
-                    }
                     origSwitch(viewId);
                     const banner = document.getElementById('faithQuestBanner');
                     if (banner) banner.style.display = (viewId === 'lobbyView') ? 'block' : 'none';
                     if (viewId !== 'playView' && window.gameTimerInterval) clearInterval(window.gameTimerInterval);
+                    if (viewId === 'gameOverView') {
+                        const gov = document.getElementById('gameOverView');
+                        if (gov) gov.style.setProperty('display', 'none', 'important');
+                        triggerResultPopup();
+                    }
                 };
-                window.fqV4_switch = true;
+                window.fqExact_switch = true;
             }
 
-            // B. Secure Score to Native Storage BEFORE Native End
-            if (typeof window.endGame === 'function' && !window.fqV4_end) {
+            // B. Score Storage Hook
+            if (typeof window.endGame === 'function' && !window.fqExact_end) {
                 const origEnd = window.endGame;
                 window.endGame = function(...args) {
                     if (window.gameTimerInterval) clearInterval(window.gameTimerInterval);
-                    
                     if (typeof score !== 'undefined' && typeof currentGameName !== 'undefined' && typeof getAttemptsData === 'function') {
                         let data = getAttemptsData();
                         if (!data.games[currentGameName]) data.games[currentGameName] = { plays: 0, bestScore: 0 };
@@ -698,71 +704,97 @@
                         data.games[currentGameName].history.push(score);
                         if (typeof saveAttemptsData === 'function') saveAttemptsData(data);
                     }
-                    origEnd.apply(this, args); // Triggers native backend save + gameOverView route
+                    origEnd.apply(this, args);
                 };
-                window.fqV4_end = true;
+                window.fqExact_end = true;
             }
 
-            // C. Native UI Overwrite (Attempts + Daily Top 3)
-            if (typeof window.openPreGame === 'function' && !window.fqV4_preGame) {
+            // C. FOG ARCADE UI CLONE (Overwrites Pre-Game Card Completely)
+            if (typeof window.openPreGame === 'function' && !window.fqExact_preGame) {
                 const origOpen = window.openPreGame;
                 window.openPreGame = function(gameName) {
-                    origOpen(gameName); // Runs native logic
+                    currentGameName = gameName;
+                    const gameInfo = ALL_GAMES.find(g => g.name === gameName) || { name: gameName, icon: '🎮', desc: 'Play and earn Life Points!' };
                     
-                    // Rename Header Natively
-                    const h4 = Array.from(document.querySelectorAll('#preGameView h4')).find(el => el.innerText.includes('Top 3'));
-                    if (h4) h4.innerText = "Today's Top 3 Scorers 🏆";
+                    const attemptsData = typeof getAttemptsData === 'function' ? getAttemptsData() : { games: {} };
+                    const plays = attemptsData.games[gameName] ? attemptsData.games[gameName].plays : 0;
+                    const attemptsLeft = 3 - plays;
+                    
+                    const history = (attemptsData.games[gameName] && attemptsData.games[gameName].history) ? attemptsData.games[gameName].history : [];
+                    const maxScore = history.length > 0 ? Math.max(...history.map(Number)).toFixed(1) : '0.0';
 
-                    // Ensure Attempts Container Exists Natively
-                    const pgTop3 = document.getElementById('pgTop3Container');
-                    let attCont = document.getElementById('pgAttemptsContainer');
-                    if (pgTop3 && !attCont) {
-                        attCont = document.createElement('div');
-                        attCont.id = 'pgAttemptsContainer';
-                        attCont.style.cssText = 'margin-top:15px; padding-top:15px; border-top:1px dashed var(--border-color); font-size: 0.85rem; color: var(--text-main); text-align: left;';
-                        pgTop3.parentNode.appendChild(attCont);
+                    const card = document.querySelector('#preGameView .card');
+                    if (card) {
+                        card.innerHTML = `
+                            <button class="btn btn-outline btn-sm" style="margin-bottom: 15px; width: 100%; border-radius: 8px;" onclick="switchGameView('lobbyView')">← Back to Lobby</button>
+                            
+                            <div style="width: 100%; height: 160px; border-radius: 16px; background: linear-gradient(135deg, var(--primary, #059669), #3B82F6); display: flex; justify-content: center; align-items: center; font-size: 5rem; margin-bottom: 20px; box-shadow: inset 0 -10px 20px rgba(0,0,0,0.15);">
+                                ${gameInfo.icon}
+                            </div>
+                            
+                            <h2 style="color: var(--primary, #059669); margin-bottom: 5px; font-size: 1.8rem; font-weight: 900; border: none; padding: 0;">${gameInfo.name}</h2>
+                            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 25px;">${gameInfo.desc}</p>
+                            
+                            <div style="background: #F8FAFC; padding: 20px; border-radius: 16px; margin-bottom: 25px; border: 1px solid var(--border-color); text-align: left;">
+                                <div style="text-align: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #E2E8F0;">
+                                    <h4 style="margin: 0 0 5px 0; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; font-weight: 800;">Your Daily High Score</h4>
+                                    <div style="font-size: 2.5rem; font-weight: 900; color: var(--primary, #059669); line-height: 1;">${maxScore} <span style="font-size: 1rem; color: var(--text-muted);">XP</span></div>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Attempts left today: <strong style="color:var(--text-main);">${attemptsLeft}</strong>/3</div>
+                                </div>
+                                
+                                <h4 style="margin: 0 0 15px 0; color: var(--text-main); font-size: 1.1rem; text-align: center; font-weight: 800;">Today's Top 3 Players 🏆</h4>
+                                <div id="pgDynamicLeaderboard" style="display: flex; flex-direction: column; gap: 10px;">
+                                    <div style="text-align:center; padding:15px; opacity:0.6;">Loading players...</div>
+                                </div>
+                            </div>
+                            
+                            <button id="pgStartBtn" class="btn btn-primary" style="width: 100%; padding: 15px; border-radius: 12px; font-size: 1.2rem; font-weight: 900; ${attemptsLeft <= 0 ? 'background: #94A3B8; cursor: not-allowed; border:none;' : 'background: var(--primary, #059669); border:none;'}" ${attemptsLeft <= 0 ? 'disabled' : ''} onclick="if(${attemptsLeft > 0}) startTriviaGame()">
+                                ${attemptsLeft <= 0 ? '🔒 LOCKED FOR TODAY' : '▶️ PLAY NOW'}
+                            </button>
+                        `;
                     }
 
-                    // Render Native Attempts History
-                    if (attCont && typeof getAttemptsData === 'function') {
-                        const data = getAttemptsData();
-                        const history = (data.games[gameName] && data.games[gameName].history) ? data.games[gameName].history : [];
-                        
-                        let attHtml = '<strong style="display:block; margin-bottom:8px;">Your Attempts Today:</strong>';
-                        if (history.length > 0) {
-                            for (let i = 0; i < 3; i++) {
-                                const pts = history[i] !== undefined ? Number(history[i]).toFixed(1) + ' XP' : '--';
-                                attHtml += `<div style="display:flex; justify-content:space-between; margin-bottom:4px; padding: 4px 8px; background: rgba(0,0,0,0.03); border-radius: 6px;"><span>Attempt ${i+1}:</span> <strong>${pts}</strong></div>`;
+                    // Render Leaderboard using avatar-circle
+                    fetch(`/api/arcade/daily-stats?game=${encodeURIComponent(gameName)}`)
+                        .then(res => res.json())
+                        .then(resData => {
+                            const ldb = document.getElementById('pgDynamicLeaderboard');
+                            if (ldb && resData.top3 && resData.top3.length > 0) {
+                                const medals = ['🥇', '🥈', '🥉'];
+                                ldb.innerHTML = resData.top3.map((r, i) => {
+                                    const initial = r.name ? r.name.charAt(0).toUpperCase() : '?';
+                                    const avatarHtml = (r.avatar && r.avatar.length > 5) 
+                                        ? `<img src="${r.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+                                        : `<span>${initial}</span>`;
+                                    
+                                    return `<div style="display:flex; align-items:center; gap:12px; padding:12px; background:#fff; border-radius:12px; border: 1px solid #E2E8F0; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                        <div class="avatar-circle" style="width:45px; height:45px; border-radius:50%; background: var(--primary, #059669); color:#fff; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:1.2rem; flex-shrink:0; overflow:hidden;">
+                                            ${avatarHtml}
+                                        </div>
+                                        <div style="flex:1; overflow:hidden;">
+                                            <h5 style="margin:0; font-size:1rem; font-weight:800; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.name}</h5>
+                                            <span style="font-size:0.85rem; color:var(--text-muted); font-weight:700;">${Number(r.score).toFixed(1)} XP</span>
+                                        </div>
+                                        <div style="font-size:1.8rem; flex-shrink:0; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1));">${medals[i] || '🎖️'}</div>
+                                    </div>`;
+                                }).join('');
+                            } else if (ldb) {
+                                ldb.innerHTML = '<div style="text-align:center; padding:15px; background:#fff; border-radius:12px; font-style:italic; color:var(--text-muted); border: 1px solid #E2E8F0;">No players today yet. Be the first!</div>';
                             }
-                        } else {
-                            attHtml += '<div style="opacity:0.7; font-style:italic;">No attempts yet.</div>';
-                        }
-                        attCont.innerHTML = attHtml;
-                    }
-
-                    // Render Verified Daily Top 3
-                    if (pgTop3) {
-                        pgTop3.innerHTML = 'Loading today\'s scores...';
-                        fetch(`/api/arcade/daily-stats?game=${encodeURIComponent(gameName)}`)
-                            .then(res => res.json())
-                            .then(resData => {
-                                if (resData.top3 && resData.top3.length > 0) {
-                                    pgTop3.innerHTML = resData.top3.map((r, i) => `<div style="margin-bottom:4px;">${i+1}. ${r.name} - <strong>${Number(r.points).toFixed(1)} XP</strong></div>`).join('');
-                                } else {
-                                    pgTop3.innerHTML = '<em>No scores today yet. Be the first!</em>';
-                                }
-                            }).catch(() => { pgTop3.innerHTML = 'Scores loaded.'; });
-                    }
+                        }).catch(() => {
+                            if (document.getElementById('pgDynamicLeaderboard')) document.getElementById('pgDynamicLeaderboard').innerHTML = 'Error loading scores.';
+                        });
+                        
+                    switchGameView('preGameView');
                 };
-                window.fqV4_preGame = true;
+                window.fqExact_preGame = true;
             }
 
-            // D. Start Game Hook (Timer & Header)
-            if (typeof window.startTriviaGame === 'function' && !window.fqV4_start) {
+            // D. Start Game Header Hook
+            if (typeof window.startTriviaGame === 'function' && !window.fqExact_start) {
                 const origStart = window.startTriviaGame;
                 window.startTriviaGame = function(...args) {
                     origStart.apply(this, args);
-                    
                     let pv = document.getElementById('playView');
                     let oldHeader = document.getElementById('fqLevel3Header');
                     if (oldHeader) oldHeader.remove();
@@ -783,13 +815,12 @@
                         pv.insertAdjacentHTML('afterbegin', l3Html);
                     }
 
-                    document.getElementById('fqL3GameName').innerText = (typeof currentGameName !== 'undefined') ? currentGameName : 'Game';
-                    const iconEl = document.getElementById('pgIcon');
-                    const l3Icon = document.getElementById('fqL3GameIconContainer');
-                    if (iconEl && l3Icon) l3Icon.innerHTML = (iconEl.tagName === 'IMG') ? `<img src="${iconEl.src}" style="width:100%; height:100%; object-fit:contain;">` : (iconEl.innerHTML || '🎮');
+                    const gameInfo = ALL_GAMES.find(g => g.name === currentGameName) || { name: 'Game', icon: '🎮', desc: 'Earn points!' };
+                    document.getElementById('fqL3GameName').innerText = gameInfo.name;
+                    document.getElementById('fqL3Tagline').innerText = gameInfo.desc;
                     
-                    const tagEl = document.querySelector('#preGameView p');
-                    if (tagEl) document.getElementById('fqL3Tagline').innerText = tagEl.innerText;
+                    const l3Icon = document.getElementById('fqL3GameIconContainer');
+                    if (l3Icon) l3Icon.innerHTML = gameInfo.icon;
                     
                     document.getElementById('fqL3TimerText').innerText = '30';
                     window.gameTimeLeft = 30;
@@ -799,17 +830,16 @@
                         window.gameTimeLeft--;
                         const tText = document.getElementById('fqL3TimerText');
                         if (tText) tText.innerText = window.gameTimeLeft;
-                        
                         if (window.gameTimeLeft <= 0) {
                             clearInterval(window.gameTimerInterval);
                             if (typeof window.endGame === 'function') window.endGame();
                         }
                     }, 1000);
                 };
-                window.fqV4_start = true;
+                window.fqExact_start = true;
             }
 
-            // E. Single Overlay Engine
+            // E. Popup Overlay Engine
             window.triggerResultPopup = function() {
                 let finalScore = (typeof score !== 'undefined') ? Number(score).toFixed(1) : '0.0';
                 let gName = (typeof currentGameName !== 'undefined') ? currentGameName : 'Game';
@@ -826,16 +856,13 @@
                     <div style="font-size:3.5rem; margin-bottom:10px;">🏆</div>
                     <h2 style="margin:0 0 10px 0; color:var(--primary, #059669); font-size:1.8rem; font-weight:900;">Game Over!</h2>
                     <p style="margin:0 0 20px 0; font-size:1.1rem; color:var(--text-muted);">You scored <strong style="color:var(--text-main); font-size:1.3rem;">${finalScore} XP</strong></p>
-                    
-                    <div id="fqTop3Message" style="margin-bottom:20px; padding:15px; border-radius:12px; background:#F8FAFC; border:1px solid #E2E8F0; font-size:0.95rem; display:block;">
+                    <div id="fqTop3Message" style="margin-bottom:20px; padding:15px; border-radius:12px; background:#F8FAFC; border:1px solid #E2E8F0; font-size:0.95rem;">
                         <span style="opacity:0.7">Calculating leaderboard position...</span>
                     </div>
-                    
                     <button onclick="document.getElementById('fqResultOverlay').style.display='none'; if(typeof openPreGame==='function') openPreGame('${gName}'); else window.location.reload();" style="background:var(--primary, #059669); color:#FFF; border:none; padding:14px 25px; border-radius:12px; font-weight:800; font-size:1.1rem; width:100%; cursor:pointer; box-shadow:0 4px 10px rgba(5, 150, 105, 0.3);">
                         Continue
                     </button>
                 </div>`;
-                
                 overlay.style.display = 'flex';
 
                 setTimeout(() => {
@@ -849,22 +876,17 @@
                                 if (pts > 0) {
                                     if (data.top3.length < 3) isTop3 = true;
                                     else {
-                                        const lowest = parseFloat(data.top3[data.top3.length - 1].points);
+                                        const lowest = parseFloat(data.top3[data.top3.length - 1].score);
                                         if (pts >= lowest) isTop3 = true;
                                     }
                                 }
                                 if (isTop3) {
-                                    msgBox.style.background = '#ECFDF5';
-                                    msgBox.style.borderColor = '#10B981';
-                                    msgBox.style.color = '#065F46';
+                                    msgBox.style.cssText = 'margin-bottom:20px; padding:15px; border-radius:12px; font-size:0.95rem; background:#ECFDF5; border:1px solid #10B981; color:#065F46;';
                                     msgBox.innerHTML = '🎉 <strong>Congratulations!</strong><br>Your score qualifies for Today\'s Top 3!';
                                 } else {
                                     msgBox.innerHTML = 'Great effort! Keep playing to climb the daily leaderboard.';
                                 }
                             }
-                        }).catch(() => {
-                            const msgBox = document.getElementById('fqTop3Message');
-                            if (msgBox) msgBox.innerHTML = 'Score saved securely!';
                         });
                 }, 1500);
             };

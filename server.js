@@ -787,14 +787,33 @@ function awardPoints(youthId, type, amount, actor, gameName = null) {
 // --- ARCHITECT INJECTION: Daily Arcade Stats ---
 app.get('/api/arcade/daily-stats', (req, res) => {
     const gameName = req.query.game || '';
-    const query = `SELECT u.full_name as name, p.points 
-                   FROM arcade_score_logs p 
-                   LEFT JOIN users u ON p.youth_id = u.youth_id 
-                   WHERE p.game_name = ? AND date(p.created_at, 'localtime') = date('now', 'localtime') 
-                   ORDER BY p.points DESC LIMIT 3`;
-    db.all(query, [gameName], (err, rows) => {
-        res.json({ top3: rows || [] });
-    });
+    
+    // Scan all three FOG tables simultaneously
+    const q1 = `SELECT COALESCE(u.full_name, 'Anonymous') as name, p.points as score, COALESCE(u.avatar_url, u.profile_pic, '') as avatar FROM user_points p LEFT JOIN users u ON p.youth_id = u.youth_id WHERE p.game_name = ? AND date(p.created_at, 'localtime') = date('now', 'localtime')`;
+    const q2 = `SELECT COALESCE(y.name, 'Anonymous') as name, a.score, COALESCE(y.avatar, '') as avatar FROM arcade_score_logs a LEFT JOIN youth y ON a.youth_id = y.id WHERE a.game_name = ? AND date(a.played_at, 'localtime') = date('now', 'localtime')`;
+    const q3 = `SELECT COALESCE(u.full_name, 'Anonymous') as name, p.points as score, COALESCE(u.avatar_url, u.profile_pic, '') as avatar FROM life_points_log p LEFT JOIN users u ON p.youth_id = u.youth_id WHERE (p.source = ? OR p.description LIKE '%' || ? || '%') AND date(p.created_at, 'localtime') = date('now', 'localtime')`;
+
+    let allResults = [];
+    let completed = 0;
+
+    const finalize = () => {
+        completed++;
+        if (completed >= 3) {
+            const userMax = {};
+            allResults.forEach(r => {
+                const pts = parseFloat(r.score) || 0;
+                if (!userMax[r.name] || pts > userMax[r.name].score) {
+                    userMax[r.name] = { name: r.name, score: pts, avatar: r.avatar };
+                }
+            });
+            const top3 = Object.values(userMax).sort((a, b) => b.score - a.score).slice(0, 3);
+            return res.json({ top3 });
+        }
+    };
+
+    db.all(q1, [gameName], (err, rows) => { if (rows) allResults.push(...rows); finalize(); });
+    db.all(q2, [gameName], (err, rows) => { if (rows) allResults.push(...rows); finalize(); });
+    db.all(q3, [gameName, gameName], (err, rows) => { if (rows) allResults.push(...rows); finalize(); });
 });
 // --- END ARCHITECT INJECTION ---
 
