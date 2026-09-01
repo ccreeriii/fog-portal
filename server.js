@@ -1880,12 +1880,17 @@ app.post('/api/games/universal-submit', (req, res) => {
     res.json({ success: true, pointsAwarded: score });
 });
 
-// --- ARCHITECT INJECTION: LECTIO API PROXY ---
+// --- ARCHITECT INJECTION: EVANGELIZO API PROXY ---
 app.get('/api/readings/today', (req, res) => {
     const https = require('https');
     
-    // Targeting the dynamic Lectio API specifically for Catholic traditions
-    const url = 'https://lectio-api.org/api/v1/readings/today?tradition=catholic';
+    const d = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"}));
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+
+    // AM = Americas/English Lectionary (standardized text)
+    const url = `https://publication.evangelizo.ws/AM/days/${y}-${m}-${day}`;
     
     https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (resp) => {
         let data = '';
@@ -1896,7 +1901,7 @@ app.get('/api/readings/today', (req, res) => {
                     return res.json(JSON.parse(data)); 
                 } catch(e) {}
             }
-            res.status(500).json({ error: "Lectio API unreachable" });
+            res.status(500).json({ error: "Evangelizo API unreachable" });
         });
     }).on('error', () => res.status(500).json({ error: "Network error" }));
 });
