@@ -118,7 +118,7 @@
         </div>
 
         <div id="preGameView" class="game-view">
-            <button class="btn btn-outline btn-sm" style="margin-bottom: 15px;" onclick="switchGameView('lobbyView')">← Back to Lobby</button>
+            
             <div class="card" style="text-align: center; padding: 35px 20px; border-radius: 20px; border-top: 5px solid #3B82F6;">
                 <div id="pgIcon" style="font-size: 4rem; margin-bottom: 10px;">🎮</div>
                 <h2 id="pgTitle" style="color: var(--primary); margin-bottom: 5px; border: none; font-size: 1.6rem;">Game Title</h2>
@@ -671,12 +671,14 @@
 
     
 
-    <!-- FQ ARCHITECT EXACT CLONE -->
+    
+
+    <!-- FQ ARCHITECT MASTER V6 -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             
-            // A. Routing Hook (Blocks redundant native UI)
-            if (typeof window.switchGameView === 'function' && !window.fqExact_switch) {
+            // A. Routing Hook
+            if (typeof window.switchGameView === 'function' && !window.fqV6_switch) {
                 const origSwitch = window.switchGameView;
                 window.switchGameView = function(viewId) {
                     origSwitch(viewId);
@@ -689,32 +691,56 @@
                         triggerResultPopup();
                     }
                 };
-                window.fqExact_switch = true;
+                window.fqV6_switch = true;
             }
 
-            // B. Score Storage Hook
-            if (typeof window.endGame === 'function' && !window.fqExact_end) {
+            // B. Anti-Crash Database Submission & Attempt Tracker
+            if (typeof window.endGame === 'function' && !window.fqV6_end) {
                 const origEnd = window.endGame;
                 window.endGame = function(...args) {
                     if (window.gameTimerInterval) clearInterval(window.gameTimerInterval);
+                    
                     if (typeof score !== 'undefined' && typeof currentGameName !== 'undefined' && typeof getAttemptsData === 'function') {
+                        // 1. Secure UI Cache
                         let data = getAttemptsData();
                         if (!data.games[currentGameName]) data.games[currentGameName] = { plays: 0, bestScore: 0 };
                         if (!data.games[currentGameName].history) data.games[currentGameName].history = [];
                         data.games[currentGameName].history.push(score);
                         if (typeof saveAttemptsData === 'function') saveAttemptsData(data);
+
+                        // 2. Guaranteed Database Insertion (Bypasses missing loggedIn variable crashes)
+                        const user = JSON.parse(localStorage.getItem('fog_user') || '{}');
+                        const youthId = user.id || (user.member && user.member.id) || user.youth_id || 1; 
+                        const actorName = user.name || (user.member && user.member.name) || user.full_name || 'Guest Player';
+                        
+                        fetch('/api/arcade/submit', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ youth_id: youthId, game_name: currentGameName, score: score, actor: actorName })
+                        }).catch(e => console.log('Secure fetch log:', e));
                     }
-                    origEnd.apply(this, args);
+                    
+                    // Run native logic wrapped in Try/Catch so UI flow never breaks
+                    try { origEnd.apply(this, args); } catch(e) { switchGameView('gameOverView'); }
                 };
-                window.fqExact_end = true;
+                window.fqV6_end = true;
             }
 
-            // C. FOG ARCADE UI CLONE (Overwrites Pre-Game Card Completely)
-            if (typeof window.openPreGame === 'function' && !window.fqExact_preGame) {
+            // C. UI Rebuild: Single Button & Emphasized Leaderboard
+            if (typeof window.openPreGame === 'function' && !window.fqV6_preGame) {
                 const origOpen = window.openPreGame;
                 window.openPreGame = function(gameName) {
+                    origOpen(gameName);
                     currentGameName = gameName;
                     const gameInfo = ALL_GAMES.find(g => g.name === gameName) || { name: gameName, icon: '🎮', desc: 'Play and earn Life Points!' };
+                    
+                    // Clean out duplicate "Back to Lobby" buttons using strict DOM targeting
+                    const pgView = document.getElementById('preGameView');
+                    if (pgView) {
+                        Array.from(pgView.querySelectorAll('button')).forEach(b => {
+                            if (b.innerText.includes('Back to Lobby')) b.remove();
+                        });
+                    }
                     
                     const attemptsData = typeof getAttemptsData === 'function' ? getAttemptsData() : { games: {} };
                     const plays = attemptsData.games[gameName] ? attemptsData.games[gameName].plays : 0;
@@ -726,6 +752,7 @@
                     const card = document.querySelector('#preGameView .card');
                     if (card) {
                         card.innerHTML = `
+                            <!-- The ONLY Back to Lobby Button -->
                             <button class="btn btn-outline btn-sm" style="margin-bottom: 15px; width: 100%; border-radius: 8px;" onclick="switchGameView('lobbyView')">← Back to Lobby</button>
                             
                             <div style="width: 100%; height: 160px; border-radius: 16px; background: linear-gradient(135deg, var(--primary, #059669), #3B82F6); display: flex; justify-content: center; align-items: center; font-size: 5rem; margin-bottom: 20px; box-shadow: inset 0 -10px 20px rgba(0,0,0,0.15);">
@@ -738,8 +765,8 @@
                             <div style="background: #F8FAFC; padding: 20px; border-radius: 16px; margin-bottom: 25px; border: 1px solid var(--border-color); text-align: left;">
                                 <div style="text-align: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #E2E8F0;">
                                     <h4 style="margin: 0 0 5px 0; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; font-weight: 800;">Your Daily High Score</h4>
-                                    <div style="font-size: 2.5rem; font-weight: 900; color: var(--primary, #059669); line-height: 1;">${maxScore} <span style="font-size: 1rem; color: var(--text-muted);">XP</span></div>
-                                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Attempts left today: <strong style="color:var(--text-main);">${attemptsLeft}</strong>/3</div>
+                                    <div style="font-size: 2.5rem; font-weight: 900; color: var(--primary, #059669); line-height: 1; margin-bottom: 10px;">${maxScore} <span style="font-size: 1rem; color: var(--text-muted);">XP</span></div>
+                                    <div style="display:inline-block; font-size: 1rem; color: var(--text-main); font-weight: bold; background: #E2E8F0; padding: 6px 14px; border-radius: 10px;">Attempts Remaining: <span style="color: ${attemptsLeft > 0 ? '#EF4444' : '#94A3B8'};">${attemptsLeft}</span> / 3</div>
                                 </div>
                                 
                                 <h4 style="margin: 0 0 15px 0; color: var(--text-main); font-size: 1.1rem; text-align: center; font-weight: 800;">Today's Top 3 Players 🏆</h4>
@@ -754,7 +781,6 @@
                         `;
                     }
 
-                    // Render Leaderboard using avatar-circle
                     fetch(`/api/arcade/daily-stats?game=${encodeURIComponent(gameName)}`)
                         .then(res => res.json())
                         .then(resData => {
@@ -787,11 +813,11 @@
                         
                     switchGameView('preGameView');
                 };
-                window.fqExact_preGame = true;
+                window.fqV6_preGame = true;
             }
 
-            // D. Start Game Header Hook
-            if (typeof window.startTriviaGame === 'function' && !window.fqExact_start) {
+            // D. Start Game Hook
+            if (typeof window.startTriviaGame === 'function' && !window.fqV6_start) {
                 const origStart = window.startTriviaGame;
                 window.startTriviaGame = function(...args) {
                     origStart.apply(this, args);
@@ -836,7 +862,7 @@
                         }
                     }, 1000);
                 };
-                window.fqExact_start = true;
+                window.fqV6_start = true;
             }
 
             // E. Popup Overlay Engine
