@@ -673,12 +673,15 @@
 
     
 
-    <!-- FQ ARCHITECT MASTER V6 -->
+    
+
+    
+
+    <!-- FQ ARCHITECT MASTER V8 -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             
-            // A. Routing Hook
-            if (typeof window.switchGameView === 'function' && !window.fqV6_switch) {
+            if (typeof window.switchGameView === 'function' && !window.fqV8_switch) {
                 const origSwitch = window.switchGameView;
                 window.switchGameView = function(viewId) {
                     origSwitch(viewId);
@@ -691,57 +694,49 @@
                         triggerResultPopup();
                     }
                 };
-                window.fqV6_switch = true;
+                window.fqV8_switch = true;
             }
 
-            // B. Anti-Crash Database Submission & Attempt Tracker
-            if (typeof window.endGame === 'function' && !window.fqV6_end) {
+            // GUARANTEED DATABASE SUBMISSION
+            if (typeof window.endGame === 'function' && !window.fqV8_end) {
                 const origEnd = window.endGame;
                 window.endGame = function(...args) {
                     if (window.gameTimerInterval) clearInterval(window.gameTimerInterval);
                     
-                    if (typeof score !== 'undefined' && typeof currentGameName !== 'undefined' && typeof getAttemptsData === 'function') {
-                        // 1. Secure UI Cache
-                        let data = getAttemptsData();
-                        if (!data.games[currentGameName]) data.games[currentGameName] = { plays: 0, bestScore: 0 };
-                        if (!data.games[currentGameName].history) data.games[currentGameName].history = [];
-                        data.games[currentGameName].history.push(score);
-                        if (typeof saveAttemptsData === 'function') saveAttemptsData(data);
+                    if (typeof score !== 'undefined' && typeof currentGameName !== 'undefined') {
+                        // 1. Decrement attempt local cache
+                        if (typeof getAttemptsData === 'function') {
+                            let data = getAttemptsData();
+                            if (!data.games[currentGameName]) data.games[currentGameName] = { plays: 0, bestScore: 0 };
+                            if (!data.games[currentGameName].history) data.games[currentGameName].history = [];
+                            data.games[currentGameName].history.push(score);
+                            if (typeof saveAttemptsData === 'function') saveAttemptsData(data);
+                        }
 
-                        // 2. Guaranteed Database Insertion (Bypasses missing loggedIn variable crashes)
+                        // 2. Route score strictly to our dedicated isolated table
                         const user = JSON.parse(localStorage.getItem('fog_user') || '{}');
-                        const youthId = user.id || (user.member && user.member.id) || user.youth_id || 1; 
-                        const actorName = user.name || (user.member && user.member.name) || user.full_name || 'Guest Player';
+                        const actorName = user.name || user.full_name || (user.member && user.member.name) || 'Faith Quester';
+                        const actorAvatar = user.avatar_url || user.profile_pic || (user.member && user.member.avatar) || '';
                         
-                        fetch('/api/arcade/submit', {
+                        fetch('/api/fq-leaderboard/submit', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ youth_id: youthId, game_name: currentGameName, score: score, actor: actorName })
-                        }).catch(e => console.log('Secure fetch log:', e));
+                            body: JSON.stringify({ player_name: actorName, game_name: currentGameName, score: score, avatar: actorAvatar })
+                        }).catch(() => {});
                     }
-                    
-                    // Run native logic wrapped in Try/Catch so UI flow never breaks
                     try { origEnd.apply(this, args); } catch(e) { switchGameView('gameOverView'); }
                 };
-                window.fqV6_end = true;
+                window.fqV8_end = true;
             }
 
-            // C. UI Rebuild: Single Button & Emphasized Leaderboard
-            if (typeof window.openPreGame === 'function' && !window.fqV6_preGame) {
+            // ANTI-CRASH PRE-GAME UI
+            if (typeof window.openPreGame === 'function' && !window.fqV8_preGame) {
                 const origOpen = window.openPreGame;
                 window.openPreGame = function(gameName) {
-                    origOpen(gameName);
                     currentGameName = gameName;
+                    try { origOpen(gameName); } catch(e) {} 
+                    
                     const gameInfo = ALL_GAMES.find(g => g.name === gameName) || { name: gameName, icon: '🎮', desc: 'Play and earn Life Points!' };
-                    
-                    // Clean out duplicate "Back to Lobby" buttons using strict DOM targeting
-                    const pgView = document.getElementById('preGameView');
-                    if (pgView) {
-                        Array.from(pgView.querySelectorAll('button')).forEach(b => {
-                            if (b.innerText.includes('Back to Lobby')) b.remove();
-                        });
-                    }
-                    
                     const attemptsData = typeof getAttemptsData === 'function' ? getAttemptsData() : { games: {} };
                     const plays = attemptsData.games[gameName] ? attemptsData.games[gameName].plays : 0;
                     const attemptsLeft = 3 - plays;
@@ -749,10 +744,20 @@
                     const history = (attemptsData.games[gameName] && attemptsData.games[gameName].history) ? attemptsData.games[gameName].history : [];
                     const maxScore = history.length > 0 ? Math.max(...history.map(Number)).toFixed(1) : '0.0';
 
+                    const pgView = document.getElementById('preGameView');
+                    if (pgView) {
+                        Array.from(pgView.children).forEach(child => {
+                            if (child.tagName === 'BUTTON' && child.innerText.includes('Back to Lobby')) child.style.display = 'none';
+                        });
+                    }
+
                     const card = document.querySelector('#preGameView .card');
                     if (card) {
                         card.innerHTML = `
-                            <!-- The ONLY Back to Lobby Button -->
+                            <span id="pgIcon" style="display:none;">${gameInfo.icon}</span>
+                            <span id="pgTitle" style="display:none;">${gameInfo.name}</span>
+                            <span id="pgDesc" style="display:none;">${gameInfo.desc}</span>
+
                             <button class="btn btn-outline btn-sm" style="margin-bottom: 15px; width: 100%; border-radius: 8px;" onclick="switchGameView('lobbyView')">← Back to Lobby</button>
                             
                             <div style="width: 100%; height: 160px; border-radius: 16px; background: linear-gradient(135deg, var(--primary, #059669), #3B82F6); display: flex; justify-content: center; align-items: center; font-size: 5rem; margin-bottom: 20px; box-shadow: inset 0 -10px 20px rgba(0,0,0,0.15);">
@@ -781,7 +786,8 @@
                         `;
                     }
 
-                    fetch(`/api/arcade/daily-stats?game=${encodeURIComponent(gameName)}`)
+                    // Directly query our constraint-free custom table
+                    fetch(`/api/fq-leaderboard/top3?game=${encodeURIComponent(gameName)}`)
                         .then(res => res.json())
                         .then(resData => {
                             const ldb = document.getElementById('pgDynamicLeaderboard');
@@ -807,17 +813,14 @@
                             } else if (ldb) {
                                 ldb.innerHTML = '<div style="text-align:center; padding:15px; background:#fff; border-radius:12px; font-style:italic; color:var(--text-muted); border: 1px solid #E2E8F0;">No players today yet. Be the first!</div>';
                             }
-                        }).catch(() => {
-                            if (document.getElementById('pgDynamicLeaderboard')) document.getElementById('pgDynamicLeaderboard').innerHTML = 'Error loading scores.';
-                        });
+                        }).catch(() => {});
                         
                     switchGameView('preGameView');
                 };
-                window.fqV6_preGame = true;
+                window.fqV8_preGame = true;
             }
 
-            // D. Start Game Hook
-            if (typeof window.startTriviaGame === 'function' && !window.fqV6_start) {
+            if (typeof window.startTriviaGame === 'function' && !window.fqV8_start) {
                 const origStart = window.startTriviaGame;
                 window.startTriviaGame = function(...args) {
                     origStart.apply(this, args);
@@ -862,10 +865,9 @@
                         }
                     }, 1000);
                 };
-                window.fqV6_start = true;
+                window.fqV8_start = true;
             }
 
-            // E. Popup Overlay Engine
             window.triggerResultPopup = function() {
                 let finalScore = (typeof score !== 'undefined') ? Number(score).toFixed(1) : '0.0';
                 let gName = (typeof currentGameName !== 'undefined') ? currentGameName : 'Game';
@@ -891,8 +893,9 @@
                 </div>`;
                 overlay.style.display = 'flex';
 
+                // Increased delay to guarantee the SQL INSERT finishes
                 setTimeout(() => {
-                    fetch(`/api/arcade/daily-stats?game=${encodeURIComponent(gName)}`)
+                    fetch(`/api/fq-leaderboard/top3?game=${encodeURIComponent(gName)}`)
                         .then(res => res.json())
                         .then(data => {
                             const msgBox = document.getElementById('fqTop3Message');

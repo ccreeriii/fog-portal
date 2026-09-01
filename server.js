@@ -784,48 +784,37 @@ function awardPoints(youthId, type, amount, actor, gameName = null) {
 
 // --- V118: FUNNEL ILLUSION ENGINE ---
 
-// --- ARCHITECT INJECTION: Daily Arcade Stats ---
-app.get('/api/arcade/daily-stats', (req, res) => {
-    const gameName = req.query.game || '';
+// --- ARCHITECT INJECTION: FQ LEADERBOARD ---
+// 1. Automatically provision a dedicated, constraint-free table for Faith Quest
+db.run(`CREATE TABLE IF NOT EXISTS fq_daily_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, 
+    player_name TEXT, 
+    game_name TEXT, 
+    score REAL, 
+    avatar TEXT, 
+    date_played TEXT
+)`);
+
+// 2. Submit Route (Bypasses Foreign Key Constraints)
+app.post('/api/fq-leaderboard/submit', (req, res) => {
+    const { player_name, game_name, score, avatar } = req.body;
+    const today = new Date().toISOString().split('T')[0]; // Enforce absolute server-side date
     
-    // Aggressively query all proven FOG database insertion points
-    const queries = [
-        `SELECT y.name, a.score, y.avatar, a.played_at as dateVal FROM arcade_score_logs a LEFT JOIN youth y ON a.youth_id = y.id WHERE a.game_name = ?`,
-        `SELECT y.name, p.amount as score, y.avatar, p.created_at as dateVal FROM point_transactions p LEFT JOIN youth y ON p.youth_id = y.id WHERE p.game_name = ?`,
-        `SELECT u.full_name as name, p.points as score, u.profile_pic as avatar, p.created_at as dateVal FROM user_points p LEFT JOIN users u ON p.youth_id = u.youth_id WHERE p.game_name = ?`
-    ];
+    db.run(`INSERT INTO fq_daily_scores (player_name, game_name, score, avatar, date_played) VALUES (?, ?, ?, ?, ?)`,
+        [player_name || 'Faith Quester', game_name, parseFloat(score) || 0, avatar || '', today],
+        (err) => { res.json({ success: !err }); }
+    );
+});
 
-    let allResults = [];
-    let completed = 0;
-
-    // Bulletproof Node.js Date Evaluator (Handles standard dates and Unix timestamps)
-    const isToday = (val) => {
-        if (!val) return true;
-        let d = new Date(isNaN(val) ? val : (String(val).length < 13 ? Number(val) * 1000 : Number(val)));
-        if (isNaN(d.getTime())) return String(val).includes(new Date().toISOString().split('T')[0]);
-        const t = new Date();
-        return d.getDate() === t.getDate() && d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear();
-    };
-
-    queries.forEach(q => {
-        db.all(q, [gameName], (err, rows) => {
-            if (rows) allResults.push(...rows);
-            completed++;
-            if (completed >= queries.length) {
-                const userMax = {};
-                allResults.forEach(r => {
-                    if (!isToday(r.dateVal)) return;
-                    const pts = parseFloat(r.score) || 0;
-                    const name = r.name || 'Anonymous';
-                    if (!userMax[name] || pts > userMax[name].score) {
-                        userMax[name] = { name: name, score: pts, avatar: r.avatar };
-                    }
-                });
-                const top3 = Object.values(userMax).sort((a, b) => b.score - a.score).slice(0, 3);
-                res.json({ top3 });
-            }
-        });
-    });
+// 3. Fetch Route (No complex JOINs required)
+app.get('/api/fq-leaderboard/top3', (req, res) => {
+    const gameName = req.query.game || '';
+    const today = new Date().toISOString().split('T')[0];
+    
+    db.all(`SELECT player_name as name, MAX(score) as score, avatar FROM fq_daily_scores WHERE game_name = ? AND date_played = ? GROUP BY player_name ORDER BY score DESC LIMIT 3`, 
+        [gameName, today], 
+        (err, rows) => { res.json({ top3: rows || [] }); }
+    );
 });
 // --- END ARCHITECT INJECTION ---
 
