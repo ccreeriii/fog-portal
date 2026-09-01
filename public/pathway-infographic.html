@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>7-Stage Growth Pathway | FOG Portal</title>
+    <style>
+        :root {
+            --primary: #F97316;
+            --primary-light: #FFEDD5;
+            --text-main: #0F172A;
+            --text-muted: #475569;
+            --bg-page: #F8FAFC;
+            --card-bg: #FFFFFF;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: var(--bg-page); margin: 0; padding: 40px 20px; color: var(--text-main); }
+        .header { text-align: center; margin-bottom: 50px; }
+        .header h1 { font-size: 2.5rem; color: var(--primary); margin: 0; display: flex; justify-content: center; align-items: center; gap: 12px; }
+        .header p { font-size: 1.2rem; color: var(--text-muted); margin-top: 10px; }
+        
+        /* Vertical Pathway Container */
+        .pathway-container { max-width: 900px; margin: 0 auto; position: relative; padding-left: 20px; }
+        
+        /* The Connecting Line */
+        .pathway-container::before {
+            content: ''; position: absolute; top: 0; bottom: 0; left: 45px; width: 4px; background: #E2E8F0; border-radius: 4px; z-index: 0;
+        }
+
+        .step-card { position: relative; z-index: 1; margin-bottom: 30px; background: var(--card-bg); border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.04); border: 1px solid #F1F5F9; overflow: hidden; }
+        
+        .step-header { padding: 20px 25px; display: flex; align-items: center; cursor: pointer; user-select: none; transition: background 0.2s; }
+        .step-header:hover { background: #F8FAFC; }
+        
+        .step-number { width: 46px; height: 46px; border-radius: 50%; background: var(--primary); color: white; display: flex; justify-content: center; align-items: center; font-size: 1.4rem; font-weight: bold; margin-right: 20px; box-shadow: 0 0 0 6px var(--bg-page); flex-shrink: 0; transition: transform 0.3s; }
+        .step-header.open .step-number { transform: scale(1.1); background: #EA580C; }
+        
+        .step-title { margin: 0; font-size: 1.4rem; color: var(--text-main); flex: 1; display: flex; flex-direction: column; }
+        .step-subtitle { font-size: 0.95rem; color: var(--primary); font-style: italic; font-weight: normal; margin-top: 4px; }
+        
+        .toggle-icon { font-size: 1.2rem; color: #CBD5E1; transition: transform 0.3s; }
+        .step-header.open .toggle-icon { transform: rotate(180deg); color: var(--primary); }
+
+        /* Expandable Content */
+        .step-content { max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.4s ease; background: var(--card-bg); }
+        .step-content.open { max-height: 1200px; padding: 0 25px 25px 90px; }
+        
+        .goal-box { background: var(--primary-light); border-left: 4px solid var(--primary); padding: 15px; border-radius: 0 8px 8px 0; margin-bottom: 20px; margin-top: 10px; }
+        .goal-box strong { color: #C2410C; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 5px; }
+        .goal-box p { margin: 0; font-size: 1rem; color: #7C2D12; }
+
+        .feature-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 15px; }
+        .feature-item { background: #F8FAFC; padding: 15px; border-radius: 10px; border: 1px solid #E2E8F0; }
+        .feature-title { font-weight: 700; color: var(--text-main); font-size: 1.05rem; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .feature-title::before { content: "🎯"; font-size: 1.1rem; }
+        .feature-desc { margin: 0; font-size: 0.95rem; color: var(--text-muted); line-height: 1.5; }
+        .feature-why { margin: 10px 0 0 0; font-size: 0.9rem; color: #64748B; font-style: italic; background: #FFF; padding: 10px; border-radius: 6px; border-left: 2px solid #CBD5E1; }
+        .feature-why strong { color: var(--text-main); }
+        
+        @media (max-width: 600px) {
+            .pathway-container::before { left: 35px; }
+            .step-header { padding: 15px; }
+            .step-number { width: 36px; height: 36px; font-size: 1.1rem; margin-right: 15px; box-shadow: 0 0 0 4px var(--bg-page); }
+            .step-title { font-size: 1.2rem; }
+            .step-content.open { padding: 0 15px 20px 15px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>🌱 7-Stage Growth Pathway</h1>
+        <p>The Organic Discipleship Blueprint (Click any phase to explore)</p>
+    </div>
+
+    <div class="pathway-container">
+        
+        <!-- Phase 1 -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">1</div>
+                <h2 class="step-title">Encounter <span class="step-subtitle">"Come & See"</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Goal</strong>
+                    <p>To invite individuals to explore faith at their own pace without feeling overwhelmed or institutionalized.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">Targeted Seeker Funnels (URL Query Routing)</div>
+                        <p class="feature-desc">Specialized entry points (<code>?play=</code>, <code>?read=</code>, <code>?event=</code>) mapping to the Wanderer, Spiritual Seeker, and Community Seeker.</p>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Provides frictionless, customized entry based on where a person is spiritually. Avoids heavy 10-page forms.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Rich Guest Dashboard (Daily Manna SPA)</div>
+                        <p class="feature-desc">A standalone guest application featuring the Liturgical Daily Mass card, Reflection hook, and Prayer Request form.</p>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Delivers immediate spiritual value to build trust. Gentle conversion hooks prompt account creation.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Faith Quest Challenge</div>
+                        <p class="feature-desc">Christian arcade mini-games (e.g., Emoji Sermon Translator) available in Guest Mode.</p>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Uses gamification to draw in the casual Wanderer. Earning XP prompts 1-tap Google Auth saving.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Event Pre-Registration System</div>
+                        <p class="feature-desc">A portal for RSVPing to low-barrier events like the Alpha Youth Series.</p>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Handles the logistical phase seamlessly, capturing email data before they even walk through physical doors.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Phase 2 -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">2</div>
+                <h2 class="step-title">Connect & Belong <span class="step-subtitle">"Find your circle"</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Goal</strong>
+                    <p>Anchoring members into Cell Prayer Groups for shared life, proving they are not walking alone.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">The Campfire (Groups Hub)</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> True fellowship happens between Sundays. Provides a 24/7 digital living room for the cell group to bond.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Memories Photo Feed & Optimistic UI Reactions</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Captures modern social media engagement but redirects it toward holy fellowship. Accelerates vulnerability.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Secret Prayer Pal CRON Engine</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Forces organic, one-on-one spiritual intimacy. Ensures no one feels invisible.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Prayer Wall & Intercession Counter</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Tangibly demonstrates community support by showing how many are actively praying for specific burdens.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Phase 3 -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">3</div>
+                <h2 class="step-title">Step In <span class="step-subtitle">Commitment / Pledge</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Goal</strong>
+                    <p>Moving members from passive attendees to committed members of the spiritual family.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">The 7-Stage "Growth Pathway" UI</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Eliminates spiritual ambiguity. Actively calculates exact milestones and displays personalized pastoral quotes.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Dynamic "My Journey" Dashboard Module</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Digitizes the commitment pipeline, explicitly commanding the immediate next physical action.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Phygital Commitment Rites (Framework)</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Bridges physical altar calls with the digital CRM, instantly updating database stages upon a digital pledge.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Phase 4 -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">4</div>
+                <h2 class="step-title">Discover Your Gifts <span class="step-subtitle">Discernment</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Goal</strong>
+                    <p>Helping members unpack their God-given talents and formally express their intent to serve.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">"Intent to Serve" Ministry Application</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Formalizes the calling pathway. Paper forms get lost; digital intents route directly to the leadership dashboard.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Full Community Directory & Ministry Hub</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Allows users to explore church needs, discover where gifts fit best, and designate a Priority Ministry.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Audition & Consultation Pipeline</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Specialized ministries require evaluation. The Google Meet Video Vault integration locks auditions to calendars.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Phase 5 -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">5</div>
+                <h2 class="step-title">Equip & Form <span class="step-subtitle">Formation</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Goal</strong>
+                    <p>Deepening roots through structured servant formation, character building, and strict accountability.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">QR Scanner Check-in & Attendance Health</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Formation requires discipline. Autonomously monitors the 80% standard, flagging "Ready for Acceptance" when met.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Private Spiritual Journals & Daily Examen</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> True formation happens daily. Templates provide the architectural scaffolding for an inner spiritual life.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Deep Dives & Video Vault</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Provides the digital classroom infrastructure for asynchronous theological training and sermon reflections.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Phase 6 -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">6</div>
+                <h2 class="step-title">Serve with Joy <span class="step-subtitle">Participation</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Goal</strong>
+                    <p>Actively deploying members into the harvest to build the Kingdom through practical ministry.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">Moderation Dashboard & Granular RBAC</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Serving requires logistical authority. Ensures a newly appointed servant has exact digital tools to execute roles.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Event Logistics & Leader's Notes</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Transforms the app into an operational Command Center, allowing the active workforce to coordinate seamlessly.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Web Push Broadcasts</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Guarantees instant, high-visibility communication for serving teams, bypassing noisy group chats.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Phase 7 -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">7</div>
+                <h2 class="step-title">Commissioned <span class="step-subtitle">"Be Sent"</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Goal</strong>
+                    <p>Graduating mature disciples who are now equipped to shepherd others and lead the community.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">Silas AI Assistant</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Acts as a digital staff member, querying SQLite directly to identify slipping sheep so leaders can reach out.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Live Analytics Dashboard</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Leaders must know the health of their flock. Provides instant macroscopic visibility into engagement levels.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Global Leaderboards (Gamification)</div>
+                        <p class="feature-why"><strong>Why it belongs:</strong> Celebrates a lifetime of faithful participation, establishing a culture of joyful endurance in the faith.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function toggleStep(element) {
+            // Close all others
+            document.querySelectorAll('.step-header').forEach(header => {
+                if(header !== element) {
+                    header.classList.remove('open');
+                    header.nextElementSibling.classList.remove('open');
+                }
+            });
+            
+            // Toggle clicked element
+            element.classList.toggle('open');
+            element.nextElementSibling.classList.toggle('open');
+            
+            // Smooth scroll into view if expanding
+            if(element.classList.contains('open')) {
+                setTimeout(() => {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 300);
+            }
+        }
+    </script>
+</body>
+</html>

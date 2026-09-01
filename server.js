@@ -56,10 +56,10 @@ app.get('/api/admin/pass-id/:id', (req, res) => {
 // --- V115: PUBLIC ARCADE LEADERBOARDS ---
 app.get('/api/public/arcade-leaderboards', (req, res) => {
     const queries = {
-        daily: "SELECT y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE date(a.played_at) = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        weekly: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.played_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        lastWeek: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.played_at >= datetime('now', 'localtime', '-14 days') AND a.played_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        monthly: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE strftime('%Y-%m', a.played_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        daily: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND date(p.created_at, 'localtime') = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        weekly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        lastWeek: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-14 days') AND p.created_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        monthly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND strftime('%Y-%m', p.created_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
         allTime: "SELECT y.name, gp.arcade_xp as score FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id ORDER BY gp.arcade_xp DESC LIMIT 5",
         topGames: "SELECT a.game_name, y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id GROUP BY a.game_name, y.name ORDER BY a.game_name, score DESC"
     };
@@ -2168,10 +2168,10 @@ app.post('/api/settings/images-v2', (req, res) => {
 // 2. De-duplicated Leaderboards V2
 app.get('/api/public/arcade-leaderboards-v2', (req, res) => {
     const queries = {
-        daily: "SELECT y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE date(a.played_at) = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        weekly: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.played_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        lastWeek: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.played_at >= datetime('now', 'localtime', '-14 days') AND a.played_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        monthly: "SELECT y.name, SUM(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE strftime('%Y-%m', a.played_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        daily: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND date(p.created_at, 'localtime') = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        weekly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        lastWeek: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-14 days') AND p.created_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        monthly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND strftime('%Y-%m', p.created_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
         allTime: "SELECT y.name, gp.arcade_xp as score FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id ORDER BY gp.arcade_xp DESC LIMIT 5",
         topGames: "SELECT a.game_name, y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id GROUP BY a.game_name, y.name ORDER BY a.game_name, score DESC"
     };
