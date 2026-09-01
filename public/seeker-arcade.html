@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     
-    <meta property="og:title" content="Faith Quest Challenge | Play Now!">
+    <meta property="og:title" content="Faith Quest Challenge">
     <meta property="og:description" content="Play daily faith-based challenges, test your Bible knowledge, and climb the leaderboards. Join the fun!">
     <meta property="og:image" content="https://staging.fogmin.site/img/faith-quest-thumb.png">
     <meta property="og:url" content="https://staging.fogmin.site/?faith=quest">
     <meta property="og:type" content="website">
 
-    <title>Faith Quest Challenge | Fire of God Ministries</title>
+    <title>Faith Quest Challenge</title>
     <link rel="stylesheet" href="/css/styles.css">
     <style>
         .arcade-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
@@ -924,28 +924,27 @@
 
     
 
-    <!-- FQ UI POLISH V11 -->
-    <script id="fq-v11-polish">
+    
+
+    <!-- FQ UI POLISH V12 -->
+    <script id="fq-v12-polish">
         document.addEventListener('DOMContentLoaded', () => {
             const userStr = localStorage.getItem('fog_user');
             const user = userStr ? JSON.parse(userStr) : {};
             const isGuest = !(user.id || user.youth_id || (user.member && user.member.id));
 
-            // A. Aggressively Hide "Home" Button for Guests
+            // A. Safely and Explicitly Hide the Permanent Home Button for Guests
             if (isGuest) {
-                const hideHome = () => {
-                    document.querySelectorAll('a[href="/"], a[href="index.html"], a[href="./index.html"]').forEach(el => el.style.setProperty('display', 'none', 'important'));
-                    document.querySelectorAll('button, a, div, span').forEach(el => {
-                        const txt = el.innerText ? el.innerText.trim().toLowerCase() : '';
-                        if (txt === 'home' || txt.includes('back to home')) el.style.setProperty('display', 'none', 'important');
-                    });
+                const hideExactHomeBtn = () => {
+                    const homeBtn = document.getElementById('fqPermanentBackBtn');
+                    if (homeBtn) homeBtn.style.setProperty('display', 'none', 'important');
                 };
-                hideHome();
-                setTimeout(hideHome, 100);
-                setTimeout(hideHome, 500);
+                hideExactHomeBtn();
+                setTimeout(hideExactHomeBtn, 100);
+                setTimeout(hideExactHomeBtn, 500);
             }
 
-            // B. Compact Pre-Game UI (Retained from V10)
+            // B. Compact Pre-Game UI (Untouched from V11)
             const originalOpenPreGame = window.openPreGame;
             window.openPreGame = function(gameName) {
                 if (originalOpenPreGame) { try { originalOpenPreGame(gameName); } catch(e) {} }
@@ -1024,12 +1023,12 @@
                 }, 50);
             };
 
-            // C. Rich Social Share with Thumbnails (URL parameter explicitly added)
+            // C. Rich Social Share mapping explicitly to seeker-arcade.html for correct Metadata
             window.shareScore = function(gameName, score) {
                 const shareData = {
                     title: 'Faith Quest Challenge',
                     text: `I just scored ${score} XP in ${gameName} on Faith Quest Challenge! Can you beat my score? Play now!`,
-                    url: window.location.origin + window.location.pathname // Forces social apps to generate the rich thumbnail
+                    url: 'https://staging.fogmin.site/seeker-arcade.html'
                 };
                 if (navigator.share) {
                     navigator.share(shareData).catch(()=>{});
@@ -1039,7 +1038,7 @@
                 }
             };
 
-            // D. Restored Save Score Flow for Guests
+            // D. Restored Save Score Flow for Guests (Untouched from V11)
             window.triggerResultPopup = function() {
                 let finalScore = (typeof score !== 'undefined') ? Number(score).toFixed(1) : '0.0';
                 let gName = (typeof currentGameName !== 'undefined') ? currentGameName : 'Game';
@@ -1052,12 +1051,10 @@
                     document.body.appendChild(overlay);
                 }
                 
-                // Dynamic Button Rendering
                 const shareBtn = `<button onclick="shareScore('${gName}', '${finalScore}')" style="background:#3B82F6; color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; margin-bottom: 10px; cursor:pointer; box-shadow:0 4px 10px rgba(59, 130, 246, 0.3);">📢 Challenge Friends</button>`;
                 const continueBtn = `<button onclick="document.getElementById('fqResultOverlay').style.display='none'; if(typeof openPreGame==='function') openPreGame('${gName}'); else window.location.reload();" style="background:var(--primary, #059669); color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; cursor:pointer; box-shadow:0 4px 10px rgba(5, 150, 105, 0.3);">Continue</button>`;
                 const saveScoreBtn = `<button onclick="window.location.href='https://staging.fogmin.site/register-w.html'" style="background:#F59E0B; color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; margin-bottom: 10px; cursor:pointer; box-shadow:0 4px 10px rgba(245, 158, 11, 0.3);">💾 Save Score</button>`;
 
-                // If guest, inject the Save Score button before the share button
                 const actionButtons = isGuest ? (saveScoreBtn + shareBtn + continueBtn) : (shareBtn + continueBtn);
                 
                 overlay.innerHTML = `<div style="background:#FFF; padding:25px 20px; border-radius:20px; text-align:center; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.3); animation: scaleIn 0.3s ease-out;">
