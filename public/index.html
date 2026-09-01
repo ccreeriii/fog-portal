@@ -1,6 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
+    <!-- FQ COMPACT UI LOCK & CACHE BUSTER -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(r => r.forEach(i => i.unregister()));
+        }
+        if(!sessionStorage.getItem('fq_cache_busted_v6')) {
+            sessionStorage.setItem('fq_cache_busted_v6', 'true');
+            window.location.reload(true);
+        }
+    </script>
+    <style>
+        /* Force Green Card Compact Size */
+        #liturgicalCard, .lit-card {
+            min-height: auto !important;
+            height: auto !important;
+            padding-top: 18px !important;
+            padding-bottom: 18px !important;
+        }
+    </style>
+    
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="/manifest.json">
@@ -1640,7 +1661,7 @@
 <div id="liturgicalReadingsModal" class="modal" style="z-index: 2000 !important;">
     <div class="modal-content" style="max-width: 700px; padding: 0; background: #F8FAFC; height: 90vh; display: flex; flex-direction: column; overflow: hidden;">
         <div style="background: #FFF; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary); z-index: 10;">
-            <h2 style="margin: 0; font-size: 1.2rem; color: var(--primary); border: none;">📖 Daily Mass Readings</h2>
+            <h2 style="margin: 0; font-size: 1.2rem; color: var(--primary); border: none;">📖 Daily Gospel Readings</h2>
             <span class="close-modal" onclick="window.closeLiturgicalReadings()" style="font-size: 28px; cursor: pointer; color: var(--text-main);">&times;</span>
         </div>
         <div style="flex: 1; position: relative; overflow: hidden; -webkit-overflow-scrolling: touch;">
@@ -2522,7 +2543,7 @@
             else if (col === "rose" || col === "pink") bg = "#F472B6";
 
             const season = (data.season || "Ordinary").toUpperCase() + " TIME";
-            const feast = (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].title : "Daily Mass";
+            const feast = (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].title : "Daily Gospel";
             const gospel = data.daily_gospel || "I am the bread of life... (John 6:35)";
 
             // Forcefully apply the beautiful CSS gradients and remove the white background
@@ -2544,7 +2565,7 @@
                 </div>
             `;
         } catch(e) {
-            console.error('Failed to auto-heal Daily Mass card', e);
+            console.error('Failed to auto-heal Daily Gospel card', e);
             litCard.removeAttribute('data-healed'); // Allow retry if fetch fails
         }
     };
@@ -2616,7 +2637,7 @@
                     const journeyHeader = allHeaders.find(el => el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
                     const journeyCard = journeyHeader ? journeyHeader.closest('.card') : null;
 
-                    // B. Daily Mass Migration
+                    // B. Daily Gospel Migration
                     const litCard = document.getElementById('liturgicalCard');
                     if (litCard && litCard.parentElement !== flexContainer) {
                         flexContainer.appendChild(litCard); 
@@ -2689,7 +2710,7 @@
                 </div>
                 <div style="background:#F8FAFC; padding:12px; border-radius:10px; border-left:4px solid #3B82F6;">
                     <strong style="color:var(--text-main); font-size:1rem; display:block;">3. Step In (Pledge)</strong>
-                    <span style="font-size:0.85rem; color:var(--text-muted);">Take the community pledge and choose this spiritual family as your home.</span>
+                    <span style="font-size:0.85rem; color:var(--text-muted);">Welcome home! Embrace this spiritual family as your own and journey alongside us in faith, hope, and love.</span>
                 </div>
                 <div style="background:#F8FAFC; padding:12px; border-radius:10px; border-left:4px solid #8B5CF6;">
                     <strong style="color:var(--text-main); font-size:1rem; display:block;">4. Discover Your Gifts</strong>
@@ -2739,119 +2760,76 @@
 
     
 
-    <!-- FQ NATIVE READINGS (EVANGELIZO FORMATTED) -->
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    <!-- FQ USCCB IFRAME V6 (AGGRESSIVE UI LOCK) -->
     <script>
-        window.fqReadingsData = null;
+        window.fqReadingsData = {};
         
-        window.fqLatestReadingsHtml = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
-                <h3 style="color:#FFF; border:none; padding:0; margin:0; font-size: 1.3rem; font-weight: 900;">📖 Daily Gospel</h3>
+        const buildCompactUI = (season, snippet) => `
+            <div style="display:flex; flex-direction:column; align-items:flex-start; margin-bottom: 10px;">
+                <span style="background: rgba(255,255,255,0.2); color: #FFF; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem; padding: 4px 10px; border-radius: 12px; font-weight: bold; margin-bottom: 8px;">${season}</span>
+                <h3 style="color:#FFF; border:none; padding:0; margin:0; font-size: 1.35rem; font-weight: 900;">📖 Daily Gospel</h3>
             </div>
-            <p style="color:#FFF; opacity: 0.8; font-style:italic;">Syncing Liturgical Calendar...</p>
+            <p style="color:#FFF; font-size:0.95rem; font-style:italic; margin-bottom: 15px; line-height:1.4; text-shadow: 0 1px 2px rgba(0,0,0,0.2);">"${snippet}"</p>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-sm" style="background:#FFF; color:var(--primary, #059669); font-weight:800; flex: 1; border-radius: 8px; border:none; padding: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="window.openLiturgicalReadings()">📖 Full Readings</button>
+                <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 10px;" onclick="if(window.hubNavTo) window.hubNavTo('grow'); else window.switchTab('growTab');">🙏 Reflect</button>
+            </div>
         `;
 
-        fetch('/api/readings/today')
-            .then(res => res.json())
-            .then(rawData => {
-                if (rawData.error) throw new Error(rawData.error);
-                
-                const payload = rawData.data || rawData;
-                window.fqReadingsData = payload;
-                
-                let snippet = "The Word of the Lord...";
-                let citation = "Daily Reading";
-                let season = payload.liturgical_season || "Ordinary Time";
-                
-                const readings = payload.readings || [];
-                if (readings.length > 0) {
-                    const gospel = readings.find(r => (r.type || r.title || '').toLowerCase().includes('gospel')) || readings[readings.length - 1];
-                    if (gospel) {
-                        if (gospel.title) citation = gospel.title;
-                        if (gospel.text) {
-                            // Strip bracketed verses from green card snippet
-                            let cleanSnip = gospel.text.replace(/\[[^\]]*\]/g, '').replace(/<[^>]*>?/gm, '');
-                            snippet = cleanSnip.substring(0, 110).trim() + '...';
-                        }
-                    }
-                }
+        window.fqLatestReadingsHtml = buildCompactUI("SYNCING...", "Loading today's verse...");
 
-                window.fqLatestReadingsHtml = `
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
-                        <h3 style="color:#FFF; border:none; padding:0; margin:0; font-size: 1.3rem; font-weight: 900;">📖 Daily Gospel</h3>
-                        <span style="background: rgba(255,255,255,0.2); color: #FFF; text-transform: uppercase; letter-spacing: 1px; font-size: 0.75rem; padding: 4px 10px; border-radius: 12px; font-weight: bold; white-space: nowrap;">${season}</span>
-                    </div>
-                    <p style="color:rgba(255,255,255,0.9); font-size:0.85rem; font-weight:bold; margin:0 0 5px 0;">${citation}</p>
-                    <p style="color:#FFF; font-size:0.95rem; font-style:italic; margin-bottom: 15px; line-height:1.4; text-shadow: 0 1px 2px rgba(0,0,0,0.2);">"${snippet}"</p>
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn btn-sm" style="background:#FFF; color:var(--primary, #059669); font-weight:800; flex: 1; border-radius: 8px; border:none; padding: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="window.openLiturgicalReadings()">📖 Full Readings</button>
-                        <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 10px;" onclick="if(window.hubNavTo) window.hubNavTo('grow'); else window.switchTab('growTab');">🙏 Reflect</button>
-                    </div>
-                `;
-            }).catch(e => {
-                window.fqLatestReadingsHtml = '<div style="padding:20px; color:#FFF; font-weight:bold;">Offline. Please verify your connection.</div>';
+        fetch('/api/readings/snippet')
+            .then(res => res.json())
+            .then(data => {
+                window.fqLatestReadingsHtml = buildCompactUI(data.season, data.snippet);
             });
 
+        // AGGRESSIVE DOM WATCHDOG: Physically blocks old auto-heal loops from reverting the UI
+        setInterval(() => {
+            const card = document.querySelector('.lit-card') || document.getElementById('liturgicalCard');
+            if (card && window.fqLatestReadingsHtml) {
+                if (card.innerHTML !== window.fqLatestReadingsHtml) {
+                    card.innerHTML = window.fqLatestReadingsHtml;
+                    card.style.minHeight = 'auto';
+                    card.style.background = 'linear-gradient(135deg, #059669, #047857)';
+                    card.style.border = 'none';
+                }
+            }
+        }, 500);
+
         window.openLiturgicalReadings = function() {
-            if (!window.fqReadingsData) return;
-            
             let modal = document.getElementById('fqDynamicReadingsModal');
+            const todayDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+            
             if (!modal) {
-                document.body.insertAdjacentHTML('beforeend', `
-                <div id="fqDynamicReadingsModal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 99999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
-                    <div style="width: 90%; max-width: 650px; background: #F8FAFC; height: 85vh; display: flex; flex-direction: column; overflow: hidden; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
-                        <div style="background: linear-gradient(135deg, var(--primary, #059669), #047857); padding: 20px; display: flex; justify-content: space-between; align-items: center;">
-                            <div style="color: #FFF;">
-                                <h2 style="margin: 0; font-size: 1.4rem; font-weight: 900; border: none; color: #FFF;">📖 Daily Readings</h2>
-                                <span style="font-size: 0.85rem; opacity: 0.9;">${window.fqReadingsData.date || new Date().toLocaleDateString()}</span>
-                            </div>
-                            <span onclick="document.getElementById('fqDynamicReadingsModal').style.display='none'" style="font-size: 28px; cursor: pointer; color: #FFF; background: rgba(255,255,255,0.2); width: 40px; height: 40px; display: flex; justify-content: center; align-items: center; border-radius: 50%; line-height: 1;">&times;</span>
+                document.body.insertAdjacentHTML('beforeend', `<div id="fqDynamicReadingsModal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 99999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+                    <div style="width: 95%; max-width: 900px; background: #FFF; height: 90vh; display: flex; flex-direction: column; overflow: hidden; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+                        <div style="background: linear-gradient(135deg, var(--primary, #059669), #047857); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center;">
+                            <h2 style="margin: 0; font-size: 1.2rem; font-weight: 900; border: none; color: #FFF;">📖 Full Readings - ${todayDate}</h2>
+                            <span onclick="document.getElementById('fqDynamicReadingsModal').style.display='none'" style="font-size: 32px; cursor: pointer; color: #FFF; line-height: 1;">&times;</span>
                         </div>
-                        <div id="fqDynamicReadingsContent" style="flex: 1; overflow-y: auto; padding: 25px; background: #FFF; color: #333; line-height: 1.8; font-size: 1.05rem;">
+                        <div style="flex: 1; overflow: hidden; position: relative; background: #FFF;">
+                            <div id="iframeLoader" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #666; font-weight: bold; font-size: 1.1rem;">Loading USCCB Site...</div>
+                            <iframe src="/api/readings/iframe" onload="document.getElementById('iframeLoader').style.display='none'" style="position: relative; z-index: 2; width: 100%; height: 100%; border: none; background: transparent;"></iframe>
                         </div>
                     </div>
                 </div>`);
                 modal = document.getElementById('fqDynamicReadingsModal');
+            } else {
+                modal.querySelector('h2').innerText = `📖 Full Readings - ${todayDate}`;
             }
-            
-            let contentHtml = '';
-            const readings = window.fqReadingsData.readings || [];
-            
-            if (readings.length > 0) {
-                readings.forEach(r => {
-                    // 1. Completely strip bracketed verse markers: [1], [2-4], etc.
-                    let cleanText = (r.text || '').replace(/\[[^\]]*\]/g, '').trim();
-                    cleanText = cleanText.replace(/ {2,}/g, ' '); // Clean double spaces
-                    cleanText = cleanText.replace(/\n/g, '<br>');
-                    
-                    // 2. Extract and format the Psalm Response
-                    let responseHtml = '';
-                    const psalmResp = r.psalm_response || r.response || r.refrain;
-                    
-                    if ((r.type || '').toLowerCase().includes('psalm') && psalmResp) {
-                        let cleanResp = psalmResp.replace(/\[[^\]]*\]/g, '').trim();
-                        // Remove pre-existing 'R.' markers to prevent 'R. R. The Lord is my shepherd'
-                        cleanResp = cleanResp.replace(/^(R\.|R\/|R|Response:)\s*/i, '');
-                        responseHtml = `
-                            <div style="font-weight: 900; color: #B91C1C; margin-bottom: 15px; font-style: italic; background: #FEF2F2; padding: 12px 18px; border-left: 5px solid #B91C1C; border-radius: 6px;">
-                                R. ${cleanResp}
-                            </div>
-                        `;
-                    }
-                    
-                    const typeTitle = (r.type || 'Reading').replace(/_/g, ' ');
-
-                    contentHtml += `
-                        <div style="margin-bottom: 30px; border-bottom: 1px solid #E2E8F0; padding-bottom: 20px;">
-                            <h3 style="color: var(--primary, #059669); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 5px 0;">${typeTitle}</h3>
-                            <h4 style="color: #111; font-size: 1.15rem; font-weight: 700; margin: 0 0 15px 0;">${r.title || ''}</h4>
-                            ${responseHtml}
-                            <div style="color: #333; text-align: justify; line-height: 1.6;">${cleanText}</div>
-                        </div>
-                    `;
-                });
-            }
-            
-            document.getElementById('fqDynamicReadingsContent').innerHTML = contentHtml;
             modal.style.display = 'flex';
         };
     </script>
