@@ -1880,30 +1880,32 @@ app.post('/api/games/universal-submit', (req, res) => {
     res.json({ success: true, pointsAwarded: score });
 });
 
-// --- ARCHITECT INJECTION: EVANGELIZO API PROXY ---
-app.get('/api/readings/today', (req, res) => {
-    const https = require('https');
-    
-    const d = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"}));
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
 
-    // AM = Americas/English Lectionary (standardized text)
-    const url = `https://publication.evangelizo.ws/AM/days/${y}-${m}-${day}`;
-    
+// --- ARCHITECT INJECTION: USCCB PROXY ---
+app.get('/api/readings/iframe', (req, res) => {
+    const https = require('https');
+    const d = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"}));
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(-2);
+    const url = `https://bible.usccb.org/bible/readings/${mm}${dd}${yy}.cfm`;
+
     https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (resp) => {
+        if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
+            return res.redirect(resp.headers.location);
+        }
         let data = '';
         resp.on('data', chunk => data += chunk);
         resp.on('end', () => {
-            if (resp.statusCode === 200) {
-                try { 
-                    return res.json(JSON.parse(data)); 
-                } catch(e) {}
-            }
-            res.status(500).json({ error: "Evangelizo API unreachable" });
+            // Using RegExp constructor prevents terminal backslash stripping errors
+            const hrefRegex = new RegExp('href="/(?!/)', 'g');
+            const srcRegex = new RegExp('src="/(?!/)', 'g');
+            let html = data
+                .replace(hrefRegex, 'href="https://bible.usccb.org/')
+                .replace(srcRegex, 'src="https://bible.usccb.org/');
+            res.send(html);
         });
-    }).on('error', () => res.status(500).json({ error: "Network error" }));
+    }).on('error', (e) => res.status(500).send("Failed to load USCCB"));
 });
 // --- END ARCHITECT INJECTION ---
 app.post('/api/arcade/submit', (req, res) => {
