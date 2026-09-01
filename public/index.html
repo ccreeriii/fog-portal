@@ -2737,7 +2737,9 @@
 
     
 
-    <!-- FQ NATIVE READINGS (EVANGELIZO API) -->
+    
+
+    <!-- FQ NATIVE READINGS (EVANGELIZO FORMATTED) -->
     <script>
         window.fqReadingsData = null;
         
@@ -2753,7 +2755,6 @@
             .then(rawData => {
                 if (rawData.error) throw new Error(rawData.error);
                 
-                // Evangelizo nests everything inside a "data" object
                 const payload = rawData.data || rawData;
                 window.fqReadingsData = payload;
                 
@@ -2766,7 +2767,11 @@
                     const gospel = readings.find(r => (r.type || r.title || '').toLowerCase().includes('gospel')) || readings[readings.length - 1];
                     if (gospel) {
                         if (gospel.title) citation = gospel.title;
-                        if (gospel.text) snippet = gospel.text.replace(/<[^>]*>?/gm, '').substring(0, 110).trim() + '...';
+                        if (gospel.text) {
+                            // Strip bracketed verses from green card snippet
+                            let cleanSnip = gospel.text.replace(/\[[^\]]*\]/g, '').replace(/<[^>]*>?/gm, '');
+                            snippet = cleanSnip.substring(0, 110).trim() + '...';
+                        }
                     }
                 }
 
@@ -2787,10 +2792,7 @@
             });
 
         window.openLiturgicalReadings = function() {
-            if (!window.fqReadingsData) {
-                alert("Readings unavailable at this moment.");
-                return;
-            }
+            if (!window.fqReadingsData) return;
             
             let modal = document.getElementById('fqDynamicReadingsModal');
             if (!modal) {
@@ -2816,20 +2818,37 @@
             
             if (readings.length > 0) {
                 readings.forEach(r => {
+                    // 1. Completely strip bracketed verse markers: [1], [2-4], etc.
+                    let cleanText = (r.text || '').replace(/\[[^\]]*\]/g, '').trim();
+                    cleanText = cleanText.replace(/ {2,}/g, ' '); // Clean double spaces
+                    cleanText = cleanText.replace(/\n/g, '<br>');
+                    
+                    // 2. Extract and format the Psalm Response
+                    let responseHtml = '';
+                    const psalmResp = r.psalm_response || r.response || r.refrain;
+                    
+                    if ((r.type || '').toLowerCase().includes('psalm') && psalmResp) {
+                        let cleanResp = psalmResp.replace(/\[[^\]]*\]/g, '').trim();
+                        // Remove pre-existing 'R.' markers to prevent 'R. R. The Lord is my shepherd'
+                        cleanResp = cleanResp.replace(/^(R\.|R\/|R|Response:)\s*/i, '');
+                        responseHtml = `
+                            <div style="font-weight: 900; color: #B91C1C; margin-bottom: 15px; font-style: italic; background: #FEF2F2; padding: 12px 18px; border-left: 5px solid #B91C1C; border-radius: 6px;">
+                                R. ${cleanResp}
+                            </div>
+                        `;
+                    }
+                    
+                    const typeTitle = (r.type || 'Reading').replace(/_/g, ' ');
+
                     contentHtml += `
                         <div style="margin-bottom: 30px; border-bottom: 1px solid #E2E8F0; padding-bottom: 20px;">
-                            <h3 style="color: var(--primary, #059669); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 5px 0;">${r.type || 'Reading'}</h3>
+                            <h3 style="color: var(--primary, #059669); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 5px 0;">${typeTitle}</h3>
                             <h4 style="color: #111; font-size: 1.15rem; font-weight: 700; margin: 0 0 15px 0;">${r.title || ''}</h4>
-                            <div style="color: #333; text-align: justify; line-height: 1.6;">${(r.text || '').replace(/\n/g, '<br>')}</div>
+                            ${responseHtml}
+                            <div style="color: #333; text-align: justify; line-height: 1.6;">${cleanText}</div>
                         </div>
                     `;
                 });
-            } else {
-                // Hyper-Resilient Diagnostic Dump
-                contentHtml = `
-                    <p style="color:#EF4444; font-weight:bold;">Schema Mismatch Detected. Raw Payload:</p>
-                    <pre style="background:#F1F5F9; padding:15px; border-radius:8px; font-size:0.8rem; overflow-x:auto;">${JSON.stringify(window.fqReadingsData, null, 2)}</pre>
-                `;
             }
             
             document.getElementById('fqDynamicReadingsContent').innerHTML = contentHtml;
