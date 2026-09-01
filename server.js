@@ -1880,6 +1880,27 @@ app.post('/api/games/universal-submit', (req, res) => {
     res.json({ success: true, pointsAwarded: score });
 });
 
+// --- ARCHITECT INJECTION: LECTIO API PROXY ---
+app.get('/api/readings/today', (req, res) => {
+    const https = require('https');
+    
+    // Targeting the dynamic Lectio API specifically for Catholic traditions
+    const url = 'https://lectio-api.org/api/v1/readings/today?tradition=catholic';
+    
+    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (resp) => {
+        let data = '';
+        resp.on('data', chunk => data += chunk);
+        resp.on('end', () => {
+            if (resp.statusCode === 200) {
+                try { 
+                    return res.json(JSON.parse(data)); 
+                } catch(e) {}
+            }
+            res.status(500).json({ error: "Lectio API unreachable" });
+        });
+    }).on('error', () => res.status(500).json({ error: "Network error" }));
+});
+// --- END ARCHITECT INJECTION ---
 app.post('/api/arcade/submit', (req, res) => {
     const { youth_id, game_name, score, actor } = req.body;
     db.run(`INSERT INTO arcade_score_logs (youth_id, game_name, score, played_at) VALUES (?, ?, ?, ?)`, [youth_id, game_name, score, getManilaTime()], function(err) {
