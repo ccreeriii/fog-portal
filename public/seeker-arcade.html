@@ -921,5 +921,184 @@
             };
         });
     </script>
+
+    <!-- FQ UI POLISH V10 -->
+    <script id="fq-v10-polish">
+        document.addEventListener('DOMContentLoaded', () => {
+            const userStr = localStorage.getItem('fog_user');
+            const user = userStr ? JSON.parse(userStr) : {};
+            const isGuest = !(user.id || user.youth_id || (user.member && user.member.id));
+
+            // A. Hide "Back to Home" for Guests
+            if (isGuest) {
+                setTimeout(() => {
+                    document.querySelectorAll('button, a, div, span').forEach(el => {
+                        if (el.innerText && el.innerText.trim() === 'Home') el.style.display = 'none';
+                    });
+                }, 100);
+            }
+
+            // B. Compact Pre-Game UI Layout
+            const originalOpenPreGame = window.openPreGame;
+            window.openPreGame = function(gameName) {
+                if (originalOpenPreGame) {
+                    try { originalOpenPreGame(gameName); } catch(e) {}
+                }
+                
+                const gameInfo = (typeof ALL_GAMES !== 'undefined' ? ALL_GAMES : []).find(g => g.name === gameName) || { name: gameName, icon: '🎮', desc: 'Play and earn Life Points!' };
+                const attemptsData = typeof getAttemptsData === 'function' ? getAttemptsData() : { games: {} };
+                const plays = attemptsData.games[gameName] ? attemptsData.games[gameName].plays : 0;
+                const attemptsLeft = 3 - plays;
+                
+                const history = (attemptsData.games[gameName] && attemptsData.games[gameName].history) ? attemptsData.games[gameName].history : [];
+                const maxScore = history.length > 0 ? Math.max(...history.map(Number)).toFixed(1) : '0.0';
+
+                setTimeout(() => {
+                    const card = document.querySelector('#preGameView .card');
+                    if (card) {
+                        Array.from(card.children).forEach(child => {
+                            if (child.tagName === 'BUTTON' && child.innerText.includes('Back to Lobby')) child.style.display = 'none';
+                        });
+
+                        card.innerHTML = `
+                            <!-- Hidden anchors for native routing -->
+                            <span id="pgIcon" style="display:none;">${gameInfo.icon}</span>
+                            <span id="pgTitle" style="display:none;">${gameInfo.name}</span>
+                            <span id="pgDesc" style="display:none;">${gameInfo.desc}</span>
+
+                            <button class="btn btn-outline btn-sm" style="margin-bottom: 15px; width: 100%; border-radius: 8px;" onclick="switchGameView('lobbyView')">← Back to Lobby</button>
+                            
+                            <!-- COMPACT HORIZONTAL BANNER (Saves 150px of scroll space) -->
+                            <div style="width: 100%; padding: 15px 20px; border-radius: 16px; background: linear-gradient(135deg, var(--primary, #059669), #3B82F6); display: flex; align-items: center; gap: 15px; margin-bottom: 20px; box-shadow: inset 0 -5px 15px rgba(0,0,0,0.1);">
+                                <div style="font-size: 3rem; line-height: 1; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)); flex-shrink: 0;">${gameInfo.icon}</div>
+                                <div style="text-align: left; overflow: hidden;">
+                                    <h2 style="color: #FFF; margin: 0 0 4px 0; font-size: 1.3rem; font-weight: 900; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">${gameInfo.name}</h2>
+                                    <p style="color: rgba(255,255,255,0.9); font-size: 0.8rem; margin: 0; line-height: 1.2;">${gameInfo.desc}</p>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #F8FAFC; padding: 20px; border-radius: 16px; margin-bottom: 25px; border: 1px solid var(--border-color); text-align: left;">
+                                <div style="text-align: center; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #E2E8F0;">
+                                    <h4 style="margin: 0 0 5px 0; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; font-weight: 800;">Your Daily High Score</h4>
+                                    <div style="font-size: 2.2rem; font-weight: 900; color: var(--primary, #059669); line-height: 1; margin-bottom: 10px;">${maxScore} <span style="font-size: 1rem; color: var(--text-muted);">XP</span></div>
+                                    <div style="display:inline-block; font-size: 0.9rem; color: var(--text-main); font-weight: bold; background: #E2E8F0; padding: 6px 14px; border-radius: 10px;">Attempts Remaining: <span style="color: ${attemptsLeft > 0 ? '#EF4444' : '#94A3B8'};"><strong style="font-size:1.1rem;">${attemptsLeft}</strong></span> / 3</div>
+                                </div>
+                                
+                                <h4 style="margin: 0 0 10px 0; color: var(--text-main); font-size: 1rem; text-align: center; font-weight: 800;">Today's Top 3 Players 🏆</h4>
+                                <div id="pgDynamicLeaderboard" style="display: flex; flex-direction: column; gap: 8px;">
+                                    <div style="text-align:center; padding:15px; opacity:0.6;">Loading players...</div>
+                                </div>
+                            </div>
+                            
+                            <button id="pgStartBtn" class="btn btn-primary" style="width: 100%; padding: 15px; border-radius: 12px; font-size: 1.2rem; font-weight: 900; ${attemptsLeft <= 0 ? 'background: #94A3B8; cursor: not-allowed; border:none;' : 'background: var(--primary, #059669); border:none;'}" ${attemptsLeft <= 0 ? 'disabled' : ''} onclick="if(${attemptsLeft > 0}) startTriviaGame()">
+                                ${attemptsLeft <= 0 ? '🔒 LOCKED FOR TODAY' : '▶️ PLAY NOW'}
+                            </button>
+                        `;
+
+                        fetch(`/api/fq-leaderboard/top3?game=${encodeURIComponent(gameName)}`)
+                            .then(res => res.json())
+                            .then(resData => {
+                                const ldb = document.getElementById('pgDynamicLeaderboard');
+                                if (ldb && resData.top3 && resData.top3.length > 0) {
+                                    const medals = ['🥇', '🥈', '🥉'];
+                                    ldb.innerHTML = resData.top3.map((r, i) => {
+                                        const initial = r.name ? r.name.charAt(0).toUpperCase() : '?';
+                                        const avatarHtml = (r.avatar && r.avatar.length > 5) 
+                                            ? `<img src="${r.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+                                            : `<span>${initial}</span>`;
+                                        return `<div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#fff; border-radius:12px; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                                            <div class="avatar-circle" style="width:35px; height:35px; border-radius:50%; background: var(--primary, #059669); color:#fff; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:1rem; flex-shrink:0; overflow:hidden;">
+                                                ${avatarHtml}
+                                            </div>
+                                            <div style="flex:1; overflow:hidden;">
+                                                <h5 style="margin:0; font-size:0.95rem; font-weight:800; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.name}</h5>
+                                                <span style="font-size:0.8rem; color:var(--text-muted); font-weight:700;">${Number(r.score).toFixed(1)} XP</span>
+                                            </div>
+                                            <div style="font-size:1.5rem; flex-shrink:0;">${medals[i] || '🎖️'}</div>
+                                        </div>`;
+                                    }).join('');
+                                } else if (ldb) {
+                                    ldb.innerHTML = '<div style="text-align:center; padding:15px; background:#fff; border-radius:12px; font-style:italic; color:var(--text-muted); border: 1px solid #E2E8F0;">No players today yet. Be the first!</div>';
+                                }
+                            }).catch(() => {});
+                    }
+                }, 50);
+            };
+
+            // C. Guest Flow & Social Share Result Popup
+            window.shareScore = function(gameName, score) {
+                const text = `I just scored ${score} XP in ${gameName} on Faith Quest Challenge! Can you beat my score? Play now!`;
+                if (navigator.share) {
+                    navigator.share({ title: 'Faith Quest Challenge', text: text }).catch(()=>{});
+                } else {
+                    navigator.clipboard.writeText(text);
+                    alert('Challenge copied to clipboard! Paste it to your friends.');
+                }
+            };
+
+            window.triggerResultPopup = function() {
+                let finalScore = (typeof score !== 'undefined') ? Number(score).toFixed(1) : '0.0';
+                let gName = (typeof currentGameName !== 'undefined') ? currentGameName : 'Game';
+                
+                let overlay = document.getElementById('fqResultOverlay');
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.id = 'fqResultOverlay';
+                    overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:99999; display:flex; justify-content:center; align-items:center; padding:20px;';
+                    document.body.appendChild(overlay);
+                }
+                
+                overlay.innerHTML = `<div style="background:#FFF; padding:25px 20px; border-radius:20px; text-align:center; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.3); animation: scaleIn 0.3s ease-out;">
+                    <div style="font-size:3.5rem; margin-bottom:10px;">🏆</div>
+                    <h2 style="margin:0 0 10px 0; color:var(--primary, #059669); font-size:1.8rem; font-weight:900;">Game Over!</h2>
+                    <p style="margin:0 0 15px 0; font-size:1.1rem; color:var(--text-muted);">You scored <strong style="color:var(--text-main); font-size:1.3rem;">${finalScore} XP</strong></p>
+                    
+                    <div id="fqTop3Message" style="margin-bottom:15px; padding:12px; border-radius:12px; background:#F8FAFC; border:1px solid #E2E8F0; font-size:0.95rem;">
+                        <span style="opacity:0.7">Calculating leaderboard position...</span>
+                    </div>
+                    
+                    <button onclick="shareScore('${gName}', '${finalScore}')" style="background:#3B82F6; color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; margin-bottom: 10px; cursor:pointer; box-shadow:0 4px 10px rgba(59, 130, 246, 0.3);">
+                        📢 Challenge Friends
+                    </button>
+                    <button onclick="document.getElementById('fqResultOverlay').style.display='none'; if(typeof openPreGame==='function') openPreGame('${gName}'); else window.location.reload();" style="background:var(--primary, #059669); color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; cursor:pointer; box-shadow:0 4px 10px rgba(5, 150, 105, 0.3);">
+                        Continue
+                    </button>
+                </div>`;
+                overlay.style.display = 'flex';
+
+                setTimeout(() => {
+                    const msgBox = document.getElementById('fqTop3Message');
+                    if (!msgBox) return;
+
+                    if (isGuest) {
+                        msgBox.style.cssText = 'margin-bottom:15px; padding:12px; border-radius:12px; font-size:0.95rem; background:#FFFBEB; border:1px solid #FCD34D; color:#92400E;';
+                        msgBox.innerHTML = '⚠️ <strong>Guest Mode Active</strong><br>Create a free account to save your points to the leaderboard!';
+                    } else {
+                        fetch(`/api/fq-leaderboard/top3?game=${encodeURIComponent(gName)}`)
+                            .then(res => res.json())
+                            .then(data => {
+                                if (data.top3) {
+                                    let isTop3 = false;
+                                    const pts = parseFloat(finalScore);
+                                    if (pts > 0) {
+                                        if (data.top3.length < 3) isTop3 = true;
+                                        else {
+                                            const lowest = parseFloat(data.top3[data.top3.length - 1].score);
+                                            if (pts >= lowest) isTop3 = true;
+                                        }
+                                    }
+                                    if (isTop3) {
+                                        msgBox.style.cssText = 'margin-bottom:15px; padding:12px; border-radius:12px; font-size:0.95rem; background:#ECFDF5; border:1px solid #10B981; color:#065F46;';
+                                        msgBox.innerHTML = '🎉 <strong>Congratulations!</strong><br>Your score qualifies for Today\'s Top 3!';
+                                    } else {
+                                        msgBox.innerHTML = 'Great effort! Keep playing to climb the daily leaderboard.';
+                                    }
+                                }
+                            }).catch(()=>{});
+                    }
+                }, 1500);
+            };
+        });
+    </script>
 </body>
 </html>
