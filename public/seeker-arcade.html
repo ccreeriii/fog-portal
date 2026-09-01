@@ -922,28 +922,33 @@
         });
     </script>
 
-    <!-- FQ UI POLISH V10 -->
-    <script id="fq-v10-polish">
+    
+
+    <!-- FQ UI POLISH V11 -->
+    <script id="fq-v11-polish">
         document.addEventListener('DOMContentLoaded', () => {
             const userStr = localStorage.getItem('fog_user');
             const user = userStr ? JSON.parse(userStr) : {};
             const isGuest = !(user.id || user.youth_id || (user.member && user.member.id));
 
-            // A. Hide "Back to Home" for Guests
+            // A. Aggressively Hide "Home" Button for Guests
             if (isGuest) {
-                setTimeout(() => {
+                const hideHome = () => {
+                    document.querySelectorAll('a[href="/"], a[href="index.html"], a[href="./index.html"]').forEach(el => el.style.setProperty('display', 'none', 'important'));
                     document.querySelectorAll('button, a, div, span').forEach(el => {
-                        if (el.innerText && el.innerText.trim() === 'Home') el.style.display = 'none';
+                        const txt = el.innerText ? el.innerText.trim().toLowerCase() : '';
+                        if (txt === 'home' || txt.includes('back to home')) el.style.setProperty('display', 'none', 'important');
                     });
-                }, 100);
+                };
+                hideHome();
+                setTimeout(hideHome, 100);
+                setTimeout(hideHome, 500);
             }
 
-            // B. Compact Pre-Game UI Layout
+            // B. Compact Pre-Game UI (Retained from V10)
             const originalOpenPreGame = window.openPreGame;
             window.openPreGame = function(gameName) {
-                if (originalOpenPreGame) {
-                    try { originalOpenPreGame(gameName); } catch(e) {}
-                }
+                if (originalOpenPreGame) { try { originalOpenPreGame(gameName); } catch(e) {} }
                 
                 const gameInfo = (typeof ALL_GAMES !== 'undefined' ? ALL_GAMES : []).find(g => g.name === gameName) || { name: gameName, icon: '🎮', desc: 'Play and earn Life Points!' };
                 const attemptsData = typeof getAttemptsData === 'function' ? getAttemptsData() : { games: {} };
@@ -961,14 +966,12 @@
                         });
 
                         card.innerHTML = `
-                            <!-- Hidden anchors for native routing -->
                             <span id="pgIcon" style="display:none;">${gameInfo.icon}</span>
                             <span id="pgTitle" style="display:none;">${gameInfo.name}</span>
                             <span id="pgDesc" style="display:none;">${gameInfo.desc}</span>
 
                             <button class="btn btn-outline btn-sm" style="margin-bottom: 15px; width: 100%; border-radius: 8px;" onclick="switchGameView('lobbyView')">← Back to Lobby</button>
                             
-                            <!-- COMPACT HORIZONTAL BANNER (Saves 150px of scroll space) -->
                             <div style="width: 100%; padding: 15px 20px; border-radius: 16px; background: linear-gradient(135deg, var(--primary, #059669), #3B82F6); display: flex; align-items: center; gap: 15px; margin-bottom: 20px; box-shadow: inset 0 -5px 15px rgba(0,0,0,0.1);">
                                 <div style="font-size: 3rem; line-height: 1; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)); flex-shrink: 0;">${gameInfo.icon}</div>
                                 <div style="text-align: left; overflow: hidden;">
@@ -1003,13 +1006,9 @@
                                     const medals = ['🥇', '🥈', '🥉'];
                                     ldb.innerHTML = resData.top3.map((r, i) => {
                                         const initial = r.name ? r.name.charAt(0).toUpperCase() : '?';
-                                        const avatarHtml = (r.avatar && r.avatar.length > 5) 
-                                            ? `<img src="${r.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
-                                            : `<span>${initial}</span>`;
+                                        const avatarHtml = (r.avatar && r.avatar.length > 5) ? `<img src="${r.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : `<span>${initial}</span>`;
                                         return `<div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#fff; border-radius:12px; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                                            <div class="avatar-circle" style="width:35px; height:35px; border-radius:50%; background: var(--primary, #059669); color:#fff; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:1rem; flex-shrink:0; overflow:hidden;">
-                                                ${avatarHtml}
-                                            </div>
+                                            <div class="avatar-circle" style="width:35px; height:35px; border-radius:50%; background: var(--primary, #059669); color:#fff; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:1rem; flex-shrink:0; overflow:hidden;">${avatarHtml}</div>
                                             <div style="flex:1; overflow:hidden;">
                                                 <h5 style="margin:0; font-size:0.95rem; font-weight:800; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.name}</h5>
                                                 <span style="font-size:0.8rem; color:var(--text-muted); font-weight:700;">${Number(r.score).toFixed(1)} XP</span>
@@ -1025,17 +1024,22 @@
                 }, 50);
             };
 
-            // C. Guest Flow & Social Share Result Popup
+            // C. Rich Social Share with Thumbnails (URL parameter explicitly added)
             window.shareScore = function(gameName, score) {
-                const text = `I just scored ${score} XP in ${gameName} on Faith Quest Challenge! Can you beat my score? Play now!`;
+                const shareData = {
+                    title: 'Faith Quest Challenge',
+                    text: `I just scored ${score} XP in ${gameName} on Faith Quest Challenge! Can you beat my score? Play now!`,
+                    url: window.location.origin + window.location.pathname // Forces social apps to generate the rich thumbnail
+                };
                 if (navigator.share) {
-                    navigator.share({ title: 'Faith Quest Challenge', text: text }).catch(()=>{});
+                    navigator.share(shareData).catch(()=>{});
                 } else {
-                    navigator.clipboard.writeText(text);
+                    navigator.clipboard.writeText(shareData.text + ' ' + shareData.url);
                     alert('Challenge copied to clipboard! Paste it to your friends.');
                 }
             };
 
+            // D. Restored Save Score Flow for Guests
             window.triggerResultPopup = function() {
                 let finalScore = (typeof score !== 'undefined') ? Number(score).toFixed(1) : '0.0';
                 let gName = (typeof currentGameName !== 'undefined') ? currentGameName : 'Game';
@@ -1048,6 +1052,14 @@
                     document.body.appendChild(overlay);
                 }
                 
+                // Dynamic Button Rendering
+                const shareBtn = `<button onclick="shareScore('${gName}', '${finalScore}')" style="background:#3B82F6; color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; margin-bottom: 10px; cursor:pointer; box-shadow:0 4px 10px rgba(59, 130, 246, 0.3);">📢 Challenge Friends</button>`;
+                const continueBtn = `<button onclick="document.getElementById('fqResultOverlay').style.display='none'; if(typeof openPreGame==='function') openPreGame('${gName}'); else window.location.reload();" style="background:var(--primary, #059669); color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; cursor:pointer; box-shadow:0 4px 10px rgba(5, 150, 105, 0.3);">Continue</button>`;
+                const saveScoreBtn = `<button onclick="window.location.href='https://staging.fogmin.site/register-w.html'" style="background:#F59E0B; color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; margin-bottom: 10px; cursor:pointer; box-shadow:0 4px 10px rgba(245, 158, 11, 0.3);">💾 Save Score</button>`;
+
+                // If guest, inject the Save Score button before the share button
+                const actionButtons = isGuest ? (saveScoreBtn + shareBtn + continueBtn) : (shareBtn + continueBtn);
+                
                 overlay.innerHTML = `<div style="background:#FFF; padding:25px 20px; border-radius:20px; text-align:center; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.3); animation: scaleIn 0.3s ease-out;">
                     <div style="font-size:3.5rem; margin-bottom:10px;">🏆</div>
                     <h2 style="margin:0 0 10px 0; color:var(--primary, #059669); font-size:1.8rem; font-weight:900;">Game Over!</h2>
@@ -1057,12 +1069,7 @@
                         <span style="opacity:0.7">Calculating leaderboard position...</span>
                     </div>
                     
-                    <button onclick="shareScore('${gName}', '${finalScore}')" style="background:#3B82F6; color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; margin-bottom: 10px; cursor:pointer; box-shadow:0 4px 10px rgba(59, 130, 246, 0.3);">
-                        📢 Challenge Friends
-                    </button>
-                    <button onclick="document.getElementById('fqResultOverlay').style.display='none'; if(typeof openPreGame==='function') openPreGame('${gName}'); else window.location.reload();" style="background:var(--primary, #059669); color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; cursor:pointer; box-shadow:0 4px 10px rgba(5, 150, 105, 0.3);">
-                        Continue
-                    </button>
+                    ${actionButtons}
                 </div>`;
                 overlay.style.display = 'flex';
 
@@ -1096,7 +1103,7 @@
                                 }
                             }).catch(()=>{});
                     }
-                }, 1500);
+                }, 1000);
             };
         });
     </script>
