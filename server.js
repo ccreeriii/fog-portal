@@ -235,7 +235,7 @@ app.post('/api/admin/trigger-prayer-pals', (req, res) => {
 
     const assignPals = () => {
         return new Promise((resolve) => {
-            db.all(`SELECT id FROM youth WHERE gender = ? `, [gender], (err, members) => {
+            db.all(`SELECT id FROM youth`, [], (err, members) => {
                 if (!members || members.length < 2) return resolve();
                 
                 // Fisher-Yates Shuffle
@@ -258,7 +258,7 @@ app.post('/api/admin/trigger-prayer-pals', (req, res) => {
     };
 
     Promise.all([assignPals()]).then(() => {
-        res.json({success: true, message: "Gender-strict prayer partners successfully assigned!"});
+        res.json({success: true, message: "Unified prayer partners successfully assigned!"});
     });
 });
 
@@ -445,7 +445,7 @@ cron.schedule('0 9 * * 1', () => { // Every Monday at 9:00 AM
     const weekStart = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
     const assignPalsByGender = (gender) => {
-        db.all(`SELECT id FROM youth WHERE gender = ? `, [gender], (err, members) => {
+        db.all(`SELECT id FROM youth`, [], (err, members) => {
             if (!members || members?.length || 0 < 2) return;
             
             // Fisher-Yates Shuffle
