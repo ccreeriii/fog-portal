@@ -1908,6 +1908,36 @@ app.get('/api/readings/iframe', (req, res) => {
     }).on('error', (e) => res.status(500).send("Failed to load USCCB"));
 });
 // --- END ARCHITECT INJECTION ---
+// --- ARCHITECT INJECTION: SNIPPET PROXY ---
+app.get('/api/readings/snippet', (req, res) => {
+    const https = require('https');
+    const d = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"}));
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    https.get(`https://publication.evangelizo.ws/AM/days/${y}-${m}-${day}`, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (resp) => {
+        let data = '';
+        resp.on('data', chunk => data += chunk);
+        resp.on('end', () => {
+            if(resp.statusCode === 200) {
+                try {
+                    const payload = JSON.parse(data).data || JSON.parse(data);
+                    let season = payload.liturgical_season || "Ordinary Time";
+                    let snippet = "Click Full Readings to view today's official USCCB scriptures.";
+                    const readings = payload.readings || [];
+                    const gospel = readings.find(r => (r.type || '').toLowerCase().includes('gospel')) || readings[readings.length - 1];
+                    if(gospel && gospel.text) {
+                        // Hardened regex: strictly remove all [1], [2-4] bracket artifacts
+                        snippet = gospel.text.replace(/\[.*?\]/g, '').replace(/[\[\]]/g, '').replace(/<[^>]*>?/gm, '').substring(0, 110).trim() + '...';
+                    }
+                    return res.json({ season, snippet });
+                } catch(e) {}
+            }
+            res.json({ season: "Daily Readings", snippet: "Tap Full Readings to view today's official USCCB scriptures." });
+        });
+    }).on('error', () => res.json({ season: "Daily Readings", snippet: "Tap Full Readings to view today's official USCCB scriptures." }));
+});
+// --- END ARCHITECT INJECTION ---
 app.post('/api/arcade/submit', (req, res) => {
     const { youth_id, game_name, score, actor } = req.body;
     db.run(`INSERT INTO arcade_score_logs (youth_id, game_name, score, played_at) VALUES (?, ?, ?, ?)`, [youth_id, game_name, score, getManilaTime()], function(err) {

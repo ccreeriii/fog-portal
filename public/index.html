@@ -2561,7 +2561,7 @@
                 <p style="color:#FFF; font-size:1.05rem; font-style:italic; margin-bottom: 20px; line-height:1.6; text-shadow: 0 1px 3px rgba(0,0,0,0.3);">${gospel}</p>
                 <div style="display: flex; gap: 10px;">
                     <button class="btn btn-sm" style="background:#FFF; color:#064E3B; font-weight:800; flex: 1; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="if(typeof window.openLiturgicalReadings === 'function') window.openLiturgicalReadings(); else window.open('https://universalis.com/philippines/mass.htm', '_blank');">📖 Full Readings</button>
-                    <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px;" onclick="if(window.hubNavTo) window.hubNavTo('grow'); else window.switchTab('growTab');">🙏 Reflect</button>
+                    <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px;" onclick="if(window.switchTab) window.switchTab('discipleshipTab'); if(window.switchGrowthSubTab) setTimeout(() => window.switchGrowthSubTab('Journal'), 150);">🙏 Reflect</button>
                 </div>
             `;
         } catch(e) {
@@ -2772,19 +2772,22 @@
 
     
 
-    <!-- FQ USCCB IFRAME V6 (AGGRESSIVE UI LOCK) -->
+    
+
+    <!-- FQ USCCB IFRAME V7 (FINAL LAYOUT) -->
     <script>
         window.fqReadingsData = {};
         
+        // Build script updated to move Season badge to the right and Title to the left
         const buildCompactUI = (season, snippet) => `
-            <div style="display:flex; flex-direction:column; align-items:flex-start; margin-bottom: 10px;">
-                <span style="background: rgba(255,255,255,0.2); color: #FFF; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem; padding: 4px 10px; border-radius: 12px; font-weight: bold; margin-bottom: 8px;">${season}</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
                 <h3 style="color:#FFF; border:none; padding:0; margin:0; font-size: 1.35rem; font-weight: 900;">📖 Daily Gospel</h3>
+                <span style="background: rgba(255,255,255,0.2); color: #FFF; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem; padding: 4px 10px; border-radius: 12px; font-weight: bold; white-space: nowrap;">${season}</span>
             </div>
             <p style="color:#FFF; font-size:0.95rem; font-style:italic; margin-bottom: 15px; line-height:1.4; text-shadow: 0 1px 2px rgba(0,0,0,0.2);">"${snippet}"</p>
             <div style="display: flex; gap: 10px;">
                 <button class="btn btn-sm" style="background:#FFF; color:var(--primary, #059669); font-weight:800; flex: 1; border-radius: 8px; border:none; padding: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="window.openLiturgicalReadings()">📖 Full Readings</button>
-                <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 10px;" onclick="if(window.hubNavTo) window.hubNavTo('grow'); else window.switchTab('growTab');">🙏 Reflect</button>
+                <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 10px;" onclick="if(window.switchTab) window.switchTab('discipleshipTab'); if(window.switchGrowthSubTab) setTimeout(() => window.switchGrowthSubTab('Journal'), 150);">🙏 Reflect</button>
             </div>
         `;
 
@@ -2796,7 +2799,7 @@
                 window.fqLatestReadingsHtml = buildCompactUI(data.season, data.snippet);
             });
 
-        // AGGRESSIVE DOM WATCHDOG: Physically blocks old auto-heal loops from reverting the UI
+        // Watchdog locks in the layout
         setInterval(() => {
             const card = document.querySelector('.lit-card') || document.getElementById('liturgicalCard');
             if (card && window.fqLatestReadingsHtml) {
