@@ -7013,11 +7013,15 @@ setInterval(() => {
 
 
 
-// === V52: PERFECTED ROW LAYOUT ===
+
+
+
+// === V53: FINAL PROFILE LAYOUT & QR RESTORATION ===
 window.populateProfileTab = function(member) {
     if (!member) return;
     const safeText = (val) => val && val !== 'null' ? val : 'N/A';
 
+    // 1. Populate Edit Form Inputs safely
     ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender','myEditMobile','myEditAddress'].forEach(id => {
         const el = document.getElementById(id);
         if(el) {
@@ -7033,6 +7037,28 @@ window.populateProfileTab = function(member) {
     const av = document.getElementById('myProfileAvatar');
     if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
 
+    // 2. RESTORE MISSING QR CODE & PASS ID
+    const codeEl = document.getElementById('myProfileCode');
+    if (codeEl) {
+        codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
+        codeEl.style.display = 'inline-block';
+    }
+
+    const qrContainer = document.getElementById('myQrContainer');
+    const dlBtn = document.getElementById('myDownloadQrBtn');
+    if (qrContainer && dlBtn) {
+        if (member.qr_code) {
+            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:100%; height:auto; border-radius:8px; border: 1px solid var(--border-color);">`;
+            dlBtn.href = qrUrl;
+            dlBtn.style.display = 'inline-block';
+        } else {
+            qrContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No QR Assigned</span>';
+            dlBtn.style.display = 'none';
+        }
+    }
+
+    // 3. ISOLATE DOM TO PREVENT FLICKERING
     let bio = document.getElementById('myBioSummaryArchitect');
     if (!bio) {
         bio = document.getElementById('myBioSummary');
@@ -7098,8 +7124,8 @@ window.populateProfileTab = function(member) {
                         </div>
                     </div>
 
-                    <!-- ROW 4: Social Media & Guardian -->
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
+                    <!-- ROW 4: Social Media (Full Width) -->
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
                         <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
                             <div style="width: 34px; height: 34px; border-radius: 8px; background: #F8FAFC; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">💬</div>
                             <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
@@ -7107,6 +7133,10 @@ window.populateProfileTab = function(member) {
                                 <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.social_media)}">${safeText(member.social_media)}</span>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- ROW 5: Guardian (Full Width) -->
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
                         <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
                             <div style="width: 34px; height: 34px; border-radius: 8px; background: #FEF2F2; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🛡️</div>
                             <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
@@ -7116,7 +7146,7 @@ window.populateProfileTab = function(member) {
                         </div>
                     </div>
 
-                    <!-- ROW 5: Address -->
+                    <!-- ROW 6: Address (Full Width) -->
                     <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
                         <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
                             <div style="width: 34px; height: 34px; border-radius: 8px; background: #FFF7ED; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">📍</div>
@@ -7130,6 +7160,7 @@ window.populateProfileTab = function(member) {
             `;
         }
 
+        // Split-Tab Logic
         if (form && !document.getElementById('architectProfileTabs')) {
             let bWrap = bio.parentElement && bio.parentElement.tagName === 'DIV' && bio.parentElement.id !== 'profileTab' ? bio.parentElement : bio;
             let fWrap = form.closest('.card') || form.parentElement;
@@ -7175,4 +7206,4 @@ setTimeout(() => {
         window.populateProfileTab(currentMember);
     }
 }, 150);
-// === END V52 ===
+// === END V53 ===
