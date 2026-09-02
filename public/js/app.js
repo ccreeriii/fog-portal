@@ -7007,12 +7007,15 @@ setInterval(() => {
 }, 1000);
 
 
-// === V50: THE FINAL ARCHITECT PROFILE OVERRIDE ===
+
+
+
+// === V51: PREMIUM ROW LAYOUT ===
 window.populateProfileTab = function(member) {
     if (!member) return;
     const safeText = (val) => val && val !== 'null' ? val : 'N/A';
 
-    // 1. Populate Edit Form Inputs
+    // Populate Edit Form Inputs safely
     ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender','myEditMobile','myEditAddress'].forEach(id => {
         const el = document.getElementById(id);
         if(el) {
@@ -7028,14 +7031,13 @@ window.populateProfileTab = function(member) {
     const av = document.getElementById('myProfileAvatar');
     if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
 
-    // 2. BLINDFOLD OLD INTERVALS
+    // Isolate ID to blindfold old rogue intervals
     let bio = document.getElementById('myBioSummaryArchitect');
     if (!bio) {
         bio = document.getElementById('myBioSummary');
         if (bio) bio.id = 'myBioSummaryArchitect'; 
     }
 
-    // 3. TARGET EXACT FORM SIGNATURE (NO IDs NEEDED)
     const form = document.querySelector('form[onsubmit="handleSelfProfileUpdate(event)"]');
 
     if (bio) {
@@ -7043,78 +7045,87 @@ window.populateProfileTab = function(member) {
 
         if (bio.getAttribute('data-sync-state') !== currentState) {
             bio.setAttribute('data-sync-state', currentState);
-            bio.style.display = 'grid';
-            bio.style.gridTemplateColumns = 'repeat(auto-fit, minmax(200px, 1fr))';
-            bio.style.gap = '12px';
-            bio.style.paddingTop = '10px';
+            bio.style.display = 'block';
+            bio.style.padding = '0';
 
             bio.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
-                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #EEF2FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">✉️</div>
-                    <div style="display: flex; flex-direction: column; overflow: hidden;">
-                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Email Address</span>
-                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.email)}</span>
+                <div style="display: flex; flex-direction: column; gap: 12px; padding-top: 10px;">
+                    <!-- ROW 1: Contact Info -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #EEF2FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">✉️</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Email Address</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.email)}">${safeText(member.email)}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #ECFDF5; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">📱</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Mobile Number</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.mobile)}">${safeText(member.mobile)}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #FFF7ED; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">📍</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Address</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.address)}">${safeText(member.address)}</span>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
-                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #F5F3FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🚻</div>
-                    <div style="display: flex; flex-direction: column; overflow: hidden;">
-                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Gender</span>
-                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.gender)}</span>
+
+                    <!-- ROW 2: Demographics (Gender, Age, Birthday) -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #F5F3FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🚻</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Gender</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.gender)}">${safeText(member.gender)}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #F0FDF4; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">👤</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Age</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.age)}">${safeText(member.age)}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #FFF1F2; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🎂</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Birthday</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.birthday)}">${safeText(member.birthday)}</span>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
-                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #ECFDF5; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">📱</div>
-                    <div style="display: flex; flex-direction: column; overflow: hidden;">
-                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Mobile Number</span>
-                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.mobile)}</span>
-                    </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
-                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #FFF7ED; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">📍</div>
-                    <div style="display: flex; flex-direction: column; overflow: hidden;">
-                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Address</span>
-                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.address)}</span>
-                    </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
-                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #F0FDF4; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">👤</div>
-                    <div style="display: flex; flex-direction: column; overflow: hidden;">
-                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Age</span>
-                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.age)}</span>
-                    </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
-                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #FFF1F2; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🎂</div>
-                    <div style="display: flex; flex-direction: column; overflow: hidden;">
-                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Birthday</span>
-                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.birthday)}</span>
-                    </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
-                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #F8FAFC; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">💬</div>
-                    <div style="display: flex; flex-direction: column; overflow: hidden;">
-                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Social Media</span>
-                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.social_media)}</span>
-                    </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
-                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #FEF2F2; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🛡️</div>
-                    <div style="display: flex; flex-direction: column; overflow: hidden;">
-                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Guardian</span>
-                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.parents_name)}</span>
+
+                    <!-- ROW 3: Connections (Social Media, Guardian) -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #F8FAFC; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">💬</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Social Media</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.social_media)}">${safeText(member.social_media)}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #FEF2F2; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🛡️</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Guardian</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.parents_name)}">${safeText(member.parents_name)}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
         }
 
-        // 4. SPLIT TAB INJECTION
+        // Split-Tab Logic
         if (form && !document.getElementById('architectProfileTabs')) {
-            // Find the true outer wrappers to toggle cleanly
             let bWrap = bio.parentElement && bio.parentElement.tagName === 'DIV' && bio.parentElement.id !== 'profileTab' ? bio.parentElement : bio;
             let fWrap = form.closest('.card') || form.parentElement;
 
-            // Hide the hardcoded legacy title inside the edit card
             const legacyTitle = fWrap.querySelector('h2');
             if (legacyTitle) legacyTitle.style.display = 'none';
 
@@ -7145,7 +7156,6 @@ window.populateProfileTab = function(member) {
                 btnE.style.background = 'var(--primary, #059669)'; btnE.style.color = '#FFF';
             };
 
-            // Force Initial State (View Mode)
             fWrap.style.display = 'none';
             bWrap.style.display = 'block';
         }
@@ -7157,4 +7167,4 @@ setTimeout(() => {
         window.populateProfileTab(currentMember);
     }
 }, 150);
-// === END V50 ===
+// === END V51 ===
