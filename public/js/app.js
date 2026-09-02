@@ -2939,7 +2939,7 @@ window.renderHomeJourney = async function() {
     if (!container || !currentMember) return;
     let html = '';
     if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
-        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take the next step to officially become a member of our spiritual family.</p></div><button class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
     } else {
         try {
             const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
@@ -2949,9 +2949,9 @@ window.renderHomeJourney = async function() {
             if (isActiveMember) {
                 html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p></div><button class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
             } else if (isApplicant) {
-                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button class="btn btn-secondary btn-sm" disabled>Pending</button>`;
+                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">🙏 Discerning Together</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">We are so excited you want to serve! Our team is currently praying and preparing a space for you.</p></div><button class="btn btn-secondary btn-sm" disabled>Preparing Space</button>`;
             } else {
-                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take some time to explore where you might love to serve and share those gifts with the community.</p></div><button class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Explore Serving</button>`;
             }
         } catch(e) {}
     }
@@ -3968,7 +3968,7 @@ window.renderHomeJourney = async function() {
     if (!container || !currentMember) return;
     let html = '';
     if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
-        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take the next step to officially become a member of our spiritual family.</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
     } else {
         try {
             const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
@@ -3979,9 +3979,9 @@ window.renderHomeJourney = async function() {
             if (isActiveMember) {
                 html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p>${isApplicant ? '<p style="font-size:0.75rem; color:#F59E0B; margin:0; font-weight:bold;">(Application Pending)</p>' : ''}</div><button type="button" class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
             } else if (isApplicant) {
-                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Pending</button>`;
+                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">🙏 Discerning Together</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">We are so excited you want to serve! Our team is currently praying and preparing a space for you.</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Preparing Space</button>`;
             } else {
-                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take some time to explore where you might love to serve and share those gifts with the community.</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Explore Serving</button>`;
             }
         } catch(e) {}
     }
@@ -5687,7 +5687,7 @@ window.renderHomeJourney = async function() {
     if (!container || !currentMember) return;
     let html = '';
     if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
-        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take your commitment pledge</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take the next step to officially become a member of our spiritual family.</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
     } else {
         try {
             const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
@@ -5698,9 +5698,9 @@ window.renderHomeJourney = async function() {
             if (isActiveMember) {
                 html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p>${isApplicant ? '<p style="font-size:0.75rem; color:#F59E0B; margin:0; font-weight:bold;">(Application Pending)</p>' : ''}</div><button type="button" class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
             } else if (isApplicant) {
-                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">⏳ Under Review</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your intent is being discerned</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Pending</button>`;
+                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">🙏 Discerning Together</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">We are so excited you want to serve! Our team is currently praying and preparing a space for you.</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Preparing Space</button>`;
             } else {
-                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Express ministry intent</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Discern</button>`;
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take some time to explore where you might love to serve and share those gifts with the community.</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Explore Serving</button>`;
             }
         } catch(e) {}
     }
@@ -6328,9 +6328,9 @@ window.renderHomeJourneyCard = async function() {
     let statusColor = "#3B82F6";
 
     if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
-        title = "Membership Intent";
-        desc = "Take the community pledge and explicitly choose this spiritual family as your home.";
-        btnText = "Intent to Join";
+        title = "Welcome Home";
+        desc = "We would love for you to plant your roots here. Take the next step to officially become a member of our spiritual family.";
+        btnText = "Join Our Family";
         btnAction = "if(typeof openCommitmentModal === 'function') openCommitmentModal(); else alert('Feature pending implementation.');";
         statusColor = "#F59E0B";
     } else {
@@ -6347,15 +6347,15 @@ window.renderHomeJourneyCard = async function() {
                 btnAction = "if(typeof openMinistryIntentModal === 'function') openMinistryIntentModal(); else alert('Feature pending implementation.');";
                 statusColor = "#10B981";
             } else if (isApplicant) {
-                title = "⏳ Under Review";
-                desc = "Your intent to join a ministry is currently being discerned by the leadership team. Please wait for an update.";
-                btnText = "Pending Discernment";
+                title = "🙏 Discerning Together";
+                desc = "We are so excited you want to serve! Our team is currently praying and preparing a space for you. We will reach out very soon.";
+                btnText = "Preparing Space";
                 btnAction = "";
                 statusColor = "#64748B";
             } else {
-                title = "Discern Ministry";
-                desc = "Unpack the unique talents God has entrusted to you. Submit your intent to serve when you feel ready.";
-                btnText = "Discern";
+                title = "Discover Your Gifts";
+                desc = "God has given you beautiful, unique talents. Take some time to explore where you might love to serve and share those gifts with the community.";
+                btnText = "Explore Serving";
                 btnAction = "if(typeof openMinistryIntentModal === 'function') openMinistryIntentModal(); else alert('Feature pending implementation.');";
                 statusColor = "#8B5CF6";
             }
