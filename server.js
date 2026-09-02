@@ -233,7 +233,7 @@ app.post('/api/admin/trigger-prayer-pals', (req, res) => {
     const pad = (n) => String(n).padStart(2, '0');
     const weekStart = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
-    const assignPals = (gender) => {
+    const assignPals = () => {
         return new Promise((resolve) => {
             db.all(`SELECT id FROM youth WHERE gender = ? `, [gender], (err, members) => {
                 if (!members || members.length < 2) return resolve();
@@ -257,7 +257,7 @@ app.post('/api/admin/trigger-prayer-pals', (req, res) => {
         });
     };
 
-    Promise.all([assignPals('Male'), assignPals('Female')]).then(() => {
+    Promise.all([assignPals()]).then(() => {
         res.json({success: true, message: "Gender-strict prayer partners successfully assigned!"});
     });
 });
