@@ -7019,12 +7019,14 @@ setInterval(() => {
 
 
 
-// === V54: FINAL PROFILE LAYOUT & ROLES RESTORATION ===
+
+
+
+// === V55: FORM RELOCATION & PROFILE TABS ===
 window.populateProfileTab = function(member) {
     if (!member) return;
     const safeText = (val) => val && val !== 'null' ? val : 'N/A';
 
-    // 1. Populate Edit Form Inputs safely
     ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender','myEditMobile','myEditAddress'].forEach(id => {
         const el = document.getElementById(id);
         if(el) {
@@ -7040,7 +7042,6 @@ window.populateProfileTab = function(member) {
     const av = document.getElementById('myProfileAvatar');
     if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
 
-    // 2. RESTORE MISSING QR CODE & PASS ID
     const codeEl = document.getElementById('myProfileCode');
     if (codeEl) {
         codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
@@ -7061,7 +7062,6 @@ window.populateProfileTab = function(member) {
         }
     }
 
-    // 3. ISOLATE DOM TO PREVENT FLICKERING
     let bio = document.getElementById('myBioSummaryArchitect');
     if (!bio) {
         bio = document.getElementById('myBioSummary');
@@ -7159,6 +7159,11 @@ window.populateProfileTab = function(member) {
             const legacyTitle = fWrap.querySelector('h2');
             if (legacyTitle) legacyTitle.style.display = 'none';
 
+            // 🚀 THE FIX: Physically relocate the Edit Form right beside the View Grid
+            if (fWrap && bWrap && fWrap.parentNode) {
+                bWrap.parentNode.insertBefore(fWrap, bWrap.nextSibling);
+            }
+
             const tabs = document.createElement('div');
             tabs.id = 'architectProfileTabs';
             tabs.style.cssText = 'display: flex; gap: 8px; background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 10px; padding: 6px; margin-bottom: 20px; width: 100%; box-sizing: border-box; box-shadow: 0 2px 5px rgba(0,0,0,0.02);';
@@ -7191,7 +7196,6 @@ window.populateProfileTab = function(member) {
         }
     }
 
-    // 4. RESTORE MISSING BACKEND DATA TRIGGERS
     if (typeof window.loadMyV3Roles === 'function') {
         window.loadMyV3Roles(member.id, 'myMinistriesHistory');
     }
@@ -7209,4 +7213,4 @@ setTimeout(() => {
         window.populateProfileTab(currentMember);
     }
 }, 150);
-// === END V54 ===
+// === END V55 ===
