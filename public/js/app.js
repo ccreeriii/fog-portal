@@ -7005,3 +7005,180 @@ setInterval(() => {
         }
     });
 }, 1000);
+
+
+// === V50: THE FINAL ARCHITECT PROFILE OVERRIDE ===
+window.populateProfileTab = function(member) {
+    if (!member) return;
+
+    const safeText = (val) => val && val !== 'null' ? val : 'N/A';
+
+    // 1. Populate Edit Form Inputs safely
+    ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender','myEditMobile','myEditAddress'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            let key = id.replace('myEdit', '').toLowerCase();
+            if(id === 'myEditParents') key = 'parents_name';
+            if(id === 'myEditSocial') key = 'social_media';
+            if(id === 'myMemberId') key = 'id';
+            el.value = member[key] || '';
+        }
+    });
+
+    // 2. Populate Header & QR Code securely
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+
+    const codeEl = document.getElementById('myProfileCode');
+    if (codeEl) {
+        codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
+        codeEl.style.display = 'inline-block';
+    }
+
+    const qrContainer = document.getElementById('myQrContainer');
+    const dlBtn = document.getElementById('myDownloadQrBtn');
+    if (qrContainer && dlBtn) {
+        if (member.qr_code) {
+            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:100%; height:auto; border-radius:8px; border: 1px solid var(--border-color);">`;
+            dlBtn.href = qrUrl;
+            dlBtn.style.display = 'inline-block';
+        } else {
+            qrContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No QR Assigned</span>';
+            dlBtn.style.display = 'none';
+        }
+    }
+
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+
+    // 3. THE ISOLATION PATTERN (BLINDFOLDING ROGUE INTERVALS)
+    let bio = document.getElementById('myBioSummaryArchitect');
+    if (!bio) {
+        bio = document.getElementById('myBioSummary');
+        if (bio) bio.id = 'myBioSummaryArchitect'; // Rename ID to escape rogue intervals permanently
+    }
+
+    const form = document.getElementById('myProfileForm');
+
+    if (bio) {
+        const currentState = [member.name, member.email, member.gender, member.mobile, member.address, member.age, member.birthday, member.social_media, member.parents_name].join('|');
+
+        if (bio.getAttribute('data-sync-state') !== currentState) {
+            bio.setAttribute('data-sync-state', currentState);
+            bio.style.display = 'grid';
+            bio.style.gridTemplateColumns = 'repeat(auto-fit, minmax(200px, 1fr))';
+            bio.style.gap = '12px';
+            bio.style.paddingTop = '10px';
+
+            bio.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #EEF2FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">✉️</div>
+                    <div style="display: flex; flex-direction: column; overflow: hidden;">
+                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Email Address</span>
+                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.email)}</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #F5F3FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🚻</div>
+                    <div style="display: flex; flex-direction: column; overflow: hidden;">
+                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Gender</span>
+                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.gender)}</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #ECFDF5; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">📱</div>
+                    <div style="display: flex; flex-direction: column; overflow: hidden;">
+                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Mobile Number</span>
+                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.mobile)}</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #FFF7ED; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">📍</div>
+                    <div style="display: flex; flex-direction: column; overflow: hidden;">
+                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Address</span>
+                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.address)}</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #F0FDF4; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">👤</div>
+                    <div style="display: flex; flex-direction: column; overflow: hidden;">
+                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Age</span>
+                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.age)}</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #FFF1F2; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🎂</div>
+                    <div style="display: flex; flex-direction: column; overflow: hidden;">
+                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Birthday</span>
+                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.birthday)}</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #F8FAFC; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">💬</div>
+                    <div style="display: flex; flex-direction: column; overflow: hidden;">
+                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Social Media</span>
+                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.social_media)}</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: #FEF2F2; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🛡️</div>
+                    <div style="display: flex; flex-direction: column; overflow: hidden;">
+                        <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Guardian</span>
+                        <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeText(member.parents_name)}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 4. SPLIT TAB INJECTION
+        if (form && !document.getElementById('architectProfileTabs')) {
+            let bWrap = bio.closest('.card') || bio;
+            let fWrap = form.closest('.card') || form;
+
+            if (bWrap === fWrap) { bWrap = bio; fWrap = form; }
+
+            const tabs = document.createElement('div');
+            tabs.id = 'architectProfileTabs';
+            tabs.style.cssText = 'display: flex; gap: 8px; background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 10px; padding: 4px; margin-bottom: 20px; width: 100%; box-sizing: border-box;';
+            tabs.innerHTML = `
+                <button id="btnArchView" type="button" style="flex: 1; font-weight: 800; border-radius: 8px; font-size: 0.85rem; padding: 10px; transition: all 0.2s; background: var(--primary, #059669); color: #FFF; border: none; cursor: pointer;">👤 Personal Details</button>
+                <button id="btnArchEdit" type="button" style="flex: 1; font-weight: 800; border-radius: 8px; font-size: 0.85rem; padding: 10px; background: transparent; transition: all 0.2s; color: var(--text-main, #334155); border: none; cursor: pointer;">✏️ Edit Profile Details</button>
+            `;
+
+            bWrap.parentNode.insertBefore(tabs, bWrap);
+
+            const btnV = document.getElementById('btnArchView');
+            const btnE = document.getElementById('btnArchEdit');
+
+            btnV.onclick = () => {
+                bWrap.style.display = 'block';
+                fWrap.style.display = 'none';
+                btnV.style.background = 'var(--primary, #059669)'; btnV.style.color = '#FFF';
+                btnE.style.background = 'transparent'; btnE.style.color = 'var(--text-main, #334155)';
+                if (bWrap === bio) bio.style.display = 'grid'; 
+            };
+
+            btnE.onclick = () => {
+                bWrap.style.display = 'none';
+                fWrap.style.display = 'block';
+                btnV.style.background = 'transparent'; btnV.style.color = 'var(--text-main, #334155)';
+                btnE.style.background = 'var(--primary, #059669)'; btnE.style.color = '#FFF';
+            };
+
+            fWrap.style.display = 'none';
+            bWrap.style.display = 'block';
+        }
+    }
+
+    if (typeof window.loadMyV3Roles === 'function') window.loadMyV3Roles(member.id, 'myMinistriesHistory');
+    if (typeof window.loadMyV3Attendance === 'function') window.loadMyV3Attendance(member.id, 'myAttendanceHistory');
+    if (typeof window.renderHomeJourney === 'function') window.renderHomeJourney();
+};
+
+// Force Trigger if the tab is already open
+setTimeout(() => {
+    if (document.getElementById('profileTab') && document.getElementById('profileTab').classList.contains('active') && typeof currentMember !== 'undefined') {
+        window.populateProfileTab(currentMember);
+    }
+}, 150);
+// === END V50 ===
