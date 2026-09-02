@@ -7010,10 +7010,9 @@ setInterval(() => {
 // === V50: THE FINAL ARCHITECT PROFILE OVERRIDE ===
 window.populateProfileTab = function(member) {
     if (!member) return;
-
     const safeText = (val) => val && val !== 'null' ? val : 'N/A';
 
-    // 1. Populate Edit Form Inputs safely
+    // 1. Populate Edit Form Inputs
     ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender','myEditMobile','myEditAddress'].forEach(id => {
         const el = document.getElementById(id);
         if(el) {
@@ -7025,40 +7024,19 @@ window.populateProfileTab = function(member) {
         }
     });
 
-    // 2. Populate Header & QR Code securely
     if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
-
-    const codeEl = document.getElementById('myProfileCode');
-    if (codeEl) {
-        codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
-        codeEl.style.display = 'inline-block';
-    }
-
-    const qrContainer = document.getElementById('myQrContainer');
-    const dlBtn = document.getElementById('myDownloadQrBtn');
-    if (qrContainer && dlBtn) {
-        if (member.qr_code) {
-            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
-            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:100%; height:auto; border-radius:8px; border: 1px solid var(--border-color);">`;
-            dlBtn.href = qrUrl;
-            dlBtn.style.display = 'inline-block';
-        } else {
-            qrContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No QR Assigned</span>';
-            dlBtn.style.display = 'none';
-        }
-    }
-
     const av = document.getElementById('myProfileAvatar');
     if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
 
-    // 3. THE ISOLATION PATTERN (BLINDFOLDING ROGUE INTERVALS)
+    // 2. BLINDFOLD OLD INTERVALS
     let bio = document.getElementById('myBioSummaryArchitect');
     if (!bio) {
         bio = document.getElementById('myBioSummary');
-        if (bio) bio.id = 'myBioSummaryArchitect'; // Rename ID to escape rogue intervals permanently
+        if (bio) bio.id = 'myBioSummaryArchitect'; 
     }
 
-    const form = document.getElementById('myProfileForm');
+    // 3. TARGET EXACT FORM SIGNATURE (NO IDs NEEDED)
+    const form = document.querySelector('form[onsubmit="handleSelfProfileUpdate(event)"]');
 
     if (bio) {
         const currentState = [member.name, member.email, member.gender, member.mobile, member.address, member.age, member.birthday, member.social_media, member.parents_name].join('|');
@@ -7132,17 +7110,20 @@ window.populateProfileTab = function(member) {
 
         // 4. SPLIT TAB INJECTION
         if (form && !document.getElementById('architectProfileTabs')) {
-            let bWrap = bio.closest('.card') || bio;
-            let fWrap = form.closest('.card') || form;
+            // Find the true outer wrappers to toggle cleanly
+            let bWrap = bio.parentElement && bio.parentElement.tagName === 'DIV' && bio.parentElement.id !== 'profileTab' ? bio.parentElement : bio;
+            let fWrap = form.closest('.card') || form.parentElement;
 
-            if (bWrap === fWrap) { bWrap = bio; fWrap = form; }
+            // Hide the hardcoded legacy title inside the edit card
+            const legacyTitle = fWrap.querySelector('h2');
+            if (legacyTitle) legacyTitle.style.display = 'none';
 
             const tabs = document.createElement('div');
             tabs.id = 'architectProfileTabs';
-            tabs.style.cssText = 'display: flex; gap: 8px; background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 10px; padding: 4px; margin-bottom: 20px; width: 100%; box-sizing: border-box;';
+            tabs.style.cssText = 'display: flex; gap: 8px; background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 10px; padding: 6px; margin-bottom: 20px; width: 100%; box-sizing: border-box; box-shadow: 0 2px 5px rgba(0,0,0,0.02);';
             tabs.innerHTML = `
-                <button id="btnArchView" type="button" style="flex: 1; font-weight: 800; border-radius: 8px; font-size: 0.85rem; padding: 10px; transition: all 0.2s; background: var(--primary, #059669); color: #FFF; border: none; cursor: pointer;">👤 Personal Details</button>
-                <button id="btnArchEdit" type="button" style="flex: 1; font-weight: 800; border-radius: 8px; font-size: 0.85rem; padding: 10px; background: transparent; transition: all 0.2s; color: var(--text-main, #334155); border: none; cursor: pointer;">✏️ Edit Profile Details</button>
+                <button id="btnArchView" type="button" style="flex: 1; font-weight: 800; border-radius: 8px; font-size: 0.9rem; padding: 10px; transition: all 0.2s; background: var(--primary, #059669); color: #FFF; border: none; cursor: pointer;">👤 Personal Details</button>
+                <button id="btnArchEdit" type="button" style="flex: 1; font-weight: 800; border-radius: 8px; font-size: 0.9rem; padding: 10px; background: transparent; transition: all 0.2s; color: var(--text-main, #334155); border: none; cursor: pointer;">✏️ Edit Profile Details</button>
             `;
 
             bWrap.parentNode.insertBefore(tabs, bWrap);
@@ -7155,7 +7136,6 @@ window.populateProfileTab = function(member) {
                 fWrap.style.display = 'none';
                 btnV.style.background = 'var(--primary, #059669)'; btnV.style.color = '#FFF';
                 btnE.style.background = 'transparent'; btnE.style.color = 'var(--text-main, #334155)';
-                if (bWrap === bio) bio.style.display = 'grid'; 
             };
 
             btnE.onclick = () => {
@@ -7165,17 +7145,13 @@ window.populateProfileTab = function(member) {
                 btnE.style.background = 'var(--primary, #059669)'; btnE.style.color = '#FFF';
             };
 
+            // Force Initial State (View Mode)
             fWrap.style.display = 'none';
             bWrap.style.display = 'block';
         }
     }
-
-    if (typeof window.loadMyV3Roles === 'function') window.loadMyV3Roles(member.id, 'myMinistriesHistory');
-    if (typeof window.loadMyV3Attendance === 'function') window.loadMyV3Attendance(member.id, 'myAttendanceHistory');
-    if (typeof window.renderHomeJourney === 'function') window.renderHomeJourney();
 };
 
-// Force Trigger if the tab is already open
 setTimeout(() => {
     if (document.getElementById('profileTab') && document.getElementById('profileTab').classList.contains('active') && typeof currentMember !== 'undefined') {
         window.populateProfileTab(currentMember);
