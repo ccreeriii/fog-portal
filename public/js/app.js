@@ -7016,7 +7016,10 @@ setInterval(() => {
 
 
 
-// === V53: FINAL PROFILE LAYOUT & QR RESTORATION ===
+
+
+
+// === V54: FINAL PROFILE LAYOUT & ROLES RESTORATION ===
 window.populateProfileTab = function(member) {
     if (!member) return;
     const safeText = (val) => val && val !== 'null' ? val : 'N/A';
@@ -7077,7 +7080,6 @@ window.populateProfileTab = function(member) {
 
             bio.innerHTML = `
                 <div style="display: flex; flex-direction: column; gap: 12px; padding-top: 10px;">
-                    <!-- ROW 1: Email -->
                     <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
                         <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
                             <div style="width: 34px; height: 34px; border-radius: 8px; background: #EEF2FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">✉️</div>
@@ -7087,8 +7089,6 @@ window.populateProfileTab = function(member) {
                             </div>
                         </div>
                     </div>
-
-                    <!-- ROW 2: Age & Birthday -->
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
                         <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
                             <div style="width: 34px; height: 34px; border-radius: 8px; background: #F0FDF4; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">👤</div>
@@ -7105,8 +7105,6 @@ window.populateProfileTab = function(member) {
                             </div>
                         </div>
                     </div>
-
-                    <!-- ROW 3: Gender & Mobile -->
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
                         <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
                             <div style="width: 34px; height: 34px; border-radius: 8px; background: #F5F3FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🚻</div>
@@ -7123,8 +7121,6 @@ window.populateProfileTab = function(member) {
                             </div>
                         </div>
                     </div>
-
-                    <!-- ROW 4: Social Media (Full Width) -->
                     <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
                         <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
                             <div style="width: 34px; height: 34px; border-radius: 8px; background: #F8FAFC; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">💬</div>
@@ -7134,8 +7130,6 @@ window.populateProfileTab = function(member) {
                             </div>
                         </div>
                     </div>
-
-                    <!-- ROW 5: Guardian (Full Width) -->
                     <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
                         <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
                             <div style="width: 34px; height: 34px; border-radius: 8px; background: #FEF2F2; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🛡️</div>
@@ -7145,8 +7139,6 @@ window.populateProfileTab = function(member) {
                             </div>
                         </div>
                     </div>
-
-                    <!-- ROW 6: Address (Full Width) -->
                     <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
                         <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
                             <div style="width: 34px; height: 34px; border-radius: 8px; background: #FFF7ED; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">📍</div>
@@ -7160,7 +7152,6 @@ window.populateProfileTab = function(member) {
             `;
         }
 
-        // Split-Tab Logic
         if (form && !document.getElementById('architectProfileTabs')) {
             let bWrap = bio.parentElement && bio.parentElement.tagName === 'DIV' && bio.parentElement.id !== 'profileTab' ? bio.parentElement : bio;
             let fWrap = form.closest('.card') || form.parentElement;
@@ -7199,6 +7190,18 @@ window.populateProfileTab = function(member) {
             bWrap.style.display = 'block';
         }
     }
+
+    // 4. RESTORE MISSING BACKEND DATA TRIGGERS
+    if (typeof window.loadMyV3Roles === 'function') {
+        window.loadMyV3Roles(member.id, 'myMinistriesHistory');
+    }
+    if (typeof window.loadMyV3Attendance === 'function') {
+        try { window.loadMyV3Attendance(member.id, 'myAttendanceHistory'); }
+        catch (e) { window.loadMyV3Attendance(); }
+    }
+    if (typeof window.renderHomeJourney === 'function') {
+        window.renderHomeJourney();
+    }
 };
 
 setTimeout(() => {
@@ -7206,4 +7209,4 @@ setTimeout(() => {
         window.populateProfileTab(currentMember);
     }
 }, 150);
-// === END V53 ===
+// === END V54 ===
