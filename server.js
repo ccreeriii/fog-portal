@@ -235,33 +235,38 @@ app.post('/api/admin/trigger-prayer-pals', (req, res) => {
 
     const assignPals = () => {
         return new Promise((resolve) => {
-            db.all(`SELECT id FROM youth`, [], (err, members) => {
-                if (!members || members.length < 2) return resolve();
+            // Pull EVERY user in the database
+            db.all(`SELECT id FROM youth WHERE id IS NOT NULL`, [], (err, members) => {
+                if (err || !members || members.length < 2) return resolve();
                 
-                // Fisher-Yates Shuffle
+                // Fisher-Yates Shuffle for true randomness
                 let shuffled = [...members];
                 for (let i = shuffled.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
                     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
                 }
                 
-                const stmt = db.prepare(`INSERT OR IGNORE INTO secret_prayer_pals (youth_id, pal_youth_id, week_start) VALUES (?, ?, ?)`);
-                for (let i = 0; i < shuffled.length; i++) {
-                    const current = shuffled[i];
-                    const next = shuffled[(i + 1) % shuffled.length]; // Circular pairing
-                    stmt.run([current.id, next.id, weekStart]);
-                }
-                stmt.finalize();
-                resolve();
+                // CRITICAL FIX: Wipe today's fragmented pairings to guarantee an unbroken chain
+                db.run(`DELETE FROM secret_prayer_pals WHERE week_start = ?`, [weekStart], () => {
+                    const stmt = db.prepare(`INSERT INTO secret_prayer_pals (youth_id, pal_youth_id, week_start) VALUES (?, ?, ?)`);
+                    for (let i = 0; i < shuffled.length; i++) {
+                        const current = shuffled[i];
+                        const next = shuffled[(i + 1) % shuffled.length]; // Mathematical circular mapping
+                        stmt.run([current.id, next.id, weekStart]);
+                    }
+                    stmt.finalize();
+                    resolve();
+                });
             });
         });
     };
 
     Promise.all([assignPals()]).then(() => {
-        res.json({success: true, message: "Unified prayer partners successfully assigned!"});
+        res.json({success: true, message: "Unbroken prayer covenant chain assigned to EVERY member!"});
+    }).catch(err => {
+        res.status(500).json({error: "Pairing failed"});
     });
 });
-
 
 // [KOINONIA PATCH V107] PENDING MEMBER REQUESTS FIX ONLY
 app.get('/api/small-groups/:id/roster-status', (req, res) => {
