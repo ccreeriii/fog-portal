@@ -6235,21 +6235,21 @@ window.loadPersonalInbox = async function() {
                 
                 // Determine 1-Tap UI State
                 let actionHtml = '';
-                // STRICT CHECK: Only show gratitude buttons if this is an actual Prayer (not a reply!)
                 if (p.title && p.title.includes('A Prayer from')) {
-                    if (p.status === 'Delivered' || !p.status) {
-                        actionHtml = `
-                        <div style="display:flex; gap:10px; margin-top:15px; border-top:1px solid #E2E8F0; padding-top:15px;">
-                            <button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, ${p.sender_id}, 'thank_you')" style="flex:1; background:#EFF6FF; color:#3B82F6; font-weight:bold; border-radius:8px; border:none; cursor:pointer; transition:0.2s;">💙 Send Thanks</button>
-                            <button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, ${p.sender_id}, 'answered')" style="flex:1; background:#ECFDF5; color:#10B981; font-weight:bold; border-radius:8px; border:none; cursor:pointer; transition:0.2s;">✨ Praise Report</button>
-                        </div>`;
-                    } else if (p.status === 'thank_you') {
-                        actionHtml = `<div style="margin-top:15px; border-top:1px solid #E2E8F0; padding-top:12px; font-size:0.85rem; color:#3B82F6; font-weight:bold; text-align:center;">✓ You sent a thank you.</div>`;
-                    } else if (p.status === 'answered') {
-                        actionHtml = `<div style="margin-top:15px; border-top:1px solid #E2E8F0; padding-top:12px; font-size:0.85rem; color:#10B981; font-weight:bold; text-align:center;">✓ You shared a praise report!</div>`;
-                    }
+                    const hasThanks = p.status && p.status.includes('thank_you');
+                    const hasPraise = p.status && p.status.includes('answered');
+                    
+                    const thankBtn = hasThanks 
+                        ? `<div style="flex:1; background:#F8FAFC; color:#3B82F6; font-weight:bold; padding:8px; border-radius:8px; text-align:center; font-size:0.85rem; border:1px solid #E2E8F0;">✓ Thanks Sent</div>`
+                        : `<button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, ${p.sender_id}, 'thank_you')" style="flex:1; background:#EFF6FF; color:#3B82F6; font-weight:bold; border-radius:8px; border:none; cursor:pointer; padding:8px; transition:0.2s;">💙 Send Thanks</button>`;
+                        
+                    const praiseBtn = hasPraise 
+                        ? `<div style="flex:1; background:#F8FAFC; color:#10B981; font-weight:bold; padding:8px; border-radius:8px; text-align:center; font-size:0.85rem; border:1px solid #E2E8F0;">✓ Praise Shared</div>`
+                        : `<button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, ${p.sender_id}, 'answered')" style="flex:1; background:#ECFDF5; color:#10B981; font-weight:bold; border-radius:8px; border:none; cursor:pointer; padding:8px; transition:0.2s;">✨ Praise Report</button>`;
+                        
+                    actionHtml = `<div style="display:flex; gap:10px; margin-top:15px; border-top:1px solid #E2E8F0; padding-top:15px;">${thankBtn}${praiseBtn}</div>`;
                 }
-
+                
                 return `
                 <div style="background:#FFF; padding:15px; border-radius:16px; border:1px solid #E2E8F0; margin-bottom:15px; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
                     <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">

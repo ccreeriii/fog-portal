@@ -144,7 +144,7 @@ app.post('/api/inbox/personal/:id/respond', (req, res) => {
         const pad = (n) => String(n).padStart(2, '0');
         const timeNow = `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
 
-        db.run("UPDATE personal_inbox SET status = ? WHERE id = ?", [action, req.params.id], (err) => {
+        db.run("UPDATE personal_inbox SET status = CASE WHEN status = 'Delivered' OR status IS NULL THEN ? ELSE status || ',' || ? END WHERE id = ?", [action, action, req.params.id], (err) => {
             if(err) return res.status(500).json({error: err.message});
             
             let title = action === 'thank_you' ? "💙 Thank You!" : "✨ Praise Report!";
@@ -1698,7 +1698,7 @@ app.post('/api/inbox/personal/:id/respond', (req, res) => {
     if(typeof db === 'undefined') return res.status(500).json({error: "DB not initialized"});
     const { sender_id, original_sender_id, action, sender_name } = req.body;
     
-    db.run("UPDATE personal_inbox SET status = ? WHERE id = ?", [action, req.params.id], () => {
+    db.run("UPDATE personal_inbox SET status = CASE WHEN status = 'Delivered' OR status IS NULL THEN ? ELSE status || ',' || ? END WHERE id = ?", [action, action, req.params.id], () => {
         let title = action === 'thank_you' ? "💙 Thank You!" : "✨ Praise Report!";
         let msg = action === 'thank_you' ? `Thank you for covering me in prayer! - ${sender_name}` : `God answered the prayer you prayed for me! Praise God! - ${sender_name}`;
 
