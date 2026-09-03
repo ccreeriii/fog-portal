@@ -243,7 +243,12 @@ window.clearAuthenticatedClientState = function(options = {}) {
     clearLiveIdentity();
     window.koinoniaAuthStatus = 'unauthenticated';
     window.koinoniaReadOnlyLock = false;
-    if (options.clearOfflineSnapshot !== false) removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+    if (options.clearOfflineSnapshot !== false) {
+        removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+        if (window.KoinoniaOfflineData) {
+            window.KoinoniaOfflineData.clearAllPersonalCache();
+        }
+    }
     if (document.body) document.body.classList.remove('koinonia-offline-readonly');
 };
 
@@ -261,6 +266,12 @@ window.applyCanonicalAuthenticatedIdentity = function(identity) {
     if (document.body) document.body.classList.remove('koinonia-offline-readonly');
     const sanitizedIdentity = window.persistAuthenticatedIdentity({ ...identity, username: String(canonicalUsername) });
     persistVerifiedOfflineSnapshot(sanitizedIdentity);
+    if (window.KoinoniaOfflineData && sanitizedIdentity && sanitizedIdentity.member && sanitizedIdentity.member.id) {
+        window.KoinoniaOfflineData.saveDashboardSnapshot('member:' + sanitizedIdentity.member.id, {
+            displayName: sanitizedIdentity.member.name,
+            displayTier: sanitizedIdentity.member.account_tier
+        });
+    }
     return sanitizedIdentity;
 };
 
@@ -415,14 +426,21 @@ window.renderOfflineReadonlyExperience = function() {
 
     const displayName = currentMember.name || 'Community Member';
     const welcome = document.getElementById('dashWelcomeName');
-    const points = document.getElementById('dashXpCounter');
     if (welcome) welcome.textContent = `Welcome, ${displayName.split(' ')[0]}!`;
-    if (points) points.textContent = 'OFFLINE — READ ONLY';
 
-    rememberOfflineHidden(document.getElementById('pulsePrayerPalWidget'));
-    const journeyContainer = document.getElementById('dynamicJourneyContainer');
-    rememberOfflineHidden(journeyContainer ? journeyContainer.closest('.card') : null);
-    document.querySelectorAll('#pulseDashboardTab button, #pulseDashboardTab form, #pulseDashboardTab input, #pulseDashboardTab textarea, #pulseDashboardTab select')
+    // Populate offline dashboard from IndexedDB snapshot asynchronously
+    if (window.KoinoniaOfflineData && currentMember && currentMember.id) {
+        window.KoinoniaOfflineData.getDashboardSnapshot('member:' + currentMember.id).then(snapshot => {
+            window.populateOfflineDashboard(snapshot);
+        }).catch(() => {
+            window.populateOfflineDashboard(null);
+        });
+    } else {
+        window.populateOfflineDashboard(null);
+    }
+
+    // Keep form controls safely disabled
+    document.querySelectorAll('#pulseDashboardTab form, #pulseDashboardTab input, #pulseDashboardTab textarea, #pulseDashboardTab select')
         .forEach(rememberOfflineHidden);
 
     const profileName = document.getElementById('myProfileName');
@@ -459,6 +477,142 @@ window.renderOfflineReadonlyExperience = function() {
 
     showTabWithoutOnlineHooks('pulseDashboardTab');
     return true;
+};
+
+window.populateOfflineDashboard = function(snapshot) {
+    const banner = document.getElementById('offlineBanner');
+    if (banner) {
+        if (snapshot && snapshot.capturedAt) {
+            const timeStr = new Date(snapshot.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            banner.innerHTML = `⚠️ <strong>OFFLINE MODE</strong> — Displaying saved data &bull; Last synced: ${timeStr}`;
+        } else {
+            banner.innerHTML = `⚠️ <strong>OFFLINE MODE</strong> — Displaying saved data &bull; Changes disabled`;
+        }
+        banner.style.display = 'block';
+    }
+
+    const displayName = (snapshot && snapshot.displayName) || (currentMember && currentMember.name) || 'Community Member';
+    const welcome = document.getElementById('dashWelcomeName');
+    if (welcome) {
+        welcome.textContent = displayName.startsWith('Welcome') ? displayName : `Welcome, ${displayName.split(' ')[0]}!`;
+    }
+
+    const points = document.getElementById('dashXpCounter');
+    if (points) {
+        const pts = (snapshot && snapshot.hero && snapshot.hero.lifePoints && snapshot.hero.lifePoints.weekly) != null
+            ? snapshot.hero.lifePoints.weekly
+            : 0;
+        points.textContent = `${pts} Life Points (Saved Offline)`;
+    }
+
+    // Liturgical / Daily Gospel Card
+    const gospelEl = document.getElementById('pulseDailyGospelText');
+    const litCard = document.getElementById('liturgicalCard') || document.querySelector('.lit-card');
+    const lit = (snapshot && snapshot.liturgical) || null;
+    if (lit && lit.gospelSnippet) {
+        if (gospelEl) gospelEl.textContent = `"${lit.gospelSnippet}"`;
+        if (litCard) {
+            litCard.setAttribute('data-healed', 'true');
+            let bg = '#10B981';
+            if (lit.seasonColor === 'red') bg = '#DC2626';
+            else if (lit.seasonColor === 'violet' || lit.seasonColor === 'purple') bg = '#7C3AED';
+            else if (lit.seasonColor === 'white' || lit.seasonColor === 'gold') bg = '#F59E0B';
+            else if (lit.seasonColor === 'rose' || lit.seasonColor === 'pink') bg = '#F472B6';
+            litCard.style.background = 'linear-gradient(135deg, ' + bg + ', #064E3B)';
+            litCard.style.border = 'none';
+            litCard.style.color = '#FFF';
+            litCard.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                    <span class="badge" style="background: rgba(255,255,255,0.25); color: #FFF; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem; padding: 5px 10px; border-radius: 6px; font-weight: bold;">${lit.season || 'ORDINARY TIME'}</span>
+                    <span style="font-size:0.85rem; color:#FFF; font-weight:800; text-align: right; max-width: 60%;">${lit.feast || 'Daily Gospel'}</span>
+                </div>
+                <h3 style="color:#FFF; border:none; padding:0; margin-bottom: 12px; font-size: 1.3rem;">📖 Daily Gospel</h3>
+                <p style="color:#FFF; font-size:1.05rem; font-style:italic; margin-bottom: 20px; line-height:1.6; text-shadow: 0 1px 3px rgba(0,0,0,0.3);">"${lit.gospelSnippet}"</p>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-sm" style="background:#FFF; color:#064E3B; font-weight:800; flex: 1; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="if(window.showOfflineNotice) window.showOfflineNotice('Full readings require an active internet connection.'); else alert('Full readings require an active internet connection.');">📖 Full Readings</button>
+                    <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px;" onclick="showOfflineReadonlyView('profileTab');">👤 My Profile</button>
+                </div>
+            `;
+        }
+    } else if (gospelEl) {
+        gospelEl.textContent = 'Scripture readings require an internet connection to refresh.';
+    }
+
+    // Daily Prayer Covenant Card
+    const palCard = document.getElementById('pulsePrayerPalWidget');
+    if (palCard) {
+        palCard.style.display = 'block';
+        const cov = snapshot && snapshot.covenant;
+        if (cov && cov.partnerName) {
+            const avatarHtml = cov.partnerAvatar
+                ? `<img src="${cov.partnerAvatar}" style="width:50px;height:50px;border-radius:50%;object-fit:cover; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">`
+                : `<div style="width:50px;height:50px;border-radius:50%;background:#E2E8F0;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-muted); font-size: 1.2rem; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">${cov.partnerName.charAt(0)}</div>`;
+            const todayStr = new Date().toLocaleDateString();
+            const hasPrayed = cov.hasPrayedToday || Boolean(localStorage.getItem('fog_prayed_for_' + cov.partnerId + '_' + todayStr));
+
+            palCard.innerHTML = `
+                <div style="display:flex; align-items:center; gap: 15px; margin-bottom: 15px;">
+                    <span style="font-size: 2rem; background: #EEF2FF; padding: 12px; border-radius: 12px; line-height: 1;">🙏</span>
+                    <div>
+                        <h3 style="margin: 0; color: var(--primary); font-size: 1.2rem; border: none; padding: 0; font-weight: 800;">Daily Prayer Covenant</h3>
+                        <p style="margin: 3px 0 0 0; font-size: 0.9rem; color: var(--text-muted); font-weight: 600;">Saved Partner (Offline)</p>
+                    </div>
+                </div>
+                <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        ${avatarHtml}
+                        <div>
+                            <strong style="font-size: 1.1rem; color: var(--text-main); display: block;">${cov.partnerName}</strong>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">Covenant Partner</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm" disabled style="background: ${hasPrayed ? '#9CA3AF' : '#10B981'}; color: #FFF; border-radius: 8px; padding: 8px 15px; font-weight: bold; border: none; opacity: 0.85;">${hasPrayed ? '✓ Prayer Recorded' : '🙏 Partner Saved'}</button>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 10px; font-style: italic;">Cover your partner in prayer today. Sending written prayers requires an online connection.</p>
+            `;
+        } else {
+            palCard.innerHTML = `
+                <div style="display:flex; align-items:center; gap: 15px; margin-bottom: 10px;">
+                    <span style="font-size: 2rem; background: #EEF2FF; padding: 12px; border-radius: 12px; line-height: 1;">🙏</span>
+                    <div>
+                        <h3 style="margin: 0; color: var(--primary); font-size: 1.2rem; border: none; padding: 0; font-weight: 800;">Daily Prayer Covenant</h3>
+                        <p style="margin: 3px 0 0 0; font-size: 0.9rem; color: var(--text-muted); font-weight: 600;">Offline Mode</p>
+                    </div>
+                </div>
+                <div style="background: #FFFBEB; padding: 12px; border-radius: 8px; border: 1px solid #FDE68A;">
+                    <p style="margin: 0; font-size: 0.9rem; color: #D97706;">Partner pairing requires an active internet connection.</p>
+                </div>
+            `;
+        }
+    }
+
+    // My Journey Card
+    const journeyContainer = document.getElementById('dynamicHomeJourneyBox') || document.getElementById('dynamicJourneyContainer');
+    if (journeyContainer) {
+        const jCard = journeyContainer.closest('.card') || journeyContainer.parentElement;
+        if (jCard) jCard.style.display = 'block';
+        const j = snapshot && snapshot.journey;
+        if (j && j.title) {
+            journeyContainer.innerHTML = `
+                <div style="background: #F8FAFC; border-radius: 12px; padding: 15px; border-left: 4px solid ${j.statusColor || '#3B82F6'}; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); width: 100%; box-sizing: border-box;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem; display: block; margin-bottom: 6px;">${j.title}</strong>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.5;">${j.desc || 'Continue your spiritual journey.'}</p>
+                </div>
+                <button class="btn btn-outline btn-sm" disabled style="width: 100%; border-radius: 8px; opacity: 0.8; font-weight: bold;">${j.btnText || 'Next Step'} (Saved Offline)</button>
+            `;
+        } else {
+            journeyContainer.innerHTML = `
+                <div style="background: #F8FAFC; border-radius: 12px; padding: 15px; border-left: 4px solid var(--primary); margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); width: 100%; box-sizing: border-box;">
+                    <strong style="color: var(--text-main); font-size: 1rem; display: block; margin-bottom: 4px;">Spiritual Formation</strong>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Connect online to view your latest spiritual journey milestone.</p>
+                </div>
+            `;
+        }
+    }
+
+    // Action Hub
+    const hub = document.getElementById('actionHubContainer');
+    if (hub) hub.style.display = 'block';
 };
 
 window.renderUnauthenticatedShell = function() {
@@ -508,6 +662,9 @@ window.resumeAuthenticatedOnlineExperience = function() {
 window.performSecureLogout = async function() {
     let logoutPendingStored = markLogoutPending();
     removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+    if (typeof currentMember !== 'undefined' && currentMember && currentMember.id && window.KoinoniaOfflineData) {
+        window.KoinoniaOfflineData.clearUserCache('member:' + currentMember.id);
+    }
     if (!logoutPendingStored) logoutPendingStored = markLogoutPending();
     window.clearAuthenticatedClientState();
     window.koinoniaReadOnlyLock = true;
@@ -525,14 +682,51 @@ window.performSecureLogout = async function() {
     return serverLogoutComplete;
 };
 
+window.showOfflineNotice = function(msg) {
+    let toast = document.getElementById('koinoniaOfflineToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'koinoniaOfflineToast';
+        toast.style.cssText = 'position: fixed; bottom: 85px; left: 50%; transform: translateX(-50%); background: #1E293B; color: #FFF; padding: 12px 24px; border-radius: 24px; font-size: 0.9rem; font-weight: bold; z-index: 100000; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: opacity 0.3s ease; pointer-events: none; text-align: center; max-width: 90%;';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    toast.style.display = 'block';
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => { toast.style.display = 'none'; }, 300);
+    }, 2500);
+};
+
 function blockOfflineReadonlyInteraction(event) {
     if (!window.koinoniaReadOnlyLock) return;
     if (!event.target || typeof event.target.closest !== 'function') return;
     const interactiveTarget = event.target.closest('button, a[href], input, select, textarea, form, [onclick]');
     if (!interactiveTarget || interactiveTarget.closest('[data-koinonia-offline-control]')) return;
+
+    if (event.type === 'submit') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        alert('Saving changes requires an active internet connection.');
+        return;
+    }
+
+    const onclickAttr = interactiveTarget.getAttribute('onclick') || '';
+    if (onclickAttr.includes('showOfflineReadonlyView') || onclickAttr.includes('logout()')) {
+        return;
+    }
+
+    if (interactiveTarget.classList.contains('close-modal') || onclickAttr.includes('journeyExplanationModal')) {
+        return;
+    }
+
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (event.type === 'click') alert('This feature is unavailable in Offline — Read Only mode.');
+    if (event.type === 'click') {
+        window.showOfflineNotice('This action requires an active internet connection.');
+    }
 }
 
 document.addEventListener('click', blockOfflineReadonlyInteraction, true);
@@ -808,7 +1002,9 @@ const OfflineManager = {
         const banner = document.getElementById('offlineBanner');
         if (!banner) return;
         if (window.koinoniaAuthStatus === 'offline-readonly') {
-            banner.textContent = '⚠️ OFFLINE — READ ONLY. Your identity is display-only; changes are disabled.';
+            if (!banner.innerHTML.includes('Displaying saved data')) {
+                banner.innerHTML = '⚠️ <strong>OFFLINE MODE</strong> — Displaying saved data &bull; Changes disabled';
+            }
             banner.style.display = 'block';
             document.body.classList.add('is-offline');
         } else if (window.koinoniaAuthStatus === 'checking' && window.koinoniaReadOnlyLock) {
@@ -7223,6 +7419,18 @@ window.renderHomeJourneyCard = async function() {
         `<button class="btn" disabled style="background: #E2E8F0; color: #64748B; width: 100%; border-radius: 10px; font-weight: bold; padding: 12px; cursor: not-allowed; box-shadow: none;">${btnText}</button>` : 
         `<button class="btn btn-primary" onclick="${btnAction}" style="width: 100%; border-radius: 10px; font-weight: bold; padding: 12px; background: ${statusColor}; border-color: ${statusColor}; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">${btnText}</button>`;
 
+    if (window.KoinoniaOfflineData && typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+        window.KoinoniaOfflineData.saveDashboardSnapshot('member:' + currentMember.id, {
+            journey: {
+                title,
+                desc,
+                btnText,
+                statusColor,
+                accountTier: currentMember.account_tier
+            }
+        });
+    }
+
     container.innerHTML = `
         <div style="background: #F8FAFC; border-radius: 12px; padding: 15px; border-left: 4px solid ${statusColor}; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
             <strong style="color: var(--text-main); font-size: 1.05rem; display: block; margin-bottom: 6px;">${title}</strong>
@@ -7746,7 +7954,23 @@ window.loadEvents = async function() {
         if (!res.ok) throw new Error("HTTP " + res.status);
         
         eventsData = await res.json();
-        
+
+        if (window.KoinoniaOfflineData && Array.isArray(eventsData)) {
+            const summary = eventsData.slice(0, 8).map(e => ({
+                id: e.id,
+                name: e.name,
+                event_date: e.event_date,
+                event_time: e.event_time,
+                location: e.location
+            }));
+            window.KoinoniaOfflineData.savePublicContent('events_list', summary);
+            if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+                window.KoinoniaOfflineData.saveDashboardSnapshot('member:' + currentMember.id, {
+                    upcomingEvents: summary
+                });
+            }
+        }
+
         // 2. Force Render the Check-In Dropdown
         const dropdown = document.getElementById('activeEventDropdown');
         if (dropdown) {
@@ -7795,6 +8019,21 @@ window.updateDashboardLifePoints = function() {
                     const text = (data.weekly_points || 0) + ' Life Points This Week';
                     if (xpCounter.innerText.includes('🖱️')) xpCounter.innerText = text + ' 🖱️';
                     else xpCounter.innerText = text;
+                }
+                if (window.KoinoniaOfflineData && currentMember && currentMember.id) {
+                    window.KoinoniaOfflineData.saveDashboardSnapshot('member:' + currentMember.id, {
+                        displayName: currentMember.name,
+                        displayTier: currentMember.account_tier,
+                        hero: {
+                            welcomeName: currentMember.name,
+                            lifePoints: {
+                                weekly: data.weekly_points || 0,
+                                arcade: data.arcade_xp || 0,
+                                growth: data.growth_xp || 0,
+                                event: data.event_xp || 0
+                            }
+                        }
+                    });
                 }
             }).catch(e => console.log('Points sync error', e));
     }

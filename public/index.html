@@ -40,8 +40,6 @@
     <style>.bottom-nav { z-index: 90 !important; } .modal { z-index: 9999 !important; }</style>
     <style>
         body.koinonia-offline-readonly .tab-content:not(#pulseDashboardTab):not(#profileTab),
-        body.koinonia-offline-readonly #pulseDashboardTab button,
-        body.koinonia-offline-readonly #dynamicJourneyContainer,
         body.koinonia-offline-readonly #profileTab form,
         body.koinonia-offline-readonly #profileTab .sub-nav,
         body.koinonia-offline-readonly #profileTab .profile-header-right,
@@ -1328,6 +1326,7 @@
     }
 </script>
 
+<script src="/js/offline-data.js?v=12.2"></script>
 <script src="/js/app.js?v=12.2"></script>
 <script src="/js/v2-discipleship.js?v=12.2"></script>
 <script src="/js/v3-worship.js?v=12.2"></script>
@@ -1954,6 +1953,14 @@
     <script id="continuityHubEngineV12">
         // THE NO-REFRESH NATIVE ROUTER
         window.hubNavTo = function(tabName) {
+            if (window.koinoniaAuthStatus === 'offline-readonly') {
+                if (typeof window.showOfflineNotice === 'function') {
+                    window.showOfflineNotice('This section requires an active internet connection.');
+                } else {
+                    alert('This section requires an active internet connection.');
+                }
+                return;
+            }
             // 1. Arcade is a standalone page
             if (tabName === 'arcade') {
                 window.location.href = '/?faith=quest';
@@ -2402,6 +2409,16 @@
                 const adminBtn = isSuperAdmin ? `<button onclick="window.triggerPrayerPalMatching()" style="margin-top: 15px; font-size: 0.8rem; background: #F1F5F9; color: #475569; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: background 0.2s;"><span style="margin-right:5px;">⚙️</span> Admin: Force Daily Pairing Now</button>` : '';
 
                 if (pal && pal.pal_name) {
+                    if (window.KoinoniaOfflineData && typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+                        window.KoinoniaOfflineData.saveDashboardSnapshot('member:' + currentMember.id, {
+                            covenant: {
+                                assignedDate: new Date().toISOString().slice(0, 10),
+                                partnerId: pal.pal_youth_id,
+                                partnerName: pal.pal_name,
+                                partnerAvatar: pal.profile_picture || null
+                            }
+                        });
+                    }
                     const avatarHtml = pal.profile_picture ? `<img src="${pal.profile_picture}" style="width:50px;height:50px;border-radius:50%;object-fit:cover; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">` : `<div style="width:50px;height:50px;border-radius:50%;background:#E2E8F0;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-muted); font-size: 1.2rem; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">${pal.pal_name.charAt(0)}</div>`;
                     
                     const todayStr = new Date().toLocaleDateString();
@@ -2552,6 +2569,25 @@
             const season = (data.season || "Ordinary").toUpperCase() + " TIME";
             const feast = (data.celebrations && data.celebrations.length > 0) ? data.celebrations[0].title : "Daily Gospel";
             const gospel = data.daily_gospel || "I am the bread of life... (John 6:35)";
+
+            if (window.KoinoniaOfflineData) {
+                window.KoinoniaOfflineData.savePublicContent('liturgical_today', {
+                    season,
+                    seasonColor: col,
+                    feast,
+                    gospelSnippet: gospel
+                });
+                if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+                    window.KoinoniaOfflineData.saveDashboardSnapshot('member:' + currentMember.id, {
+                        liturgical: {
+                            season,
+                            seasonColor: col,
+                            feast,
+                            gospelSnippet: gospel
+                        }
+                    });
+                }
+            }
 
             // Forcefully apply the beautiful CSS gradients and remove the white background
             litCard.style.background = 'linear-gradient(135deg, ' + bg + ', #064E3B)';
@@ -2804,6 +2840,17 @@
             .then(res => res.json())
             .then(data => {
                 window.fqLatestReadingsHtml = buildCompactUI(data.season, data.snippet);
+                if (window.KoinoniaOfflineData) {
+                    window.KoinoniaOfflineData.savePublicContent('readings_snippet', data);
+                }
+            }).catch(() => {
+                if (window.KoinoniaOfflineData) {
+                    window.KoinoniaOfflineData.getPublicContent('readings_snippet').then(data => {
+                        if (data && data.snippet) {
+                            window.fqLatestReadingsHtml = buildCompactUI(data.season || 'ORDINARY TIME', data.snippet);
+                        }
+                    }).catch(() => {});
+                }
             });
 
         // Watchdog locks in the layout
