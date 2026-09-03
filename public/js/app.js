@@ -10,10 +10,10 @@ window.logout = async function() {
                 body: JSON.stringify({username: currentUser}) 
             });
         }
-        localStorage.removeItem('fog_user');
+        window.clearAuthenticatedClientState();
         window.location.reload();
     } catch(e) {
-        localStorage.removeItem('fog_user');
+        window.clearAuthenticatedClientState();
         window.location.reload();
     }
 };
@@ -46,6 +46,127 @@ let modalRolesData = []; let modalRolesPage = 1;
 let modalAttData = []; let modalAttPage = 1;
 
 const _originalFetch = window.fetch;
+let authenticatedApi401Handled = false;
+
+function sanitizeAuthenticatedMember(member) {
+    if (!member || typeof member !== 'object') return null;
+    const sanitized = { ...member };
+    delete sanitized.password;
+    delete sanitized.unique_pass_id;
+    delete sanitized.google_id;
+    delete sanitized.facebook_id;
+    return sanitized;
+}
+
+function syncAuthenticatedGlobals() {
+    window.currentUser = currentUser;
+    window.currentMember = currentMember;
+    window.userPermissions = userPermissions;
+}
+
+window.persistAuthenticatedIdentity = function(identity) {
+    if (window.koinoniaAuthStatus !== 'authenticated') return null;
+    const sanitizedIdentity = {
+        username: identity && typeof identity.username === 'string' ? identity.username : currentUser,
+        permissions: identity && Array.isArray(identity.permissions) ? [...identity.permissions] : [],
+        member: sanitizeAuthenticatedMember(identity ? identity.member : currentMember)
+    };
+
+    currentUser = sanitizedIdentity.username;
+    currentMember = sanitizedIdentity.member;
+    userPermissions = sanitizedIdentity.permissions;
+    syncAuthenticatedGlobals();
+
+    try {
+        localStorage.setItem('fog_user', JSON.stringify(sanitizedIdentity));
+    } catch (e) {}
+    return sanitizedIdentity;
+};
+
+window.clearAuthenticatedClientState = function() {
+    currentUser = null;
+    currentMember = null;
+    userPermissions = [];
+    syncAuthenticatedGlobals();
+    window.koinoniaAuthStatus = 'unauthenticated';
+    try { localStorage.removeItem('fog_user'); } catch (e) {}
+};
+
+window.applyCanonicalAuthenticatedIdentity = function(identity) {
+    const canonicalUsername = identity && typeof identity.username === 'string' && identity.username
+        ? identity.username
+        : identity && identity.member && (identity.member.qr_code || identity.member.email || identity.member.name);
+    if (!identity || identity.success !== true || !canonicalUsername) {
+        throw new Error('Invalid authenticated identity');
+    }
+    window.koinoniaAuthStatus = 'authenticated';
+    window.isGuestMode = false;
+    authenticatedApi401Handled = false;
+    return window.persistAuthenticatedIdentity({ ...identity, username: String(canonicalUsername) });
+};
+
+window.refreshAuthenticatedIdentity = function() {
+    const attempt = (async () => {
+        window.clearAuthenticatedClientState();
+        window.koinoniaAuthStatus = 'checking';
+
+        try {
+            const response = await _originalFetch('/api/auth/me', {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store'
+            });
+
+            if (response.status === 401) {
+                window.clearAuthenticatedClientState();
+                return { authenticated: false, reason: 'unauthenticated' };
+            }
+            if (!response.ok) {
+                window.clearAuthenticatedClientState();
+                return { authenticated: false, reason: 'unavailable' };
+            }
+
+            const identity = await response.json();
+            const sanitizedIdentity = window.applyCanonicalAuthenticatedIdentity(identity);
+            return { authenticated: true, identity: sanitizedIdentity };
+        } catch (e) {
+            window.clearAuthenticatedClientState();
+            return { authenticated: false, reason: 'unavailable' };
+        }
+    })();
+
+    window.authReady = attempt;
+    return attempt;
+};
+
+window.handleAuthenticatedApi401 = function() {
+    if (window.koinoniaAuthStatus !== 'authenticated' || authenticatedApi401Handled) return;
+    authenticatedApi401Handled = true;
+    window.clearAuthenticatedClientState();
+
+    setTimeout(() => {
+        const hamburger = document.getElementById('hamburgerBtn');
+        const sidebar = document.getElementById('sidebarNav');
+        const bottomNav = document.getElementById('bottomNav');
+        if (hamburger) hamburger.style.display = 'none';
+        if (sidebar) sidebar.innerHTML = '';
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const publicRequest = urlParams.get('play') || urlParams.get('read') || urlParams.get('event');
+        if (publicRequest) {
+            window.isGuestMode = true;
+            window.currentUser = 'Guest';
+            if (window.renderBottomNav) window.renderBottomNav('guest');
+        } else if (window.switchTab) {
+            if (bottomNav) bottomNav.style.display = 'none';
+            window.switchTab('loginTab');
+        }
+    }, 0);
+};
+
+window.authReady = window.refreshAuthenticatedIdentity();
+
 const OfflineManager = {
     init: function() {
         window.addEventListener('online', this.handleOnline.bind(this));
@@ -103,7 +224,15 @@ const OfflineManager = {
                     headers: { 'Content-Type': 'application/json' }
                 }));
             }
-            return _originalFetch.apply(this, arguments);
+            const response = await _originalFetch.apply(this, arguments);
+            if (response.status === 401) {
+                const requestUrl = typeof resource === 'string' ? resource : resource.url;
+                let requestPath = requestUrl;
+                try { requestPath = new URL(requestUrl, window.location.origin).pathname; } catch (e) {}
+                const authPaths = ['/api/login', '/api/auth/google', '/api/auth/me', '/api/logout'];
+                if (!authPaths.includes(requestPath)) window.handleAuthenticatedApi401();
+            }
+            return response;
         };
     },
     syncQueue: async function() {
@@ -258,13 +387,7 @@ window.onload = () => {
     document.getElementById('mainHeader').style.display = 'block';
     document.getElementById('mainContainer').style.display = 'block';
 
-    const savedSession = localStorage.getItem('fog_user');
-    if (savedSession) {
-        const s = JSON.parse(savedSession);
-        currentUser = s.username;
-        currentMember = s.member;
-        userPermissions = Array.isArray(s.permissions) ? s.permissions : [];
-
+    if (window.koinoniaAuthStatus === 'authenticated') {
         window.buildNav();
         window.applyGranularPermissions();
 
@@ -612,10 +735,11 @@ window.handleLogin = async function(e) {
     const data = await res.json();
 
     if (data.success) {
-        currentUser = data.username;
-        userPermissions = Array.isArray(data.permissions) ? data.permissions : [];
-        currentMember = data.member;
-        localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+        const authResult = await window.refreshAuthenticatedIdentity();
+        if (!authResult.authenticated) {
+            alert('Sign-in succeeded, but the authenticated session could not be verified. Please sign in again.');
+            return;
+        }
         window.buildNav();
         window.applyGranularPermissions();
         if (currentMember) { window.populateProfileTab(currentMember); window.switchTab('profileTab'); }
@@ -630,7 +754,7 @@ window.handleLogin = async function(e) {
 
 window.handleLogout = async function() {
     if (currentUser) await fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser }) });
-    localStorage.removeItem('fog_user'); currentUser = null; currentMember = null; userPermissions = [];
+    window.clearAuthenticatedClientState();
     document.getElementById('hamburgerBtn').style.display = 'none';
     document.getElementById('sidebarNav').innerHTML = '';
     document.getElementById('bottomNav').style.display = 'none';
@@ -871,9 +995,8 @@ window.handleSelfProfileUpdate = async function(e) {
         const data = await res.json();
         if (data.success) {
             alert('Profile updated successfully!');
-            currentMember = data.member;
-            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
-            window.populateProfileTab(data.member);
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
+            window.populateProfileTab(currentMember);
         }
     });
 };
@@ -2748,8 +2871,11 @@ window.handleLogin = async function(e) {
         });
         const data = await res.json();
         if (data.success) {
-            currentUser = data.username; currentMember = data.member; userPermissions = data.permissions || [];
-            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            const authResult = await window.refreshAuthenticatedIdentity();
+            if (!authResult.authenticated) {
+                alert('Sign-in succeeded, but the authenticated session could not be verified. Please sign in again.');
+                return;
+            }
             window.buildNav();
             if(window.applyGranularPermissions) window.applyGranularPermissions();
             if(window.loadDailyManna) window.loadDailyManna();
@@ -2764,11 +2890,9 @@ window.handleLogin = async function(e) {
     }
 };
 
-window.checkLoginState = function() {
-    const saved = localStorage.getItem('fog_user');
-    if (saved) {
-        const userObj = JSON.parse(saved);
-        currentUser = userObj.username; currentMember = userObj.member; userPermissions = userObj.permissions || [];
+window.checkLoginState = async function() {
+    await window.authReady;
+    if (window.koinoniaAuthStatus === 'authenticated') {
         window.buildNav();
         if(window.applyGranularPermissions) window.applyGranularPermissions();
         if(window.loadDailyManna) window.loadDailyManna();
@@ -2920,8 +3044,7 @@ window.submitCommitmentPledge = async function(e) {
         const data = await res.json();
 
         if (data.success) {
-            currentMember = data.member;
-            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions || [], member: currentMember }));
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions || [], member: data.member });
             window.closeCommitmentModal();
             if(window.renderHomeJourney) window.renderHomeJourney();
             alert('Welcome to the family! You have successfully committed to Fire of God Ministries.');
@@ -3195,8 +3318,8 @@ window.logout = async function() {
     if (!confirm('Are you sure you want to log out?')) return;
     try {
         if (typeof currentUser !== 'undefined' && currentUser) { await fetch('/api/logout', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username: currentUser}) }); }
-        localStorage.removeItem('fog_user'); window.location.reload();
-    } catch(e) { localStorage.removeItem('fog_user'); window.location.reload(); }
+        window.clearAuthenticatedClientState(); window.location.reload();
+    } catch(e) { window.clearAuthenticatedClientState(); window.location.reload(); }
 };
 
 
@@ -3664,9 +3787,8 @@ window.handleSelfProfileUpdate = async function(e) {
         const data = await res.json();
         if (data.success) {
             alert('Profile updated successfully!');
-            currentMember = data.member;
-            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
-            window.populateProfileTab(data.member);
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
+            window.populateProfileTab(currentMember);
         }
     });
 };
@@ -3712,8 +3834,7 @@ window.submitCommitment = async function(e) {
         const data = await res.json();
         if (data.success) {
             alert("Welcome to the core community!");
-            currentMember = data.member;
-            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
             closeCommitmentModal();
             if(window.renderHomeJourney) window.renderHomeJourney();
         }
@@ -3936,8 +4057,7 @@ window.submitCommitment = async function(e) {
         const data = await res.json();
         if (data.success) {
             alert("Welcome to the core community!");
-            currentMember = data.member;
-            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
             closeCommitmentModal();
             if(window.renderHomeJourney) window.renderHomeJourney();
         } else { alert(data.error || 'Failed to submit commitment.'); }
@@ -4057,8 +4177,7 @@ window.submitCommitment = async function(e) {
         });
         const data = await res.json();
         if (data.success) {
-            currentMember = data.member;
-            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
             closeCommitmentModal();
             if(window.renderHomeJourney) window.renderHomeJourney();
             
@@ -4230,8 +4349,7 @@ window.submitCommitment = async function(e) {
         });
         const data = await res.json();
         if (data.success) {
-            currentMember = data.member;
-            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
             closeCommitmentModal();
             if(window.renderHomeJourney) window.renderHomeJourney();
             
@@ -4834,14 +4952,7 @@ if (!window.v39FetchPatched) {
                 if (options.body) {
                     let bodyObj = JSON.parse(options.body);
                     
-                    // Forcefully rip the full name directly from the local cache
-                    let realName = window.currentUser || 'Admin';
-                    try {
-                        const localUser = JSON.parse(localStorage.getItem('fog_user'));
-                        if (localUser && localUser.member && localUser.member.name) {
-                            realName = localUser.member.name;
-                        }
-                    } catch(err) {}
+                    const realName = (window.currentMember && window.currentMember.name) || window.currentUser || 'Admin';
                     
                     bodyObj.actor = realName;
                     options.body = JSON.stringify(bodyObj);
@@ -5238,9 +5349,8 @@ window.switchTab = async function(tabId) {
         fetch('/api/youth').then(r=>r.json()).then(users => {
             const fresh = users.find(u => u.id == currentMember.id);
             if (fresh) {
-                currentMember = fresh;
-                localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
-                window.populateProfileTab(fresh);
+                window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: fresh });
+                window.populateProfileTab(currentMember);
             }
         }).catch(e=>{});
     }
@@ -5377,9 +5487,8 @@ window.switchTab = async function(tabId) {
         fetch('/api/youth').then(r=>r.json()).then(users => {
             const fresh = users.find(u => u.id == currentMember.id);
             if (fresh) {
-                currentMember = fresh;
-                localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
-                window.populateProfileTab(fresh);
+                window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: fresh });
+                window.populateProfileTab(currentMember);
             }
         }).catch(e=>{});
     }
@@ -5866,17 +5975,16 @@ window.isGuestMode = false;
 
 // 1. URL ROUTER & LOGIN INTERCEPTOR
 const origCheckLoginStatePhaseB = window.checkLoginState;
-window.checkLoginState = function() {
+window.checkLoginState = async function() {
+    await window.authReady;
     const urlParams = new URLSearchParams(window.location.search);
     const playParam = urlParams.get('play');
     const readParam = urlParams.get('read');
     const eventParam = urlParams.get('event');
 
-    const saved = localStorage.getItem('fog_user');
-
     // SCENARIO A: User is already logged in normally
-    if (saved) {
-        origCheckLoginStatePhaseB();
+    if (window.koinoniaAuthStatus === 'authenticated') {
+        await origCheckLoginStatePhaseB();
         
         // Route them directly to their requested content
         if (playParam) {
@@ -5919,7 +6027,7 @@ window.checkLoginState = function() {
         }
     } else {
         // SCENARIO C: Default Unauthenticated (Send to Login)
-        origCheckLoginStatePhaseB();
+        await origCheckLoginStatePhaseB();
     }
 };
 
@@ -5948,15 +6056,16 @@ window.renderBottomNav = function(context) {
 
 const ogOnLoadPhaseB = window.onload;
 
-window.onload = (e) => {
+window.onload = async (e) => {
+    await window.authReady;
     const urlParams = new URLSearchParams(window.location.search);
     const playParam = urlParams.get('play');
     const readParam = urlParams.get('read');
     const eventParam = urlParams.get('event');
-    const savedSession = localStorage.getItem('fog_user');
+    const hasAuthenticatedSession = window.koinoniaAuthStatus === 'authenticated';
 
     // SCENARIO 1: Unauthenticated Guest accessing Manna or Arcade
-    if (!savedSession && (playParam || readParam)) {
+    if (!hasAuthenticatedSession && (playParam || readParam)) {
         document.getElementById('mainHeader').style.display = 'block';
         document.getElementById('mainContainer').style.display = 'block';
 
@@ -5980,12 +6089,12 @@ window.onload = (e) => {
     }
 
     // SCENARIO 2: Unauthenticated Guest accessing Event Pre-reg
-    if (!savedSession && eventParam) {
+    if (!hasAuthenticatedSession && eventParam) {
         window.isGuestMode = true;
         window.currentUser = 'Guest';
         
         // Let the original script handle the event load
-        if (ogOnLoadPhaseB) ogOnLoadPhaseB(e);
+        if (ogOnLoadPhaseB) await ogOnLoadPhaseB(e);
         
         // Enforce email deduplication & guest nav after the original load finishes
         setTimeout(() => {
@@ -6000,8 +6109,8 @@ window.onload = (e) => {
     }
 
     // SCENARIO 3: Authenticated User overriding their default start tab
-    if (savedSession && (playParam || readParam || eventParam)) {
-        if (ogOnLoadPhaseB) ogOnLoadPhaseB(e);
+    if (hasAuthenticatedSession && (playParam || readParam || eventParam)) {
+        if (ogOnLoadPhaseB) await ogOnLoadPhaseB(e);
         
         // Let original logic log them in, then yank them to their requested content
         setTimeout(() => {
@@ -6015,7 +6124,7 @@ window.onload = (e) => {
     }
 
     // DEFAULT SCENARIO: Normal load (No special URLs)
-    if (ogOnLoadPhaseB) ogOnLoadPhaseB(e);
+    if (ogOnLoadPhaseB) await ogOnLoadPhaseB(e);
 };
 
 // ==========================================
@@ -6472,13 +6581,13 @@ const ogIntervalV19 = setInterval(() => {
 // KIONONIA CORE UX OVERRIDES
 // ==========================================
 const _origCheckLoginState = window.checkLoginState;
-window.checkLoginState = function() {
-    if (_origCheckLoginState) _origCheckLoginState();
+window.checkLoginState = async function() {
+    await window.authReady;
+    if (_origCheckLoginState) await _origCheckLoginState();
     
     // Aggressively force Dashboard 300ms later to override background scripts
     setTimeout(() => {
-        const saved = localStorage.getItem('fog_user');
-        if (saved && !window.location.search.includes('faith=quest')) {
+        if (window.koinoniaAuthStatus === 'authenticated' && !window.location.search.includes('faith=quest')) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             const dash = document.getElementById('pulseDashboardTab');
             if (dash) dash.classList.add('active');

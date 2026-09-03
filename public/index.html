@@ -493,7 +493,8 @@
                 reader.onload = () => resolve(reader.result); reader.onerror = error => reject(error);
             });
 
-            let fogUser = JSON.parse(localStorage.getItem('fog_user') || '{}'); let payload = { actor: window.currentUser ? window.currentUser.username : (fogUser.username || 'celsocreeriii@gmail.com') };
+            await window.authReady;
+            let payload = { actor: window.koinoniaAuthStatus === 'authenticated' && window.currentUser ? window.currentUser : 'celsocreeriii@gmail.com' };
             const logo = document.getElementById('siteLogoInput')?.files[0];
             const prod = document.getElementById('prodIconInput')?.files[0];
             const staging = document.getElementById('stagingIconInput')?.files[0];
@@ -1692,10 +1693,11 @@
             });
             const data = await res.json();
             if (data.success) {
-                currentUser = data.username;
-                currentMember = data.member;
-                userPermissions = data.permissions || [];
-                localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+                const authResult = await window.refreshAuthenticatedIdentity();
+                if (!authResult.authenticated) {
+                    alert('Google sign-in succeeded, but the authenticated session could not be verified. Please sign in again.');
+                    return;
+                }
                 if (window.buildNav) window.buildNav();
                 if (window.applyGranularPermissions) window.applyGranularPermissions();
                 if (data.is_new) alert('Welcome to FOG Ministries! Welcome to the app! Your account has been created seamlessly.');
@@ -1758,21 +1760,22 @@
     <!-- Dashboard Rescue & Personalization Engine -->
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            setTimeout(() => {
-                const user = JSON.parse(localStorage.getItem('fog_user') || '{}');
+            setTimeout(async () => {
+                await window.authReady;
+                const member = window.koinoniaAuthStatus === 'authenticated' ? window.currentMember : null;
                 
                 // A. Personalize Greeting
                 const nameDisplay = document.getElementById('dashWelcomeName');
-                if (nameDisplay && user.member && user.member.name) {
-                    nameDisplay.innerText = 'Welcome back, ' + user.member.name.split(' ')[0] + '!';
+                if (nameDisplay && member && member.name) {
+                    nameDisplay.innerText = 'Welcome back, ' + member.name.split(' ')[0] + '!';
                 }
 
                 // B. Fetch and Display XP
-                if (user.member && user.member.id) {
+                if (member && member.id) {
                     fetch('/api/arcade/leaderboard')
                         .then(res => res.json())
                         .then(data => {
-                            const myData = data.allTime?.find(r => r.name === user.member.name);
+                            const myData = data.allTime?.find(r => r.name === member.name);
                             if (myData) {
                                 const xpCounter = document.getElementById('dashXpCounter');
                                 if (xpCounter) xpCounter.innerText = myData.score + ' Life Points';
@@ -1885,8 +1888,8 @@
             setInterval(() => {
                 try {
                     // 2. Run the Super Admin logic
-                    const user = JSON.parse(localStorage.getItem('fog_user'));
-                    if (user && user.member && user.member.role === 'Super Admin') {
+                    const member = window.koinoniaAuthStatus === 'authenticated' ? window.currentMember : null;
+                    if (member && member.role === 'Super Admin') {
                         
                         // Find XP Badges to anchor our injection point
                         const allElements = Array.from(document.querySelectorAll('div, span, p'));
