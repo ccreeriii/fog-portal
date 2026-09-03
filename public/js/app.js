@@ -2,20 +2,7 @@
 // --- RESTORED LOGOUT FUNCTION ---
 window.logout = async function() {
     if (!confirm('Are you sure you want to log out?')) return;
-    try {
-        if (typeof currentUser !== 'undefined' && currentUser) {
-            await fetch('/api/logout', { 
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({username: currentUser}) 
-            });
-        }
-        window.clearAuthenticatedClientState();
-        window.location.reload();
-    } catch(e) {
-        window.clearAuthenticatedClientState();
-        window.location.reload();
-    }
+    return window.performSecureLogout();
 };
 
 let currentUser = null;
@@ -47,6 +34,22 @@ let modalAttData = []; let modalAttPage = 1;
 
 const _originalFetch = window.fetch;
 let authenticatedApi401Handled = false;
+const OFFLINE_VERIFIED_IDENTITY_KEY = 'fog_offline_verified_identity_v1';
+const OFFLINE_LOGOUT_PENDING_KEY = 'fog_offline_logout_pending_v1';
+const OFFLINE_IDENTITY_VERSION = 1;
+const OFFLINE_IDENTITY_TTL_MS = 8 * 60 * 60 * 1000;
+const AUTH_REQUEST_TIMEOUT_MS = 8000;
+const OFFLINE_IDENTITY_FIELDS = new Set([
+    'version',
+    'canonicalMemberId',
+    'displayName',
+    'displayTier',
+    'verifiedAt',
+    'expiresAt'
+]);
+
+window.koinoniaAuthStatus = 'checking';
+window.koinoniaReadOnlyLock = true;
 
 function sanitizeAuthenticatedMember(member) {
     if (!member || typeof member !== 'object') return null;
@@ -63,6 +66,159 @@ function syncAuthenticatedGlobals() {
     window.currentMember = currentMember;
     window.userPermissions = userPermissions;
 }
+
+function removeLocalStorageItem(key) {
+    try { localStorage.removeItem(key); } catch (e) {}
+}
+
+function clearLiveIdentity() {
+    currentUser = null;
+    currentMember = null;
+    userPermissions = [];
+    syncAuthenticatedGlobals();
+    removeLocalStorageItem('fog_user');
+}
+
+function createVerifiedOfflineSnapshot(identity) {
+    const member = identity && identity.member && typeof identity.member === 'object' ? identity.member : null;
+    const rawMemberId = member && member.id != null ? member.id : null;
+    if (!Number.isSafeInteger(rawMemberId) || rawMemberId <= 0) return null;
+
+    const displayNameValue = member && typeof member.name === 'string' && member.name.trim()
+        ? member.name.trim()
+        : 'Community Member';
+    const displayTierValue = member && typeof member.account_tier === 'string'
+        ? member.account_tier.trim()
+        : '';
+    const verifiedAt = Date.now();
+
+    return {
+        version: OFFLINE_IDENTITY_VERSION,
+        canonicalMemberId: rawMemberId,
+        displayName: displayNameValue.slice(0, 200),
+        displayTier: displayTierValue.slice(0, 100),
+        verifiedAt,
+        expiresAt: verifiedAt + OFFLINE_IDENTITY_TTL_MS
+    };
+}
+
+function persistVerifiedOfflineSnapshot(identity) {
+    const snapshot = createVerifiedOfflineSnapshot(identity);
+    if (!snapshot) return null;
+    try {
+        localStorage.setItem(OFFLINE_VERIFIED_IDENTITY_KEY, JSON.stringify(snapshot));
+        return snapshot;
+    } catch (e) {
+        return null;
+    }
+}
+
+function readVerifiedOfflineSnapshot() {
+    let snapshot;
+    try { snapshot = JSON.parse(localStorage.getItem(OFFLINE_VERIFIED_IDENTITY_KEY) || 'null'); }
+    catch (e) { snapshot = null; }
+
+    const now = Date.now();
+    const valid = Boolean(
+        snapshot &&
+        snapshot.version === OFFLINE_IDENTITY_VERSION &&
+        Object.keys(snapshot).length === OFFLINE_IDENTITY_FIELDS.size &&
+        Object.keys(snapshot).every(key => OFFLINE_IDENTITY_FIELDS.has(key)) &&
+        Number.isSafeInteger(snapshot.canonicalMemberId) &&
+        snapshot.canonicalMemberId > 0 &&
+        typeof snapshot.displayName === 'string' &&
+        snapshot.displayName.length > 0 &&
+        snapshot.displayName.length <= 200 &&
+        typeof snapshot.displayTier === 'string' &&
+        snapshot.displayTier.length <= 100 &&
+        Number.isFinite(snapshot.verifiedAt) &&
+        Number.isFinite(snapshot.expiresAt) &&
+        snapshot.verifiedAt <= now + 5 * 60 * 1000 &&
+        snapshot.expiresAt > now &&
+        snapshot.expiresAt <= snapshot.verifiedAt + OFFLINE_IDENTITY_TTL_MS
+    );
+
+    if (!valid) {
+        removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+        return null;
+    }
+    return snapshot;
+}
+
+function hasPendingLogout() {
+    try { return localStorage.getItem(OFFLINE_LOGOUT_PENDING_KEY) !== null; }
+    catch (e) { return true; }
+}
+
+function markLogoutPending() {
+    try {
+        localStorage.setItem(OFFLINE_LOGOUT_PENDING_KEY, JSON.stringify({
+            version: 1,
+            requestedAt: new Date().toISOString()
+        }));
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function clearLogoutPending() {
+    removeLocalStorageItem(OFFLINE_LOGOUT_PENDING_KEY);
+}
+
+async function originalFetchWithTimeout(resource, options, timeoutMs = AUTH_REQUEST_TIMEOUT_MS) {
+    if (typeof AbortController !== 'function') return _originalFetch(resource, options);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await _originalFetch(resource, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+async function sendServerLogout() {
+    if (!navigator.onLine) return false;
+
+    try {
+        const response = await originalFetchWithTimeout('/api/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({}),
+            credentials: 'same-origin',
+            cache: 'no-store'
+        });
+        return response.ok || response.status === 401;
+    } catch (e) {}
+    return false;
+}
+
+async function resolvePendingLogout() {
+    if (!hasPendingLogout()) return true;
+    const resolved = await sendServerLogout();
+    if (resolved) clearLogoutPending();
+    return resolved;
+}
+
+window.enterOfflineReadonlyIdentity = function() {
+    if (hasPendingLogout()) return false;
+    const snapshot = readVerifiedOfflineSnapshot();
+    if (!snapshot) return false;
+
+    clearLiveIdentity();
+    currentUser = null;
+    currentMember = {
+        id: snapshot.canonicalMemberId,
+        name: snapshot.displayName,
+        account_tier: snapshot.displayTier
+    };
+    userPermissions = [];
+    syncAuthenticatedGlobals();
+    window.koinoniaAuthStatus = 'offline-readonly';
+    window.koinoniaReadOnlyLock = true;
+    window.isGuestMode = false;
+    return true;
+};
 
 window.persistAuthenticatedIdentity = function(identity) {
     if (window.koinoniaAuthStatus !== 'authenticated') return null;
@@ -83,13 +239,12 @@ window.persistAuthenticatedIdentity = function(identity) {
     return sanitizedIdentity;
 };
 
-window.clearAuthenticatedClientState = function() {
-    currentUser = null;
-    currentMember = null;
-    userPermissions = [];
-    syncAuthenticatedGlobals();
+window.clearAuthenticatedClientState = function(options = {}) {
+    clearLiveIdentity();
     window.koinoniaAuthStatus = 'unauthenticated';
-    try { localStorage.removeItem('fog_user'); } catch (e) {}
+    window.koinoniaReadOnlyLock = false;
+    if (options.clearOfflineSnapshot !== false) removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+    if (document.body) document.body.classList.remove('koinonia-offline-readonly');
 };
 
 window.applyCanonicalAuthenticatedIdentity = function(identity) {
@@ -100,18 +255,40 @@ window.applyCanonicalAuthenticatedIdentity = function(identity) {
         throw new Error('Invalid authenticated identity');
     }
     window.koinoniaAuthStatus = 'authenticated';
+    window.koinoniaReadOnlyLock = false;
     window.isGuestMode = false;
     authenticatedApi401Handled = false;
-    return window.persistAuthenticatedIdentity({ ...identity, username: String(canonicalUsername) });
+    if (document.body) document.body.classList.remove('koinonia-offline-readonly');
+    const sanitizedIdentity = window.persistAuthenticatedIdentity({ ...identity, username: String(canonicalUsername) });
+    persistVerifiedOfflineSnapshot(sanitizedIdentity);
+    return sanitizedIdentity;
 };
 
 window.refreshAuthenticatedIdentity = function() {
     const attempt = (async () => {
-        window.clearAuthenticatedClientState();
+        clearLiveIdentity();
         window.koinoniaAuthStatus = 'checking';
+        window.koinoniaReadOnlyLock = true;
+
+        if (hasPendingLogout()) {
+            removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+            window.koinoniaReadOnlyLock = true;
+            const logoutResolved = await resolvePendingLogout();
+            if (!logoutResolved) {
+                window.koinoniaAuthStatus = 'unauthenticated';
+                return { authenticated: false, reason: 'logout-pending' };
+            }
+            window.koinoniaReadOnlyLock = false;
+        }
+
+        if (!navigator.onLine) {
+            const offlineReadonly = window.enterOfflineReadonlyIdentity();
+            if (!offlineReadonly) window.clearAuthenticatedClientState({ clearOfflineSnapshot: false });
+            return { authenticated: false, offlineReadonly, reason: 'unavailable' };
+        }
 
         try {
-            const response = await _originalFetch('/api/auth/me', {
+            const response = await originalFetchWithTimeout('/api/auth/me', {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' },
                 credentials: 'same-origin',
@@ -123,16 +300,18 @@ window.refreshAuthenticatedIdentity = function() {
                 return { authenticated: false, reason: 'unauthenticated' };
             }
             if (!response.ok) {
-                window.clearAuthenticatedClientState();
-                return { authenticated: false, reason: 'unavailable' };
+                const offlineReadonly = window.enterOfflineReadonlyIdentity();
+                if (!offlineReadonly) window.clearAuthenticatedClientState({ clearOfflineSnapshot: false });
+                return { authenticated: false, offlineReadonly, reason: 'unavailable' };
             }
 
             const identity = await response.json();
             const sanitizedIdentity = window.applyCanonicalAuthenticatedIdentity(identity);
             return { authenticated: true, identity: sanitizedIdentity };
         } catch (e) {
-            window.clearAuthenticatedClientState();
-            return { authenticated: false, reason: 'unavailable' };
+            const offlineReadonly = window.enterOfflineReadonlyIdentity();
+            if (!offlineReadonly) window.clearAuthenticatedClientState({ clearOfflineSnapshot: false });
+            return { authenticated: false, offlineReadonly, reason: 'unavailable' };
         }
     })();
 
@@ -167,63 +346,574 @@ window.handleAuthenticatedApi401 = function() {
 
 window.authReady = window.refreshAuthenticatedIdentity();
 
+function rememberOfflineHidden(element) {
+    if (!element || element.hasAttribute('data-koinonia-offline-hidden')) return;
+    element.setAttribute('data-koinonia-offline-hidden', 'true');
+    element.setAttribute('data-koinonia-offline-display', element.style.display || '__empty__');
+    element.style.display = 'none';
+}
+
+function restoreOfflineHiddenElements() {
+    document.querySelectorAll('[data-koinonia-offline-hidden="true"]').forEach(element => {
+        const previousDisplay = element.getAttribute('data-koinonia-offline-display');
+        element.style.display = previousDisplay === '__empty__' ? '' : previousDisplay;
+        element.removeAttribute('data-koinonia-offline-hidden');
+        element.removeAttribute('data-koinonia-offline-display');
+    });
+}
+
+function showTabWithoutOnlineHooks(tabId) {
+    document.querySelectorAll('.tab-content').forEach(element => element.classList.remove('active'));
+    const target = document.getElementById(tabId);
+    if (target) target.classList.add('active');
+    document.querySelectorAll('[data-koinonia-offline-control] [data-target]').forEach(button => {
+        button.classList.toggle('active', button.getAttribute('data-target') === tabId);
+    });
+    window.scrollTo(0, 0);
+}
+
+window.showOfflineReadonlyView = function(tabId) {
+    if (window.koinoniaAuthStatus !== 'offline-readonly') return;
+    if (!['pulseDashboardTab', 'profileTab'].includes(tabId)) return;
+    showTabWithoutOnlineHooks(tabId);
+};
+
+window.renderOfflineReadonlyExperience = function() {
+    if (window.koinoniaAuthStatus !== 'offline-readonly' || !currentMember) return false;
+
+    window.koinoniaReadOnlyLock = true;
+    window.isGuestMode = false;
+    document.body.classList.add('koinonia-offline-readonly');
+
+    const mainHeader = document.getElementById('mainHeader');
+    const mainContainer = document.getElementById('mainContainer');
+    const hamburger = document.getElementById('hamburgerBtn');
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    if (mainHeader) mainHeader.style.display = 'block';
+    if (mainContainer) mainContainer.style.display = 'block';
+    if (hamburger) hamburger.style.display = 'block';
+
+    const offlineNavigation = `
+        <button class="nav-btn active" data-target="pulseDashboardTab" onclick="showOfflineReadonlyView('pulseDashboardTab')">🏠 Offline Home</button>
+        <button class="nav-btn" data-target="profileTab" onclick="showOfflineReadonlyView('profileTab')">👤 Offline Profile</button>
+        <button class="nav-btn text-danger" onclick="logout()">🚪 Logout</button>
+    `;
+    if (sidebar) {
+        sidebar.setAttribute('data-koinonia-offline-control', 'true');
+        sidebar.innerHTML = `<div class="sidebar-header"><img src="/img/logo.png" alt="Logo" class="fog-header-logo"><h2>FOG V3</h2></div>${offlineNavigation}`;
+    }
+    if (bottomNav) {
+        bottomNav.setAttribute('data-koinonia-offline-control', 'true');
+        bottomNav.style.display = 'flex';
+        bottomNav.innerHTML = `
+            <button class="bottom-nav-btn active" data-target="pulseDashboardTab" onclick="showOfflineReadonlyView('pulseDashboardTab')"><span>🏠</span>Home</button>
+            <button class="bottom-nav-btn" data-target="profileTab" onclick="showOfflineReadonlyView('profileTab')"><span>👤</span>Profile</button>
+            <button class="bottom-nav-btn text-danger" onclick="logout()"><span>🚪</span>Logout</button>
+        `;
+    }
+
+    const displayName = currentMember.name || 'Community Member';
+    const welcome = document.getElementById('dashWelcomeName');
+    const points = document.getElementById('dashXpCounter');
+    if (welcome) welcome.textContent = `Welcome, ${displayName.split(' ')[0]}!`;
+    if (points) points.textContent = 'OFFLINE — READ ONLY';
+
+    rememberOfflineHidden(document.getElementById('pulsePrayerPalWidget'));
+    const journeyContainer = document.getElementById('dynamicJourneyContainer');
+    rememberOfflineHidden(journeyContainer ? journeyContainer.closest('.card') : null);
+    document.querySelectorAll('#pulseDashboardTab button, #pulseDashboardTab form, #pulseDashboardTab input, #pulseDashboardTab textarea, #pulseDashboardTab select')
+        .forEach(rememberOfflineHidden);
+
+    const profileName = document.getElementById('myProfileName');
+    const profileAvatar = document.getElementById('myProfileAvatar');
+    const profileCode = document.getElementById('myProfileCode');
+    const bio = document.getElementById('myBioSummaryArchitect') || document.getElementById('myBioSummary');
+    if (profileName) profileName.textContent = displayName;
+    if (profileAvatar) profileAvatar.textContent = displayName.charAt(0).toUpperCase() || '👤';
+    if (bio) {
+        bio.textContent = currentMember.account_tier
+            ? `Previously verified member — ${currentMember.account_tier}. Private details require an online session.`
+            : 'Previously verified member. Private details require an online session.';
+    }
+
+    rememberOfflineHidden(profileCode);
+    rememberOfflineHidden(document.querySelector('#profileTab .profile-header-right'));
+    rememberOfflineHidden(document.getElementById('myGamificationBadges'));
+    rememberOfflineHidden(document.querySelector('#profileTab > .sub-nav'));
+    rememberOfflineHidden(document.getElementById('myProfileTabRoles'));
+    rememberOfflineHidden(document.getElementById('myProfileTabSchedule'));
+    rememberOfflineHidden(document.getElementById('myProfileTabAttendance'));
+    rememberOfflineHidden(document.getElementById('adminSettingsCard'));
+
+    const profileForm = document.querySelector('form[onsubmit*="handleSelfProfileUpdate"]');
+    if (profileForm) rememberOfflineHidden(profileForm.closest('.card') || profileForm);
+    const notificationToggle = document.getElementById('notifToggleBtn');
+    if (notificationToggle) rememberOfflineHidden(notificationToggle.closest('.card'));
+
+    const loader = document.getElementById('globalPreloader');
+    if (loader) {
+        loader.style.opacity = '0';
+        loader.style.display = 'none';
+    }
+
+    showTabWithoutOnlineHooks('pulseDashboardTab');
+    return true;
+};
+
+window.renderUnauthenticatedShell = function() {
+    restoreOfflineHiddenElements();
+    document.body.classList.remove('koinonia-offline-readonly');
+    const mainHeader = document.getElementById('mainHeader');
+    const mainContainer = document.getElementById('mainContainer');
+    const hamburger = document.getElementById('hamburgerBtn');
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    if (mainHeader) mainHeader.style.display = 'block';
+    if (mainContainer) mainContainer.style.display = 'block';
+    if (hamburger) hamburger.style.display = 'none';
+    if (sidebar) {
+        sidebar.removeAttribute('data-koinonia-offline-control');
+        sidebar.innerHTML = '';
+    }
+    if (bottomNav) {
+        bottomNav.removeAttribute('data-koinonia-offline-control');
+        bottomNav.style.display = 'none';
+        bottomNav.innerHTML = '';
+    }
+    showTabWithoutOnlineHooks('loginTab');
+    const loader = document.getElementById('globalPreloader');
+    if (loader) {
+        loader.style.opacity = '0';
+        loader.style.display = 'none';
+    }
+};
+
+window.resumeAuthenticatedOnlineExperience = function() {
+    if (window.koinoniaAuthStatus !== 'authenticated') return;
+    restoreOfflineHiddenElements();
+    document.body.classList.remove('koinonia-offline-readonly');
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    if (sidebar) sidebar.removeAttribute('data-koinonia-offline-control');
+    if (bottomNav) bottomNav.removeAttribute('data-koinonia-offline-control');
+    if (window.buildNav) window.buildNav();
+    if (window.applyGranularPermissions) window.applyGranularPermissions();
+    if (window.loadDailyManna) window.loadDailyManna();
+    if (window.loadSecretPrayerPal) window.loadSecretPrayerPal();
+    if (window.switchTab) window.switchTab('pulseDashboardTab');
+    if (window.renderHomeJourney) window.renderHomeJourney();
+};
+
+window.performSecureLogout = async function() {
+    let logoutPendingStored = markLogoutPending();
+    removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+    if (!logoutPendingStored) logoutPendingStored = markLogoutPending();
+    window.clearAuthenticatedClientState();
+    window.koinoniaReadOnlyLock = true;
+    window.renderUnauthenticatedShell();
+
+    const serverLogoutComplete = await sendServerLogout();
+    if (serverLogoutComplete) {
+        clearLogoutPending();
+        window.koinoniaReadOnlyLock = false;
+    }
+    if (window.OfflineManager && typeof window.OfflineManager.updateUI === 'function') {
+        window.OfflineManager.updateUI();
+    }
+    setTimeout(() => window.location.reload(), 0);
+    return serverLogoutComplete;
+};
+
+function blockOfflineReadonlyInteraction(event) {
+    if (!window.koinoniaReadOnlyLock) return;
+    if (!event.target || typeof event.target.closest !== 'function') return;
+    const interactiveTarget = event.target.closest('button, a[href], input, select, textarea, form, [onclick]');
+    if (!interactiveTarget || interactiveTarget.closest('[data-koinonia-offline-control]')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.type === 'click') alert('This feature is unavailable in Offline — Read Only mode.');
+}
+
+document.addEventListener('click', blockOfflineReadonlyInteraction, true);
+document.addEventListener('submit', blockOfflineReadonlyInteraction, true);
+
+const OFFLINE_QUEUE_STORAGE_KEY = 'fog_offline_queue';
+const OFFLINE_QUEUE_VERSION = 2;
+const OFFLINE_QUEUE_MAX_ENTRIES = 50;
+const OFFLINE_QUEUE_MAX_BODY_BYTES = 16 * 1024;
+const OFFLINE_MUTATION_ALLOWLIST = Object.freeze([]);
+const OFFLINE_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const OFFLINE_LEGACY_REASON = 'legacy-unowned-request-data-removed';
+const OFFLINE_NEVER_QUEUE_PATHS = Object.freeze([
+    /^\/api\/(?:login|logout|auth)(?:\/|$)/i,
+    /^\/api\/(?:public\/)?(?:register(?:[-_][^/]*)?|registration|sign[-_]?up|accounts?)(?:\/|$)/i,
+    /^\/api\/youth(?:\/|$)/i,
+    /\/(?:profiles?|permissions?|pass[-_]?id|qr(?:[-_]?code)?)(?:\/|$)/i,
+    /^\/api\/backups?(?:\/|$)/i,
+    /\/(?:journals?|prayers?|prayer-pals?|ai|inbox|communications|messages?|chat|threads?|replies|small-groups)(?:\/|$)/i,
+    /\/(?:subscriptions?|uploads?|images?)(?:\/|$)/i
+]);
+const OFFLINE_FORBIDDEN_BODY_KEY = /(?:password|passcode|token|credential|secret|authorization|cookie|session|google[_-]?id|facebook[_-]?id|unique[_-]?pass[_-]?id|qr[_-]?code|subscription|profile[_-]?picture|image|photo|journal|prayer|prompt|message|content|email|birthday|mobile|parent|address|sender|username|user[_-]?name|name)/i;
+
+function getOfflineRequestMethod(resource, options) {
+    const method = options && options.method
+        ? options.method
+        : resource && typeof resource === 'object' && resource.method
+            ? resource.method
+            : 'GET';
+    return String(method).toUpperCase();
+}
+
+function getSameOriginRequestPath(resource) {
+    const rawUrl = typeof resource === 'string'
+        ? resource
+        : resource && typeof resource.url === 'string'
+            ? resource.url
+            : null;
+    if (!rawUrl) return null;
+    try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        return parsed.origin === window.location.origin ? parsed.pathname : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function normalizeOfflineMutationPath(resource) {
+    const rawUrl = typeof resource === 'string'
+        ? resource
+        : resource && typeof resource.url === 'string'
+            ? resource.url
+            : null;
+    if (!rawUrl || !rawUrl.startsWith('/') || rawUrl.startsWith('//')) return null;
+
+    try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        if (parsed.origin !== window.location.origin || parsed.search || parsed.hash) return null;
+        return parsed.pathname;
+    } catch (e) {
+        return null;
+    }
+}
+
+function getOfflineAllowlistRule(method, path) {
+    return OFFLINE_MUTATION_ALLOWLIST.find(rule => rule.method === method && rule.path === path) || null;
+}
+
+function isPermanentlyBlockedOfflineMutation(method, path) {
+    if (method === 'DELETE' || !path) return true;
+    return OFFLINE_NEVER_QUEUE_PATHS.some(pattern => pattern.test(path));
+}
+
+function containsForbiddenOfflineData(value, depth = 0) {
+    if (depth > 8) return true;
+    if (typeof value === 'string') return /^data:image\//i.test(value);
+    if (!value || typeof value !== 'object') return false;
+    if (Array.isArray(value)) return value.some(item => containsForbiddenOfflineData(item, depth + 1));
+
+    return Object.entries(value).some(([key, nestedValue]) => (
+        OFFLINE_FORBIDDEN_BODY_KEY.test(key) || containsForbiddenOfflineData(nestedValue, depth + 1)
+    ));
+}
+
+function validateOfflineBody(body, rule) {
+    if (typeof body !== 'string' || new TextEncoder().encode(body).byteLength > OFFLINE_QUEUE_MAX_BODY_BYTES) return null;
+    try {
+        const parsed = JSON.parse(body);
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return null;
+        if (containsForbiddenOfflineData(parsed)) return null;
+        if (rule && typeof rule.validateBody === 'function' && !rule.validateBody(parsed)) return null;
+        return body;
+    } catch (e) {
+        return null;
+    }
+}
+
+function getCanonicalOfflineOwner(identity) {
+    if (!identity || typeof identity.username !== 'string' || !identity.username) return null;
+    const memberId = identity.member && identity.member.id != null ? String(identity.member.id) : null;
+    return { memberId, username: identity.username };
+}
+
+function currentCanonicalOfflineOwner() {
+    if (window.koinoniaAuthStatus !== 'authenticated') return null;
+    return getCanonicalOfflineOwner({ username: currentUser, member: currentMember });
+}
+
+function offlineOwnersMatch(expected, actual) {
+    if (!expected || !actual) return false;
+    return expected.username === actual.username && expected.memberId === actual.memberId;
+}
+
+function createOfflineQueueId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') return null;
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function isSafeVersionedQueueEntry(entry) {
+    if (!entry || entry.version !== OFFLINE_QUEUE_VERSION || typeof entry.queueId !== 'string') return false;
+    if (!['pending', 'blocked-owner'].includes(entry.state)) return false;
+    if (!entry.owner || typeof entry.owner.username !== 'string') return false;
+    if (!(entry.owner.memberId === null || typeof entry.owner.memberId === 'string')) return false;
+    if (typeof entry.createdAt !== 'string' || !Number.isInteger(entry.attemptCount) || entry.attemptCount < 0) return false;
+    if (!(entry.lastAttemptAt === null || typeof entry.lastAttemptAt === 'string')) return false;
+    if (Object.prototype.hasOwnProperty.call(entry, 'headers')) return false;
+
+    const method = String(entry.method || '').toUpperCase();
+    const path = normalizeOfflineMutationPath(entry.path);
+    const rule = getOfflineAllowlistRule(method, path);
+    if (!rule || isPermanentlyBlockedOfflineMutation(method, path)) return false;
+    return validateOfflineBody(entry.body, rule) !== null;
+}
+
+function copySafeVersionedQueueEntry(entry) {
+    return {
+        version: OFFLINE_QUEUE_VERSION,
+        queueId: entry.queueId,
+        owner: { memberId: entry.owner.memberId, username: entry.owner.username },
+        createdAt: entry.createdAt,
+        method: String(entry.method).toUpperCase(),
+        path: entry.path,
+        body: entry.body,
+        attemptCount: entry.attemptCount,
+        lastAttemptAt: entry.lastAttemptAt,
+        state: entry.state
+    };
+}
+
+function createLegacyQueueSummary(discardedCount, createdAt = new Date().toISOString()) {
+    return {
+        version: OFFLINE_QUEUE_VERSION,
+        queueId: 'legacy-quarantine-summary',
+        owner: null,
+        createdAt,
+        method: null,
+        path: null,
+        body: null,
+        attemptCount: 0,
+        lastAttemptAt: null,
+        state: 'quarantined',
+        reason: OFFLINE_LEGACY_REASON,
+        discardedCount
+    };
+}
+
+function isLegacyQueueSummary(entry) {
+    return Boolean(
+        entry && entry.version === OFFLINE_QUEUE_VERSION && entry.state === 'quarantined' &&
+        entry.reason === OFFLINE_LEGACY_REASON && Number.isInteger(entry.discardedCount) && entry.discardedCount > 0
+    );
+}
+
+function readAndSanitizeOfflineQueue() {
+    let rawQueue;
+    try { rawQueue = localStorage.getItem(OFFLINE_QUEUE_STORAGE_KEY); }
+    catch (e) { return []; }
+    if (rawQueue === null) return [];
+
+    let parsedQueue;
+    let discardedCount = 0;
+    let legacySummaryCreatedAt = null;
+    try {
+        parsedQueue = JSON.parse(rawQueue);
+        if (!Array.isArray(parsedQueue)) {
+            parsedQueue = [];
+            discardedCount = 1;
+        }
+    } catch (e) {
+        parsedQueue = [];
+        discardedCount = 1;
+    }
+
+    const sanitizedQueue = [];
+    for (const entry of parsedQueue) {
+        if (isSafeVersionedQueueEntry(entry)) {
+            sanitizedQueue.push(copySafeVersionedQueueEntry(entry));
+        } else if (isLegacyQueueSummary(entry)) {
+            discardedCount += entry.discardedCount;
+            if (!legacySummaryCreatedAt && typeof entry.createdAt === 'string') legacySummaryCreatedAt = entry.createdAt;
+        } else {
+            discardedCount += 1;
+        }
+    }
+
+    if (discardedCount > 0) sanitizedQueue.push(createLegacyQueueSummary(discardedCount, legacySummaryCreatedAt || undefined));
+    const sanitizedJson = JSON.stringify(sanitizedQueue);
+    if (sanitizedJson !== rawQueue) {
+        try { localStorage.setItem(OFFLINE_QUEUE_STORAGE_KEY, sanitizedJson); }
+        catch (e) { return []; }
+    }
+    return sanitizedQueue;
+}
+
+function writeSafeOfflineQueue(queue) {
+    try {
+        localStorage.setItem(OFFLINE_QUEUE_STORAGE_KEY, JSON.stringify(queue));
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function createOfflineUnavailableResponse() {
+    return new Response(JSON.stringify({
+        success: false,
+        offline: true,
+        error: 'An internet connection is required to save this change.',
+        message: 'An internet connection is required for this action.'
+    }), {
+        status: 503,
+        statusText: 'Internet Connection Required',
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+function quarantineOfflineEntry(entry, reason) {
+    return {
+        version: OFFLINE_QUEUE_VERSION,
+        queueId: entry.queueId,
+        owner: entry.owner,
+        createdAt: entry.createdAt,
+        method: entry.method,
+        path: null,
+        body: null,
+        attemptCount: entry.attemptCount,
+        lastAttemptAt: entry.lastAttemptAt,
+        state: 'quarantined',
+        reason
+    };
+}
+
 const OfflineManager = {
+    syncPromise: null,
+    reconnectPromise: null,
+
     init: function() {
+        readAndSanitizeOfflineQueue();
         window.addEventListener('online', this.handleOnline.bind(this));
         window.addEventListener('offline', this.handleOffline.bind(this));
         this.updateUI();
         this.overrideFetch();
+        Promise.resolve(window.authReady)
+            .then(() => this.updateUI())
+            .catch(() => this.updateUI());
         setTimeout(() => { if (navigator.onLine) this.syncQueue(); }, 2000);
     },
+
     updateUI: function() {
         const banner = document.getElementById('offlineBanner');
         if (!banner) return;
-        if (navigator.onLine) {
+        if (window.koinoniaAuthStatus === 'offline-readonly') {
+            banner.textContent = '⚠️ OFFLINE — READ ONLY. Your identity is display-only; changes are disabled.';
+            banner.style.display = 'block';
+            document.body.classList.add('is-offline');
+        } else if (window.koinoniaAuthStatus === 'checking' && window.koinoniaReadOnlyLock) {
+            banner.textContent = '🔄 Reconnecting — verifying your server session before enabling changes.';
+            banner.style.display = 'block';
+            document.body.classList.add('is-offline');
+        } else if (navigator.onLine) {
             banner.style.display = 'none';
             document.body.classList.remove('is-offline');
         } else {
+            banner.textContent = '⚠️ You are offline. An internet connection is required to save changes.';
             banner.style.display = 'block';
             document.body.classList.add('is-offline');
         }
     },
+
     handleOnline: function() {
+        if (this.reconnectPromise) return this.reconnectPromise;
+        window.koinoniaReadOnlyLock = true;
+        window.koinoniaAuthStatus = 'checking';
         this.updateUI();
-        this.syncQueue();
+        this.reconnectPromise = window.refreshAuthenticatedIdentity()
+            .then(result => {
+                this.updateUI();
+                if (result.authenticated) {
+                    window.resumeAuthenticatedOnlineExperience();
+                    return this.syncQueue();
+                }
+                if (window.koinoniaAuthStatus === 'offline-readonly') {
+                    window.renderOfflineReadonlyExperience();
+                } else {
+                    window.renderUnauthenticatedShell();
+                }
+                return undefined;
+            })
+            .catch(() => undefined)
+            .finally(() => { this.reconnectPromise = null; });
+        return this.reconnectPromise;
     },
+
     handleOffline: function() {
+        if (window.koinoniaAuthStatus === 'authenticated') {
+            window.enterOfflineReadonlyIdentity();
+        }
         this.updateUI();
+        if (window.koinoniaAuthStatus === 'offline-readonly') {
+            window.renderOfflineReadonlyExperience();
+        }
     },
+
+    handleOfflineMutation: function(resource, options, method) {
+        this.updateUI();
+        const path = normalizeOfflineMutationPath(resource);
+        const rule = getOfflineAllowlistRule(method, path);
+
+        if (!rule || isPermanentlyBlockedOfflineMutation(method, path)) {
+            return createOfflineUnavailableResponse();
+        }
+
+        const owner = currentCanonicalOfflineOwner();
+        const body = validateOfflineBody(options && options.body, rule);
+        const queueId = createOfflineQueueId();
+        if (!owner || body === null || !queueId) return createOfflineUnavailableResponse();
+
+        const queue = readAndSanitizeOfflineQueue();
+        const pendingCount = queue.filter(entry => isSafeVersionedQueueEntry(entry)).length;
+        if (pendingCount >= OFFLINE_QUEUE_MAX_ENTRIES) return createOfflineUnavailableResponse();
+
+        queue.push({
+            version: OFFLINE_QUEUE_VERSION,
+            queueId,
+            owner,
+            createdAt: new Date().toISOString(),
+            method,
+            path,
+            body,
+            attemptCount: 0,
+            lastAttemptAt: null,
+            state: 'pending'
+        });
+        if (!writeSafeOfflineQueue(queue)) return createOfflineUnavailableResponse();
+
+        return new Response(JSON.stringify({
+            success: false,
+            offline: true,
+            queued: true,
+            synchronized: false,
+            message: 'This approved offline change is pending synchronization.'
+        }), {
+            status: 202,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    },
+
     overrideFetch: function() {
         window.fetch = async function(resource, options) {
-            if (!navigator.onLine && options && ['POST', 'PUT', 'DELETE'].includes(options.method.toUpperCase())) {
-                const url = typeof resource === 'string' ? resource : resource.url;
-
-                if (url.includes('/api/login') || url.includes('/api/logout') || url.includes('/api/backups')) {
-                    return Promise.resolve(new Response(JSON.stringify({ success: false, error: 'This action requires an active internet connection.' }), { status: 400 }));
-                }
-
-                const mockId = Date.now();
-                const queue = JSON.parse(localStorage.getItem('fog_offline_queue') || '[]');
-                queue.push({
-                    url: url,
-                    method: options.method,
-                    headers: options.headers,
-                    body: options.body,
-                    mockId: mockId
-                });
-                localStorage.setItem('fog_offline_queue', JSON.stringify(queue));
-
-                let mockRes = { success: true, offline_queued: true, updated: 1, deleted: 1 };
-                if (url.includes('/api/youth') && options.method.toUpperCase() === 'POST') mockRes = { id: mockId, qr_code: 'OFFLINE-' + mockId, success: true };
-                if (url.includes('/api/checkin')) mockRes = { success: true, member_name: 'Offline Attendee (Queued)', log_id: mockId };
-                if (url.includes('/api/events') && options.method.toUpperCase() === 'POST') mockRes = { id: mockId };
-                if (url.includes('/api/ministries') && options.method.toUpperCase() === 'POST') mockRes = { success: true, id: mockId };
-
-                return Promise.resolve(new Response(JSON.stringify(mockRes), {
-                    status: 200,
-                    headers: { 'Content-Type': 'application/json' }
-                }));
+            const method = getOfflineRequestMethod(resource, options);
+            const requestPath = getSameOriginRequestPath(resource);
+            if (window.koinoniaReadOnlyLock && requestPath && requestPath.startsWith('/api/')) {
+                return createOfflineUnavailableResponse();
             }
+            if ((!navigator.onLine || window.koinoniaReadOnlyLock || hasPendingLogout()) && !OFFLINE_SAFE_METHODS.has(method)) {
+                return OfflineManager.handleOfflineMutation(resource, options, method);
+            }
+
             const response = await _originalFetch.apply(this, arguments);
             if (response.status === 401) {
                 const requestUrl = typeof resource === 'string' ? resource : resource.url;
@@ -235,61 +925,116 @@ const OfflineManager = {
             return response;
         };
     },
-    syncQueue: async function() {
-        const queue = JSON.parse(localStorage.getItem('fog_offline_queue') || '[]');
-        if (queue.length === 0) return;
 
-        console.log(`[Offline Sync Engine] Processing ${queue.length} pending actions...`);
-        let failed = [];
-        let idMap = {};
+    syncQueue: function() {
+        if (this.syncPromise) return this.syncPromise;
+        this.syncPromise = this.runSyncQueue()
+            .catch(() => undefined)
+            .finally(() => { this.syncPromise = null; });
+        return this.syncPromise;
+    },
 
-        for (let req of queue) {
+    runSyncQueue: async function() {
+        const queue = readAndSanitizeOfflineQueue();
+        if (!navigator.onLine || !queue.some(entry => isSafeVersionedQueueEntry(entry))) return;
+
+        try { await Promise.resolve(window.authReady); }
+        catch (e) { return; }
+        if (!navigator.onLine || hasPendingLogout() || window.koinoniaReadOnlyLock || window.koinoniaAuthStatus !== 'authenticated') return;
+
+        let authResponse;
+        try {
+            authResponse = await _originalFetch('/api/auth/me', {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store'
+            });
+        } catch (e) {
+            return;
+        }
+
+        if (authResponse.status === 401) {
+            if (window.koinoniaAuthStatus === 'authenticated') window.handleAuthenticatedApi401();
+            else window.clearAuthenticatedClientState();
+            return;
+        }
+        if (!authResponse.ok) return;
+
+        let identity;
+        let activeOwner;
+        try {
+            identity = await authResponse.json();
+            activeOwner = getCanonicalOfflineOwner(identity);
+            if (!activeOwner) return;
+            window.applyCanonicalAuthenticatedIdentity(identity);
+        } catch (e) {
+            return;
+        }
+
+        const remaining = [];
+        let stopSync = false;
+        let mismatchedOwnerCount = 0;
+
+        for (const entry of queue) {
+            if (!isSafeVersionedQueueEntry(entry)) {
+                remaining.push(entry);
+                continue;
+            }
+            if (stopSync) {
+                remaining.push(entry);
+                continue;
+            }
+            if (!offlineOwnersMatch(entry.owner, activeOwner)) {
+                remaining.push({ ...entry, state: 'blocked-owner' });
+                mismatchedOwnerCount += 1;
+                continue;
+            }
+
+            const attemptedEntry = {
+                ...entry,
+                state: 'pending',
+                attemptCount: entry.attemptCount + 1,
+                lastAttemptAt: new Date().toISOString()
+            };
+
+            let response;
             try {
-                let bodyStr = req.body;
-                if (bodyStr && typeof bodyStr === 'string') {
-                    try {
-                        let bodyObj = JSON.parse(bodyStr);
-                        if (bodyObj.youth_id && idMap[bodyObj.youth_id]) bodyObj.youth_id = idMap[bodyObj.youth_id];
-                        if (bodyObj.event_id && idMap[bodyObj.event_id]) bodyObj.event_id = idMap[bodyObj.event_id];
-                        bodyStr = JSON.stringify(bodyObj);
-                    } catch (err) {}
-                }
-
-                let targetUrl = req.url;
-                for (let fakeId in idMap) {
-                    if (targetUrl.includes(`/${fakeId}`)) targetUrl = targetUrl.replace(`/${fakeId}`, `/${idMap[fakeId]}`);
-                }
-
-                const res = await _originalFetch(targetUrl, {
-                    method: req.method,
-                    headers: req.headers,
-                    body: bodyStr
+                response = await _originalFetch(entry.path, {
+                    method: entry.method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: entry.body,
+                    credentials: 'same-origin'
                 });
-
-                if (!res.ok) throw new Error(`Network response was not ok for ${targetUrl}`);
-                const data = await res.json();
-
-                if (req.mockId && data.id) {
-                    idMap[req.mockId] = data.id;
-                }
             } catch (e) {
-                console.error('[Offline Sync Engine] Failed item:', req.url, e);
-                failed.push(req);
+                remaining.push(attemptedEntry);
+                stopSync = true;
+                continue;
+            }
+
+            if (response.status === 401) {
+                remaining.push(attemptedEntry);
+                stopSync = true;
+                if (window.koinoniaAuthStatus === 'authenticated') window.handleAuthenticatedApi401();
+                else window.clearAuthenticatedClientState();
+            } else if (response.status === 403) {
+                remaining.push(quarantineOfflineEntry(attemptedEntry, 'server-forbidden'));
+            } else if (response.status >= 400 && response.status < 500) {
+                remaining.push(quarantineOfflineEntry(attemptedEntry, 'server-rejected'));
+            } else if (!response.ok) {
+                remaining.push(attemptedEntry);
+                stopSync = true;
             }
         }
 
-        localStorage.setItem('fog_offline_queue', JSON.stringify(failed));
-        if (failed.length === 0) {
-            console.log('[Offline Sync Engine] All offline actions synchronized successfully!');
-            if(document.getElementById('eventsTab') && document.getElementById('eventsTab').classList.contains('active')) window.loadEvents();
-            if(document.getElementById('directoryTab') && document.getElementById('directoryTab').classList.contains('active')) window.loadDirectory();
-            if(document.getElementById('checkinTab') && document.getElementById('checkinTab').classList.contains('active')) window.updateActiveEventBanner();
-            if(document.getElementById('ministriesTab') && document.getElementById('ministriesTab').classList.contains('active')) window.loadMinistries();
-            if(window.loadPendingApplications) window.loadPendingApplications();
+        writeSafeOfflineQueue(remaining);
+        if (mismatchedOwnerCount > 0) {
+            console.warn(`[Offline Sync Engine] ${mismatchedOwnerCount} pending change(s) belong to another account and were not sent.`);
         }
     }
 };
 
+window.OfflineManager = OfflineManager;
 OfflineManager.init();
 
 window.getBase64 = async function(file, maxWidth = 600) {
@@ -370,12 +1115,18 @@ bindExecuteAction();
 
 // STRICT GLOBAL PERMISSION EVALUATOR
 window.hasPerm = function(perm) {
+    if (window.koinoniaAuthStatus !== 'authenticated') return false;
     if (currentUser === 'celsocreeriii@gmail.com') return true;
     if (!userPermissions || !Array.isArray(userPermissions)) return false;
     return userPermissions.includes(perm);
 };
 
 window.onload = () => {
+    if (window.koinoniaAuthStatus === 'offline-readonly') {
+        window.renderOfflineReadonlyExperience();
+        return;
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const eventIdParam = urlParams.get('event');
 
@@ -401,7 +1152,7 @@ window.onload = () => {
         window.loadEvents();
         window.loadDirectory();
     } else {
-        window.switchTab('loginTab');
+        window.renderUnauthenticatedShell();
     }
 };
 
@@ -753,12 +1504,7 @@ window.handleLogin = async function(e) {
 };
 
 window.handleLogout = async function() {
-    if (currentUser) await fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser }) });
-    window.clearAuthenticatedClientState();
-    document.getElementById('hamburgerBtn').style.display = 'none';
-    document.getElementById('sidebarNav').innerHTML = '';
-    document.getElementById('bottomNav').style.display = 'none';
-    window.switchTab('loginTab');
+    return window.performSecureLogout();
 };
 
 window.loadMinistriesAndEventRolesForProfile = async function(youthId, containerId) {
@@ -825,7 +1571,7 @@ window.populateProfileTab = async function(member) {
     }
 
     document.getElementById('myQrContainer').innerHTML = '';
-    if(member.qr_code) {
+    if(member.qr_code && window.QRCode && typeof window.QRCode.toDataURL === 'function') {
         QRCode.toDataURL(member.qr_code, { width: 220 }, function (err, url) {
             if(!err) {
                 const img = document.createElement('img'); img.src = url;
@@ -1021,11 +1767,15 @@ window.handlePublicRegistration = async function(e) {
         document.getElementById('passMemberName').innerText = payload.name;
         document.getElementById('passMemberCode').innerText = `Pass ID & Login: ${data.qr_code}`;
         document.getElementById('qrCanvasContainer').innerHTML = '';
-        QRCode.toDataURL(data.qr_code, { width: 220 }, function (err, url) {
-            const img = document.createElement('img'); img.src = url;
-            document.getElementById('qrCanvasContainer').appendChild(img);
-            document.getElementById('downloadQrBtn').href = url;
-        });
+        if (window.QRCode && typeof window.QRCode.toDataURL === 'function') {
+            QRCode.toDataURL(data.qr_code, { width: 220 }, function (err, url) {
+                const img = document.createElement('img'); img.src = url;
+                document.getElementById('qrCanvasContainer').appendChild(img);
+                document.getElementById('downloadQrBtn').href = url;
+            });
+        } else {
+            document.getElementById('qrCanvasContainer').textContent = 'QR preview requires an internet connection.';
+        }
         document.getElementById('qrPassCard').style.display = 'block';
         document.getElementById('regForm').reset();
         youthData = [];
@@ -1034,6 +1784,10 @@ window.handlePublicRegistration = async function(e) {
 
 window.initScanner = function() {
     if (qrScanner) return;
+    if (typeof window.Html5QrcodeScanner !== 'function') {
+        alert('The QR scanner is unavailable. Please check your connection and try again.');
+        return;
+    }
     qrScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 250, height: 250 } });
     qrScanner.render((decodedText) => {
         const eventId = document.getElementById('activeEventDropdown').value;
@@ -1396,7 +2150,7 @@ window.openViewProfileModal = async function(youthId) {
         if (rightPanel) rightPanel.style.display = 'flex';
 
         document.getElementById('modalQrContainer').innerHTML = '';
-        if(member.qr_code) {
+        if(member.qr_code && window.QRCode && typeof window.QRCode.toDataURL === 'function') {
             QRCode.toDataURL(member.qr_code, { width: 180 }, function (err, url) {
                 if(!err) {
                     const img = document.createElement('img'); img.src = url;
@@ -1869,7 +2623,7 @@ window.executePreregister = async function(youthId, qrCode) {
         if(res.ok) {
             currentPreRegYouthIds.add(youthId);
             document.getElementById('preregSuccessQrContainer').innerHTML = '';
-            if(qrCode) {
+            if(qrCode && window.QRCode && typeof window.QRCode.toDataURL === 'function') {
                 QRCode.toDataURL(qrCode, { width: 200 }, function (err, url) {
                     if (!err) {
                         const img = document.createElement('img'); img.src = url;
@@ -3316,10 +4070,7 @@ document.addEventListener('DOMContentLoaded', secureMinistriesTab);
 
 window.logout = async function() {
     if (!confirm('Are you sure you want to log out?')) return;
-    try {
-        if (typeof currentUser !== 'undefined' && currentUser) { await fetch('/api/logout', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username: currentUser}) }); }
-        window.clearAuthenticatedClientState(); window.location.reload();
-    } catch(e) { window.clearAuthenticatedClientState(); window.location.reload(); }
+    return window.performSecureLogout();
 };
 
 
@@ -5646,16 +6397,8 @@ setInterval(() => {
 }, 1000);
 
 // ========================================================
-// V46: SERVICE WORKER ASSASSIN & ROUTER
+// V46: ROUTER
 // ========================================================
-
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-        for(let registration of registrations) {
-            registration.unregister();
-        }
-    });
-}
 
 window.switchTab = function(tabId, subTabId = null) {
     if (typeof window.renderBottomNav === 'function') window.renderBottomNav(tabId);
@@ -6058,6 +6801,11 @@ const ogOnLoadPhaseB = window.onload;
 
 window.onload = async (e) => {
     await window.authReady;
+    if (window.koinoniaAuthStatus === 'offline-readonly') {
+        window.renderOfflineReadonlyExperience();
+        return;
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const playParam = urlParams.get('play');
     const readParam = urlParams.get('read');
@@ -6583,6 +7331,10 @@ const ogIntervalV19 = setInterval(() => {
 const _origCheckLoginState = window.checkLoginState;
 window.checkLoginState = async function() {
     await window.authReady;
+    if (window.koinoniaAuthStatus === 'offline-readonly') {
+        window.renderOfflineReadonlyExperience();
+        return;
+    }
     if (_origCheckLoginState) await _origCheckLoginState();
     
     // Aggressively force Dashboard 300ms later to override background scripts

@@ -2,16 +2,7 @@
 <html lang="en">
 <head>
 
-    <!-- FQ COMPACT UI LOCK & CACHE BUSTER -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(r => r.forEach(i => i.unregister()));
-        }
-        if(!sessionStorage.getItem('fq_cache_busted_v6')) {
-            sessionStorage.setItem('fq_cache_busted_v6', 'true');
-            window.location.reload(true);
-        }
-    </script>
+    <!-- FQ COMPACT UI LOCK -->
     <style>
         /* Force Green Card Compact Size */
         #liturgicalCard, .lit-card {
@@ -27,9 +18,9 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <title>FIRE OF GOD MINISTRIES - Community Portal</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" async defer></script>
+    <script src="https://unpkg.com/html5-qrcode" async defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js" async defer></script>
     <link rel="stylesheet" href="/css/styles.css?v=12.2">
     <link rel="stylesheet" href="/css/v2-styles.css?v=12.2">
     <link rel="stylesheet" href="/css/v3-styles.css?v=12.2">
@@ -47,6 +38,22 @@
 </style>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>.bottom-nav { z-index: 90 !important; } .modal { z-index: 9999 !important; }</style>
+    <style>
+        body.koinonia-offline-readonly .tab-content:not(#pulseDashboardTab):not(#profileTab),
+        body.koinonia-offline-readonly #pulseDashboardTab button,
+        body.koinonia-offline-readonly #dynamicJourneyContainer,
+        body.koinonia-offline-readonly #profileTab form,
+        body.koinonia-offline-readonly #profileTab .sub-nav,
+        body.koinonia-offline-readonly #profileTab .profile-header-right,
+        body.koinonia-offline-readonly #myProfileCode,
+        body.koinonia-offline-readonly #myGamificationBadges,
+        body.koinonia-offline-readonly #myProfileTabRoles,
+        body.koinonia-offline-readonly #myProfileTabSchedule,
+        body.koinonia-offline-readonly #myProfileTabAttendance,
+        body.koinonia-offline-readonly #adminSettingsCard {
+            display: none !important;
+        }
+    </style>
 
     <!-- 📍 APP STATE MANAGER -->
     
@@ -1316,7 +1323,7 @@
 <script>
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW Failed:', err));
+            navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(err => console.log('SW Failed:', err));
         });
     }
 </script>
