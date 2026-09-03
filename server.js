@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const googleClient = new OAuth2Client('100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com');
 const sqlite3 = require('sqlite3').verbose();
@@ -7,6 +8,185 @@ const fs = require('fs');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const app = express();
+
+const SESSION_COOKIE_NAME = 'koinonia_session';
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const SESSION_CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
+const MAX_SESSIONS = 5000;
+const FORCE_SECURE_SESSION_COOKIE = /^true$/i.test(process.env.KOINONIA_SESSION_COOKIE_SECURE || '');
+const sessionStore = new Map();
+
+function parseCookies(req) {
+    const cookies = Object.create(null);
+    const header = req.headers.cookie;
+    if (!header) return cookies;
+
+    header.split(';').forEach(part => {
+        const separator = part.indexOf('=');
+        if (separator < 0) return;
+        const name = part.slice(0, separator).trim();
+        const value = part.slice(separator + 1).trim();
+        if (!name) return;
+        try { cookies[name] = decodeURIComponent(value); }
+        catch (err) { cookies[name] = value; }
+    });
+    return cookies;
+}
+
+function getSessionId(req) {
+    return parseCookies(req)[SESSION_COOKIE_NAME] || null;
+}
+
+function pruneExpiredSessions(now = Date.now()) {
+    for (const [sessionId, session] of sessionStore) {
+        if (!session || session.expiresAt <= now) sessionStore.delete(sessionId);
+    }
+}
+
+function appendSetCookie(res, cookie) {
+    const existing = res.getHeader('Set-Cookie');
+    if (!existing) res.setHeader('Set-Cookie', cookie);
+    else if (Array.isArray(existing)) res.setHeader('Set-Cookie', [...existing, cookie]);
+    else res.setHeader('Set-Cookie', [existing, cookie]);
+}
+
+function shouldUseSecureSessionCookie(req) {
+    return FORCE_SECURE_SESSION_COOKIE || Boolean(req.socket && req.socket.encrypted);
+}
+
+function setSessionCookie(req, res, sessionId, expiresAt) {
+    const attributes = [
+        `${SESSION_COOKIE_NAME}=${encodeURIComponent(sessionId)}`,
+        'HttpOnly',
+        'SameSite=Strict',
+        'Path=/',
+        `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+        `Expires=${new Date(expiresAt).toUTCString()}`
+    ];
+    if (shouldUseSecureSessionCookie(req)) attributes.push('Secure');
+    appendSetCookie(res, attributes.join('; '));
+}
+
+function expireSessionCookie(req, res) {
+    const attributes = [
+        `${SESSION_COOKIE_NAME}=`,
+        'HttpOnly',
+        'SameSite=Strict',
+        'Path=/',
+        'Max-Age=0',
+        'Expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    ];
+    if (shouldUseSecureSessionCookie(req)) attributes.push('Secure');
+    appendSetCookie(res, attributes.join('; '));
+}
+
+function createAuthenticatedSession(req, res, identity) {
+    const previousSessionId = getSessionId(req);
+    if (previousSessionId) sessionStore.delete(previousSessionId);
+
+    const now = Date.now();
+    pruneExpiredSessions(now);
+    while (sessionStore.size >= MAX_SESSIONS) {
+        const oldestSessionId = sessionStore.keys().next().value;
+        if (!oldestSessionId) break;
+        sessionStore.delete(oldestSessionId);
+    }
+
+    let sessionId;
+    do { sessionId = crypto.randomBytes(32).toString('hex'); }
+    while (sessionStore.has(sessionId));
+
+    const expiresAt = now + SESSION_TTL_MS;
+    sessionStore.set(sessionId, {
+        userId: identity.userId == null ? null : identity.userId,
+        youthId: identity.youthId == null ? null : identity.youthId,
+        username: identity.username,
+        createdAt: now,
+        expiresAt
+    });
+    setSessionCookie(req, res, sessionId, expiresAt);
+}
+
+function getValidSession(req) {
+    const sessionId = getSessionId(req);
+    if (!sessionId) return null;
+    const session = sessionStore.get(sessionId);
+    if (!session || session.expiresAt <= Date.now()) {
+        sessionStore.delete(sessionId);
+        return null;
+    }
+    return { sessionId, session };
+}
+
+function parseStoredPermissions(value) {
+    if (Array.isArray(value)) return value;
+    try {
+        const permissions = JSON.parse(value || '[]');
+        return Array.isArray(permissions) ? permissions : [];
+    } catch (err) {
+        return [];
+    }
+}
+
+function sanitizeMemberForAuth(member) {
+    if (!member) return null;
+    const sanitized = { ...member };
+    delete sanitized.password;
+    delete sanitized.google_id;
+    delete sanitized.facebook_id;
+    delete sanitized.unique_pass_id;
+    return sanitized;
+}
+
+function resolveCanonicalSessionIdentity(session, callback) {
+    const finish = (user) => {
+        const youthId = user && user.youth_id != null ? user.youth_id : session.youthId;
+        const permissions = parseStoredPermissions(user && user.permissions);
+        const username = user && user.username ? user.username : session.username;
+        const identity = {
+            success: true,
+            username,
+            permissions,
+            member: null,
+            is_admin: Boolean(user && (user.youth_id == null || permissions.length > 0))
+        };
+
+        if (youthId == null) return callback(null, user ? identity : null);
+        db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err, member) => {
+            if (err) return callback(err);
+            if (!member) return callback(null, null);
+            identity.member = sanitizeMemberForAuth(member);
+            callback(null, identity);
+        });
+    };
+
+    if (session.userId != null) {
+        db.get(`SELECT id, username, permissions, youth_id FROM users WHERE id = ?`, [session.userId], (err, user) => {
+            if (err) return callback(err);
+            if (!user) return callback(null, null);
+            finish(user);
+        });
+    } else if (session.youthId != null) {
+        db.get(`SELECT id, username, permissions, youth_id FROM users WHERE youth_id = ?`, [session.youthId], (err, user) => {
+            if (err) return callback(err);
+            finish(user || null);
+        });
+    } else {
+        db.get(`SELECT id, username, permissions, youth_id FROM users WHERE username = ?`, [session.username], (err, user) => {
+            if (err) return callback(err);
+            if (!user) return callback(null, null);
+            finish(user);
+        });
+    }
+}
+
+function sendAuthenticatedLogin(req, res, identity, responseBody) {
+    createAuthenticatedSession(req, res, identity);
+    return res.json(responseBody);
+}
+
+const sessionCleanupTimer = setInterval(pruneExpiredSessions, SESSION_CLEANUP_INTERVAL_MS);
+sessionCleanupTimer.unref();
 
 
 
@@ -1016,7 +1196,7 @@ app.post('/api/auth/google', async (req, res) => {
                     db.run(`UPDATE youth SET google_id = ?, profile_picture = ? WHERE id = ?`, [google_id, picture, adminUser.youth_id]);
                     db.get(`SELECT * FROM youth WHERE id = ?`, [adminUser.youth_id], (err, member) => {
                         logActivity(name, 'OAUTH_LOGIN', 'Superadmin logged in via Google');
-                        return res.json({ success: true, username: adminUser.username, permissions: JSON.parse(adminUser.permissions || '[]'), member, is_admin: true });
+                        return sendAuthenticatedLogin(req, res, { userId: adminUser.id, youthId: adminUser.youth_id, username: adminUser.username }, { success: true, username: adminUser.username, permissions: JSON.parse(adminUser.permissions || '[]'), member, is_admin: true });
                     });
                 } else {
                     db.run(`INSERT INTO youth (name, email, profile_picture, google_id, account_tier, created_at) VALUES (?, ?, ?, ?, 'Leader', ?)`, [name, email, picture, google_id, getManilaTime()], function(err) {
@@ -1024,7 +1204,7 @@ app.post('/api/auth/google', async (req, res) => {
                         db.run(`UPDATE users SET youth_id = ? WHERE id = ?`, [newYouthId, adminUser.id]);
                         db.get(`SELECT * FROM youth WHERE id = ?`, [newYouthId], (err, newMember) => {
                             logActivity(name, 'OAUTH_LOGIN', 'Superadmin auto-linked via Google');
-                            return res.json({ success: true, username: adminUser.username, permissions: JSON.parse(adminUser.permissions || '[]'), member: newMember, is_admin: true });
+                            return sendAuthenticatedLogin(req, res, { userId: adminUser.id, youthId: newYouthId, username: adminUser.username }, { success: true, username: adminUser.username, permissions: JSON.parse(adminUser.permissions || '[]'), member: newMember, is_admin: true });
                         });
                     });
                 }
@@ -1037,10 +1217,10 @@ app.post('/api/auth/google', async (req, res) => {
                     if (!member.google_id) {
                         db.run(`UPDATE youth SET google_id = ?, profile_picture = ? WHERE id = ?`, [google_id, picture, member.id]);
                     }
-                    db.get(`SELECT permissions FROM users WHERE youth_id = ?`, [member.id], (err, u) => {
+                    db.get(`SELECT id, username, permissions, youth_id FROM users WHERE youth_id = ?`, [member.id], (err, u) => {
                         const perms = u && u.permissions ? JSON.parse(u.permissions) : [];
                         logActivity(member.name, 'OAUTH_LOGIN', 'Logged in via Google');
-                        return res.json({ success: true, username: member.qr_code, permissions: perms, member, is_admin: perms?.length || 0 > 0 });
+                        return sendAuthenticatedLogin(req, res, { userId: u ? u.id : null, youthId: member.id, username: member.qr_code }, { success: true, username: member.qr_code, permissions: perms, member, is_admin: perms?.length || 0 > 0 });
                     });
                 } else {
                     // 3. Auto-provision New Member
@@ -1053,7 +1233,7 @@ app.post('/api/auth/google', async (req, res) => {
                             db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`, [qrCode, qrCode, newId, getManilaTime()]);
                             logActivity('System', 'NEW_MEMBER_CREATED', `Auto-provisioned New Member '${name}' via Google`);
                             db.get(`SELECT * FROM youth WHERE id = ?`, [newId], (err, newMember) => {
-                                res.json({ success: true, username: newMember.qr_code, permissions: [], member: newMember, is_admin: false, is_new: true });
+                                return sendAuthenticatedLogin(req, res, { userId: null, youthId: newId, username: newMember.qr_code }, { success: true, username: newMember.qr_code, permissions: [], member: newMember, is_admin: false, is_new: true });
                             });
                         });
                     });
@@ -1063,6 +1243,25 @@ app.post('/api/auth/google', async (req, res) => {
     } catch (error) {
         res.status(401).json({ success: false, error: 'Invalid Google Token' });
     }
+});
+
+app.get('/api/auth/me', (req, res) => {
+    const activeSession = getValidSession(req);
+    if (!activeSession) {
+        expireSessionCookie(req, res);
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+
+    resolveCanonicalSessionIdentity(activeSession.session, (err, identity) => {
+        if (err) return res.status(500).json({ success: false, error: 'Unable to resolve session' });
+        if (!identity) {
+            sessionStore.delete(activeSession.sessionId);
+            expireSessionCookie(req, res);
+            return res.status(401).json({ success: false, error: 'Invalid session' });
+        }
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json(identity);
+    });
 });
 
 
@@ -1117,21 +1316,29 @@ app.post('/api/login', (req, res) => {
         if (user) {
             logActivity(username, 'LOGIN', 'User logged in');
             if (user.youth_id) {
-                db.get(`SELECT * FROM youth WHERE id = ?`, [user.youth_id], (e, member) => { return res.json({ success: true, username: user.username, permissions: JSON.parse(user.permissions || '[]'), member, is_admin: true }); });
-            } else return res.json({ success: true, username: user.username, permissions: JSON.parse(user.permissions || '[]'), member: null, is_admin: true });
+                db.get(`SELECT * FROM youth WHERE id = ?`, [user.youth_id], (e, member) => { return sendAuthenticatedLogin(req, res, { userId: user.id, youthId: user.youth_id, username: user.username }, { success: true, username: user.username, permissions: JSON.parse(user.permissions || '[]'), member, is_admin: true }); });
+            } else return sendAuthenticatedLogin(req, res, { userId: user.id, youthId: null, username: user.username }, { success: true, username: user.username, permissions: JSON.parse(user.permissions || '[]'), member: null, is_admin: true });
             return;
         }
         db.get(`SELECT * FROM youth WHERE (qr_code = ? OR email = ? OR name = ?) AND password = ?`, [username, username, username, password], (err2, member) => {
             if (member) {
                 logActivity(member.name, 'LOGIN', 'Member logged into profile');
-                return res.json({ success: true, username: member.qr_code, permissions: [], member, is_admin: false });
+                return sendAuthenticatedLogin(req, res, { userId: null, youthId: member.id, username: member.qr_code }, { success: true, username: member.qr_code, permissions: [], member, is_admin: false });
             }
             logActivity(username, 'FAILED_LOGIN', 'Invalid credentials attempt');
             res.status(401).json({ success: false, message: 'Invalid credentials' });
         });
     });
 });
-app.post('/api/logout', (req, res) => { logActivity(req.body.username, 'LOGOUT', 'User logged out'); res.json({ success: true }); });
+app.post('/api/logout', (req, res) => {
+    const activeSession = getValidSession(req);
+    const sessionId = getSessionId(req);
+    if (sessionId) sessionStore.delete(sessionId);
+    expireSessionCookie(req, res);
+    const requestedUsername = req.body && req.body.username;
+    logActivity(activeSession ? activeSession.session.username : requestedUsername, 'LOGOUT', 'User logged out');
+    res.json({ success: true });
+});
 
 app.put('/api/youth/profile/:id', (req, res) => {
     const { name, age, birthday, social_media, parents_name, password, email, profile_picture, gender, actor } = req.body;
