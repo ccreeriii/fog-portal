@@ -9,6 +9,7 @@ const webpush = require('web-push');
 const cron = require('node-cron');
 const app = express();
 
+const BOOTSTRAP_STRONG_ADMIN_USERNAME = 'celsocreeriii@gmail.com';
 const SESSION_COOKIE_NAME = 'koinonia_session';
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const SESSION_CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
@@ -151,12 +152,12 @@ function resolveCanonicalSessionIdentity(session, callback) {
             is_admin: Boolean(user && (user.youth_id == null || permissions.length > 0))
         };
 
-        if (youthId == null) return callback(null, user ? identity : null);
+        if (youthId == null) return callback(null, user ? identity : null, user || null);
         db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err, member) => {
             if (err) return callback(err);
             if (!member) return callback(null, null);
             identity.member = sanitizeMemberForAuth(member);
-            callback(null, identity);
+            callback(null, identity, user || null);
         });
     };
 
@@ -180,6 +181,219 @@ function resolveCanonicalSessionIdentity(session, callback) {
     }
 }
 
+function sendAuthenticationRequired(res) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+}
+
+function sendForbidden(res) {
+    return res.status(403).json({ success: false, error: 'Forbidden' });
+}
+
+function sendAuthorizationUnavailable(res) {
+    return res.status(500).json({ success: false, error: 'Authorization unavailable' });
+}
+
+function normalizeCanonicalId(value) {
+    let normalized;
+    if (typeof value === 'number') normalized = value;
+    else if (typeof value === 'string' && /^[1-9]\d*$/.test(value)) normalized = Number(value);
+    else return null;
+    return Number.isSafeInteger(normalized) && normalized > 0 ? normalized : null;
+}
+
+function normalizeAuthorizationPermissions(value) {
+    const permissions = parseStoredPermissions(value);
+    return [...new Set(permissions
+        .filter(permission => typeof permission === 'string')
+        .map(permission => permission.trim())
+        .filter(Boolean))];
+}
+
+function normalizeRequiredPermission(permission) {
+    if (typeof permission !== 'string' || !permission.trim()) {
+        throw new TypeError('A non-empty permission name is required');
+    }
+    return permission.trim();
+}
+
+function normalizeRequiredPermissions(permissions) {
+    if (!Array.isArray(permissions) || permissions.length === 0) {
+        throw new TypeError('A non-empty permission list is required');
+    }
+    return [...new Set(permissions.map(normalizeRequiredPermission))];
+}
+
+function authorizationHasPermission(auth, permission) {
+    return Boolean(auth && Array.isArray(auth.permissions) && auth.permissions.includes(permission));
+}
+
+function invalidateAuthorizationSession(req, res, sessionId = null) {
+    const activeSessionId = sessionId || getSessionId(req);
+    if (activeSessionId) sessionStore.delete(activeSessionId);
+    if (res) expireSessionCookie(req, res);
+}
+
+async function loadAuthorizationContext(req, res = null) {
+    if (req.auth) return req.auth;
+
+    const activeSession = getValidSession(req);
+    if (!activeSession) {
+        if (getSessionId(req) && res) expireSessionCookie(req, res);
+        return null;
+    }
+
+    const resolved = await new Promise((resolve, reject) => {
+        resolveCanonicalSessionIdentity(activeSession.session, (err, identity, canonicalUser) => {
+            if (err) return reject(err);
+            resolve({ identity, canonicalUser });
+        });
+    });
+
+    if (!resolved.identity) {
+        invalidateAuthorizationSession(req, res, activeSession.sessionId);
+        return null;
+    }
+
+    const member = sanitizeMemberForAuth(resolved.identity.member);
+    const youthId = normalizeCanonicalId(member && member.id);
+    const userId = normalizeCanonicalId(resolved.canonicalUser && resolved.canonicalUser.id);
+    const username = resolved.canonicalUser && resolved.canonicalUser.username
+        ? resolved.canonicalUser.username
+        : member && (member.qr_code || member.email)
+            ? (member.qr_code || member.email)
+            : resolved.identity.username;
+    const permissions = Object.freeze(normalizeAuthorizationPermissions(
+        resolved.canonicalUser && resolved.canonicalUser.permissions
+    ));
+
+    req.auth = Object.freeze({
+        userId,
+        youthId,
+        username: typeof username === 'string' ? username : null,
+        permissions,
+        member
+    });
+    return req.auth;
+}
+
+async function authorizeRequest(req, res, next, isAllowed) {
+    try {
+        const auth = await loadAuthorizationContext(req, res);
+        if (!auth) return sendAuthenticationRequired(res);
+        if (isAllowed && !(await isAllowed(auth, req))) return sendForbidden(res);
+        return next();
+    } catch (err) {
+        console.error('Authorization context resolution failed');
+        return sendAuthorizationUnavailable(res);
+    }
+}
+
+function requireAuth(req, res, next) {
+    return authorizeRequest(req, res, next);
+}
+
+function requirePermission(permission) {
+    const requiredPermission = normalizeRequiredPermission(permission);
+    return (req, res, next) => authorizeRequest(
+        req,
+        res,
+        next,
+        auth => authorizationHasPermission(auth, requiredPermission)
+    );
+}
+
+function requireAnyPermission(permissions) {
+    const requiredPermissions = normalizeRequiredPermissions(permissions);
+    return (req, res, next) => authorizeRequest(
+        req,
+        res,
+        next,
+        auth => requiredPermissions.some(permission => authorizationHasPermission(auth, permission))
+    );
+}
+
+function requireAllPermissions(permissions) {
+    const requiredPermissions = normalizeRequiredPermissions(permissions);
+    return (req, res, next) => authorizeRequest(
+        req,
+        res,
+        next,
+        auth => requiredPermissions.every(permission => authorizationHasPermission(auth, permission))
+    );
+}
+
+function isStrongAdmin(auth) {
+    return Boolean(
+        auth &&
+        auth.userId !== null &&
+        auth.username === BOOTSTRAP_STRONG_ADMIN_USERNAME &&
+        authorizationHasPermission(auth, 'access_permissions')
+    );
+}
+
+function requireStrongAdmin(req, res, next) {
+    return authorizeRequest(req, res, next, isStrongAdmin);
+}
+
+function isCanonicalSelf(auth, memberId) {
+    const canonicalYouthId = normalizeCanonicalId(auth && auth.youthId);
+    const requestedYouthId = normalizeCanonicalId(memberId);
+    return canonicalYouthId !== null && requestedYouthId !== null && canonicalYouthId === requestedYouthId;
+}
+
+function requireSelfOr(permission, getRequestedMemberId) {
+    const overridePermission = normalizeRequiredPermission(permission);
+    if (typeof getRequestedMemberId !== 'function') {
+        throw new TypeError('A member ID resolver is required');
+    }
+    return (req, res, next) => authorizeRequest(
+        req,
+        res,
+        next,
+        auth => isCanonicalSelf(auth, getRequestedMemberId(req)) ||
+            authorizationHasPermission(auth, overridePermission)
+    );
+}
+
+const RESOURCE_OWNERSHIP = Object.freeze({
+    journal: Object.freeze({ table: 'private_journals', ownerColumn: 'youth_id' }),
+    personalInbox: Object.freeze({ table: 'personal_inbox', ownerColumn: 'receiver_id' }),
+    notification: Object.freeze({ table: 'user_notifications', ownerColumn: 'youth_id' }),
+    prayer: Object.freeze({ table: 'prayer_requests', ownerColumn: 'youth_id' }),
+    blockout: Object.freeze({ table: 'blockout_dates', ownerColumn: 'youth_id' }),
+    eventRole: Object.freeze({ table: 'event_roles', ownerColumn: 'youth_id' })
+});
+
+function loadResourceOwnerYouthId(resourceType, resourceId) {
+    const ownership = RESOURCE_OWNERSHIP[resourceType];
+    const normalizedResourceId = normalizeCanonicalId(resourceId);
+    if (!ownership || normalizedResourceId === null) return Promise.resolve(null);
+
+    return new Promise((resolve, reject) => {
+        db.get(
+            `SELECT ${ownership.ownerColumn} AS youth_id FROM ${ownership.table} WHERE id = ?`,
+            [normalizedResourceId],
+            (err, row) => {
+                if (err) return reject(err);
+                resolve(normalizeCanonicalId(row && row.youth_id));
+            }
+        );
+    });
+}
+
+async function isCanonicalResourceOwner(auth, resourceType, resourceId) {
+    const ownerYouthId = await loadResourceOwnerYouthId(resourceType, resourceId);
+    return isCanonicalSelf(auth, ownerYouthId);
+}
+
+function getCanonicalAuditActor(req) {
+    const auth = req && req.auth;
+    if (!auth) return null;
+    if (typeof auth.username === 'string' && auth.username) return auth.username;
+    if (auth.member && typeof auth.member.name === 'string' && auth.member.name) return auth.member.name;
+    return auth.youthId === null ? null : `Member ${auth.youthId}`;
+}
+
 function sendAuthenticatedLogin(req, res, identity, responseBody) {
     createAuthenticatedSession(req, res, identity);
     return res.json(responseBody);
@@ -201,7 +415,7 @@ sessionCleanupTimer.unref();
 
 
 // [KOINONIA PATCH] SUPER ADMIN PASS-ID BY NAME
-app.get('/api/admin/pass-id-by-name/:name', (req, res) => {
+app.get('/api/admin/pass-id-by-name/:name', requireStrongAdmin, (req, res) => {
     if (typeof db !== 'undefined') {
         const decodedName = decodeURIComponent(req.params.name).trim();
         db.get("SELECT unique_pass_id FROM youth WHERE name = ?", [decodedName], (err, row) => {
@@ -212,7 +426,7 @@ app.get('/api/admin/pass-id-by-name/:name', (req, res) => {
 });
 
 // [KOINONIA PATCH] SUPER ADMIN PASS-ID BY EMAIL
-app.get('/api/admin/pass-id-by-email/:email', (req, res) => {
+app.get('/api/admin/pass-id-by-email/:email', requireStrongAdmin, (req, res) => {
     if (typeof db !== 'undefined') {
         db.get("SELECT unique_pass_id FROM youth WHERE email = ?", [req.params.email], (err, row) => {
             if (!err && row) res.json({ unique_pass_id: row.unique_pass_id });
@@ -222,8 +436,7 @@ app.get('/api/admin/pass-id-by-email/:email', (req, res) => {
 });
 
 // [KOINONIA PATCH] SUPER ADMIN PASS-ID OVERRIDE
-app.get('/api/admin/pass-id/:id', (req, res) => {
-    // Basic auth check - in production, verify session role strictly
+app.get('/api/admin/pass-id/:id', requireStrongAdmin, (req, res) => {
     const userId = req.params.id;
     if (typeof db !== 'undefined') {
         db.get("SELECT unique_pass_id FROM youth WHERE id = ?", [userId], (err, row) => {
@@ -406,7 +619,7 @@ app.post('/api/communications/broadcast', (req, res) => {
 
 
 // [KOINONIA PATCH] ADMIN MANUAL PRAYER PAL TRIGGER
-app.post('/api/admin/trigger-prayer-pals', (req, res) => {
+app.post('/api/admin/trigger-prayer-pals', requirePermission('edit_entries'), (req, res) => {
     if(typeof db === 'undefined') return res.status(500).json({error: "DB not initialized"});
     
     const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
@@ -667,6 +880,23 @@ if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir);
 const imgDir = path.join(__dirname, 'public', 'img');
 if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
 
+function resolveBackupRestorePath(filename) {
+    if (
+        typeof filename !== 'string' ||
+        filename.length === 0 ||
+        filename.length > 255 ||
+        filename !== filename.trim() ||
+        filename !== path.basename(filename) ||
+        !/^[A-Za-z0-9][A-Za-z0-9._-]*\.db$/.test(filename)
+    ) {
+        return null;
+    }
+
+    const resolvedBackupDir = path.resolve(backupDir);
+    const resolvedTargetFile = path.resolve(resolvedBackupDir, filename);
+    return path.dirname(resolvedTargetFile) === resolvedBackupDir ? resolvedTargetFile : null;
+}
+
 function runDatabaseBackup() {
     const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
     const pad = (n) => String(n).padStart(2, '0');
@@ -689,10 +919,10 @@ const db = new sqlite3.Database('./fog_community.db', (err) => {
 db.serialize(() => {
 
     // AUTO-HEAL SUPERADMIN CONFLICT
-    db.get(`SELECT id FROM youth WHERE email = 'celsocreeriii@gmail.com'`, [], (err, yRow) => {
+    db.get(`SELECT id FROM youth WHERE email = ?`, [BOOTSTRAP_STRONG_ADMIN_USERNAME], (err, yRow) => {
         if (yRow) {
-            db.run(`UPDATE users SET youth_id = ? WHERE username = 'celsocreeriii@gmail.com'`, [yRow.id]);
-            db.run(`DELETE FROM users WHERE youth_id = ? AND username != 'celsocreeriii@gmail.com'`, [yRow.id]);
+            db.run(`UPDATE users SET youth_id = ? WHERE username = ?`, [yRow.id, BOOTSTRAP_STRONG_ADMIN_USERNAME]);
+            db.run(`DELETE FROM users WHERE youth_id = ? AND username != ?`, [yRow.id, BOOTSTRAP_STRONG_ADMIN_USERNAME]);
         }
     });
 
@@ -806,8 +1036,8 @@ db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     });
 
     const superadminPermissions = JSON.stringify(['access_checkin', 'access_directory', 'access_events', 'access_attendance', 'access_activity', 'access_permissions', 'access_ministries', 'access_discipleship', 'access_ai', 'access_worship', 'access_communications', 'add_entries', 'edit_entries', 'delete_entries']);
-    db.run(`INSERT OR IGNORE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`, ['celsocreeriii@gmail.com', 'JesusisLord', superadminPermissions, getManilaTime()]);
-    db.run(`UPDATE users SET permissions = ? WHERE username = 'celsocreeriii@gmail.com'`, [superadminPermissions]);
+    db.run(`INSERT OR IGNORE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`, [BOOTSTRAP_STRONG_ADMIN_USERNAME, 'JesusisLord', superadminPermissions, getManilaTime()]);
+    db.run(`UPDATE users SET permissions = ? WHERE username = ?`, [superadminPermissions, BOOTSTRAP_STRONG_ADMIN_USERNAME]);
 
     db.all(`SELECT id, qr_code FROM youth WHERE id NOT IN (SELECT youth_id FROM users WHERE youth_id IS NOT NULL)`, [], (err, rows) => {
         if (rows && rows?.length || 0 > 0) {
@@ -1097,9 +1327,8 @@ app.get('/apple-touch-icon.png', (req, res) => {
     if (fs.existsSync(absolutePath)) res.sendFile(absolutePath); else res.status(404).send('Icon not uploaded yet.');
 });
 
-app.post('/api/settings/images', (req, res) => {
-    const { logo, prodIcon, stagingIcon, faithQuestThumb, faithRegBanner, actor } = req.body;
-    if (actor !== 'celsocreeriii@gmail.com') return res.status(403).json({ error: 'Unauthorized' });
+app.post('/api/settings/images', requireStrongAdmin, (req, res) => {
+    const { logo, prodIcon, stagingIcon, faithQuestThumb, faithRegBanner } = req.body;
     try {
         const saveImageToDisk = (base64Str, filename) => {
             if (!base64Str) return; // Safely aborts if no file was uploaded!
@@ -1113,7 +1342,7 @@ app.post('/api/settings/images', (req, res) => {
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: 'Failed to write files to disk: ' + err.message }); }
 });
-app.get('/api/backups', (req, res) => {
+app.get('/api/backups', requireStrongAdmin, (req, res) => {
     if (!fs.existsSync(backupDir)) return res.json([]);
     const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.db')).map(f => {
         const stats = fs.statSync(path.join(backupDir, f));
@@ -1123,11 +1352,19 @@ app.get('/api/backups', (req, res) => {
     res.json(files);
 });
 
-app.post('/api/backups/restore', (req, res) => {
-    const { filename, actor } = req.body;
-    const targetFile = path.join(backupDir, filename);
+app.post('/api/backups/restore', requireStrongAdmin, (req, res) => {
+    const { filename } = req.body;
+    const actor = getCanonicalAuditActor(req);
+    const targetFile = resolveBackupRestorePath(filename);
+    if (!targetFile) return res.status(400).json({ error: 'Invalid backup filename' });
     if (!fs.existsSync(targetFile)) return res.status(404).json({ error: 'File not found' });
     try {
+        const targetStats = fs.lstatSync(targetFile);
+        const realBackupDir = fs.realpathSync(backupDir);
+        const realTargetFile = fs.realpathSync(targetFile);
+        if (!targetStats.isFile() || targetStats.isSymbolicLink() || path.dirname(realTargetFile) !== realBackupDir) {
+            return res.status(400).json({ error: 'Invalid backup file' });
+        }
         const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
         const pad = (n) => String(n).padStart(2, '0');
         const timeStr = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
@@ -1135,7 +1372,7 @@ app.post('/api/backups/restore', (req, res) => {
         fs.copyFileSync('./fog_community.db', autoBackup);
         logActivity(actor, 'RESTORE_DB', `Restored from ${filename}. Pre-restore saved to ${path.basename(autoBackup)}`);
         db.close((err) => {
-            fs.copyFileSync(targetFile, './fog_community.db');
+            fs.copyFileSync(realTargetFile, './fog_community.db');
             res.json({ success: true });
             setTimeout(() => { process.exit(0); }, 1000);
         });
@@ -1150,15 +1387,12 @@ app.get('/api/settings/featured', (req, res) => {
     });
 });
 
-app.post('/api/settings/featured', (req, res) => {
-    const { featured_arcade, featured_growth, actor } = req.body;
-    db.get(`SELECT permissions FROM users WHERE username = ?`, [actor], (err, user) => {
-        if (actor !== 'celsocreeriii@gmail.com' && (!user || !user.permissions.includes('edit_entries'))) return res.status(403).json({ error: 'Unauthorized' });
-        db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('featured_arcade', ?)`, [featured_arcade || '']);
-        db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('featured_growth', ?)`, [featured_growth || '']);
-        logActivity(actor, 'UPDATE_FEATURED_GAMES', `Updated featured games to: Arcade=${featured_arcade}, Growth=${featured_growth}`);
-        res.json({ success: true });
-    });
+app.post('/api/settings/featured', requirePermission('edit_entries'), (req, res) => {
+    const { featured_arcade, featured_growth } = req.body;
+    db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('featured_arcade', ?)`, [featured_arcade || '']);
+    db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('featured_growth', ?)`, [featured_growth || '']);
+    logActivity(getCanonicalAuditActor(req), 'UPDATE_FEATURED_GAMES', `Updated featured games to: Arcade=${featured_arcade}, Growth=${featured_growth}`);
+    res.json({ success: true });
 });
 
 // NEW HABITS SETTINGS API
@@ -1170,11 +1404,11 @@ app.get('/api/settings/growth-habits', (req, res) => {
     });
 });
 
-app.post('/api/settings/growth-habits', (req, res) => {
-    const { journal_points, prayer_points, actor } = req.body;
+app.post('/api/settings/growth-habits', requirePermission('edit_entries'), (req, res) => {
+    const { journal_points, prayer_points } = req.body;
     db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('journal_points', ?)`, [journal_points]);
     db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('prayer_points', ?)`, [prayer_points]);
-    logActivity(actor, 'UPDATE_HABIT_SETTINGS', `Updated Daily Habit Points: Journal=${journal_points}, Prayer=${prayer_points}`);
+    logActivity(getCanonicalAuditActor(req), 'UPDATE_HABIT_SETTINGS', `Updated Daily Habit Points: Journal=${journal_points}, Prayer=${prayer_points}`);
     res.json({ success: true });
 });
 
@@ -1353,10 +1587,10 @@ app.put('/api/youth/profile/:id', (req, res) => {
     });
 });
 
-app.put('/api/youth/:id/permissions', (req, res) => {
+app.put('/api/youth/:id/permissions', requireStrongAdmin, (req, res) => {
     const youthId = parseInt(req.params.id, 10);
     const permString = JSON.stringify(req.body.permissions || []);
-    const actor = req.body.actor || 'System';
+    const actor = getCanonicalAuditActor(req) || 'System';
     db.get('SELECT * FROM youth WHERE id = ?', [youthId], (err, youth) => {
         if (err || !youth) return res.json({ success: false });
         const targetQr = youth.qr_code || `FOG-MEMBER-${String(youthId).padStart(3, '0')}`;
@@ -1399,7 +1633,7 @@ app.post('/api/youth', (req, res) => {
     });
 });
 app.delete('/api/youth/:id', (req, res) => { db.run(`DELETE FROM youth WHERE id=?`, [req.params.id], function (err) { db.run(`DELETE FROM users WHERE youth_id=?`, [req.params.id]); logActivity(req.body.actor, 'DELETE_MEMBER', `Deleted member record`); res.json({ deleted: this.changes }); }); });
-app.get('/api/users/list', (req, res) => { db.all(`SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`, [], (err, rows) => { res.json(rows.map(r => ({ id: r.id, username: r.username, display_name: r.member_name ? `${r.member_name}` : r.username, qr_code: r.member_code || r.username, youth_id: r.youth_id, permissions: r.permissions || '[]' }))); }); });
+app.get('/api/users/list', requirePermission('access_permissions'), (req, res) => { db.all(`SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`, [], (err, rows) => { res.json(rows.map(r => ({ id: r.id, username: r.username, display_name: r.member_name ? `${r.member_name}` : r.username, qr_code: r.member_code || r.username, youth_id: r.youth_id, permissions: r.permissions || '[]' }))); }); });
 
 app.post('/api/checkin', (req, res) => {
     const { youth_id, event_id, is_walkin, actor, qr_code } = req.body;
@@ -2415,24 +2649,19 @@ app.put('/api/ministries/members/:mapping_id/priority', (req, res) => {
 // V120: BULLETPROOF FAITH QUEST ENDPOINTS
 // ==========================================
 // 1. Authorized Image Uploader V2
-app.post('/api/settings/images-v2', (req, res) => {
-    const { logo, prodIcon, stagingIcon, faithQuestThumb, faithRegBanner, actor } = req.body;
-    db.get('SELECT permissions FROM users WHERE username = ?', [actor], (err, user) => {
-        if (actor !== 'celsocreeriii@gmail.com' && (!user || !user.permissions.includes('edit_entries'))) {
-            return res.status(403).json({ error: 'Unauthorized' });
-        }
-        try {
-            const saveImg = (b64, baseFname) => {
+app.post('/api/settings/images-v2', requirePermission('edit_entries'), (req, res) => {
+    const { logo, prodIcon, stagingIcon, faithQuestThumb, faithRegBanner } = req.body;
+    try {
+        const saveImg = (b64, baseFname) => {
             if (!b64) return;
             const isVideo = b64.includes('video');
             const ext = isVideo ? '.mp4' : '.png';
             const base64Data = b64.replace(/^data:(image|video)\/\w+;base64,/, "");
             require('fs').writeFileSync(require('path').join(__dirname, 'public', 'img', baseFname + ext), Buffer.from(base64Data, 'base64'));
         };
-            saveImg(logo, 'logo'); saveImg(prodIcon, 'icon-prod'); saveImg(stagingIcon, 'icon-staging'); saveImg(faithQuestThumb, 'faith-quest-thumb'); saveImg(faithRegBanner, 'faith-reg-banner');
-            res.json({ success: true });
-        } catch (err) { res.status(500).json({ error: err.message }); }
-    });
+        saveImg(logo, 'logo'); saveImg(prodIcon, 'icon-prod'); saveImg(stagingIcon, 'icon-staging'); saveImg(faithQuestThumb, 'faith-quest-thumb'); saveImg(faithRegBanner, 'faith-reg-banner');
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // 2. De-duplicated Leaderboards V2
@@ -2554,7 +2783,7 @@ app.post('/api/public/register-wanderer', (req, res) => {
 });
 
 // [KOINONIA PATCH] LIVE SEARCH FOR CAMPFIRE INVITES
-app.get('/api/admin/users/search', (req, res) => {
+app.get('/api/admin/users/search', requireAuth, (req, res) => {
     if (typeof db !== 'undefined') {
         const q = '%' + (req.query.q || '') + '%';
         // Securely search users by name limit to 10 results
