@@ -1,7 +1,7 @@
 /**
  * Koinonia Offline Engine v2 — Phase A1
  * public/js/offline-data.js
- * 
+ *
  * Native IndexedDB display cache for offline dashboard resilience.
  * DISPLAY CACHING ONLY — Never grants server authority or session authentication.
  */
