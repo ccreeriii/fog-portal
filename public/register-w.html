@@ -238,9 +238,46 @@
                         
                         const result = await res.json();
                         
-                        if (res.ok) {
+                        if (res.status === 409) {
+                            localStorage.removeItem('fog_user');
+                            alert(result.error || 'An account with this email already exists. Please sign in.');
+                            window.location.href = '/';
+                        } else if (res.ok && result.success) {
+                            let authRes;
+                            let identity;
+                            try {
+                                authRes = await fetch('/api/auth/me', {
+                                    method: 'GET',
+                                    headers: { 'Accept': 'application/json' },
+                                    cache: 'no-store'
+                                });
+                                identity = await authRes.json();
+                            } catch (authErr) {
+                                localStorage.removeItem('fog_user');
+                                alert('Your profile was created, but sign-in could not be confirmed. Please sign in.');
+                                window.location.href = '/';
+                                return;
+                            }
+
+                            if (!authRes.ok || !identity || !identity.success || !identity.member || !identity.member.id) {
+                                localStorage.removeItem('fog_user');
+                                alert('Your profile was created, but sign-in could not be confirmed. Please sign in.');
+                                window.location.href = '/';
+                                return;
+                            }
+
+                            const safeMember = { ...identity.member };
+                            delete safeMember.password;
+                            delete safeMember.unique_pass_id;
+                            delete safeMember.google_id;
+                            delete safeMember.facebook_id;
+
+                            localStorage.setItem('fog_user', JSON.stringify({
+                                username: identity.username,
+                                permissions: Array.isArray(identity.permissions) ? identity.permissions : [],
+                                member: safeMember
+                            }));
                             alert('✅ Profile created successfully! Welcome to the Koinonia journey.');
-                            localStorage.setItem('fog_user', JSON.stringify({ member: result }));
                             window.location.href = '/?tab=home'; 
                         } else {
                             alert('❌ Error: ' + (result.error || 'Failed to register.'));

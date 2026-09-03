@@ -2518,22 +2518,38 @@ app.post('/api/public/register-wanderer', (req, res) => {
     }
     
     if (typeof db !== 'undefined') {
-        db.get("SELECT * FROM youth WHERE email = ?", [email], (err, row) => {
-            if (err) return res.status(500).json({ error: "Database lookup error: " + err.message });
+        db.get("SELECT id FROM youth WHERE email = ?", [email], (err, row) => {
+            if (err) return res.status(500).json({ error: "Unable to check registration details." });
             
             if (row) {
-                // User exists -> Simulate login!
-                return res.json({ id: row.id, name: row.name, email: row.email, role: row.role || 'Wanderer', message: 'User exists, logging in.' });
+                return res.status(409).json({
+                    success: false,
+                    error: "An account with this email already exists. Please sign in."
+                });
             } else {
                 // Insert new user
                 db.run("INSERT INTO youth (name, email, password) VALUES (?, ?, ?)", [name, email, password], function(err) {
-                    if (err) return res.status(500).json({ error: "Database insert error: " + err.message });
-                    res.json({ id: this.lastID, name: name, email: email, role: 'Wanderer' });
+                    if (err) return res.status(500).json({ error: "Unable to create the account." });
+
+                    const newYouthId = this.lastID;
+                    db.get("SELECT id, email, qr_code FROM youth WHERE id = ?", [newYouthId], (lookupErr, newMember) => {
+                        if (lookupErr || !newMember) {
+                            return res.status(500).json({ error: "Account created, but sign-in could not be completed. Please sign in." });
+                        }
+
+                        const canonicalUsername = newMember.qr_code || newMember.email || String(newMember.id);
+                        return sendAuthenticatedLogin(
+                            req,
+                            res,
+                            { userId: null, youthId: newMember.id, username: canonicalUsername },
+                            { success: true, is_new: true, message: "Profile created successfully." }
+                        );
+                    });
                 });
             }
         });
     } else {
-        res.json({ id: Date.now(), name: name, email: email, role: 'Wanderer' });
+        res.status(503).json({ error: "Registration is temporarily unavailable." });
     }
 });
 
