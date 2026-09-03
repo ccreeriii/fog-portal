@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v5';
+const CACHE_NAME = 'fog-portal-v6';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -6,6 +6,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/css/v2-styles.css?v=12.2',
     '/css/v3-styles.css?v=12.2',
     '/css/v4-styles.css?v=12.2',
+    '/js/offline-data.js?v=12.2',
     '/js/app.js?v=12.2',
     '/js/v2-discipleship.js?v=12.2',
     '/js/v3-worship.js?v=12.2',
