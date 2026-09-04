@@ -17,6 +17,121 @@ const MAX_SESSIONS = 5000;
 const FORCE_SECURE_SESSION_COOKIE = /^true$/i.test(process.env.KOINONIA_SESSION_COOKIE_SECURE || '');
 const sessionStore = new Map();
 
+const PASSWORD_HASH_SCHEME = 'scrypt';
+const PASSWORD_HASH_VERSION = 'v1';
+const PASSWORD_SCRYPT_PARAMS = Object.freeze({
+    N: 32768,
+    r: 8,
+    p: 1,
+    keylen: 64,
+    saltBytes: 16,
+    maxmem: 64 * 1024 * 1024
+});
+const PASSWORD_HASH_PREFIX = `${PASSWORD_HASH_SCHEME}$${PASSWORD_HASH_VERSION}$`;
+const PASSWORD_MAX_INPUT_BYTES = 1024;
+
+function deriveScryptKey(password, salt, params = PASSWORD_SCRYPT_PARAMS) {
+    return new Promise((resolve, reject) => {
+        crypto.scrypt(password, salt, params.keylen, {
+            N: params.N,
+            r: params.r,
+            p: params.p,
+            maxmem: params.maxmem
+        }, (err, derivedKey) => {
+            if (err) return reject(err);
+            resolve(derivedKey);
+        });
+    });
+}
+
+function decodeCanonicalBase64Url(value, expectedBytes) {
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
+    try {
+        const decoded = Buffer.from(value, 'base64url');
+        if (decoded.length !== expectedBytes || decoded.toString('base64url') !== value) return null;
+        return decoded;
+    } catch (err) {
+        return null;
+    }
+}
+
+function parseVersionedPasswordHash(storedValue) {
+    if (typeof storedValue !== 'string' || storedValue.length > 512) return null;
+    const parts = storedValue.split('$');
+    if (parts.length !== 5 || parts[0] !== PASSWORD_HASH_SCHEME || parts[1] !== PASSWORD_HASH_VERSION) return null;
+
+    const parameters = /^N=(\d+),r=(\d+),p=(\d+),keylen=(\d+)$/.exec(parts[2]);
+    if (!parameters) return null;
+    const parsedParams = {
+        N: Number(parameters[1]),
+        r: Number(parameters[2]),
+        p: Number(parameters[3]),
+        keylen: Number(parameters[4]),
+        maxmem: PASSWORD_SCRYPT_PARAMS.maxmem
+    };
+    if (
+        parsedParams.N !== PASSWORD_SCRYPT_PARAMS.N ||
+        parsedParams.r !== PASSWORD_SCRYPT_PARAMS.r ||
+        parsedParams.p !== PASSWORD_SCRYPT_PARAMS.p ||
+        parsedParams.keylen !== PASSWORD_SCRYPT_PARAMS.keylen
+    ) return null;
+
+    const salt = decodeCanonicalBase64Url(parts[3], PASSWORD_SCRYPT_PARAMS.saltBytes);
+    const derivedKey = decodeCanonicalBase64Url(parts[4], PASSWORD_SCRYPT_PARAMS.keylen);
+    if (!salt || !derivedKey) return null;
+    return { params: parsedParams, salt, derivedKey };
+}
+
+function isVersionedPasswordHash(storedValue) {
+    return typeof storedValue === 'string' && storedValue.startsWith(`${PASSWORD_HASH_SCHEME}$`);
+}
+
+async function hashPassword(password) {
+    if (
+        typeof password !== 'string' ||
+        password.length === 0 ||
+        Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_INPUT_BYTES
+    ) throw new TypeError('Invalid password input');
+
+    const salt = crypto.randomBytes(PASSWORD_SCRYPT_PARAMS.saltBytes);
+    const derivedKey = await deriveScryptKey(password, salt);
+    const parameters = `N=${PASSWORD_SCRYPT_PARAMS.N},r=${PASSWORD_SCRYPT_PARAMS.r},p=${PASSWORD_SCRYPT_PARAMS.p},keylen=${PASSWORD_SCRYPT_PARAMS.keylen}`;
+    return `${PASSWORD_HASH_PREFIX}${parameters}$${salt.toString('base64url')}$${derivedKey.toString('base64url')}`;
+}
+
+function verifyLegacyPlaintextPassword(password, storedValue) {
+    if (typeof password !== 'string' || typeof storedValue !== 'string') return false;
+    const supplied = Buffer.from(password, 'utf8');
+    const stored = Buffer.from(storedValue, 'utf8');
+    if (supplied.length > PASSWORD_MAX_INPUT_BYTES || stored.length > PASSWORD_MAX_INPUT_BYTES) return false;
+
+    const comparisonLength = Math.max(supplied.length, stored.length, 1);
+    const suppliedPadded = Buffer.alloc(comparisonLength);
+    const storedPadded = Buffer.alloc(comparisonLength);
+    supplied.copy(suppliedPadded);
+    stored.copy(storedPadded);
+
+    // Migration-only compatibility for existing plaintext rows.
+    return crypto.timingSafeEqual(suppliedPadded, storedPadded) && supplied.length === stored.length;
+}
+
+async function verifyPassword(password, storedValue) {
+    if (typeof password !== 'string' || typeof storedValue !== 'string' || storedValue.length === 0) return false;
+    if (!isVersionedPasswordHash(storedValue)) {
+        return verifyLegacyPlaintextPassword(password, storedValue);
+    }
+
+    const parsed = parseVersionedPasswordHash(storedValue);
+    if (!parsed || Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_INPUT_BYTES) return false;
+    try {
+        const suppliedKey = await deriveScryptKey(password, parsed.salt, parsed.params);
+        return suppliedKey.length === parsed.derivedKey.length &&
+            crypto.timingSafeEqual(suppliedKey, parsed.derivedKey);
+    } catch (err) {
+        return false;
+    }
+}
+
 function parseCookies(req) {
     const cookies = Object.create(null);
     const header = req.headers.cookie;
@@ -423,7 +538,7 @@ function requireSelfOr(permission, getRequestedMemberId) {
     );
 }
 
-function getAuthorizedProfilePasswordChange(req, res) {
+async function getAuthorizedProfilePasswordChange(req, res) {
     if (!Object.prototype.hasOwnProperty.call(req.body, 'password') || req.body.password === '') {
         return { requested: false };
     }
@@ -440,7 +555,13 @@ function getAuthorizedProfilePasswordChange(req, res) {
         res.status(400).json({ success: false, error: 'Password must be 8 to 128 characters.' });
         return null;
     }
-    return { requested: true, password: req.body.password };
+    try {
+        return { requested: true, encodedPassword: await hashPassword(req.body.password) };
+    } catch (err) {
+        console.error('Password hashing failed');
+        res.status(500).json({ success: false, error: 'Unable to update password.' });
+        return null;
+    }
 }
 
 const RESOURCE_OWNERSHIP = Object.freeze({
@@ -1189,7 +1310,17 @@ db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     });
 
     const superadminPermissions = JSON.stringify(['access_checkin', 'access_directory', 'access_events', 'access_attendance', 'access_activity', 'access_permissions', 'access_ministries', 'access_discipleship', 'access_ai', 'access_worship', 'access_communications', 'add_entries', 'edit_entries', 'delete_entries']);
-    db.run(`INSERT OR IGNORE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`, [BOOTSTRAP_STRONG_ADMIN_USERNAME, 'JesusisLord', superadminPermissions, getManilaTime()]);
+    db.get(`SELECT id FROM users WHERE username = ?`, [BOOTSTRAP_STRONG_ADMIN_USERNAME], (err, existingAdmin) => {
+        if (err) return console.error('Unable to verify bootstrap administrator');
+        if (existingAdmin) return;
+        hashPassword('JesusisLord').then(encodedPassword => {
+            db.run(
+                `INSERT OR IGNORE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
+                [BOOTSTRAP_STRONG_ADMIN_USERNAME, encodedPassword, superadminPermissions, getManilaTime()],
+                insertErr => { if (insertErr) console.error('Unable to create bootstrap administrator'); }
+            );
+        }).catch(() => console.error('Unable to prepare bootstrap administrator credential'));
+    });
     db.run(`UPDATE users SET permissions = ? WHERE username = ?`, [superadminPermissions, BOOTSTRAP_STRONG_ADMIN_USERNAME]);
 
     db.all(`SELECT id, qr_code FROM youth WHERE id NOT IN (SELECT youth_id FROM users WHERE youth_id IS NOT NULL)`, [], (err, rows) => {
@@ -1652,68 +1783,42 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 
-// [KOINONIA PATCH] AUTH TRANSLATOR V5 (CRASH-PROOF)
-let koinoniaDbPatched = false;
+// Normalize legacy login field names; credential verification remains centralized below.
 const koinoniaAuthMiddleware = (req, res, next) => {
-    try {
-        if (req.method !== 'POST') return next();
-        if (!req.body) return next(); // Failsafe: if data is missing, let native app handle it safely
-        
-        if (typeof db !== 'undefined') {
-            // Safely verify DB schema once
-            if (!koinoniaDbPatched) {
-                db.run("ALTER TABLE youth ADD COLUMN password TEXT", () => {});
-                koinoniaDbPatched = true;
-            }
-            
-            const loginVal = req.body.unique_pass_id || req.body.email || req.body.username;
-            const providedPassword = req.body.password;
-
-            if (loginVal) {
-                db.get("SELECT * FROM youth WHERE unique_pass_id = ? OR email = ?", [loginVal, loginVal], (err, user) => {
-                    try {
-                        if (!err && user) {
-                            const validCustom = user.password && user.password === providedPassword;
-                            const validDefault = providedPassword === user.unique_pass_id;
-
-                            if (validCustom || validDefault) {
-                                // Flawless Translation: feed the native app exactly what it wants
-                                req.body.unique_pass_id = user.unique_pass_id;
-                                req.body.password = user.unique_pass_id; 
-                            }
-                        }
-                    } catch (innerErr) { console.error('Auth translation error', innerErr); }
-                    
-                    return next(); // ASYNC HANDOFF: Safe transition to native logic
-                });
-                return; // CRITICAL: Prevent double execution!
-            }
-        }
-        return next();
-    } catch(crashErr) {
-        console.error('Middleware crash prevented:', crashErr);
-        return next(); // Absolute failsafe to ensure connection never drops
+    if (req.method === 'POST' && req.body && typeof req.body.username !== 'string') {
+        const legacyUsername = typeof req.body.unique_pass_id === 'string'
+            ? req.body.unique_pass_id
+            : typeof req.body.email === 'string'
+                ? req.body.email
+                : null;
+        if (legacyUsername) req.body.username = legacyUsername;
     }
+    return next();
 };
 app.use('/api/login', koinoniaAuthMiddleware);
 
 app.post('/api/login', (req, res) => {
-    const { username, password } = req.body;
-    db.get(`SELECT * FROM users WHERE (username = ? OR username = (SELECT email FROM youth WHERE qr_code = ?)) AND password = ?`, [username, username, password], (err, user) => {
-        if (user) {
+    const username = req.body && typeof req.body.username === 'string' ? req.body.username : '';
+    const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+    const rejectInvalidCredentials = () => {
+        logActivity(username, 'FAILED_LOGIN', 'Invalid credentials attempt');
+        res.status(401).json({ success: false, message: 'Invalid credentials' });
+    };
+
+    db.get(`SELECT * FROM users WHERE username = ? OR username = (SELECT email FROM youth WHERE qr_code = ?)`, [username, username], async (err, user) => {
+        if (!err && user && await verifyPassword(password, user.password)) {
             logActivity(username, 'LOGIN', 'User logged in');
             if (user.youth_id) {
                 db.get(`SELECT * FROM youth WHERE id = ?`, [user.youth_id], (e, member) => { return sendAuthenticatedLogin(req, res, { userId: user.id, youthId: user.youth_id, username: user.username }, { success: true, username: user.username, permissions: JSON.parse(user.permissions || '[]'), member, is_admin: true }); });
             } else return sendAuthenticatedLogin(req, res, { userId: user.id, youthId: null, username: user.username }, { success: true, username: user.username, permissions: JSON.parse(user.permissions || '[]'), member: null, is_admin: true });
             return;
         }
-        db.get(`SELECT * FROM youth WHERE (qr_code = ? OR email = ? OR name = ?) AND password = ?`, [username, username, username, password], (err2, member) => {
-            if (member) {
+        db.get(`SELECT * FROM youth WHERE qr_code = ? OR email = ? OR name = ?`, [username, username, username], async (err2, member) => {
+            if (!err2 && member && await verifyPassword(password, member.password)) {
                 logActivity(member.name, 'LOGIN', 'Member logged into profile');
                 return sendAuthenticatedLogin(req, res, { userId: null, youthId: member.id, username: member.qr_code }, { success: true, username: member.qr_code, permissions: [], member, is_admin: false });
             }
-            logActivity(username, 'FAILED_LOGIN', 'Invalid credentials attempt');
-            res.status(401).json({ success: false, message: 'Invalid credentials' });
+            rejectInvalidCredentials();
         });
     });
 });
@@ -1727,15 +1832,15 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-app.put('/api/youth/profile/:id', requireSelfOr('edit_entries', req => req.params.id), (req, res) => {
-    const passwordChange = getAuthorizedProfilePasswordChange(req, res);
+app.put('/api/youth/profile/:id', requireSelfOr('edit_entries', req => req.params.id), async (req, res) => {
+    const passwordChange = await getAuthorizedProfilePasswordChange(req, res);
     if (!passwordChange) return;
 
     const { name, age, birthday, social_media, parents_name, email, profile_picture, gender } = req.body;
     let sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, email=?, gender=?`;
     const params = [name, age, birthday, social_media, parents_name, email, gender];
     if (profile_picture !== undefined) { sql += `, profile_picture=?`; params.push(profile_picture); }
-    if (passwordChange.requested) { sql += `, password=?`; params.push(passwordChange.password); }
+    if (passwordChange.requested) { sql += `, password=?`; params.push(passwordChange.encodedPassword); }
     sql += ` WHERE id=?`;
     params.push(req.params.id);
     db.run(sql, params, function (err) {
@@ -1745,7 +1850,7 @@ app.put('/api/youth/profile/:id', requireSelfOr('edit_entries', req => req.param
             db.get(`SELECT * FROM youth WHERE id = ?`, [req.params.id], (e, member) => { res.json({ success: true, member: sanitizeMemberForClient(member) }); });
         };
         if (!passwordChange.requested) return finish();
-        db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [passwordChange.password, req.params.id], function(passwordErr) {
+        db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [passwordChange.encodedPassword, req.params.id], function(passwordErr) {
             if (passwordErr) return res.status(500).json({ success: false, error: 'Unable to update password.' });
             finish();
         });
@@ -1796,11 +1901,11 @@ app.post('/api/youth', (req, res) => {
     db.get(`SELECT MAX(id) as maxId FROM youth`, [], (err, row) => {
         const nextId = (row && row.maxId ? row.maxId : 0) + 1;
         const qrCode = `FOG-MEMBER-${String(nextId).padStart(3, '0')}`;
-        db.run(`INSERT INTO youth (name, age, email, mobile, social_media, birthday, parents_name, qr_code, password, profile_picture, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [name, age, email || null, mobile, social_media, birthday, parents_name, qrCode, qrCode, profile_picture || null, getManilaTime()], function (err) {
+        db.run(`INSERT INTO youth (name, age, email, mobile, social_media, birthday, parents_name, qr_code, profile_picture, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [name, age, email || null, mobile, social_media, birthday, parents_name, qrCode, profile_picture || null, getManilaTime()], function (err) {
                 if (err) return res.status(500).json({ error: err.message });
                 const youthId = this.lastID;
-                db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`, [qrCode, qrCode, youthId, getManilaTime()]);
+                db.run(`INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at) VALUES (?, '[]', ?, ?)`, [qrCode, youthId, getManilaTime()]);
                 logActivity(actor, 'CREATE_MEMBER', `Registered member '${name}' (${qrCode})`);
                 res.json({ id: youthId, qr_code: qrCode });
             }
@@ -2821,8 +2926,8 @@ app.get('/api/admin/ministry-logs-v36', requirePermission('edit_entries'), (req,
 
 
 // --- V37: PROFILE DETAILS & PRIORITY ENDPOINTS ---
-app.put('/api/youth-v37/profile/:id', requireSelfOr('edit_entries', req => req.params.id), (req, res) => {
-    const passwordChange = getAuthorizedProfilePasswordChange(req, res);
+app.put('/api/youth-v37/profile/:id', requireSelfOr('edit_entries', req => req.params.id), async (req, res) => {
+    const passwordChange = await getAuthorizedProfilePasswordChange(req, res);
     if (!passwordChange) return;
 
     const { name, email, age, birthday, gender, mobile, address, social_media, parents_name, profile_picture } = req.body;
@@ -2830,7 +2935,7 @@ app.put('/api/youth-v37/profile/:id', requireSelfOr('edit_entries', req => req.p
     let params = [name, email, age, birthday, gender, mobile, address, social_media, parents_name];
     
     if (profile_picture) { query += ", profile_picture=?"; params.push(profile_picture); }
-    if (passwordChange.requested) { query += ", password=?"; params.push(passwordChange.password); }
+    if (passwordChange.requested) { query += ", password=?"; params.push(passwordChange.encodedPassword); }
     query += " WHERE id=?";
     params.push(req.params.id);
 
@@ -2841,7 +2946,7 @@ app.put('/api/youth-v37/profile/:id', requireSelfOr('edit_entries', req => req.p
             db.get("SELECT * FROM youth WHERE id=?", [req.params.id], (err, member) => { res.json({success: true, member: sanitizeMemberForClient(member)}); });
         };
         if (!passwordChange.requested) return finish();
-        db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [passwordChange.password, req.params.id], function(passwordErr) {
+        db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [passwordChange.encodedPassword, req.params.id], function(passwordErr) {
             if (passwordErr) return res.status(500).json({ success: false, error: 'Unable to update password.' });
             finish();
         });
@@ -2987,7 +3092,7 @@ app.post('/api/public/register-wanderer', (req, res) => {
     }
     
     if (typeof db !== 'undefined') {
-        db.get("SELECT id FROM youth WHERE email = ?", [email], (err, row) => {
+        db.get("SELECT id FROM youth WHERE email = ?", [email], async (err, row) => {
             if (err) return res.status(500).json({ error: "Unable to check registration details." });
             
             if (row) {
@@ -2996,8 +3101,15 @@ app.post('/api/public/register-wanderer', (req, res) => {
                     error: "An account with this email already exists. Please sign in."
                 });
             } else {
+                let encodedPassword;
+                try {
+                    encodedPassword = await hashPassword(password);
+                } catch (hashErr) {
+                    console.error('Wanderer password hashing failed');
+                    return res.status(500).json({ error: "Unable to create the account." });
+                }
                 // Insert new user
-                db.run("INSERT INTO youth (name, email, password) VALUES (?, ?, ?)", [name, email, password], function(err) {
+                db.run("INSERT INTO youth (name, email, password) VALUES (?, ?, ?)", [name, email, encodedPassword], function(err) {
                     if (err) return res.status(500).json({ error: "Unable to create the account." });
 
                     const newYouthId = this.lastID;
