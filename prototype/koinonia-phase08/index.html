@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>KOINONIA — by Fire of God Ministries (Phase 0.8 Prototype)</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============================================================
+       TOP APPLICATION CONTAINER / RESPONSIVE STUDIO LAYOUT
+       ============================================================ -->
+  <div id="app-container">
+
+    <!-- TOP GLOBAL BAR -->
+    <header id="global-header" role="banner">
+      <div class="header-left">
+        <button id="toggle-left-panel" class="icon-btn" aria-label="Toggle Pilgrim Profile panel" title="Toggle Profile">
+          <span class="btn-icon">👤</span>
+          <span class="btn-label">Pilgrim</span>
+        </button>
+
+        <!-- ACTIVE PLACE BADGE & QUICK TRAVEL -->
+        <button id="btn-quick-map" class="pill-btn place-indicator-btn" aria-label="Open World Map" title="Open World Map">
+          <span class="location-dot"></span>
+          <span id="header-place-name">My Home</span>
+          <span class="travel-caret">🗺️ Travel ▾</span>
+        </button>
+
+        <button id="btn-open-journey" class="pill-btn journey-btn" aria-label="Open My Journey Archive" title="My Journey Archive">
+          <span class="btn-icon">📖</span>
+          <span class="btn-label">My Journey</span>
+        </button>
+      </div>
+
+      <div class="header-center">
+        <div class="brand-block">
+          <span class="app-brand-title">KOINONIA</span>
+          <span class="brand-subtext">by Fire of God Ministries</span>
+        </div>
+        <span class="proto-badge">PHASE 0.8 PROTOTYPE</span>
+      </div>
+
+      <div class="header-right">
+        <!-- AUDIO TOGGLE (MUTED BY DEFAULT) -->
+        <button id="audio-toggle-btn" class="pill-btn audio-btn muted" aria-label="Toggle Sound (Currently Muted)" title="Toggle Sound">
+          <span id="audio-icon">🔈</span>
+          <span id="audio-label">Muted</span>
+        </button>
+
+        <!-- KOINONIA STUDIO (ADMIN DEMO) SWITCH -->
+        <button id="btn-open-admin" class="pill-btn admin-demo-btn" aria-label="Open Koinonia Studio Admin Demo" title="Open Admin Studio">
+          <span class="btn-icon">⚙️</span>
+          <span class="btn-label">Studio (Admin)</span>
+        </button>
+
+        <!-- PROTOTYPE RESET BUTTON -->
+        <button id="dev-reset-btn" class="pill-btn dev-reset-btn" aria-label="Reset Prototype" title="Reset Prototype State">
+          <span class="btn-icon">🔄</span>
+          <span class="btn-label">Reset</span>
+        </button>
+
+        <button id="toggle-right-panel" class="icon-btn" aria-label="Toggle Quest Ledger panel" title="Toggle Quests">
+          <span class="btn-icon">📜</span>
+          <span class="btn-label">Ledger</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN STUDIO BODY -->
+    <div id="studio-body">
+
+      <!-- LEFT SIDEBAR: PILGRIM COMPANION & GROWTH PATHS (COLLAPSIBLE) -->
+      <aside id="panel-left" class="studio-panel panel-left" aria-label="Pilgrim Profile, Skills and Growth Path">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="panel-icon">🌱</span>
+            <h2>Pilgrim Profile</h2>
+          </div>
+          <button id="close-left-panel" class="panel-close-btn" aria-label="Collapse Left Panel">◀</button>
+        </div>
+
+        <div class="panel-scroll-area">
+          <!-- AVATAR SUMMARY CARD -->
+          <section class="profile-card" aria-label="Avatar Summary">
+            <div class="avatar-preview-box">
+              <canvas id="profile-avatar-canvas" width="64" height="64" aria-label="Avatar preview"></canvas>
+            </div>
+            <div class="profile-info">
+              <h3 id="profile-name">Alex</h3>
+              <p class="profile-title">Novice Steward &bull; Fire of God</p>
+              <div class="char-level-badge">
+                <span>Character Level 1</span>
+                <span id="char-xp-display" class="xp-subtext">(0 / 100 XP)</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- LIFE POINTS DISPLAY (SECONDARY) -->
+          <section class="life-points-card" aria-label="Life Points balance">
+            <div class="lp-header">
+              <span class="lp-icon">🪙</span>
+              <span class="lp-label">Life Points</span>
+            </div>
+            <div class="lp-value-row">
+              <span id="lp-amount" class="lp-amount">120</span>
+              <span class="lp-unit">LP</span>
+              <span id="lp-delta" class="lp-delta hidden">+5</span>
+            </div>
+            <p class="lp-disclaimer">*Prototype test balance (100% fake data)</p>
+          </section>
+
+          <!-- HABIT / GROWTH PATH: RESPONSIBILITY PATH -->
+          <section class="growth-path-card" aria-label="Responsibility Growth Path">
+            <div class="card-title-row">
+              <h3>Growth Path: Responsibility</h3>
+              <span class="growth-day-badge">Day 2 of 5</span>
+            </div>
+            <p class="path-philosophy-sub">Steady faithfulness without streak punishment.</p>
+
+            <div class="path-days-stepper" role="list">
+              <div class="stepper-step completed" title="Day 1 Completed">
+                <span class="step-num">✓</span>
+                <span class="step-label">Space</span>
+              </div>
+              <div class="stepper-step active" title="Day 2 Active">
+                <span class="step-num">2</span>
+                <span class="step-label">Prep</span>
+              </div>
+              <div class="stepper-step upcoming" title="Day 3 Upcoming">
+                <span class="step-num">3</span>
+                <span class="step-label">Duty</span>
+              </div>
+              <div class="stepper-step upcoming" title="Day 4 Upcoming">
+                <span class="step-num">4</span>
+                <span class="step-label">Help</span>
+              </div>
+              <div class="stepper-step upcoming" title="Day 5 Upcoming">
+                <span class="step-num">5</span>
+                <span class="step-label">Shared</span>
+              </div>
+            </div>
+
+            <div class="current-step-box">
+              <span class="step-task-tag">TODAY'S HABIT CALLING:</span>
+              <p class="step-task-desc">Pack bag, verify school schedule, and set out needed items tonight.</p>
+            </div>
+          </section>
+
+          <!-- BOTANICAL SKILL GARDEN -->
+          <section class="skills-card" aria-label="Skill Garden Progression">
+            <div class="card-title-row">
+              <h3>The Skill Garden</h3>
+              <span class="card-subtitle">Botanical Growth</span>
+            </div>
+
+            <div class="skill-tree-list">
+              <!-- STEWARDSHIP -->
+              <div class="skill-item active" id="skill-stewardship">
+                <div class="skill-icon-wrap"><span class="skill-icon">🌱</span></div>
+                <div class="skill-details">
+                  <div class="skill-name-row">
+                    <span class="skill-name">Stewardship</span>
+                    <span id="stewardship-xp-text" class="skill-xp">0 XP</span>
+                  </div>
+                  <div class="skill-meter-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="50">
+                    <div id="stewardship-meter-fill" class="skill-meter-fill" style="width: 0%;"></div>
+                  </div>
+                  <span class="skill-metaphor">Living Soil &amp; Green Shoots</span>
+                </div>
+              </div>
+
+              <!-- RESPONSIBILITY -->
+              <div class="skill-item active" id="skill-responsibility">
+                <div class="skill-icon-wrap"><span class="skill-icon">🪵</span></div>
+                <div class="skill-details">
+                  <div class="skill-name-row">
+                    <span class="skill-name">Responsibility</span>
+                    <span id="responsibility-xp-text" class="skill-xp">0 XP</span>
+                  </div>
+                  <div class="skill-meter-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="50">
+                    <div id="responsibility-meter-fill" class="skill-meter-fill" style="width: 0%;"></div>
+                  </div>
+                  <span class="skill-metaphor">Cedar Trunk Rings</span>
+                </div>
+              </div>
+
+              <!-- DISCIPLINE -->
+              <div class="skill-item active" id="skill-discipline">
+                <div class="skill-icon-wrap"><span class="skill-icon">✂️</span></div>
+                <div class="skill-details">
+                  <div class="skill-name-row">
+                    <span class="skill-name">Discipline</span>
+                    <span id="discipline-xp-text" class="skill-xp">0 XP</span>
+                  </div>
+                  <div class="skill-meter-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="50">
+                    <div id="discipline-meter-fill" class="skill-meter-fill" style="width: 0%;"></div>
+                  </div>
+                  <span class="skill-metaphor">Pruned Vine Branches</span>
+                </div>
+              </div>
+
+              <!-- TEAMWORK -->
+              <div class="skill-item active" id="skill-teamwork">
+                <div class="skill-icon-wrap"><span class="skill-icon">🤝</span></div>
+                <div class="skill-details">
+                  <div class="skill-name-row">
+                    <span class="skill-name">Teamwork</span>
+                    <span id="teamwork-xp-text" class="skill-xp">0 XP</span>
+                  </div>
+                  <div class="skill-meter-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="50">
+                    <div id="teamwork-meter-fill" class="skill-meter-fill" style="width: 0%;"></div>
+                  </div>
+                  <span class="skill-metaphor">Entwined Roots</span>
+                </div>
+              </div>
+
+              <!-- SERVICE -->
+              <div class="skill-item active" id="skill-service">
+                <div class="skill-icon-wrap"><span class="skill-icon">🪴</span></div>
+                <div class="skill-details">
+                  <div class="skill-name-row">
+                    <span class="skill-name">Service</span>
+                    <span id="service-xp-text" class="skill-xp">0 XP</span>
+                  </div>
+                  <div class="skill-meter-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="50">
+                    <div id="service-meter-fill" class="skill-meter-fill" style="width: 0%;"></div>
+                  </div>
+                  <span class="skill-metaphor">Sheltering Leaves</span>
+                </div>
+              </div>
+
+              <!-- COMPASSION -->
+              <div class="skill-item active" id="skill-compassion">
+                <div class="skill-icon-wrap"><span class="skill-icon">💧</span></div>
+                <div class="skill-details">
+                  <div class="skill-name-row">
+                    <span class="skill-name">Compassion</span>
+                    <span id="compassion-xp-text" class="skill-xp">0 XP</span>
+                  </div>
+                  <div class="skill-meter-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="50">
+                    <div id="compassion-meter-fill" class="skill-meter-fill" style="width: 0%;"></div>
+                  </div>
+                  <span class="skill-metaphor">Living Streams</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </aside>
+
+      <!-- CENTER: DOMINANT 2D GAME CANVAS VIEWPORT -->
+      <main id="panel-center" class="studio-panel panel-center" role="main">
+        <!-- CANVAS CONTAINER -->
+        <div id="canvas-container" class="canvas-container">
+          <canvas id="gameCanvas" width="800" height="576" tabindex="0" aria-label="Interactive 2D World of Koinonia"></canvas>
+
+          <!-- PLACE WATERMARK BADGE -->
+          <div id="canvas-place-badge" class="canvas-place-badge">
+            <span id="canvas-place-icon">🏡</span>
+            <span id="canvas-place-label">My Home</span>
+            <span id="canvas-place-lifecycle" class="lifecycle-chip permanent">Permanent Place</span>
+          </div>
+
+          <!-- WORLD NOTIFICATION BANNER -->
+          <div id="world-toast" class="world-toast hidden" role="status" aria-live="polite">
+            <span id="toast-icon">✨</span>
+            <span id="toast-message">Notification</span>
+          </div>
+
+          <!-- PROXIMITY INTERACTION PROMPT -->
+          <div id="proximity-prompt" class="proximity-prompt hidden" aria-live="polite">
+            <span class="prompt-icon">💬</span>
+            <span class="prompt-text">Press <strong>E</strong> or Tap to Interact</span>
+          </div>
+
+          <!-- EMOTE FLOATING BUTTONS (CANVAS OVERLAY) -->
+          <div id="canvas-emotes" class="canvas-emotes" aria-label="Quick Emotes">
+            <button class="emote-btn" data-emote="👋" title="Wave">👋</button>
+            <button class="emote-btn" data-emote="❤️" title="Love">❤️</button>
+            <button class="emote-btn" data-emote="🙏" title="Gratitude">🙏</button>
+            <button class="emote-btn" data-emote="💡" title="Insight">💡</button>
+            <button class="emote-btn" data-emote="👍" title="Encourage">👍</button>
+            <button class="emote-btn" data-emote="🌱" title="Sprout">🌱</button>
+          </div>
+        </div>
+
+        <!-- MOBILE ON-SCREEN TOUCH CONTROLS -->
+        <nav id="mobile-controls" class="mobile-controls" aria-label="Touch Navigation Controls">
+          <div class="dpad" role="group" aria-label="Directional Pad">
+            <button id="dpad-up" class="dpad-btn dpad-up" aria-label="Move Up">▲</button>
+            <div class="dpad-middle-row">
+              <button id="dpad-left" class="dpad-btn dpad-left" aria-label="Move Left">◀</button>
+              <div class="dpad-center-hub"></div>
+              <button id="dpad-right" class="dpad-btn dpad-right" aria-label="Move Right">▶</button>
+            </div>
+            <button id="dpad-down" class="dpad-btn dpad-down" aria-label="Move Down">▼</button>
+          </div>
+
+          <div class="mobile-action-buttons">
+            <button id="mobile-action-btn" class="action-btn-primary" aria-label="Interact or Talk">
+              <span class="action-icon">💬</span>
+              <span class="action-text">Talk / Act</span>
+            </button>
+          </div>
+        </nav>
+      </main>
+
+      <!-- RIGHT SIDEBAR: PILGRIM'S LEDGER, CAMPAIGNS & PLACE HISTORY (COLLAPSIBLE) -->
+      <aside id="panel-right" class="studio-panel panel-right" aria-label="Quest Ledger, Campaigns and Place History">
+        <div class="panel-header">
+          <div class="panel-tabs-row" role="tablist">
+            <button id="tab-btn-quests" class="tab-pill active" role="tab" aria-selected="true">📜 Place Quests</button>
+            <button id="tab-btn-campaigns" class="tab-pill" role="tab" aria-selected="false">🎯 Campaigns</button>
+            <button id="tab-btn-history" class="tab-pill" role="tab" aria-selected="false">🏛️ Place History</button>
+          </div>
+          <button id="close-right-panel" class="panel-close-btn" aria-label="Collapse Right Panel">▶</button>
+        </div>
+
+        <div class="panel-scroll-area">
+          
+          <!-- TAB 1: PLACE QUESTS VIEW -->
+          <div id="tab-content-quests" class="tab-pane active">
+            <div class="place-ledger-heading">
+              <h3 id="place-ledger-title">My Home Calling</h3>
+              <span id="place-ledger-sub" class="place-ledger-sub">Domestic Stewardship</span>
+            </div>
+
+            <!-- DYNAMIC QUEST LIST FOR ACTIVE PLACE -->
+            <div id="active-place-quests-list" class="quests-deck">
+              <!-- Populated dynamically based on active place -->
+            </div>
+
+            <!-- SHARED COMMUNITY GARDEN POOL CARD -->
+            <section class="community-card" aria-label="FOG Community Garden Contribution">
+              <div class="comm-header">
+                <span class="comm-icon">🤝</span>
+                <div class="comm-titles">
+                  <h3>FOG Community Garden</h3>
+                  <span class="comm-sub">Collective Youth Stewardship</span>
+                </div>
+              </div>
+
+              <div class="comm-progress-wrap">
+                <div class="comm-progress-labels">
+                  <span>Stewardship Progress</span>
+                  <span id="comm-progress-fraction">142 / 500</span>
+                </div>
+                <div class="comm-meter-track" role="progressbar" aria-valuenow="142" aria-valuemin="0" aria-valuemax="500">
+                  <div id="comm-meter-fill" class="comm-meter-fill" style="width: 28.4%;"></div>
+                </div>
+                <div id="comm-recent-add" class="comm-recent-add hidden">+15 from your quest!</div>
+              </div>
+              <p class="comm-quote">"We build this together."</p>
+            </section>
+          </div>
+
+          <!-- TAB 2: CAMPAIGNS VIEW (GET INTO THE GLORY & AYS) -->
+          <div id="tab-content-campaigns" class="tab-pane hidden">
+            <!-- GET INTO THE GLORY CARD -->
+            <section class="campaign-card gitg-card">
+              <div class="campaign-badge-row">
+                <span class="campaign-pill gitg-pill">RECURRING GATHERING</span>
+                <span class="campaign-theme">THEME: GRATITUDE</span>
+              </div>
+              <h3>Get Into the Glory</h3>
+              <p class="campaign-desc">Weekly Fire of God prayer &amp; worship preparation journey.</p>
+
+              <!-- SHARED COMMUNITY READINESS METER -->
+              <div class="readiness-box">
+                <div class="readiness-header">
+                  <span class="readiness-label">Community Readiness</span>
+                  <span class="readiness-val">79%</span>
+                </div>
+                <div class="comm-meter-track">
+                  <div class="comm-meter-fill" style="width: 79%;"></div>
+                </div>
+                <div class="readiness-breakdown-mini">
+                  <span>Hospitality: 72%</span> &bull; 
+                  <span>Music: 85%</span> &bull; 
+                  <span>Prayer: 67%</span> &bull; 
+                  <span>Tech: 94%</span>
+                </div>
+                <p class="readiness-quote">"Shared readiness without individual shaming."</p>
+              </div>
+
+              <button id="btn-view-gitg" class="secondary-btn small-btn">View Gratitude Week Steps ▶</button>
+            </section>
+
+            <!-- ALPHA YOUTH SERIES (AYS) CARD -->
+            <section class="campaign-card ays-card">
+              <div class="campaign-badge-row">
+                <span class="campaign-pill ays-pill">PRE-EVENT JOURNEY</span>
+                <span class="campaign-theme">WEEK OF QUESTIONS</span>
+              </div>
+              <h3>Alpha Youth Series (AYS)</h3>
+              <p class="campaign-desc">6-day curiosity and conversation journey leading to Saturday kickoff.</p>
+              <div class="readiness-box">
+                <div class="readiness-header">
+                  <span class="readiness-label">Preparation Progress</span>
+                  <span class="readiness-val">68%</span>
+                </div>
+                <div class="comm-meter-track">
+                  <div class="comm-meter-fill" style="width: 68%;"></div>
+                </div>
+              </div>
+              <button id="btn-view-ays" class="secondary-btn small-btn">View Week of Questions ▶</button>
+            </section>
+
+            <!-- SPORTS HUB BASKETBALL EVENT CARD -->
+            <section class="campaign-card sports-event-card">
+              <div class="campaign-badge-row">
+                <span class="campaign-pill sports-pill">SPORTS &amp; FITNESS</span>
+                <span class="campaign-theme">COMPLETED MATCH</span>
+              </div>
+              <h3>FOG Youth Basketball Day</h3>
+              <p class="campaign-desc">Team Fire (68) vs Team Grace (62) &bull; Friendly competition.</p>
+              <button id="btn-view-sports-event" class="secondary-btn small-btn">View Scores &amp; Personal Bests ▶</button>
+            </section>
+          </div>
+
+          <!-- TAB 3: PLACE HISTORY VIEW -->
+          <div id="tab-content-history" class="tab-pane hidden">
+            <div class="place-history-header">
+              <h3 id="history-place-title">Place Memories &amp; Events</h3>
+              <p id="history-place-sub">Chronicle of fellowship and service in this space.</p>
+            </div>
+
+            <div id="place-history-list" class="history-timeline">
+              <!-- Populated dynamically based on active place -->
+            </div>
+
+            <button id="btn-view-event-memories" class="primary-btn small-btn full-width-btn">
+              <span class="btn-icon">🖼️</span>
+              <span class="btn-text">View Event Memory Photo Gallery</span>
+            </button>
+          </div>
+
+        </div>
+      </aside>
+
+    </div> <!-- /studio-body -->
+  </div> <!-- /app-container -->
+
+
+  <!-- ============================================================
+       MODAL 1: TITLE SCREEN (INITIAL BOOT)
+       ============================================================ -->
+  <div id="title-screen" class="modal-backdrop active" role="dialog" aria-modal="true" aria-labelledby="title-headline">
+    <div class="title-card">
+      <div class="title-emblem-wrap">
+        <div class="emblem-sun"></div>
+        <div class="emblem-gate">
+          <div class="emblem-sprout">🌱</div>
+        </div>
+      </div>
+
+      <h1 id="title-headline" class="title-main-text">KOINONIA</h1>
+      <div class="title-sub-brand">by Fire of God Ministries</div>
+      <p class="title-tagline">"A virtual world that grows when you grow in real life."</p>
+
+      <div class="title-meta-badge">PHASE 0.8 &bull; MODULAR WORLD &amp; ADMIN STUDIO PROTOTYPE</div>
+
+      <div class="title-actions">
+        <button id="btn-begin-adventure" class="primary-btn pulse-glow" autofocus>
+          <span class="btn-icon">🌿</span>
+          <span class="btn-text">ENTER THE WORLD</span>
+        </button>
+
+        <button id="btn-continue-disabled" class="secondary-btn disabled" disabled title="Phase 0.8 Prototype supports New Adventure flow">
+          <span class="btn-icon">🔒</span>
+          <span class="btn-text">CONTINUE (PROTOTYPE)</span>
+        </button>
+      </div>
+
+      <div class="title-audio-note">
+        <span>🔈 Audio is muted by default. You may enable sound inside the prototype.</span>
+      </div>
+
+      <footer class="title-footer">
+        <p>Fire of God Ministries Youth &bull; Single-Community First &bull; Multi-Community Ready</p>
+      </footer>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 2: AVATAR CUSTOMIZER
+       ============================================================ -->
+  <div id="avatar-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="avatar-modal-title">
+    <div class="parchment-card avatar-card">
+      <header class="card-header">
+        <h2 id="avatar-modal-title">Create Your Pilgrim</h2>
+        <p class="card-desc">Choose your appearance for Koinonia.</p>
+      </header>
+
+      <div class="avatar-setup-grid">
+        <div class="avatar-preview-column">
+          <div class="avatar-big-frame">
+            <canvas id="customizer-canvas" width="128" height="128" aria-label="Live Avatar Customization Preview"></canvas>
+          </div>
+          <div class="avatar-identity-box">
+            <span class="identity-label">Pilgrim Name</span>
+            <span class="identity-name">Alex</span>
+            <span class="identity-note">(Prototype Test Identity)</span>
+          </div>
+        </div>
+
+        <div class="avatar-controls-column">
+          <div class="option-group">
+            <label class="group-label">Skin Tone</label>
+            <div class="swatch-row" role="radiogroup" aria-label="Skin tone choices">
+              <button class="swatch-btn active" data-skin="0" style="background-color: #FFE0BD;" title="Warm Fair" aria-label="Warm Fair"></button>
+              <button class="swatch-btn" data-skin="1" style="background-color: #E0AC69;" title="Golden Tan" aria-label="Golden Tan"></button>
+              <button class="swatch-btn" data-skin="2" style="background-color: #8D5524;" title="Rich Umber" aria-label="Rich Umber"></button>
+              <button class="swatch-btn" data-skin="3" style="background-color: #4A2C11;" title="Deep Bronze" aria-label="Deep Bronze"></button>
+            </div>
+          </div>
+
+          <div class="option-group">
+            <label class="group-label">Hairstyle</label>
+            <div class="pill-choice-row" role="radiogroup" aria-label="Hairstyle choices">
+              <button class="choice-pill active" data-hair="0">Short Crop</button>
+              <button class="choice-pill" data-hair="1">Side Swept</button>
+              <button class="choice-pill" data-hair="2">Curls</button>
+              <button class="choice-pill" data-hair="3">Top Bun</button>
+            </div>
+          </div>
+
+          <div class="option-group">
+            <label class="group-label">Attire Palette</label>
+            <div class="pill-choice-row" role="radiogroup" aria-label="Clothing palette choices">
+              <button class="choice-pill active" data-outfit="0">Terracotta Tunic</button>
+              <button class="choice-pill" data-outfit="1">Olive Gardener</button>
+              <button class="choice-pill" data-outfit="2">Sky Pilgrim</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-enter-home" class="primary-btn">
+          <span class="btn-icon">🏡</span>
+          <span class="btn-text">ENTER MY HOME</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 3: INTERACTIVE WORLD MAP (5 PLACES)
+       ============================================================ -->
+  <div id="world-map-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="map-modal-title">
+    <div class="world-map-card">
+      <header class="map-modal-header">
+        <div class="map-header-titles">
+          <span class="deckled-category">KOINONIA WORLD MAP</span>
+          <h2 id="map-modal-title">Places of Fellowship &amp; Life</h2>
+          <p class="card-desc">Travel to unlocked places in Fire of God community.</p>
+        </div>
+        <button id="btn-close-map" class="modal-close-btn" aria-label="Close World Map">✕</button>
+      </header>
+
+      <!-- VISUAL 2D MAP GRAPH -->
+      <div class="map-canvas-frame">
+        <div class="map-nodes-container">
+          <!-- 1. MY HOME -->
+          <div class="map-node node-home active-node" data-place="home" style="left: 8%; top: 50%;">
+            <div class="node-icon">🏡</div>
+            <div class="node-badge">My Home</div>
+            <div class="node-sub">Permanent</div>
+          </div>
+
+          <!-- 2. SCHOOL -->
+          <div class="map-node node-school" data-place="school" style="left: 35%; top: 20%;">
+            <div class="node-icon">🏫</div>
+            <div class="node-badge">School</div>
+            <div class="node-sub">Permanent</div>
+          </div>
+
+          <!-- 3. OUTREACH SITE (TEMPORARY) -->
+          <div class="map-node node-outreach" data-place="outreach" style="left: 72%; top: 20%;">
+            <div class="node-icon">🤝</div>
+            <div class="node-badge">Outreach Site</div>
+            <div class="node-sub temporary-tag">Temporary Event</div>
+          </div>
+
+          <!-- 4. FOG COMMUNITY CENTER -->
+          <div class="map-node node-fog-center" data-place="fog_center" style="left: 55%; top: 50%;">
+            <div class="node-icon">⛪</div>
+            <div class="node-badge">FOG Community Center</div>
+            <div class="node-sub hub-tag">Primary Hub</div>
+          </div>
+
+          <!-- 5. SPORTS HUB -->
+          <div class="map-node node-sports-hub" data-place="sports_hub" style="left: 55%; top: 80%;">
+            <div class="node-icon">🏀</div>
+            <div class="node-badge">Sports Hub</div>
+            <div class="node-sub">Permanent</div>
+          </div>
+
+          <!-- CONNECTING PATH SVG LINES -->
+          <svg class="map-connecting-svg" aria-hidden="true">
+            <line x1="14%" y1="53%" x2="38%" y2="28%" stroke="#B8A892" stroke-width="4" stroke-dasharray="6,4" />
+            <line x1="14%" y1="53%" x2="55%" y2="53%" stroke="#C86A4B" stroke-width="5" />
+            <line x1="38%" y1="28%" x2="72%" y2="28%" stroke="#B8A892" stroke-width="4" stroke-dasharray="6,4" />
+            <line x1="58%" y1="53%" x2="58%" y2="80%" stroke="#B8A892" stroke-width="4" stroke-dasharray="6,4" />
+            <line x1="58%" y1="53%" x2="72%" y2="28%" stroke="#B8A892" stroke-width="4" stroke-dasharray="6,4" />
+          </svg>
+        </div>
+      </div>
+
+      <!-- SELECTED PLACE DETAIL PANEL (IN MAP) -->
+      <div id="map-selected-place-box" class="map-place-detail-box">
+        <div class="place-detail-header">
+          <span id="map-detail-icon" class="detail-icon">🏡</span>
+          <div>
+            <h3 id="map-detail-title">My Home</h3>
+            <span id="map-detail-tagline" class="detail-tagline">Personal stewardship and family honor.</span>
+          </div>
+        </div>
+        <p id="map-detail-desc" class="detail-description">
+          The personal haven where Christian character begins in small, quiet chores and family honoring.
+        </p>
+        <div class="map-detail-actions">
+          <button id="btn-map-travel-now" class="primary-btn">
+            <span class="btn-icon">🚶</span>
+            <span class="btn-text">TRAVEL HERE NOW</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 4: UNCLE BARNABY DIALOGUE BOX (IN-CANVAS)
+       ============================================================ -->
+  <div id="dialogue-overlay" class="dialogue-overlay hidden" role="dialog" aria-modal="false" aria-labelledby="dialogue-speaker">
+    <div class="dialogue-plank">
+      <div class="npc-portrait-frame">
+        <div class="npc-portrait barnaby-portrait" aria-label="Portrait of Uncle Barnaby with straw hat">
+          <div class="portrait-hat"></div>
+          <div class="portrait-face">
+            <div class="portrait-eyes"></div>
+            <div class="portrait-beard"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dialogue-body">
+        <div class="speaker-tag-row">
+          <span id="dialogue-speaker" class="speaker-name">Uncle Barnaby</span>
+          <span class="speaker-role">Garden Elder &bull; Veranda</span>
+        </div>
+
+        <div id="dialogue-text" class="dialogue-typewriter-text" aria-live="polite"></div>
+
+        <div class="dialogue-actions">
+          <button id="dialogue-next-btn" class="dialogue-btn" aria-label="Continue Dialogue">
+            <span id="dialogue-btn-text">NEXT ▶</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 5: QUEST DETAIL CARD (OFFER / ACCEPT)
+       ============================================================ -->
+  <div id="quest-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="quest-modal-title">
+    <div class="parchment-card quest-parchment-card">
+      <div class="parchment-seal">📜</div>
+      <header class="card-header centered">
+        <span id="quest-modal-category" class="deckled-category">PERSONAL CALLING &bull; QUEST #001</span>
+        <h2 id="quest-modal-title">STEWARD OF THE GARDEN</h2>
+      </header>
+
+      <div id="quest-modal-narrative" class="quest-narrative-box">
+        <p>"Real stewardship doesn't start with grand speeches; it begins with small, quiet things that cannot say 'thank you' back."</p>
+      </div>
+
+      <div class="real-world-mission-highlight">
+        <div class="mission-icon">🌿</div>
+        <div class="mission-details">
+          <strong>YOUR REAL-WORLD MISSION:</strong>
+          <p id="quest-modal-mission">Water the plants at home.</p>
+        </div>
+      </div>
+
+      <div id="quest-modal-fallback" class="household-fallback-box">
+        <span class="fallback-badge">Household Fallback:</span>
+        <p id="quest-modal-fallback-text">Refill a pet's water dish, wipe down a shared table, or tidy a small counter.</p>
+      </div>
+
+      <div class="rewards-breakdown-card">
+        <span class="breakdown-title">REWARDS (PROTOTYPE TEST VALUES):</span>
+        <div class="rewards-grid" id="quest-modal-rewards-grid">
+          <div class="reward-entry"><span class="reward-icon">🪙</span><span class="reward-val">+5 Life Points</span></div>
+          <div class="reward-entry"><span class="reward-icon">🛡️</span><span class="reward-val">+5 Character XP</span></div>
+          <div class="reward-entry"><span class="reward-icon">🌱</span><span class="reward-val">+15 Stewardship XP</span></div>
+          <div class="reward-entry"><span class="reward-icon">🪵</span><span class="reward-val">+5 Responsibility XP</span></div>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-accept-quest" class="primary-btn pulse-glow">
+          <span class="btn-icon">🌿</span>
+          <span class="btn-text">ACCEPT &amp; STEP INTO REALITY</span>
+        </button>
+        <button id="btn-close-quest-modal" class="secondary-btn">NOT JUST YET</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 6: SIGNATURE EXIT-RAMP SCREEN ("YOUR TURN")
+       ============================================================ -->
+  <div id="exit-ramp-modal" class="modal-backdrop exit-ramp-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="exit-ramp-title">
+    <div class="exit-ramp-card">
+      <div class="exit-ramp-emblem">☀️</div>
+
+      <h2 id="exit-ramp-title" class="exit-ramp-headline">
+        YOUR TURN —<br>IN THE REAL WORLD
+      </h2>
+
+      <div class="exit-mission-card">
+        <span class="mission-tag">ACTIVE MISSION</span>
+        <p id="exit-ramp-mission-text" class="mission-text">Water the plants at home.</p>
+        <p class="mission-fallback-sub">(Or care for household space without being reminded)</p>
+      </div>
+
+      <p class="exit-ramp-subtext">
+        "The next part of this adventure doesn't happen on this screen."
+      </p>
+
+      <div class="exit-ramp-actions">
+        <button id="btn-step-out" class="primary-btn large-btn terracotta-btn">
+          <span class="btn-icon">🌿</span>
+          <span class="btn-text">I'M STEPPING OUT NOW</span>
+        </button>
+      </div>
+
+      <p class="calm-assurance">
+        The virtual world will quietly rest until you return. No timers. No penalties.
+      </p>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 7: CALM STANDBY SCREEN ("MISSION IN PROGRESS")
+       ============================================================ -->
+  <div id="standby-modal" class="modal-backdrop standby-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="standby-title">
+    <div class="standby-card">
+      <div class="resting-avatar-art">
+        <div class="tree-canopy">🌿</div>
+        <div class="resting-avatar">😴</div>
+        <div class="resting-ground"></div>
+      </div>
+
+      <h2 id="standby-title" class="standby-headline">MISSION IN PROGRESS</h2>
+      <p class="standby-encouragement">
+        "Go be a blessing out there. Your virtual world is resting until you return."
+      </p>
+
+      <div class="standby-mission-reminder">
+        <span class="reminder-label">CURRENT TASK:</span>
+        <span id="standby-task-reminder" class="reminder-value">Water plants at home (or household care)</span>
+      </div>
+
+      <div class="standby-actions">
+        <button id="btn-im-back" class="primary-btn dawn-gold-btn pulse-glow">
+          <span class="btn-icon">☀️</span>
+          <span class="btn-text">I'M BACK</span>
+        </button>
+
+        <button id="btn-review-quest" class="secondary-btn">
+          <span class="btn-icon">📜</span>
+          <span class="btn-text">REVIEW MY QUEST</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 8: VERIFICATION SELECTION
+       ============================================================ -->
+  <div id="verification-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="verify-modal-title">
+    <div class="parchment-card verification-card">
+      <header class="card-header centered">
+        <span class="deckled-category">QUEST COMPLETION</span>
+        <h2 id="verify-modal-title">HOW SHOULD WE COMPLETE THIS QUEST?</h2>
+        <p class="card-desc">Select how you'd like to certify your real-world stewardship.</p>
+      </header>
+
+      <div class="verification-options-grid">
+        <div class="verify-option-card" id="option-trust">
+          <div class="option-icon">🤝</div>
+          <div class="option-content">
+            <h3>I COMPLETED IT</h3>
+            <span class="option-badge trust-badge">TRUST (HONOR SYSTEM)</span>
+            <p>I certify on my word of honor that I carried out my real-world calling.</p>
+          </div>
+          <button id="btn-choose-trust" class="primary-btn">
+            <span class="btn-icon">✓</span>
+            <span class="btn-text">CONFIRM ON MY HONOR</span>
+          </button>
+        </div>
+
+        <div class="verify-option-card" id="option-family">
+          <div class="option-icon">👨‍👩‍👧</div>
+          <div class="option-content">
+            <h3>ASK A PARENT / GUARDIAN</h3>
+            <span class="option-badge family-badge">FAMILY DEMO</span>
+            <p>Hand device directly to a parent or guardian for a single tap confirmation.</p>
+          </div>
+          <button id="btn-choose-family" class="secondary-btn">
+            <span class="btn-icon">📲</span>
+            <span class="btn-text">START FAMILY DEMO</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 9: FAMILY DIRECT HANDOFF SIMULATION
+       ============================================================ -->
+  <div id="family-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="family-modal-title">
+    <div class="parchment-card family-card">
+      <div class="family-icon-banner">👨‍👩‍👧 &bull; FAMILY CONFIRMATION</div>
+      <h2 id="family-modal-title">Please hand the device to your parent or guardian.</h2>
+
+      <div class="family-message-box">
+        <p><strong>Parent / Guardian Note:</strong></p>
+        <p>Alex has completed: <em id="family-quest-name-text">Water the plants at home (Quest #001: Steward of the Garden)</em>.</p>
+        <p class="small-text">This demonstrates the direct handover workflow approved by the Product Owner.</p>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-parent-confirm" class="primary-btn">
+          <span class="btn-icon">✓</span>
+          <span class="btn-text">CONFIRM AS PARENT / GUARDIAN</span>
+        </button>
+        <button id="btn-family-back" class="secondary-btn">GO BACK</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 10: REFLECTION MODAL
+       ============================================================ -->
+  <div id="reflection-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="reflection-modal-title">
+    <div class="parchment-card reflection-card">
+      <div class="card-seal">✍️</div>
+      <header class="card-header centered">
+        <span class="deckled-category">MOMENT OF REFLECTION</span>
+        <h2 id="reflection-modal-title">Quiet Reflection</h2>
+        <p class="card-desc">Take 30 seconds to capture one small thought before moving on.</p>
+      </header>
+
+      <div class="reflection-prompt-box">
+        <label for="reflection-input" id="reflection-prompt-label" class="reflection-prompt-label">
+          "One small thing I noticed while doing this was..."
+        </label>
+        <textarea id="reflection-input" class="reflection-textarea" rows="4" placeholder="e.g. The soil was really parched and drank up the water immediately; the green leaves perked up right away..."></textarea>
+      </div>
+
+      <p class="reflection-privacy-note">
+        🔒 This reflection remains browser-local for this prototype session.
+      </p>
+
+      <div class="card-actions">
+        <button id="btn-submit-reflection" class="primary-btn pulse-glow">
+          <span class="btn-icon">🌿</span>
+          <span class="btn-text">COMPLETE QUEST</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 11: NON-CASINO REWARD EXPERIENCE
+       ============================================================ -->
+  <div id="reward-modal" class="modal-backdrop reward-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="reward-headline">
+    <div class="reward-sunburst-bg"></div>
+
+    <div class="reward-card">
+      <div class="floating-leaves-container" aria-hidden="true">
+        <span class="floating-leaf leaf-1">🌱</span>
+        <span class="floating-leaf leaf-2">🍃</span>
+        <span class="floating-leaf leaf-3">🌿</span>
+      </div>
+
+      <div class="reward-laurel">✨ 🌿 ✨</div>
+      <h2 id="reward-headline" class="reward-title">QUEST COMPLETE</h2>
+      <p id="reward-quest-name" class="reward-quest-name">Steward of the Garden</p>
+
+      <div class="reward-ledger">
+        <div class="ledger-row lp-row">
+          <span class="ledger-icon">🪙</span>
+          <span class="ledger-label">Life Points Awarded:</span>
+          <span id="reward-lp-val" class="ledger-value">+5 LP</span>
+          <span id="reward-lp-balance-note" class="ledger-balance-note">(120 → 125 LP)</span>
+        </div>
+        <div class="ledger-row">
+          <span class="ledger-icon">🛡️</span>
+          <span class="ledger-label">Character XP:</span>
+          <span id="reward-char-xp-val" class="ledger-value">+5 XP</span>
+        </div>
+        <div class="ledger-row stewardship-highlight">
+          <span class="ledger-icon">🌱</span>
+          <span class="ledger-label">Skill Growth:</span>
+          <span id="reward-skills-val" class="ledger-value">+15 Stew &bull; +5 Resp</span>
+        </div>
+      </div>
+
+      <div class="growth-proclamation">
+        <span class="proclamation-star">☀️</span>
+        <span class="proclamation-text">YOUR WORLD GREW.</span>
+        <span class="proclamation-star">☀️</span>
+      </div>
+
+      <div class="reward-actions">
+        <button id="btn-dismiss-rewards" class="primary-btn dawn-gold-btn pulse-glow">
+          <span class="btn-icon">🌻</span>
+          <span class="btn-text">RETURN TO WORLD</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 12: GET INTO THE GLORY CAMPAIGN DETAIL MODAL
+       ============================================================ -->
+  <div id="gitg-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="gitg-title">
+    <div class="parchment-card wide-card">
+      <header class="card-header">
+        <div class="title-with-badge">
+          <span class="campaign-pill gitg-pill">RECURRING PRAYER &amp; WORSHIP</span>
+          <span class="campaign-theme">WEEKLY THEME: GRATITUDE</span>
+        </div>
+        <h2 id="gitg-title">Get Into the Glory — Gratitude Week</h2>
+        <p class="card-desc">Fire of God community journey leading toward Friday Night Gathering.</p>
+      </header>
+
+      <!-- COMMUNITY READINESS DASHBOARD -->
+      <div class="readiness-detailed-panel">
+        <div class="readiness-main-score">
+          <div class="score-circle">
+            <span class="score-num">79%</span>
+            <span class="score-lbl">Readiness</span>
+          </div>
+          <div class="score-info">
+            <h3>Shared Community Preparation</h3>
+            <p>"We build readiness together as one church family—with zero shaming."</p>
+          </div>
+        </div>
+
+        <div class="readiness-category-bars">
+          <div class="cat-bar-item">
+            <div class="cat-bar-labels"><span>☕ Hospitality</span><span>72%</span></div>
+            <div class="comm-meter-track"><div class="comm-meter-fill" style="width: 72%;"></div></div>
+          </div>
+          <div class="cat-bar-item">
+            <div class="cat-bar-labels"><span>🎵 Music &amp; Worship</span><span>85%</span></div>
+            <div class="comm-meter-track"><div class="comm-meter-fill" style="width: 85%;"></div></div>
+          </div>
+          <div class="cat-bar-item">
+            <div class="cat-bar-labels"><span>🕯️ Prayer &amp; Intercession</span><span>67%</span></div>
+            <div class="comm-meter-track"><div class="comm-meter-fill" style="width: 67%;"></div></div>
+          </div>
+          <div class="cat-bar-item">
+            <div class="cat-bar-labels"><span>💻 Tech &amp; Livestream</span><span>94%</span></div>
+            <div class="comm-meter-track"><div class="comm-meter-fill" style="width: 94%;"></div></div>
+          </div>
+          <div class="cat-bar-item">
+            <div class="cat-bar-labels"><span>🤝 Youth Attendance</span><span>78%</span></div>
+            <div class="comm-meter-track"><div class="comm-meter-fill" style="width: 78%;"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DAILY BUILD-UP STEPS -->
+      <div class="campaign-steps-list">
+        <h4 class="steps-heading">Daily Build-Up Steps:</h4>
+        <div class="step-card completed">
+          <span class="step-check">✓</span>
+          <div class="step-info"><strong>Monday:</strong> Notice 3 things you are grateful for today.</div>
+        </div>
+        <div class="step-card completed">
+          <span class="step-check">✓</span>
+          <div class="step-info"><strong>Tuesday:</strong> Thank someone personally with voice or note.</div>
+        </div>
+        <div class="step-card active">
+          <span class="step-check">▶</span>
+          <div class="step-info"><strong>Wednesday:</strong> Help someone quietly without expecting recognition.</div>
+        </div>
+        <div class="step-card upcoming">
+          <span class="step-check">○</span>
+          <div class="step-info"><strong>Thursday:</strong> Short reflection &amp; Psalm 100:4 heart preparation.</div>
+        </div>
+        <div class="step-card upcoming">
+          <span class="step-check">○</span>
+          <div class="step-info"><strong>Friday (Event):</strong> Attend &amp; participate in Get Into the Glory (7:00 PM).</div>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-close-gitg" class="secondary-btn">CLOSE CAMPAIGN</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 13: AYS CAMPAIGN DETAIL MODAL
+       ============================================================ -->
+  <div id="ays-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="ays-title">
+    <div class="parchment-card wide-card">
+      <header class="card-header">
+        <div class="title-with-badge">
+          <span class="campaign-pill ays-pill">ALPHA YOUTH SERIES</span>
+          <span class="campaign-theme">WEEK OF QUESTIONS</span>
+        </div>
+        <h2 id="ays-title">AYS — Week of Questions</h2>
+        <p class="card-desc">Relational journey leading toward Saturday Alpha Youth kickoff.</p>
+      </header>
+
+      <div class="campaign-steps-list">
+        <div class="step-card completed">
+          <span class="step-check">✓</span>
+          <div class="step-info"><strong>Monday:</strong> Notice one big question you have about life and faith.</div>
+        </div>
+        <div class="step-card active">
+          <span class="step-check">▶</span>
+          <div class="step-info"><strong>Tuesday:</strong> Ask someone you trust a meaningful question.</div>
+        </div>
+        <div class="step-card upcoming">
+          <span class="step-check">○</span>
+          <div class="step-info"><strong>Wednesday:</strong> Complete a teamwork or listening quest without interruptions.</div>
+        </div>
+        <div class="step-card upcoming">
+          <span class="step-check">○</span>
+          <div class="step-info"><strong>Thursday:</strong> Private journal reflection on what you seek.</div>
+        </div>
+        <div class="step-card upcoming">
+          <span class="step-check">○</span>
+          <div class="step-info"><strong>Friday:</strong> Invite or encourage a friend attending tomorrow.</div>
+        </div>
+        <div class="step-card upcoming">
+          <span class="step-check">○</span>
+          <div class="step-info"><strong>Saturday (Main Event):</strong> AYS Kickoff Gathering in Youth Hall (3:00 PM).</div>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-close-ays" class="secondary-btn">CLOSE CAMPAIGN</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 14: SPORTS HUB EVENT & PERSONAL BEST MODAL
+       ============================================================ -->
+  <div id="sports-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="sports-modal-title">
+    <div class="parchment-card wide-card">
+      <header class="card-header">
+        <div class="title-with-badge">
+          <span class="campaign-pill sports-pill">FOG SPORTS HUB</span>
+          <span class="campaign-theme">COMMUNITY MATCH &amp; FITNESS</span>
+        </div>
+        <h2 id="sports-modal-title">FOG Youth Basketball Day</h2>
+        <p class="card-desc">Non-violent, friendly competition celebrating discipline and character.</p>
+      </header>
+
+      <!-- SCOREBOARD -->
+      <div class="sports-scoreboard">
+        <div class="score-team fire">
+          <span class="team-name">Team Fire</span>
+          <span class="team-score">68</span>
+          <span class="team-status win-tag">WINNER</span>
+        </div>
+        <div class="score-divider">VS</div>
+        <div class="score-team grace">
+          <span class="team-name">Team Grace</span>
+          <span class="team-score">62</span>
+          <span class="team-status">RUNNER-UP</span>
+        </div>
+      </div>
+
+      <!-- RECOGNITIONS -->
+      <div class="recognitions-grid">
+        <div class="rec-card">
+          <span class="rec-icon">🔥</span>
+          <div class="rec-details">
+            <span class="rec-role">Top Scorer</span>
+            <span class="rec-name">Alex</span>
+            <span class="rec-stat">24 Points &bull; 3 Triples</span>
+          </div>
+        </div>
+        <div class="rec-card">
+          <span class="rec-icon">🤝</span>
+          <div class="rec-details">
+            <span class="rec-role">Teamwork Recognition</span>
+            <span class="rec-name">Jordan</span>
+            <span class="rec-stat">11 Unselfish Assists</span>
+          </div>
+        </div>
+        <div class="rec-card">
+          <span class="rec-icon">⭐</span>
+          <div class="rec-details">
+            <span class="rec-role">Sportsmanship Recognition</span>
+            <span class="rec-name">Sam</span>
+            <span class="rec-stat">Helped Opponents Up &bull; Ref Thanks</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PERSONAL BEST DRILL SIMULATOR -->
+      <div class="pb-drill-simulator">
+        <div class="pb-header">
+          <h3>Personal Best: Free Throws (Out of 20)</h3>
+          <span class="pb-badge">COMPETE WITH YOURSELF</span>
+        </div>
+        <div class="pb-numbers-row">
+          <div class="pb-num-box">
+            <span class="pb-lbl">Previous:</span>
+            <span class="pb-val">12 / 20</span>
+          </div>
+          <div class="pb-arrow">➔</div>
+          <div class="pb-num-box highlight">
+            <span class="pb-lbl">Today:</span>
+            <span id="pb-current-val" class="pb-val">15 / 20</span>
+          </div>
+          <div class="pb-delta-badge">+3 PERSONAL BEST!</div>
+        </div>
+        <p class="pb-message">"Steady routine, knees bent, follow-through paid off."</p>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-close-sports" class="secondary-btn">CLOSE SPORTS HUB</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 15: EVENT MEMORIES PHOTO GALLERY
+       ============================================================ -->
+  <div id="memories-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="memories-title">
+    <div class="parchment-card wide-card memories-card">
+      <header class="card-header">
+        <span class="deckled-category">FIRE OF GOD ARCHIVE</span>
+        <h2 id="memories-title">Event Memories &bull; Basketball Day</h2>
+        <p class="card-desc">Photographic memories celebrating fellowship and character (local placeholders).</p>
+      </header>
+
+      <div class="photo-cards-grid" id="photo-cards-container">
+        <!-- Rendered dynamically from data/memories.js -->
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-close-memories" class="secondary-btn">CLOSE PHOTO GALLERY</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 16: PERSONAL JOURNEY ARCHIVE ("MY JOURNEY")
+       ============================================================ -->
+  <div id="journey-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="journey-title">
+    <div class="parchment-card wide-card journey-card">
+      <header class="card-header">
+        <span class="deckled-category">PILGRIM ARCHIVE &bull; 2026</span>
+        <h2 id="journey-title">Alex's Journey with Fire of God</h2>
+        <p class="card-desc">"This is your journey with the community—not merely statistics."</p>
+      </header>
+
+      <!-- SUMMARY COUNTERS -->
+      <div class="journey-summary-pills">
+        <div class="j-pill"><span class="j-num">5</span> Places Explored</div>
+        <div class="j-pill"><span class="j-num">8</span> Quests Completed</div>
+        <div class="j-pill"><span class="j-num">2</span> Campaigns</div>
+        <div class="j-pill"><span class="j-num">4</span> Personal Bests</div>
+      </div>
+
+      <!-- TIMELINE CHRONICLE -->
+      <div class="journey-timeline-list" id="journey-timeline-container">
+        <!-- Rendered dynamically from data/memories.js -->
+      </div>
+
+      <!-- ACHIEVEMENTS MEDALLIONS -->
+      <div class="journey-achievements-box">
+        <h3>Unlocked Community Badges</h3>
+        <div class="badges-row" id="journey-badges-container">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-close-journey" class="secondary-btn">CLOSE MY JOURNEY</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 17: ADMIN KOINONIA STUDIO (NO-CODE BUILDER PROTOTYPE)
+       ============================================================ -->
+  <div id="admin-studio-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="studio-title">
+    <div class="admin-studio-card">
+      <!-- ADMIN HEADER -->
+      <header class="admin-header">
+        <div class="admin-brand">
+          <span class="admin-icon">⚙️</span>
+          <div>
+            <h2 id="studio-title">KOINONIA STUDIO</h2>
+            <span class="admin-sub">No-Code World, Quest &amp; Campaign Builder &bull; Admin Prototype</span>
+          </div>
+        </div>
+
+        <div class="admin-tabs" role="tablist">
+          <button class="admin-tab-btn active" data-tab="admin-places">🗺️ Places</button>
+          <button class="admin-tab-btn" data-tab="admin-quests">📜 Quests</button>
+          <button class="admin-tab-btn" data-tab="admin-campaigns">🎯 Campaigns</button>
+          <button class="admin-tab-btn" data-tab="admin-events">🏆 Events</button>
+        </div>
+
+        <button id="btn-close-admin" class="modal-close-btn" aria-label="Exit Studio">✕</button>
+      </header>
+
+      <!-- ADMIN WORKSPACE BODY -->
+      <div class="admin-body">
+
+        <!-- TAB 1: PLACE BUILDER -->
+        <div id="tab-admin-places" class="admin-pane active">
+          <div class="admin-split-view">
+            <!-- BUILDER FORM (STRICTLY DATA-DRIVEN - NO ARBITRARY CODE INJECTION) -->
+            <form id="form-create-place" class="builder-form" onsubmit="return false;">
+              <h3>Create New Place</h3>
+              <p class="builder-hint">Select a template, name the place, and attach structured zones.</p>
+
+              <div class="form-group">
+                <label for="new-place-name">Place Name</label>
+                <input type="text" id="new-place-name" class="admin-input" placeholder="e.g. Prayer Mountain Retreat" required maxlength="40">
+              </div>
+
+              <div class="form-group">
+                <label for="new-place-template">Template</label>
+                <select id="new-place-template" class="admin-select">
+                  <option value="tmpl_center">Community Center</option>
+                  <option value="tmpl_school">School / Academic</option>
+                  <option value="tmpl_sports">Sports &amp; Fitness</option>
+                  <option value="tmpl_outreach">Outreach / Service Site</option>
+                  <option value="tmpl_formation">Formation &amp; Retreat</option>
+                  <option value="tmpl_home">Domestic / Home</option>
+                  <option value="tmpl_blank">Custom Blank Canvas</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="new-place-lifecycle">Lifecycle</label>
+                <select id="new-place-lifecycle" class="admin-select">
+                  <option value="permanent">Permanent Place</option>
+                  <option value="seasonal">Seasonal / Campaign</option>
+                  <option value="temporary">Temporary Event Site</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="new-place-desc">Description</label>
+                <textarea id="new-place-desc" class="admin-input" rows="2" placeholder="Brief description of the place purpose..." maxlength="150"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>Add Zones</label>
+                <div class="preset-chips-row">
+                  <span class="chip-item">Entrance Plaza</span>
+                  <span class="chip-item">Assembly Hall</span>
+                  <span class="chip-item">Prayer Arbor</span>
+                  <span class="chip-item">Hospitality Table</span>
+                </div>
+              </div>
+
+              <button id="btn-save-new-place" class="primary-btn">
+                <span class="btn-icon">💾</span>
+                <span class="btn-text">SAVE PLACE TO PROTOTYPE</span>
+              </button>
+            </form>
+
+            <!-- LIVE STUDIO PREVIEW -->
+            <div class="builder-preview-panel">
+              <h3>Configured Places in Fire of God:</h3>
+              <div class="admin-places-list" id="admin-places-cards-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: QUEST BUILDER -->
+        <div id="tab-admin-quests" class="admin-pane hidden">
+          <div class="admin-split-view">
+            <form id="form-create-quest" class="builder-form" onsubmit="return false;">
+              <h3>Create New Calling / Quest</h3>
+              <p class="builder-hint">Design a real-world habit calling with explicit verification.</p>
+
+              <div class="form-group">
+                <label for="new-quest-title">Quest Title</label>
+                <input type="text" id="new-quest-title" class="admin-input" placeholder="e.g. Clean the Youth Hall Whiteboard" required maxlength="50">
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="new-quest-place">Target Place</label>
+                  <select id="new-quest-place" class="admin-select">
+                    <option value="fog_center">FOG Community Center</option>
+                    <option value="home">My Home</option>
+                    <option value="school">School</option>
+                    <option value="sports_hub">Sports Hub</option>
+                    <option value="outreach">Outreach Site</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="new-quest-verification">Verification</label>
+                  <select id="new-quest-verification" class="admin-select">
+                    <option value="TRUST">Trust (Honor System)</option>
+                    <option value="FAMILY">Family (Device Handoff)</option>
+                    <option value="LEADER">Leader Check-In</option>
+                    <option value="EVENT">Event Attendance</option>
+                    <option value="SYSTEM">System Automated</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="new-quest-action">Real-World Action</label>
+                <input type="text" id="new-quest-action" class="admin-input" placeholder="Action the player must take in the real world...">
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="new-quest-lp">Life Points (+)</label>
+                  <input type="number" id="new-quest-lp" class="admin-input" value="5" min="1" max="25">
+                </div>
+                <div class="form-group">
+                  <label for="new-quest-skill">Primary Skill XP</label>
+                  <select id="new-quest-skill" class="admin-select">
+                    <option value="stewardship">Stewardship (+15)</option>
+                    <option value="responsibility">Responsibility (+15)</option>
+                    <option value="discipline">Discipline (+15)</option>
+                    <option value="teamwork">Teamwork (+15)</option>
+                    <option value="service">Service (+15)</option>
+                    <option value="compassion">Compassion (+15)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button id="btn-save-new-quest" class="primary-btn">
+                <span class="btn-icon">📜</span>
+                <span class="btn-text">SAVE QUEST TO PROTOTYPE</span>
+              </button>
+            </form>
+
+            <div class="builder-preview-panel">
+              <h3>Active Quests in Prototype:</h3>
+              <div class="admin-quests-list" id="admin-quests-cards-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: CAMPAIGN BUILDER -->
+        <div id="tab-admin-campaigns" class="admin-pane hidden">
+          <div class="admin-split-view">
+            <div class="builder-form">
+              <h3>Campaign Architecture</h3>
+              <p class="builder-hint">Campaigns organize days of prayer and character formation toward an event culmination.</p>
+
+              <div class="admin-card-preview">
+                <h4>Active Campaigns:</h4>
+                <div class="campaign-summary-pill">Get Into the Glory (Weekly Gratitude) &bull; Friday Culmination</div>
+                <div class="campaign-summary-pill">AYS — Week of Questions &bull; Saturday Kickoff</div>
+              </div>
+
+              <div class="callout-box">
+                <strong>Data-Driven Safety Notice:</strong>
+                <p>All campaign days map to predefined step types: <code>reflection</code>, <code>conversation</code>, <code>action</code>, <code>service</code>, and <code>event</code>. No executable code is parsed.</p>
+              </div>
+            </div>
+
+            <div class="builder-preview-panel">
+              <h3>Community Readiness Configuration:</h3>
+              <p class="small-text">Tracks collective preparation without shaming non-participants.</p>
+              <div class="readiness-config-list">
+                <div class="config-metric"><span>☕ Hospitality:</span> <strong>72%</strong></div>
+                <div class="config-metric"><span>🎵 Music:</span> <strong>85%</strong></div>
+                <div class="config-metric"><span>🕯️ Prayer:</span> <strong>67%</strong></div>
+                <div class="config-metric"><span>💻 Tech:</span> <strong>94%</strong></div>
+                <div class="config-metric"><span>🤝 Youth Attendance:</span> <strong>78%</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: EVENT & SCORES MANAGER -->
+        <div id="tab-admin-events" class="admin-pane hidden">
+          <div class="admin-split-view">
+            <div class="builder-form">
+              <h3>Event Record Manager</h3>
+              <p class="builder-hint">Review scores, community contribution, and character recognitions.</p>
+              <div class="admin-event-card">
+                <h4>FOG Youth Basketball Day</h4>
+                <p>Date: September 2026 &bull; Place: Sports Hub</p>
+                <div class="teams-score-chip">Team Fire (68) — Team Grace (62)</div>
+                <p>Recognitions: Alex (Top Scorer), Jordan (Teamwork), Sam (Sportsmanship)</p>
+              </div>
+            </div>
+            <div class="builder-preview-panel">
+              <h3>Personal Best Metrics:</h3>
+              <div class="admin-pb-list">
+                <div class="pb-row"><span>🏀 Free Throws:</span> <strong>15 / 20 (+3 PB)</strong></div>
+                <div class="pb-row"><span>🏸 Badminton Rally:</span> <strong>24 hits (+6 PB)</strong></div>
+                <div class="pb-row"><span>🏓 Pickleball Serves:</span> <strong>17 / 20 (+3 PB)</strong></div>
+                <div class="pb-row"><span>🏃 Campus Mile:</span> <strong>8m 20s (-25s PB)</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div> <!-- /admin-body -->
+    </div>
+  </div>
+
+  <!-- LOAD DATA STORES FIRST -->
+  <script src="data/places.js"></script>
+  <script src="data/quests.js"></script>
+  <script src="data/campaigns.js"></script>
+  <script src="data/events.js"></script>
+  <script src="data/memories.js"></script>
+
+  <!-- LOAD CORE GAME LOGIC -->
+  <script src="game.js"></script>
+</body>
+</html>
