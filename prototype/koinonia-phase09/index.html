@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>KOINONIA — Fire of God Ministries Virtual Community (Phase 0.9 Prototype)</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============================================================
+       TOP APPLICATION CONTAINER / MOBILE-FIRST RESPONSIVE SHELL
+       ============================================================ -->
+  <div id="app-container">
+
+    <!-- TOP GLOBAL BAR -->
+    <header id="global-header" role="banner">
+      <div class="header-brand-group">
+        <div class="brand-emblem-icon" aria-hidden="true">K</div>
+        <div class="brand-title-wrap">
+          <span class="brand-title">KOINONIA</span>
+          <span class="brand-subtitle">Fire of God Ministries Virtual Community</span>
+        </div>
+      </div>
+
+      <div class="header-status-group">
+        <!-- LIFE POINTS PILL (SECONDARY NON-CASINO DISPLAY) -->
+        <div class="lp-pill" title="Prototype Fake Life Points (Non-Gambling Metric)">
+          <span class="lp-icon" aria-hidden="true">🪙</span>
+          <span id="header-lp-amount">120</span>
+          <span class="lp-label">LP</span>
+        </div>
+
+        <!-- AUDIO TOGGLE (MUTED BY DEFAULT) -->
+        <button id="audio-toggle-btn" class="header-btn audio-btn muted" aria-label="Toggle Sound (Currently Muted)" title="Toggle Sound">
+          <span id="audio-icon" aria-hidden="true">🔈</span>
+          <span id="audio-label" class="sr-only">Muted</span>
+        </button>
+
+        <!-- PROTOTYPE RESET BUTTON -->
+        <button id="dev-reset-btn" class="header-btn" aria-label="Reset Prototype State" title="Reset Prototype Demo">
+          <span aria-hidden="true">🔄</span>
+          <span class="sr-only">Reset</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN STUDIO BODY / STAGE -->
+    <div id="studio-body">
+
+      <!-- LEFT SIDEBAR: PILGRIM PROFILE & SKILLS (DESKTOP MULTI-PANE ONLY) -->
+      <aside id="panel-left" class="studio-panel panel-left" aria-label="Pilgrim Profile and Skills">
+        <div class="sheet-header">
+          <div class="sheet-title-group">
+            <span class="sheet-icon" aria-hidden="true">🌱</span>
+            <div>
+              <h2 class="sheet-title">Pilgrim Profile</h2>
+              <span class="sheet-subtitle">Alex • Novice Steward</span>
+            </div>
+          </div>
+          <button id="close-left-panel" class="sheet-close-btn" aria-label="Collapse Left Panel">◀</button>
+        </div>
+
+        <div class="sheet-body">
+          <!-- Profile Card -->
+          <div style="text-align: center; margin-bottom: 16px;">
+            <div style="font-size: 2.8rem; margin-bottom: 6px;">🧑‍🌾</div>
+            <h3 style="font-family: var(--font-devotional); font-size: 1.25rem; color: var(--brand-burgundy);">Alex</h3>
+            <p style="font-size: 0.78rem; color: var(--text-secondary);">Fire of God Ministries Virtual Community</p>
+            <div style="display: inline-block; margin-top: 6px; padding: 4px 10px; background-color: var(--tint-soft-gold); border-radius: var(--radius-pill); font-size: 0.75rem; font-weight: 700; color: var(--brand-burgundy);">Character Level 1 (0 / 100 XP)</div>
+          </div>
+
+          <!-- Skill Garden Overview -->
+          <h4 style="font-size: 0.82rem; text-transform: uppercase; color: var(--brand-burgundy); margin-bottom: 10px; font-weight: 800;">Character &amp; Skill Garden</h4>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="team-chip">
+              <span class="team-chip-title">🌱 Stewardship</span>
+              <span id="dt-stewardship-xp" class="team-chip-score" style="font-size: 0.95rem;">0 XP</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">🪵 Responsibility</span>
+              <span id="dt-responsibility-xp" class="team-chip-score" style="font-size: 0.95rem;">0 XP</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">🛡️ Discipline</span>
+              <span id="dt-discipline-xp" class="team-chip-score" style="font-size: 0.95rem;">0 XP</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">🤝 Teamwork</span>
+              <span id="dt-teamwork-xp" class="team-chip-score" style="font-size: 0.95rem;">0 XP</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">🪴 Service</span>
+              <span id="dt-service-xp" class="team-chip-score" style="font-size: 0.95rem;">0 XP</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- CENTER: DOMINANT 2D CANVAS VIEWPORT (WITH DYNAMIC CAMERA TRACKING) -->
+      <main id="panel-center" class="studio-panel panel-center" role="main">
+        <div id="canvas-container" class="canvas-container">
+          <!-- The Responsive 2D World Canvas -->
+          <canvas id="gameCanvas" width="800" height="576" tabindex="0" aria-label="Interactive 2D World of Koinonia"></canvas>
+
+          <!-- Place Watermark Badge -->
+          <div id="canvas-place-badge" class="canvas-place-badge">
+            <span id="canvas-place-icon" aria-hidden="true">🏡</span>
+            <span id="canvas-place-label">My Home</span>
+            <span id="canvas-place-lifecycle" class="lifecycle-chip permanent">Permanent Place</span>
+          </div>
+
+          <!-- World Toast Banner -->
+          <div id="world-toast" class="world-toast hidden" role="status" aria-live="polite">
+            <span id="toast-icon" aria-hidden="true">✨</span>
+            <span id="toast-message">Notification</span>
+          </div>
+
+          <!-- Proximity Prompt -->
+          <div id="proximity-prompt" class="proximity-prompt hidden" aria-live="polite">
+            <span aria-hidden="true">💬</span>
+            <span>Tap to Talk / Press <strong>E</strong></span>
+          </div>
+
+          <!-- Emote Quick Floating Buttons -->
+          <div id="canvas-emotes" class="canvas-emotes" aria-label="Quick Emotes">
+            <button class="emote-btn" data-emote="👋" title="Wave" aria-label="Wave">👋</button>
+            <button class="emote-btn" data-emote="❤️" title="Love" aria-label="Love">❤️</button>
+            <button class="emote-btn" data-emote="🙏" title="Gratitude" aria-label="Gratitude">🙏</button>
+            <button class="emote-btn" data-emote="💡" title="Insight" aria-label="Insight">💡</button>
+            <button class="emote-btn" data-emote="👍" title="Encourage" aria-label="Encourage">👍</button>
+            <button class="emote-btn" data-emote="🌱" title="Sprout" aria-label="Sprout">🌱</button>
+          </div>
+
+          <!-- Mobile Glanceable Quest Summary Bar -->
+          <div id="mobile-quest-glance" class="mobile-quest-glance" role="button" tabindex="0" aria-label="View Current Place Calling">
+            <div class="glance-left">
+              <span class="glance-icon" aria-hidden="true">🌱</span>
+              <div class="glance-texts">
+                <span class="glance-label">Place Calling</span>
+                <span id="glance-quest-title" class="glance-title">Steward of the Garden</span>
+              </div>
+            </div>
+            <button class="glance-btn" id="btn-glance-open">VIEW</button>
+          </div>
+        </div>
+
+        <!-- MOBILE ON-SCREEN TOUCH CONTROLS (Ergonomic Thumb Zones) -->
+        <nav id="mobile-controls" class="mobile-controls" aria-label="Touch Movement and Action Controls">
+          <!-- Translucent Virtual D-Pad -->
+          <div class="dpad" role="group" aria-label="Directional Navigation Pad">
+            <button id="dpad-up" class="dpad-btn dpad-up" aria-label="Move Up">▲</button>
+            <button id="dpad-left" class="dpad-btn dpad-left" aria-label="Move Left">◀</button>
+            <div class="dpad-center-hub" aria-hidden="true"></div>
+            <button id="dpad-right" class="dpad-btn dpad-right" aria-label="Move Right">▶</button>
+            <button id="dpad-down" class="dpad-btn dpad-down" aria-label="Move Down">▼</button>
+          </div>
+
+          <!-- Large Thumb Action Button -->
+          <div class="mobile-action-buttons">
+            <button id="mobile-action-btn" class="action-btn-primary" aria-label="Interact or Talk with nearby NPC">
+              <span class="action-icon" aria-hidden="true">💬</span>
+              <span class="action-text">Talk / Act</span>
+            </button>
+          </div>
+        </nav>
+      </main>
+
+      <!-- RIGHT SIDEBAR: QUEST LEDGER & CAMPAIGNS (DESKTOP MULTI-PANE ONLY) -->
+      <aside id="panel-right" class="studio-panel panel-right" aria-label="Quest Ledger and Campaigns">
+        <div class="sheet-header">
+          <div class="sheet-title-group">
+            <span class="sheet-icon" aria-hidden="true">📜</span>
+            <div>
+              <h2 class="sheet-title">Pilgrim's Ledger</h2>
+              <span class="sheet-subtitle">Place Callings &amp; Campaigns</span>
+            </div>
+          </div>
+          <button id="close-right-panel" class="sheet-close-btn" aria-label="Collapse Right Panel">▶</button>
+        </div>
+
+        <div class="sheet-body">
+          <div style="display: flex; gap: 6px; margin-bottom: 14px;">
+            <button id="dt-tab-quests" class="header-btn" style="flex: 1; font-weight: 700;">Place Quests</button>
+            <button id="dt-tab-campaigns" class="header-btn" style="flex: 1; font-weight: 700;">Campaigns</button>
+            <button id="dt-tab-history" class="header-btn" style="flex: 1; font-weight: 700;">History</button>
+          </div>
+
+          <!-- Desktop Quests List Container -->
+          <div id="desktop-quests-container" class="places-list-vertical">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </aside>
+
+    </div><!-- /studio-body -->
+
+    <!-- ============================================================
+         MOBILE BOTTOM NAVIGATION (5 First-Class Mobile Tabs)
+         ============================================================ -->
+    <nav id="mobile-bottom-nav" role="navigation" aria-label="Main Application Navigation">
+      <button id="nav-tab-home" class="nav-tab-item active" data-view="home" aria-label="Home World View">
+        <span class="nav-tab-icon" aria-hidden="true">🏡</span>
+        <span class="nav-tab-label">Home</span>
+      </button>
+
+      <button id="nav-tab-world" class="nav-tab-item" data-view="world" aria-label="World Map Navigation">
+        <span class="nav-tab-icon" aria-hidden="true">🗺️</span>
+        <span class="nav-tab-label">World</span>
+      </button>
+
+      <button id="nav-tab-quests" class="nav-tab-item" data-view="quests" aria-label="Place Quests and Callings">
+        <span class="nav-tab-icon" aria-hidden="true">📜</span>
+        <span class="nav-tab-label">Quests</span>
+      </button>
+
+      <button id="nav-tab-journey" class="nav-tab-item" data-view="journey" aria-label="My Personal Journey Archive">
+        <span class="nav-tab-icon" aria-hidden="true">📖</span>
+        <span class="nav-tab-label">Journey</span>
+      </button>
+
+      <button id="nav-tab-me" class="nav-tab-item" data-view="me" aria-label="Profile and Menu">
+        <span class="nav-tab-icon" aria-hidden="true">👤</span>
+        <span class="nav-tab-label">Me</span>
+      </button>
+    </nav>
+
+  </div><!-- /app-container -->
+
+  <!-- ============================================================
+       MODAL 1: TITLE SPLASH SCREEN
+       ============================================================ -->
+  <div id="title-screen" class="modal-backdrop active" role="dialog" aria-modal="true" aria-labelledby="title-headline">
+    <div class="bottom-sheet" style="border-radius: var(--radius-lg); margin: auto;">
+      <div class="sheet-body" style="text-align: center; padding: 32px 24px;">
+        <div style="width: 72px; height: 72px; border-radius: var(--radius-md); background: linear-gradient(135deg, var(--brand-flame-gold) 0%, var(--brand-fire-orange) 50%, var(--brand-revival-red) 100%); color: #FFF; font-size: 2.2rem; font-weight: 900; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto; box-shadow: var(--shadow-md);">K</div>
+
+        <h1 id="title-headline" style="font-family: var(--font-devotional); font-size: 2.4rem; font-weight: 700; color: var(--brand-burgundy); letter-spacing: 0.05em; line-height: 1.1;">KOINONIA</h1>
+        <div style="font-size: 0.85rem; font-weight: 700; color: var(--brand-fire-orange); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">Fire of God Ministries Virtual Community</div>
+        <div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic; margin-bottom: 12px;">by Fire of God Ministries</div>
+        <p style="font-family: var(--font-devotional); font-size: 1.15rem; font-style: italic; color: var(--text-secondary); margin-bottom: 24px;">"A virtual world that grows when you grow in real life."</p>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; max-width: 320px; margin: 0 auto;">
+          <button id="btn-begin-adventure" class="primary-btn" autofocus>
+            <span>🌿</span>
+            <span>ENTER THE WORLD</span>
+          </button>
+          <button id="btn-continue-disabled" class="secondary-btn" disabled style="opacity: 0.6; cursor: not-allowed;">
+            <span>🔒</span>
+            <span>CONTINUE (PHASE 0.9)</span>
+          </button>
+        </div>
+
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 20px;">
+          🔈 Audio is muted by default. You may enable sound in the header.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 2: AVATAR SETUP
+       ============================================================ -->
+  <div id="avatar-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="avatar-modal-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">🧑‍🌾</span>
+          <div>
+            <h2 id="avatar-modal-title" class="sheet-title">Create Your Pilgrim</h2>
+            <span class="sheet-subtitle">Select your avatar appearance</span>
+          </div>
+        </div>
+        <button id="btn-close-avatar" class="sheet-close-btn" aria-label="Close Avatar Setup">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div style="text-align: center; margin-bottom: 16px;">
+          <canvas id="avatar-preview-canvas" width="64" height="64" style="border: 2px solid var(--border-brand); border-radius: var(--radius-md); background-color: var(--tint-soft-gold);"></canvas>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="form-group">
+            <label class="form-label">Pilgrim Name</label>
+            <input type="text" id="avatar-name-input" class="form-input" value="Alex" maxlength="20">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Skin Tone</label>
+            <div style="display: flex; gap: 10px;">
+              <button class="header-btn skin-swatch active" data-skin="#F8D9B8" style="background-color: #F8D9B8; width: 44px; height: 44px;"></button>
+              <button class="header-btn skin-swatch" data-skin="#E0A97E" style="background-color: #E0A97E; width: 44px; height: 44px;"></button>
+              <button class="header-btn skin-swatch" data-skin="#A96E49" style="background-color: #A96E49; width: 44px; height: 44px;"></button>
+              <button class="header-btn skin-swatch" data-skin="#663A21" style="background-color: #663A21; width: 44px; height: 44px;"></button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Hair Style</label>
+            <div style="display: flex; gap: 10px;">
+              <button class="header-btn hair-btn active" data-hair="crop">Crop</button>
+              <button class="header-btn hair-btn" data-hair="curly">Curly</button>
+              <button class="header-btn hair-btn" data-hair="braids">Braids</button>
+              <button class="header-btn hair-btn" data-hair="parted">Parted</button>
+            </div>
+          </div>
+
+          <button id="btn-save-avatar" class="primary-btn" style="margin-top: 10px;">
+            <span>SAVE &amp; BEGIN ADVENTURE</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 3: WORLD MAP (PORTRAIT-FIRST BOTTOM SHEET)
+       ============================================================ -->
+  <div id="world-map-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="map-modal-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">🗺️</span>
+          <div>
+            <h2 id="map-modal-title" class="sheet-title">Places of Fellowship</h2>
+            <span class="sheet-subtitle">Fire of God Ministries Virtual Community</span>
+          </div>
+        </div>
+        <button id="btn-close-map" class="sheet-close-btn" aria-label="Close World Map">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div class="places-list-vertical" id="world-places-list">
+          <!-- Populated dynamically: My Home, FOG Center, School, Sports Hub, Outreach Site -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 4: NPC DIALOGUE (LOWER SCREEN WITH WORLD CONTEXT)
+       ============================================================ -->
+  <div id="dialogue-overlay" class="dialogue-overlay hidden" role="dialog" aria-modal="false" aria-labelledby="dialogue-speaker">
+    <div class="dialogue-card">
+      <div id="dialogue-portrait" class="dialogue-portrait" aria-hidden="true">👴</div>
+      <div class="dialogue-content">
+        <h3 id="dialogue-speaker" class="dialogue-speaker">Uncle Barnaby</h3>
+        <p id="dialogue-text" class="dialogue-text">"Morning, Alex. Look at our garden patch out here..."</p>
+        <div class="dialogue-action-row">
+          <button id="dialogue-next-btn" class="tap-continue-btn">
+            <span>Continue</span>
+            <span>▸</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 5: QUEST CARD BOTTOM SHEET
+       ============================================================ -->
+  <div id="quest-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="quest-modal-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">🌱</span>
+          <div>
+            <span id="quest-modal-category" style="font-size: 0.7rem; font-weight: 800; color: var(--brand-fire-orange); text-transform: uppercase;">DOMESTIC STEWARDSHIP</span>
+            <h2 id="quest-modal-title" class="sheet-title">Steward of the Garden</h2>
+          </div>
+        </div>
+        <button id="btn-close-quest-modal" class="sheet-close-btn" aria-label="Close Quest Details">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div style="background-color: var(--tint-soft-gold); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 14px; font-size: 0.92rem; color: var(--brand-charcoal); line-height: 1.45;" id="quest-modal-narrative">
+          "Water the potted plants at home to care for living creation right outside your window."
+        </div>
+
+        <div class="exit-mission-card">
+          <span class="mission-tag">REAL-WORLD CALLING</span>
+          <p id="quest-modal-mission" class="mission-text">Water the plants at home or refill pet water.</p>
+          <p id="quest-modal-fallback" class="mission-fallback-sub">Refill a pet's water dish, wipe down a shared table, or tidy a small counter.</p>
+        </div>
+
+        <!-- Rewards preview -->
+        <div class="reward-summary-box" style="margin-bottom: 18px;">
+          <div class="reward-metric-item">
+            <span class="reward-metric-val">+5 LP</span>
+            <span class="reward-metric-lbl">Life Points</span>
+          </div>
+          <div class="reward-metric-item">
+            <span class="reward-metric-val">+15 XP</span>
+            <span class="reward-metric-lbl">Stewardship</span>
+          </div>
+          <div class="reward-metric-item">
+            <span class="reward-metric-val">+5 XP</span>
+            <span class="reward-metric-lbl">Responsibility</span>
+          </div>
+        </div>
+
+        <button id="btn-accept-quest" class="primary-btn">
+          <span>🌿 ACCEPT THIS CALLING</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 6: SIGNATURE "YOUR TURN — IN THE REAL WORLD" EXIT RAMP
+       ============================================================ -->
+  <div id="exit-ramp-modal" class="modal-backdrop exit-ramp-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="exit-ramp-title">
+    <div class="exit-ramp-card">
+      <div class="exit-ramp-emblem" aria-hidden="true">☀️</div>
+
+      <h2 id="exit-ramp-title" class="exit-ramp-headline">
+        YOUR TURN —<br>IN THE REAL WORLD
+      </h2>
+
+      <div class="exit-mission-card">
+        <span class="mission-tag">ACTIVE MISSION</span>
+        <p id="exit-ramp-mission-text" class="mission-text">Water the plants at home.</p>
+        <p class="mission-fallback-sub">(Or care for household space without being reminded)</p>
+      </div>
+
+      <p class="exit-ramp-subtext">
+        "The next part of this adventure doesn't happen on this screen."
+      </p>
+
+      <div class="exit-ramp-actions">
+        <button id="btn-exit-to-real-world" class="primary-btn">
+          <span>I'LL DO THIS NOW</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 7: STANDBY MODE ("MISSION IN PROGRESS")
+       ============================================================ -->
+  <div id="standby-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="standby-title">
+    <div class="exit-ramp-card">
+      <div style="font-size: 3rem; margin-bottom: 12px;" aria-hidden="true">⏳</div>
+      <h2 id="standby-title" class="exit-ramp-headline">MISSION IN PROGRESS</h2>
+      <p style="font-size: 0.92rem; color: var(--text-secondary); margin-bottom: 20px;">
+        Go water the plants or tidy up your space. Take all the time you need. There are no timers or rushing here.
+      </p>
+
+      <button id="btn-im-back" class="primary-btn">
+        <span>✅ I'M BACK — I COMPLETED IT</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 8: VERIFICATION OPTIONS
+       ============================================================ -->
+  <div id="verification-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="verify-modal-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">🤝</span>
+          <div>
+            <h2 id="verify-modal-title" class="sheet-title">How Was This Completed?</h2>
+            <span class="sheet-subtitle">Select verification method</span>
+          </div>
+        </div>
+        <button id="btn-close-verify" class="sheet-close-btn" aria-label="Close Verification">✕</button>
+      </div>
+      <div class="sheet-body" style="display: flex; flex-direction: column; gap: 12px;">
+        <button id="btn-verify-trust" class="primary-btn" style="background: var(--brand-fire-orange);">
+          <span>⭐ TRUST: I COMPLETED IT ON MY HONOR</span>
+        </button>
+        <button id="btn-verify-family" class="secondary-btn" style="min-height: 50px;">
+          <span>👨‍👩‍👦 FAMILY DEMO: ASK A PARENT / GUARDIAN</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 9: FAMILY PARENT HANDOFF DEMO
+       ============================================================ -->
+  <div id="family-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="family-modal-title">
+    <div class="exit-ramp-card">
+      <div style="font-size: 2.8rem; margin-bottom: 10px;" aria-hidden="true">👨‍👩‍👧</div>
+      <h2 id="family-modal-title" class="exit-ramp-headline">Please hand the device to your parent or guardian.</h2>
+      <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 24px;">
+        "Did Alex complete watering the plants or caring for a household space?"
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+        <button id="btn-parent-yes" class="primary-btn">
+          <span>YES, ALEX COMPLETED IT</span>
+        </button>
+        <button id="btn-parent-cancel" class="secondary-btn">
+          <span>NOT YET</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 10: QUIET REFLECTION JOURNAL
+       ============================================================ -->
+  <div id="reflection-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="reflection-modal-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">📖</span>
+          <div>
+            <h2 id="reflection-modal-title" class="sheet-title">Quiet Reflection</h2>
+            <span class="sheet-subtitle">One small thought to remember</span>
+          </div>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px;">
+          One small thing I noticed while doing this was...
+        </p>
+        <textarea id="reflection-input" class="form-textarea" rows="3" placeholder="e.g. The soil was very dry and drank up the water quickly..."></textarea>
+        <button id="btn-submit-reflection" class="primary-btn" style="margin-top: 14px;">
+          <span>RECORD IN JOURNEY &amp; CLAIM REWARD</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 11: CELEBRATORY REWARDS SCREEN (NON-CASINO)
+       ============================================================ -->
+  <div id="reward-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="reward-headline">
+    <div class="bottom-sheet">
+      <div class="sheet-body reward-card">
+        <div class="reward-leaf-drift" aria-hidden="true">🌱✨</div>
+        <h2 id="reward-headline" class="reward-headline">YOUR WORLD GREW.</h2>
+        <p style="font-size: 0.92rem; color: var(--text-secondary); margin-bottom: 16px;">
+          Because you watered living plants in the real world, the garden outside your window has blossomed!
+        </p>
+
+        <div class="reward-summary-box">
+          <div class="reward-metric-item">
+            <span id="reward-lp-num" class="reward-metric-val">+5 LP</span>
+            <span class="reward-metric-lbl">Life Points (125 Total)</span>
+          </div>
+          <div class="reward-metric-item">
+            <span class="reward-metric-val">+15 XP</span>
+            <span class="reward-metric-lbl">Stewardship</span>
+          </div>
+        </div>
+
+        <button id="btn-close-reward" class="primary-btn">
+          <span>RETURN TO THE GARDEN</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 12: CAMPAIGNS & COMMUNITY READINESS DASHBOARD (79%)
+       ============================================================ -->
+  <div id="campaigns-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="camp-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">🎯</span>
+          <div>
+            <h2 id="camp-title" class="sheet-title">Community Campaigns</h2>
+            <span class="sheet-subtitle">Fire of God Ministries Virtual Community</span>
+          </div>
+        </div>
+        <button id="btn-close-camp" class="sheet-close-btn" aria-label="Close Campaigns">✕</button>
+      </div>
+      <div class="sheet-body">
+        <!-- Get Into the Glory Banner -->
+        <div class="campaign-banner">
+          <h3 class="campaign-banner-title">Get Into the Glory — Gratitude Week</h3>
+          <p style="font-size: 0.82rem; color: var(--brand-burgundy);">Fire of God weekly prayer and worship preparation journey.</p>
+
+          <!-- Readiness Dashboard (79%) -->
+          <div class="readiness-meter-block">
+            <div class="readiness-header-row">
+              <span style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; color: var(--brand-charcoal);">Community Readiness</span>
+              <span class="readiness-score-big">79%</span>
+            </div>
+            <div class="readiness-track">
+              <div class="readiness-fill" style="width: 79%;"></div>
+            </div>
+          </div>
+
+          <!-- Team Breakdown Chips -->
+          <div class="teams-readiness-grid">
+            <div class="team-chip">
+              <span class="team-chip-title">☕ Hospitality</span>
+              <span class="team-chip-score">72%</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">🎵 Music &amp; Worship</span>
+              <span class="team-chip-score">85%</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">🕯️ Prayer</span>
+              <span class="team-chip-score">67%</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">💻 Tech &amp; Media</span>
+              <span class="team-chip-score">94%</span>
+            </div>
+            <div class="team-chip" style="grid-column: span 2;">
+              <span class="team-chip-title">🤝 Youth Participation / Attendance</span>
+              <span class="team-chip-score">78%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- AYS: Week of Questions -->
+        <div class="campaign-banner" style="background: linear-gradient(135deg, var(--tint-soft-amber) 0%, var(--tint-soft-orange) 100%);">
+          <h3 class="campaign-banner-title">AYS: Week of Questions</h3>
+          <p style="font-size: 0.82rem; color: var(--brand-burgundy);">6-day relational journey leading into Saturday Alpha Youth service.</p>
+
+          <div class="vertical-timeline">
+            <div class="timeline-step-card completed">
+              <span class="step-day-badge">MON</span>
+              <div>
+                <strong style="font-size: 0.85rem; color: var(--brand-charcoal);">The Big Question</strong>
+                <p style="font-size: 0.78rem; color: var(--text-secondary);">Honest questions about faith and peace.</p>
+              </div>
+            </div>
+            <div class="timeline-step-card active">
+              <span class="step-day-badge">TUE</span>
+              <div>
+                <strong style="font-size: 0.85rem; color: var(--brand-charcoal);">Ask Someone You Trust</strong>
+                <p style="font-size: 0.78rem; color: var(--text-secondary);">Ask an elder what gives them quiet strength.</p>
+              </div>
+            </div>
+            <div class="timeline-step-card">
+              <span class="step-day-badge">WED</span>
+              <div>
+                <strong style="font-size: 0.85rem; color: var(--brand-charcoal);">The Art of Listening</strong>
+                <p style="font-size: 0.78rem; color: var(--text-secondary);">10 minutes listening without interrupting.</p>
+              </div>
+            </div>
+            <div class="timeline-step-card">
+              <span class="step-day-badge">THU</span>
+              <div>
+                <strong style="font-size: 0.85rem; color: var(--brand-charcoal);">Private Journal Examen</strong>
+                <p style="font-size: 0.78rem; color: var(--text-secondary);">Quiet prayers before the weekend.</p>
+              </div>
+            </div>
+            <div class="timeline-step-card">
+              <span class="step-day-badge">FRI</span>
+              <div>
+                <strong style="font-size: 0.85rem; color: var(--brand-charcoal);">Invite a Friend</strong>
+                <p style="font-size: 0.78rem; color: var(--text-secondary);">Extend warm invitation to Saturday fellowship.</p>
+              </div>
+            </div>
+            <div class="timeline-step-card">
+              <span class="step-day-badge">SAT</span>
+              <div>
+                <strong style="font-size: 0.85rem; color: var(--brand-charcoal);">Alpha Youth Service</strong>
+                <p style="font-size: 0.78rem; color: var(--text-secondary);">Youth gathering and pizza fellowship (3 PM).</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 13: SPORTS ACTIVITIES & PERSONAL BESTS
+       ============================================================ -->
+  <div id="sports-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="sports-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">🏀</span>
+          <div>
+            <h2 id="sports-title" class="sheet-title">Sports Hub &amp; Personal Bests</h2>
+            <span class="sheet-subtitle">"Compete with yourself, encourage everyone else"</span>
+          </div>
+        </div>
+        <button id="btn-close-sports" class="sheet-close-btn" aria-label="Close Sports Hub">✕</button>
+      </div>
+      <div class="sheet-body">
+        <!-- Official Basketball Scoreboard -->
+        <div class="sports-scoreboard">
+          <div class="scoreboard-team">
+            <div class="team-name">Team Fire</div>
+            <div class="team-pts" style="color: var(--brand-flame-gold);">68</div>
+          </div>
+          <div class="scoreboard-versus">vs</div>
+          <div class="scoreboard-team">
+            <div class="team-name">Team Grace</div>
+            <div class="team-pts">62</div>
+          </div>
+        </div>
+
+        <div style="background-color: var(--tint-soft-gold); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 16px;">
+          <strong style="font-size: 0.85rem; color: var(--brand-burgundy);">Top Scorer:</strong>
+          <span style="font-size: 0.85rem; color: var(--brand-charcoal);">Alex (24 Points • 3 Three-Pointers)</span>
+          <br>
+          <strong style="font-size: 0.85rem; color: var(--brand-burgundy);">Sportsmanship:</strong>
+          <span style="font-size: 0.85rem; color: var(--text-secondary);">Sam (Helped opponents up &amp; high-fived refs)</span>
+        </div>
+
+        <!-- Personal Best Comparison Items -->
+        <h3 style="font-family: var(--font-devotional); font-size: 1.15rem; color: var(--brand-burgundy); margin-bottom: 10px;">Personal Best Records</h3>
+
+        <!-- Free Throws PB -->
+        <div class="pb-card-item">
+          <div class="pb-header">
+            <span class="pb-sport-title">🏀 Free Throws (Out of 20)</span>
+            <span class="pb-delta-badge">+3 NEW PB</span>
+          </div>
+          <div class="pb-comparison-row">
+            <div class="pb-metric">
+              <div class="pb-metric-lbl">Previous</div>
+              <div class="pb-metric-num">12 / 20</div>
+            </div>
+            <div class="pb-metric">
+              <div class="pb-metric-lbl">Today</div>
+              <div class="pb-metric-num" style="color: var(--brand-fire-orange);">15 / 20</div>
+            </div>
+            <div class="pb-metric">
+              <div class="pb-metric-lbl">Improvement</div>
+              <div class="pb-metric-num" style="color: var(--accent-success);">+3 Makes</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Badminton Rally PB -->
+        <div class="pb-card-item">
+          <div class="pb-header">
+            <span class="pb-sport-title">🏸 Badminton Continuous Rally</span>
+            <span class="pb-delta-badge">+6 NEW PB</span>
+          </div>
+          <div class="pb-comparison-row">
+            <div class="pb-metric">
+              <div class="pb-metric-lbl">Previous</div>
+              <div class="pb-metric-num">18 shots</div>
+            </div>
+            <div class="pb-metric">
+              <div class="pb-metric-lbl">Today</div>
+              <div class="pb-metric-num" style="color: var(--brand-fire-orange);">24 shots</div>
+            </div>
+            <div class="pb-metric">
+              <div class="pb-metric-lbl">Improvement</div>
+              <div class="pb-metric-num" style="color: var(--accent-success);">+6 Shots</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Campus Mile PB -->
+        <div class="pb-card-item">
+          <div class="pb-header">
+            <span class="pb-sport-title">🏃 Campus Perimeter Mile</span>
+            <span class="pb-delta-badge">-25s NEW PB</span>
+          </div>
+          <div class="pb-comparison-row">
+            <div class="pb-metric">
+              <div class="pb-metric-lbl">Previous</div>
+              <div class="pb-metric-num">8m 45s</div>
+            </div>
+            <div class="pb-metric">
+              <div class="pb-metric-lbl">Today</div>
+              <div class="pb-metric-num" style="color: var(--brand-fire-orange);">8m 20s</div>
+            </div>
+            <div class="pb-metric">
+              <div class="pb-metric-lbl">Improvement</div>
+              <div class="pb-metric-num" style="color: var(--accent-success);">-25s Faster</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 14: EVENT MEMORIES GALLERY & LIGHTBOX
+       ============================================================ -->
+  <div id="memories-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="mem-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">📸</span>
+          <div>
+            <h2 id="mem-title" class="sheet-title">Event Memories</h2>
+            <span class="sheet-subtitle">Community Photo Moments</span>
+          </div>
+        </div>
+        <button id="btn-close-mem" class="sheet-close-btn" aria-label="Close Memories">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div class="memories-grid" id="memories-photo-grid">
+          <!-- 6 Memory Photo Cards injected dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Photo Lightbox -->
+  <div id="lightbox-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="lightbox-title">
+    <div class="lightbox-card">
+      <div id="lightbox-img-area" class="lightbox-img-area" style="background: var(--tint-soft-gold);">
+        <span id="lightbox-icon">🏀</span>
+      </div>
+      <div class="lightbox-details">
+        <h3 id="lightbox-title" style="font-family: var(--font-devotional); font-size: 1.3rem; color: var(--brand-burgundy); margin-bottom: 6px;">Tip-Off Circle</h3>
+        <p id="lightbox-caption" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px;">Team photo before tip-off under the morning sun.</p>
+        <span id="lightbox-meta" style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 16px;">Coach Marcus • September 2026</span>
+        <button id="btn-close-lightbox" class="primary-btn">CLOSE PHOTO</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 15: PERSONAL JOURNEY ARCHIVE (Alex 2026)
+       ============================================================ -->
+  <div id="journey-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="journey-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">📖</span>
+          <div>
+            <h2 id="journey-title" class="sheet-title">Alex's Journey Archive</h2>
+            <span class="sheet-subtitle">Your Journey with Fire of God Ministries</span>
+          </div>
+        </div>
+        <button id="btn-close-journey" class="sheet-close-btn" aria-label="Close Journey">✕</button>
+      </div>
+      <div class="sheet-body">
+        <!-- Stats Summary Header -->
+        <div class="reward-summary-box" style="margin-bottom: 18px;">
+          <div class="reward-metric-item">
+            <span class="reward-metric-val">5</span>
+            <span class="reward-metric-lbl">Places</span>
+          </div>
+          <div class="reward-metric-item">
+            <span class="reward-metric-val">8</span>
+            <span class="reward-metric-lbl">Quests</span>
+          </div>
+          <div class="reward-metric-item">
+            <span class="reward-metric-val">4</span>
+            <span class="reward-metric-lbl">PB Records</span>
+          </div>
+        </div>
+
+        <!-- Vertical Journey Timeline -->
+        <div class="journey-timeline-vertical" id="journey-timeline-list">
+          <!-- Milestones injected dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 16: "ME" / PROFILE & MENU SHEET
+       ============================================================ -->
+  <div id="me-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="me-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">👤</span>
+          <div>
+            <h2 id="me-title" class="sheet-title">Pilgrim Profile &amp; Menu</h2>
+            <span class="sheet-subtitle">Alex • Fire of God Ministries Virtual Community</span>
+          </div>
+        </div>
+        <button id="btn-close-me" class="sheet-close-btn" aria-label="Close Profile">✕</button>
+      </div>
+      <div class="sheet-body" style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="place-card-node" style="background: var(--tint-soft-gold);">
+          <div class="place-node-left">
+            <div class="place-node-icon">🧑‍🌾</div>
+            <div class="place-node-info">
+              <span class="place-node-title">Alex</span>
+              <span class="place-node-tag">Character Level 1 • Novice Steward</span>
+            </div>
+          </div>
+        </div>
+
+        <button id="btn-open-memories-from-me" class="secondary-btn" style="text-align: left; justify-content: flex-start; padding: 14px 18px;">
+          <span style="font-size: 1.3rem;">📸</span>
+          <span style="flex: 1;">Event Memories Gallery</span>
+          <span>▸</span>
+        </button>
+
+        <button id="btn-open-sports-from-me" class="secondary-btn" style="text-align: left; justify-content: flex-start; padding: 14px 18px;">
+          <span style="font-size: 1.3rem;">🏀</span>
+          <span style="flex: 1;">Sports &amp; Personal Bests</span>
+          <span>▸</span>
+        </button>
+
+        <button id="btn-open-camp-from-me" class="secondary-btn" style="text-align: left; justify-content: flex-start; padding: 14px 18px;">
+          <span style="font-size: 1.3rem;">🎯</span>
+          <span style="flex: 1;">Campaigns &amp; Readiness</span>
+          <span>▸</span>
+        </button>
+
+        <button id="btn-open-admin-from-me" class="secondary-btn" style="text-align: left; justify-content: flex-start; padding: 14px 18px; border: 2px dashed var(--brand-fire-orange); background: var(--tint-soft-orange);">
+          <span style="font-size: 1.3rem;">⚙️</span>
+          <span style="flex: 1; font-weight: 800; color: var(--brand-burgundy);">Koinonia Studio (Admin Wizard)</span>
+          <span>▸</span>
+        </button>
+
+        <button id="btn-reset-from-me" class="secondary-btn" style="color: var(--brand-revival-red); border-color: var(--brand-revival-red);">
+          <span>🔄 Reset Prototype Demo State</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 17: KOINONIA STUDIO (7-STEP MOBILE WIZARD + DESKTOP)
+       ============================================================ -->
+  <div id="admin-studio-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="studio-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon">⚙️</span>
+          <div>
+            <h2 id="studio-title" class="sheet-title">Koinonia Studio</h2>
+            <span class="sheet-subtitle">Place &amp; Quest Builder Wizard</span>
+          </div>
+        </div>
+        <button id="btn-close-admin" class="sheet-close-btn" aria-label="Close Studio">✕</button>
+      </div>
+      <div class="sheet-body">
+        <!-- 7-Step Progress Pip Bar -->
+        <div class="wizard-progress-bar">
+          <div class="wizard-step-pip active" id="pip-1"></div>
+          <div class="wizard-step-pip" id="pip-2"></div>
+          <div class="wizard-step-pip" id="pip-3"></div>
+          <div class="wizard-step-pip" id="pip-4"></div>
+          <div class="wizard-step-pip" id="pip-5"></div>
+          <div class="wizard-step-pip" id="pip-6"></div>
+          <div class="wizard-step-pip" id="pip-7"></div>
+        </div>
+
+        <!-- Wizard Step Container -->
+        <div id="wizard-step-box">
+          <!-- Step 1: Place Info -->
+          <div class="wizard-step-content" id="step-1-content">
+            <span style="font-size: 0.72rem; font-weight: 800; color: var(--brand-fire-orange); text-transform: uppercase;">STEP 1 OF 7</span>
+            <h3 style="font-family: var(--font-devotional); font-size: 1.25rem; color: var(--brand-burgundy);">Place Information</h3>
+            <div class="form-group">
+              <label class="form-label" for="wiz-place-name">Place Name</label>
+              <input type="text" id="wiz-place-name" class="form-input" placeholder="e.g. Prayer Mountain Retreat" value="Prayer Mountain Retreat">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="wiz-place-desc">Description</label>
+              <textarea id="wiz-place-desc" class="form-textarea" rows="2" placeholder="Quiet hillside arbor for sunrise prayer and contemplation.">Quiet hillside arbor for sunrise prayer and contemplation.</textarea>
+            </div>
+          </div>
+
+          <!-- Step 2: Template Selection -->
+          <div class="wizard-step-content hidden" id="step-2-content">
+            <span style="font-size: 0.72rem; font-weight: 800; color: var(--brand-fire-orange); text-transform: uppercase;">STEP 2 OF 7</span>
+            <h3 style="font-family: var(--font-devotional); font-size: 1.25rem; color: var(--brand-burgundy);">Choose Template</h3>
+            <div class="form-group">
+              <label class="form-label" for="wiz-template-select">Architectural Preset</label>
+              <select id="wiz-template-select" class="form-select">
+                <option value="tmpl_formation">Formation &amp; Retreat</option>
+                <option value="tmpl_center">Community Center</option>
+                <option value="tmpl_school">School / Academic</option>
+                <option value="tmpl_sports">Sports &amp; Fitness</option>
+                <option value="tmpl_outreach">Outreach Site</option>
+                <option value="tmpl_home">Domestic Home</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="wiz-lifecycle-select">Lifecycle</label>
+              <select id="wiz-lifecycle-select" class="form-select">
+                <option value="permanent">Permanent Place</option>
+                <option value="seasonal">Seasonal Program</option>
+                <option value="temporary">Temporary Event Site</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Step 3: Zones -->
+          <div class="wizard-step-content hidden" id="step-3-content">
+            <span style="font-size: 0.72rem; font-weight: 800; color: var(--brand-fire-orange); text-transform: uppercase;">STEP 3 OF 7</span>
+            <h3 style="font-family: var(--font-devotional); font-size: 1.25rem; color: var(--brand-burgundy);">Assign Zones</h3>
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">Select zones included in this place:</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <span class="journey-badge" style="padding: 6px 12px; font-size: 0.85rem; background: var(--tint-soft-gold); color: var(--brand-burgundy);">Entrance Trail</span>
+              <span class="journey-badge" style="padding: 6px 12px; font-size: 0.85rem; background: var(--tint-soft-gold); color: var(--brand-burgundy);">Sunrise Arbor</span>
+              <span class="journey-badge" style="padding: 6px 12px; font-size: 0.85rem; background: var(--tint-soft-gold); color: var(--brand-burgundy);">Prayer Stone Cross</span>
+            </div>
+          </div>
+
+          <!-- Step 4: Components -->
+          <div class="wizard-step-content hidden" id="step-4-content">
+            <span style="font-size: 0.72rem; font-weight: 800; color: var(--brand-fire-orange); text-transform: uppercase;">STEP 4 OF 7</span>
+            <h3 style="font-family: var(--font-devotional); font-size: 1.25rem; color: var(--brand-burgundy);">Add Components</h3>
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">Attached landmarks &amp; coordinators:</p>
+            <div class="team-chip" style="margin-bottom: 6px;">
+              <span class="team-chip-title">Coordinator NPC</span>
+              <span class="team-chip-score" style="font-size: 0.95rem;">Pastor David (Retreat Elder)</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">Landmark</span>
+              <span class="team-chip-score" style="font-size: 0.95rem;">Granite Cross Landmark</span>
+            </div>
+          </div>
+
+          <!-- Step 5: Quests -->
+          <div class="wizard-step-content hidden" id="step-5-content">
+            <span style="font-size: 0.72rem; font-weight: 800; color: var(--brand-fire-orange); text-transform: uppercase;">STEP 5 OF 7</span>
+            <h3 style="font-family: var(--font-devotional); font-size: 1.25rem; color: var(--brand-burgundy);">Attach Initial Quest</h3>
+            <div class="form-group">
+              <label class="form-label" for="wiz-quest-title">Quest Title</label>
+              <input type="text" id="wiz-quest-title" class="form-input" value="Sunrise Silent Devotion">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="wiz-quest-verification">Verification Method</label>
+              <select id="wiz-quest-verification" class="form-select">
+                <option value="TRUST">Trust (Honor System)</option>
+                <option value="FAMILY">Family Handoff</option>
+                <option value="LEADER">Leader Check-In</option>
+                <option value="EVENT">Event Attendance</option>
+                <option value="SYSTEM">System Focus Timer</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Step 6: Preview -->
+          <div class="wizard-step-content hidden" id="step-6-content">
+            <span style="font-size: 0.72rem; font-weight: 800; color: var(--brand-fire-orange); text-transform: uppercase;">STEP 6 OF 7</span>
+            <h3 style="font-family: var(--font-devotional); font-size: 1.25rem; color: var(--brand-burgundy);">Configuration Summary</h3>
+            <div class="place-card-node" style="background: var(--tint-soft-amber);">
+              <div class="place-node-left">
+                <div class="place-node-icon">⛰️</div>
+                <div class="place-node-info">
+                  <span class="place-node-title" id="wiz-prev-name">Prayer Mountain Retreat</span>
+                  <span class="place-node-tag">Formation &amp; Retreat • Permanent Place</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 7: Save -->
+          <div class="wizard-step-content hidden" id="step-7-content">
+            <span style="font-size: 0.72rem; font-weight: 800; color: var(--accent-success); text-transform: uppercase;">STEP 7 OF 7: READY</span>
+            <h3 style="font-family: var(--font-devotional); font-size: 1.25rem; color: var(--brand-burgundy);">Save to Prototype State</h3>
+            <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.4;">
+              Click below to save this custom place into the in-memory prototype catalog. Zero arbitrary code execution or server uploads.
+            </p>
+          </div>
+        </div>
+
+        <!-- Wizard Nav Buttons -->
+        <div class="wizard-nav-row">
+          <button id="wiz-btn-prev" class="secondary-btn" style="flex: 1;">BACK</button>
+          <button id="wiz-btn-next" class="primary-btn" style="flex: 1;">NEXT</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOAD APPLICATION DATA STORES -->
+  <script src="data/places.js"></script>
+  <script src="data/quests.js"></script>
+  <script src="data/campaigns.js"></script>
+  <script src="data/events.js"></script>
+  <script src="data/memories.js"></script>
+
+  <!-- MASTER GAME ENGINE & DYNAMIC CAMERA -->
+  <script src="game.js"></script>
+</body>
+</html>
