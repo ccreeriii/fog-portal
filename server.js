@@ -129,14 +129,73 @@ function parseStoredPermissions(value) {
     }
 }
 
+const AUTHENTICATED_MEMBER_RESPONSE_FIELDS = Object.freeze([
+    'id', 'name', 'age', 'email', 'mobile', 'social_media', 'birthday',
+    'parents_name', 'qr_code', 'profile_picture', 'gender', 'account_tier',
+    'address'
+]);
+
+const DIRECTORY_MEMBER_RESPONSE_FIELDS = Object.freeze([
+    'id', 'name', 'age', 'email', 'mobile', 'social_media', 'birthday',
+    'parents_name', 'profile_picture', 'gender', 'account_tier', 'address'
+]);
+
+const PUBLIC_MEMBER_RESPONSE_FIELDS = Object.freeze(['id', 'name']);
+
+const PUBLIC_EVENT_RESPONSE_FIELDS = Object.freeze([
+    'id', 'name', 'event_date', 'time_start', 'venue', 'poster', 'photos_url',
+    'materials_url', 'gallery', 'prereg_banner', 'prereg_info', 'additional_info',
+    'prereg_title', 'prereg_bottom_banner', 'event_points'
+]);
+
+const PUBLIC_MINISTRY_RESPONSE_FIELDS = Object.freeze([
+    'id', 'name', 'description', 'logo', 'member_count'
+]);
+
+function projectResponseFields(record, fields) {
+    if (!record) return null;
+    return fields.reduce((projected, field) => {
+        if (Object.prototype.hasOwnProperty.call(record, field)) projected[field] = record[field];
+        return projected;
+    }, {});
+}
+
+function sanitizeMemberForClient(member) {
+    return projectResponseFields(member, AUTHENTICATED_MEMBER_RESPONSE_FIELDS);
+}
+
 function sanitizeMemberForAuth(member) {
-    if (!member) return null;
-    const sanitized = { ...member };
-    delete sanitized.password;
-    delete sanitized.google_id;
-    delete sanitized.facebook_id;
-    delete sanitized.unique_pass_id;
-    return sanitized;
+    return sanitizeMemberForClient(member);
+}
+
+function sanitizeMemberForDirectory(member) {
+    return projectResponseFields(member, DIRECTORY_MEMBER_RESPONSE_FIELDS);
+}
+
+function sanitizeMemberForPublic(member) {
+    return projectResponseFields(member, PUBLIC_MEMBER_RESPONSE_FIELDS);
+}
+
+function sanitizeEventForPublic(event) {
+    return projectResponseFields(event, PUBLIC_EVENT_RESPONSE_FIELDS);
+}
+
+function sanitizeEventForStaff(event) {
+    return {
+        ...sanitizeEventForPublic(event),
+        roles_restricted_notes: event.roles_restricted_notes
+    };
+}
+
+function sanitizeMinistryForPublic(ministry) {
+    return projectResponseFields(ministry, PUBLIC_MINISTRY_RESPONSE_FIELDS);
+}
+
+function sanitizeMinistryForStaff(ministry) {
+    return {
+        ...sanitizeMinistryForPublic(ministry),
+        restricted_notes: ministry.restricted_notes
+    };
 }
 
 function resolveCanonicalSessionIdentity(session, callback) {
@@ -276,6 +335,15 @@ async function loadAuthorizationContext(req, res = null) {
     return req.auth;
 }
 
+async function loadOptionalAuthorizationContext(req) {
+    try {
+        return await loadAuthorizationContext(req);
+    } catch (err) {
+        console.error('Optional authorization context resolution failed');
+        return null;
+    }
+}
+
 async function authorizeRequest(req, res, next, isAllowed) {
     try {
         const auth = await loadAuthorizationContext(req, res);
@@ -396,7 +464,11 @@ function getCanonicalAuditActor(req) {
 
 function sendAuthenticatedLogin(req, res, identity, responseBody) {
     createAuthenticatedSession(req, res, identity);
-    return res.json(responseBody);
+    const clientResponse = { ...responseBody };
+    if (Object.prototype.hasOwnProperty.call(clientResponse, 'member')) {
+        clientResponse.member = sanitizeMemberForClient(clientResponse.member);
+    }
+    return res.json(clientResponse);
 }
 
 const sessionCleanupTimer = setInterval(pruneExpiredSessions, SESSION_CLEANUP_INTERVAL_MS);
@@ -1583,7 +1655,7 @@ app.put('/api/youth/profile/:id', (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
         db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [password, req.params.id]);
         logActivity(actor || name, 'UPDATE_PROFILE', `Updated profile details for ID ${req.params.id}`);
-        db.get(`SELECT * FROM youth WHERE id = ?`, [req.params.id], (e, member) => { res.json({ success: true, member }); });
+        db.get(`SELECT * FROM youth WHERE id = ?`, [req.params.id], (e, member) => { res.json({ success: true, member: sanitizeMemberForClient(member) }); });
     });
 });
 
@@ -1614,7 +1686,17 @@ app.put('/api/youth/:id/permissions', requireStrongAdmin, (req, res) => {
 });
 
 app.get('/api/activity-logs', (req, res) => { db.all(`SELECT * FROM activity_logs ORDER BY id DESC`, [], (err, rows) => { res.json(rows); }); });
-app.get('/api/youth', (req, res) => { db.all(`SELECT * FROM youth ORDER BY name ASC`, [], (err, rows) => { res.json(rows); }); });
+app.get('/api/youth', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const sql = auth
+        ? `SELECT id, name, age, email, mobile, social_media, birthday, parents_name, profile_picture, gender, account_tier, address FROM youth ORDER BY name ASC`
+        : `SELECT id, name FROM youth ORDER BY name ASC`;
+    db.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load member directory.' });
+        const sanitizeMember = auth ? sanitizeMemberForDirectory : sanitizeMemberForPublic;
+        res.json((rows || []).map(sanitizeMember));
+    });
+});
 app.get('/api/youth/:id/history', (req, res) => { db.all(`SELECT a.checked_in_at, a.is_walkin, e.name as event_name, e.event_date FROM attendance a JOIN events e ON a.event_id = e.id WHERE a.youth_id = ? ORDER BY a.checked_in_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 app.post('/api/youth', (req, res) => {
     const { name, age, email, mobile, social_media, birthday, parents_name, profile_picture, actor } = req.body;
@@ -1627,7 +1709,7 @@ app.post('/api/youth', (req, res) => {
                 const youthId = this.lastID;
                 db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`, [qrCode, qrCode, youthId, getManilaTime()]);
                 logActivity(actor, 'CREATE_MEMBER', `Registered member '${name}' (${qrCode})`);
-                res.json({ id: youthId, qr_code: qrCode, email });
+                res.json({ id: youthId, qr_code: qrCode });
             }
         );
     });
@@ -1661,8 +1743,19 @@ app.get('/api/attendance/logs', (req, res) => { db.all(`SELECT a.id, a.checked_i
 app.put('/api/attendance/:id', (req, res) => { db.run(`UPDATE attendance SET checked_in_at = ?, is_walkin = ? WHERE id = ?`, [req.body.checked_in_at, req.body.is_walkin ? 1 : 0, req.params.id], function (err) { res.json({ updated: this.changes }); }); });
 app.delete('/api/attendance/:id', (req, res) => { db.run(`DELETE FROM attendance WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
 
-app.get('/api/events', (req, res) => { db.all(`SELECT * FROM events ORDER BY event_date DESC`, [], (err, rows) => { res.json(rows); }); });
-app.get('/api/events/:id/analytics', (req, res) => {
+app.get('/api/events', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const canViewRestrictedNotes = authorizationHasPermission(auth, 'edit_entries');
+    const sql = canViewRestrictedNotes
+        ? `SELECT id, name, event_date, time_start, venue, poster, photos_url, materials_url, gallery, prereg_banner, prereg_info, additional_info, prereg_title, prereg_bottom_banner, roles_restricted_notes, event_points FROM events ORDER BY event_date DESC`
+        : `SELECT id, name, event_date, time_start, venue, poster, photos_url, materials_url, gallery, prereg_banner, prereg_info, additional_info, prereg_title, prereg_bottom_banner, event_points FROM events ORDER BY event_date DESC`;
+    db.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load events.' });
+        const sanitizeEvent = canViewRestrictedNotes ? sanitizeEventForStaff : sanitizeEventForPublic;
+        res.json((rows || []).map(sanitizeEvent));
+    });
+});
+app.get('/api/events/:id/analytics', requireAnyPermission(['access_events', 'access_attendance', 'access_checkin']), (req, res) => {
     const eventId = req.params.id;
     db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
         if (!event) return res.status(404).json({ error: 'Event not found' });
@@ -1671,7 +1764,10 @@ app.get('/api/events/:id/analytics', (req, res) => {
             db.all(`SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`, [eventId], (err3, roster) => {
                 db.all(`SELECT p.youth_id, p.created_at, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM pre_registrations p JOIN youth y ON p.youth_id = y.id WHERE p.event_id = ? ORDER BY p.created_at DESC`, [eventId], (err4, preRegList) => {
                     const totalTurnout = roster?.length || 0; const walkins = roster.filter(r => r.is_walkin === 1)?.length || 0; const checkedInPreRegs = totalTurnout - walkins; const totalPreRegistered = preRegList?.length || 0;
-                    res.json({ event, totalDirectory, totalTurnout, turnoutPercentage: totalPreRegistered > 0 ? ((checkedInPreRegs / totalPreRegistered) * 100).toFixed(1) : '0.0', walkins, preReg: checkedInPreRegs, totalPreRegistered, roster, preRegList });
+                    const eventResponse = authorizationHasPermission(req.auth, 'edit_entries')
+                        ? sanitizeEventForStaff(event)
+                        : sanitizeEventForPublic(event);
+                    res.json({ event: eventResponse, totalDirectory, totalTurnout, turnoutPercentage: totalPreRegistered > 0 ? ((checkedInPreRegs / totalPreRegistered) * 100).toFixed(1) : '0.0', walkins, preReg: checkedInPreRegs, totalPreRegistered, roster, preRegList });
                 });
             });
         });
@@ -1686,17 +1782,28 @@ app.get('/api/events/:id/preregs', (req, res) => { db.all(`SELECT youth_id FROM 
 app.post('/api/preregister', (req, res) => { db.run(`INSERT OR IGNORE INTO pre_registrations (event_id, youth_id, created_at) VALUES (?, ?, ?)`, [req.body.event_id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
 app.delete('/api/events/:event_id/preregs/:youth_id', (req, res) => { db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`, [req.params.event_id, req.params.youth_id], function(err) { res.json({ success: true, deleted: this.changes }); }); });
 
-app.get('/api/ministries', (req, res) => { db.all(`SELECT m.*, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = m.id) as member_count FROM ministries m ORDER BY m.name ASC`, [], (err, rows) => { res.json(rows); }); });
+app.get('/api/ministries', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const canViewRestrictedNotes = authorizationHasPermission(auth, 'edit_entries');
+    const sql = canViewRestrictedNotes
+        ? `SELECT m.id, m.name, m.description, m.restricted_notes, m.logo, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = m.id) as member_count FROM ministries m ORDER BY m.name ASC`
+        : `SELECT m.id, m.name, m.description, m.logo, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = m.id) as member_count FROM ministries m ORDER BY m.name ASC`;
+    db.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load ministries.' });
+        const sanitizeMinistry = canViewRestrictedNotes ? sanitizeMinistryForStaff : sanitizeMinistryForPublic;
+        res.json((rows || []).map(sanitizeMinistry));
+    });
+});
 app.post('/api/ministries', (req, res) => { db.run(`INSERT INTO ministries (name, description, logo, created_at) VALUES (?, ?, ?, ?)`, [req.body.name, req.body.description, req.body.logo, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
 app.put('/api/ministries/:id', (req, res) => { let sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ? WHERE id = ?`; let params = [req.body.name, req.body.description, req.body.restricted_notes, req.params.id]; if (req.body.logo !== undefined) { sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ?, logo = ? WHERE id = ?`; params = [req.body.name, req.body.description, req.body.restricted_notes, req.body.logo, req.params.id]; } db.run(sql, params, function(err) { res.json({ success: true }); }); });
 app.delete('/api/ministries/:id', (req, res) => { db.run(`DELETE FROM ministries WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM ministry_members WHERE ministry_id = ?`, [req.params.id]); res.json({ success: true }); }); });
-app.get('/api/ministries/:id/members', (req, res) => { db.all(`SELECT mm.id as mapping_id, mm.role, mm.sub_role, mm.assigned_at, y.id, y.name, y.qr_code, y.profile_picture FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+app.get('/api/ministries/:id/members', requireAuth, (req, res) => { db.all(`SELECT mm.id as mapping_id, mm.role, mm.sub_role, mm.assigned_at, y.id, y.name, y.profile_picture FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 app.post('/api/ministries/:id/members', (req, res) => { db.run(`INSERT INTO ministry_members (ministry_id, youth_id, role, sub_role, assigned_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.role, req.body.sub_role, getManilaTime()], function(err) { res.json({ success: true }); }); });
 app.put('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.run(`UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?`, [req.body.role, req.body.sub_role, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.delete('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.run(`DELETE FROM ministry_members WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.get('/api/youth/:id/ministries', (req, res) => { db.all(`SELECT mm.id as mapping_id, m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at, mm.is_priority FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 
-app.get('/api/events/:id/roles', (req, res) => { db.all(`SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, er.status, y.id, y.name, y.qr_code, y.profile_picture FROM event_roles er JOIN youth y ON er.youth_id = y.id WHERE er.event_id = ? ORDER BY er.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+app.get('/api/events/:id/roles', requireAuth, (req, res) => { db.all(`SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, er.status, y.id, y.name, y.profile_picture FROM event_roles er JOIN youth y ON er.youth_id = y.id WHERE er.event_id = ? ORDER BY er.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 app.post('/api/events/:id/roles', (req, res) => {
     const eventId = req.params.id; const { youth_id, role_name, sub_role, actor } = req.body;
     db.get(`SELECT name, event_date FROM events WHERE id = ?`, [eventId], (err, evt) => {
@@ -2443,7 +2550,7 @@ app.post('/api/youth/:id/commit', (req, res) => {
             if (!perms.includes('access_directory')) perms.push('access_directory');
             db.run(`UPDATE users SET permissions = ? WHERE youth_id = ?`, [JSON.stringify(perms), youthId], function(err2) {
                 logActivity(actor || 'System', 'COMMITMENT_PLEDGE', `Member ID ${youthId} committed with intent: ${intent_message}`);
-                db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err3, member) => { res.json({ success: true, member, permissions: perms }); });
+                db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err3, member) => { res.json({ success: true, member: sanitizeMemberForClient(member), permissions: perms }); });
             });
         });
     });
@@ -2462,13 +2569,13 @@ app.post('/api/youth/:id/commit-v2', (req, res) => {
             if (!perms.includes('access_directory')) perms.push('access_directory');
             db.run(`UPDATE users SET permissions = ? WHERE youth_id = ?`, [JSON.stringify(perms), youthId], function(err2) {
                 logActivity(actor || 'System', 'COMMITMENT_PLEDGE', `Member ID ${youthId} committed with intent: ${intent_message}`);
-                db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err3, member) => { res.json({ success: true, member, permissions: perms }); });
+                db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err3, member) => { res.json({ success: true, member: sanitizeMemberForClient(member), permissions: perms }); });
             });
         });
     });
 });
 
-app.get('/api/admin/community-intents', (req, res) => {
+app.get('/api/admin/community-intents', requirePermission('edit_entries'), (req, res) => {
     db.all(`SELECT id, name, email, profile_picture, account_tier, commitment_intent, commitment_date FROM youth WHERE commitment_intent IS NOT NULL ORDER BY commitment_date DESC`, [], (err, rows) => { res.json(rows || []); });
 });
 
@@ -2476,13 +2583,13 @@ app.post('/api/admin/community-intents/:id/approve', (req, res) => {
     db.run(`UPDATE youth SET account_tier = 'Committed Member' WHERE id = ?`, [req.params.id], function(err) { res.json({success:true}); });
 });
 
-app.get('/api/admin/ministry-logs', (req, res) => {
+app.get('/api/admin/ministry-logs', requirePermission('edit_entries'), (req, res) => {
     db.all(`SELECT mm.*, y.name as applicant_name, y.profile_picture, m.name as ministry_name FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id JOIN ministries m ON mm.ministry_id = m.id ORDER BY mm.assigned_at DESC`, [], (err, rows) => { res.json(rows || []); });
 });
 
 
 // --- V31: V2 ENDPOINTS FOR FILTERS & ACCEPTANCE LOGS ---
-app.get('/api/admin/community-intents-v2', (req, res) => {
+app.get('/api/admin/community-intents-v2', requirePermission('edit_entries'), (req, res) => {
     db.all("SELECT id, name, email, profile_picture, account_tier, commitment_intent, commitment_date, commitment_accepted_at, commitment_accepted_by FROM youth WHERE commitment_intent IS NOT NULL ORDER BY commitment_date DESC", [], (err, rows) => { res.json(rows || []); });
 });
 
@@ -2518,7 +2625,7 @@ app.put('/api/ministries-v2/:id/members/:mappingId', (req, res) => {
     });
 });
 
-app.get('/api/admin/ministry-logs-v3', (req, res) => {
+app.get('/api/admin/ministry-logs-v3', requirePermission('edit_entries'), (req, res) => {
     db.all(`SELECT h.*, y.name as applicant_name, m.name as ministry_name
             FROM ministry_role_history h
             JOIN youth y ON h.youth_id = y.id
@@ -2548,7 +2655,7 @@ app.put('/api/ministries-v34/:id/members/:mappingId', (req, res) => {
     });
 });
 
-app.get('/api/admin/ministry-logs-v34', (req, res) => {
+app.get('/api/admin/ministry-logs-v34', requirePermission('edit_entries'), (req, res) => {
     db.all(`SELECT h.*, y.name as applicant_name, m.name as ministry_name
             FROM ministry_role_history h
             JOIN youth y ON h.youth_id = y.id
@@ -2585,7 +2692,7 @@ app.put('/api/ministries-v36/:id/members/:mappingId', (req, res) => {
     });
 });
 
-app.get('/api/admin/ministry-logs-v36', (req, res) => {
+app.get('/api/admin/ministry-logs-v36', requirePermission('edit_entries'), (req, res) => {
     db.all(`SELECT h.*, y.name as applicant_name, m.name as ministry_name
             FROM ministry_role_history h
             JOIN youth y ON h.youth_id = y.id
@@ -2607,7 +2714,7 @@ app.put('/api/youth-v37/profile/:id', (req, res) => {
 
     db.run(query, params, function(err) {
         if(err) return res.status(500).json({success: false, error: err.message});
-        db.get("SELECT * FROM youth WHERE id=?", [req.params.id], (err, member) => { res.json({success: true, member}); });
+        db.get("SELECT * FROM youth WHERE id=?", [req.params.id], (err, member) => { res.json({success: true, member: sanitizeMemberForClient(member)}); });
     });
 });
 
@@ -2632,7 +2739,7 @@ app.post('/api/ministries/:id/apply', (req, res) => {
     });
 });
 
-app.get('/api/ministries/applications/pending', (req, res) => {
+app.get('/api/ministries/applications/pending', requirePermission('access_ministries'), (req, res) => {
     db.all(`SELECT mm.id as mapping_id, mm.ministry_id, m.name as ministry_name, y.name as applicant_name, mm.intent_message, mm.assigned_at
             FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id JOIN youth y ON mm.youth_id = y.id
             WHERE mm.role = 'Applicant' ORDER BY mm.assigned_at DESC`, [], (err, rows) => { res.json(rows || []); });
