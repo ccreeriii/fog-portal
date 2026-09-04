@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Koinonia Quest — Phase 0.7 Prototype</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============================================================
+       TOP APPLICATION CONTAINER / RESPONSIVE STUDIO LAYOUT
+       ============================================================ -->
+  <div id="app-container">
+
+    <!-- TOP GLOBAL BAR -->
+    <header id="global-header" role="banner">
+      <div class="header-left">
+        <button id="toggle-left-panel" class="icon-btn" aria-label="Toggle Pilgrim Profile panel" title="Toggle Profile">
+          <span class="btn-icon">👤</span>
+          <span class="btn-label">Pilgrim</span>
+        </button>
+        <div class="world-location">
+          <span class="location-dot"></span>
+          <span id="current-location-text">Alex's Home &amp; Garden</span>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <span class="app-brand-title">KOINONIA QUEST</span>
+        <span class="proto-badge">PHASE 0.7 PROTOTYPE</span>
+      </div>
+
+      <div class="header-right">
+        <!-- AUDIO TOGGLE (MUTED BY DEFAULT) -->
+        <button id="audio-toggle-btn" class="pill-btn audio-btn muted" aria-label="Toggle Sound (Currently Muted)" title="Toggle Sound">
+          <span id="audio-icon">🔈</span>
+          <span id="audio-label">Muted</span>
+        </button>
+
+        <!-- PROTOTYPE RESET BUTTON -->
+        <button id="dev-reset-btn" class="pill-btn dev-reset-btn" aria-label="Reset Prototype" title="Reset Prototype State">
+          <span class="btn-icon">🔄</span>
+          <span class="btn-label">Reset</span>
+        </button>
+
+        <button id="toggle-right-panel" class="icon-btn" aria-label="Toggle Quest Ledger panel" title="Toggle Quests">
+          <span class="btn-icon">📜</span>
+          <span class="btn-label">Ledger</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN STUDIO BODY -->
+    <div id="studio-body">
+
+      <!-- LEFT SIDEBAR: PILGRIM COMPANION (COLLAPSIBLE) -->
+      <aside id="panel-left" class="studio-panel panel-left" aria-label="Pilgrim Profile and Skills">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="panel-icon">🌱</span>
+            <h2>Pilgrim Profile</h2>
+          </div>
+          <button id="close-left-panel" class="panel-close-btn" aria-label="Collapse Left Panel">◀</button>
+        </div>
+
+        <div class="panel-scroll-area">
+          <!-- AVATAR SUMMARY CARD -->
+          <section class="profile-card" aria-label="Avatar Summary">
+            <div class="avatar-preview-box">
+              <canvas id="profile-avatar-canvas" width="64" height="64" aria-label="Avatar preview"></canvas>
+            </div>
+            <div class="profile-info">
+              <h3 id="profile-name">Alex</h3>
+              <p class="profile-title">Novice Steward</p>
+              <div class="char-level-badge">
+                <span>Character Level 1</span>
+                <span id="char-xp-display" class="xp-subtext">(0 / 100 XP)</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- LIFE POINTS DISPLAY (SECONDARY) -->
+          <section class="life-points-card" aria-label="Life Points balance">
+            <div class="lp-header">
+              <span class="lp-icon">🪙</span>
+              <span class="lp-label">Life Points</span>
+            </div>
+            <div class="lp-value-row">
+              <span id="lp-amount" class="lp-amount">120</span>
+              <span class="lp-unit">LP</span>
+              <span id="lp-delta" class="lp-delta hidden">+5</span>
+            </div>
+            <p class="lp-disclaimer">*Prototype test balance (100% fake data)</p>
+          </section>
+
+          <!-- BOTANICAL SKILL GARDEN -->
+          <section class="skills-card" aria-label="Skill Garden Progression">
+            <div class="card-title-row">
+              <h3>The Skill Garden</h3>
+              <span class="card-subtitle">Botanical Growth</span>
+            </div>
+
+            <div class="skill-tree-list">
+              <!-- STEWARDSHIP (PRIMARY FOR QUEST 001) -->
+              <div class="skill-item active" id="skill-stewardship">
+                <div class="skill-icon-wrap">
+                  <span class="skill-icon">🌱</span>
+                </div>
+                <div class="skill-details">
+                  <div class="skill-name-row">
+                    <span class="skill-name">Stewardship</span>
+                    <span id="stewardship-xp-text" class="skill-xp">0 XP</span>
+                  </div>
+                  <div class="skill-meter-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="50">
+                    <div id="stewardship-meter-fill" class="skill-meter-fill" style="width: 0%;"></div>
+                  </div>
+                  <span class="skill-metaphor">Living Soil &amp; Green Shoots</span>
+                </div>
+              </div>
+
+              <!-- RESPONSIBILITY (SECONDARY FOR QUEST 001) -->
+              <div class="skill-item active" id="skill-responsibility">
+                <div class="skill-icon-wrap">
+                  <span class="skill-icon">🪵</span>
+                </div>
+                <div class="skill-details">
+                  <div class="skill-name-row">
+                    <span class="skill-name">Responsibility</span>
+                    <span id="responsibility-xp-text" class="skill-xp">0 XP</span>
+                  </div>
+                  <div class="skill-meter-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="50">
+                    <div id="responsibility-meter-fill" class="skill-meter-fill" style="width: 0%;"></div>
+                  </div>
+                  <span class="skill-metaphor">Cedar Trunk Rings</span>
+                </div>
+              </div>
+
+              <!-- LOCKED SKILLS -->
+              <div class="skill-item locked">
+                <div class="skill-icon-wrap"><span class="skill-icon">🔒</span></div>
+                <div class="skill-details">
+                  <div class="skill-name-row"><span class="skill-name">Discipline</span><span class="skill-xp">Locked</span></div>
+                  <span class="skill-metaphor">Pruned Vine Branches</span>
+                </div>
+              </div>
+
+              <div class="skill-item locked">
+                <div class="skill-icon-wrap"><span class="skill-icon">🔒</span></div>
+                <div class="skill-details">
+                  <div class="skill-name-row"><span class="skill-name">Service</span><span class="skill-xp">Locked</span></div>
+                  <span class="skill-metaphor">Sheltering Roots</span>
+                </div>
+              </div>
+
+              <div class="skill-item locked">
+                <div class="skill-icon-wrap"><span class="skill-icon">🔒</span></div>
+                <div class="skill-details">
+                  <div class="skill-name-row"><span class="skill-name">Compassion</span><span class="skill-xp">Locked</span></div>
+                  <span class="skill-metaphor">Living Streams</span>
+                </div>
+              </div>
+
+              <div class="skill-item locked">
+                <div class="skill-icon-wrap"><span class="skill-icon">🔒</span></div>
+                <div class="skill-details">
+                  <div class="skill-name-row"><span class="skill-name">Wisdom</span><span class="skill-xp">Locked</span></div>
+                  <span class="skill-metaphor">Perennial Taproot</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </aside>
+
+      <!-- CENTER: DOMINANT 2D GAME CANVAS VIEWPORT -->
+      <main id="panel-center" class="studio-panel panel-center" role="main">
+        <!-- CANVAS CONTAINER -->
+        <div id="canvas-container" class="canvas-container">
+          <canvas id="gameCanvas" width="800" height="576" tabindex="0" aria-label="Interactive 2D World of Alex's Home and Garden"></canvas>
+
+          <!-- WORLD NOTIFICATION BANNER -->
+          <div id="world-toast" class="world-toast hidden" role="status" aria-live="polite">
+            <span id="toast-icon">✨</span>
+            <span id="toast-message">Notification</span>
+          </div>
+
+          <!-- PROXIMITY INTERACTION PROMPT -->
+          <div id="proximity-prompt" class="proximity-prompt hidden" aria-live="polite">
+            <span class="prompt-icon">💬</span>
+            <span class="prompt-text">Press <strong>E</strong> or Tap to Talk</span>
+          </div>
+
+          <!-- EMOTE FLOATING BUTTONS (CANVAS OVERLAY) -->
+          <div id="canvas-emotes" class="canvas-emotes" aria-label="Quick Emotes">
+            <button class="emote-btn" data-emote="👋" title="Wave">👋</button>
+            <button class="emote-btn" data-emote="❤️" title="Love">❤️</button>
+            <button class="emote-btn" data-emote="🙏" title="Gratitude">🙏</button>
+            <button class="emote-btn" data-emote="💡" title="Insight">💡</button>
+            <button class="emote-btn" data-emote="👍" title="Encourage">👍</button>
+            <button class="emote-btn" data-emote="🌱" title="Sprout">🌱</button>
+          </div>
+        </div>
+
+        <!-- MOBILE ON-SCREEN TOUCH CONTROLS -->
+        <nav id="mobile-controls" class="mobile-controls" aria-label="Touch Navigation Controls">
+          <div class="dpad" role="group" aria-label="Directional Pad">
+            <button id="dpad-up" class="dpad-btn dpad-up" aria-label="Move Up">▲</button>
+            <div class="dpad-middle-row">
+              <button id="dpad-left" class="dpad-btn dpad-left" aria-label="Move Left">◀</button>
+              <div class="dpad-center-hub"></div>
+              <button id="dpad-right" class="dpad-btn dpad-right" aria-label="Move Right">▶</button>
+            </div>
+            <button id="dpad-down" class="dpad-btn dpad-down" aria-label="Move Down">▼</button>
+          </div>
+
+          <div class="mobile-action-buttons">
+            <button id="mobile-action-btn" class="action-btn-primary" aria-label="Interact or Talk">
+              <span class="action-icon">💬</span>
+              <span class="action-text">Talk / Act</span>
+            </button>
+          </div>
+        </nav>
+      </main>
+
+      <!-- RIGHT SIDEBAR: PILGRIM'S LEDGER (COLLAPSIBLE) -->
+      <aside id="panel-right" class="studio-panel panel-right" aria-label="Quest Ledger and Community Pool">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="panel-icon">📜</span>
+            <h2>Pilgrim's Ledger</h2>
+          </div>
+          <button id="close-right-panel" class="panel-close-btn" aria-label="Collapse Right Panel">▶</button>
+        </div>
+
+        <div class="panel-scroll-area">
+          <!-- ACTIVE QUEST CARD -->
+          <section class="quest-ledger-card" aria-label="Current Calling">
+            <div class="card-badge-row">
+              <span class="quest-category-badge">DOMESTIC STEWARDSHIP</span>
+              <span id="quest-status-badge" class="quest-status-badge status-ready">READY</span>
+            </div>
+
+            <h3 class="quest-title">Steward of the Garden</h3>
+            <p class="quest-subtitle">Quest #001 &bull; Personal Calling</p>
+
+            <div class="quest-task-box">
+              <div class="task-icon">🌿</div>
+              <div class="task-desc">
+                <strong>Real-World Mission:</strong>
+                <p>Water the potted plants at home.</p>
+              </div>
+            </div>
+
+            <div class="fallback-note">
+              <span class="fallback-tag">Fallback:</span>
+              <p>No plants? Refill a pet's water dish, wipe down a shared table, or tidy a counter.</p>
+            </div>
+
+            <div class="reward-preview-grid">
+              <div class="reward-pill"><span class="pill-sym">🪙</span> +5 LP</div>
+              <div class="reward-pill"><span class="pill-sym">🛡️</span> +5 Char XP</div>
+              <div class="reward-pill highlight"><span class="pill-sym">🌱</span> +15 Stew XP</div>
+              <div class="reward-pill"><span class="pill-sym">🪵</span> +5 Resp XP</div>
+            </div>
+          </section>
+
+          <!-- SHARED COMMUNITY GARDEN POOL -->
+          <section class="community-card" aria-label="FOG Community Garden Contribution">
+            <div class="comm-header">
+              <span class="comm-icon">🤝</span>
+              <div class="comm-titles">
+                <h3>FOG Community Garden</h3>
+                <span class="comm-sub">Collective Stewardship Project</span>
+              </div>
+            </div>
+
+            <div class="comm-progress-wrap">
+              <div class="comm-progress-labels">
+                <span>Stewardship Progress</span>
+                <span id="comm-progress-fraction">142 / 500</span>
+              </div>
+              <div class="comm-meter-track" role="progressbar" aria-valuenow="142" aria-valuemin="0" aria-valuemax="500">
+                <div id="comm-meter-fill" class="comm-meter-fill" style="width: 28.4%;"></div>
+              </div>
+              <div id="comm-recent-add" class="comm-recent-add hidden">+15 from your quest!</div>
+            </div>
+
+            <p class="comm-quote">"We build this together."</p>
+          </section>
+
+          <!-- REFLECTION LOG CARD -->
+          <section class="reflection-log-card" aria-label="Pilgrim Reflections">
+            <div class="card-title-row">
+              <h3>Reflection Journal</h3>
+              <span class="card-subtitle">Daily Examen</span>
+            </div>
+            <div id="reflection-entry-display" class="reflection-empty-state">
+              <em>Complete Quest #001 to record your first real-world reflection.</em>
+            </div>
+          </section>
+        </div>
+      </aside>
+
+    </div> <!-- /studio-body -->
+  </div> <!-- /app-container -->
+
+
+  <!-- ============================================================
+       MODAL 1: TITLE SCREEN (INITIAL BOOT)
+       ============================================================ -->
+  <div id="title-screen" class="modal-backdrop active" role="dialog" aria-modal="true" aria-labelledby="title-headline">
+    <div class="title-card">
+      <div class="title-emblem-wrap">
+        <div class="emblem-sun"></div>
+        <div class="emblem-gate">
+          <div class="emblem-sprout">🌱</div>
+        </div>
+      </div>
+
+      <h1 id="title-headline" class="title-main-text">KOINONIA QUEST</h1>
+      <p class="title-tagline">"A virtual world that grows when you grow in real life."</p>
+
+      <div class="title-meta-badge">PHASE 0.7 VISUAL PROTOTYPE</div>
+
+      <div class="title-actions">
+        <button id="btn-begin-adventure" class="primary-btn pulse-glow" autofocus>
+          <span class="btn-icon">🌿</span>
+          <span class="btn-text">BEGIN ADVENTURE</span>
+        </button>
+
+        <button id="btn-continue-disabled" class="secondary-btn disabled" disabled title="Phase 0.7 Prototype supports New Adventure flow">
+          <span class="btn-icon">🔒</span>
+          <span class="btn-text">CONTINUE (PROTOTYPE)</span>
+        </button>
+      </div>
+
+      <div class="title-audio-note">
+        <span>🔈 Audio is muted by default. You may enable sound inside the prototype.</span>
+      </div>
+
+      <footer class="title-footer">
+        <p>Fellowship of God Youth Ministry &bull; Domestic Stewardship Vertical Slice</p>
+      </footer>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 2: AVATAR CUSTOMIZER
+       ============================================================ -->
+  <div id="avatar-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="avatar-modal-title">
+    <div class="parchment-card avatar-card">
+      <header class="card-header">
+        <h2 id="avatar-modal-title">Create Your Pilgrim</h2>
+        <p class="card-desc">Choose your appearance for Koinonia Quest.</p>
+      </header>
+
+      <div class="avatar-setup-grid">
+        <!-- LIVE PREVIEW CANVAS -->
+        <div class="avatar-preview-column">
+          <div class="avatar-big-frame">
+            <canvas id="customizer-canvas" width="128" height="128" aria-label="Live Avatar Customization Preview"></canvas>
+          </div>
+          <div class="avatar-identity-box">
+            <span class="identity-label">Pilgrim Name</span>
+            <span class="identity-name">Alex</span>
+            <span class="identity-note">(Prototype Test Identity)</span>
+          </div>
+        </div>
+
+        <!-- CUSTOMIZATION CONTROLS -->
+        <div class="avatar-controls-column">
+          <!-- SKIN TONE -->
+          <div class="option-group">
+            <label class="group-label">Skin Tone</label>
+            <div class="swatch-row" role="radiogroup" aria-label="Skin tone choices">
+              <button class="swatch-btn active" data-skin="0" style="background-color: #FFE0BD;" title="Warm Fair" aria-label="Warm Fair"></button>
+              <button class="swatch-btn" data-skin="1" style="background-color: #E0AC69;" title="Golden Tan" aria-label="Golden Tan"></button>
+              <button class="swatch-btn" data-skin="2" style="background-color: #8D5524;" title="Rich Umber" aria-label="Rich Umber"></button>
+              <button class="swatch-btn" data-skin="3" style="background-color: #4A2C11;" title="Deep Bronze" aria-label="Deep Bronze"></button>
+            </div>
+          </div>
+
+          <!-- HAIRSTYLE -->
+          <div class="option-group">
+            <label class="group-label">Hairstyle</label>
+            <div class="pill-choice-row" role="radiogroup" aria-label="Hairstyle choices">
+              <button class="choice-pill active" data-hair="0">Short Crop</button>
+              <button class="choice-pill" data-hair="1">Side Swept</button>
+              <button class="choice-pill" data-hair="2">Curls</button>
+              <button class="choice-pill" data-hair="3">Top Bun</button>
+            </div>
+          </div>
+
+          <!-- CLOTHING OUTFIT -->
+          <div class="option-group">
+            <label class="group-label">Attire Palette</label>
+            <div class="pill-choice-row" role="radiogroup" aria-label="Clothing palette choices">
+              <button class="choice-pill active" data-outfit="0">Terracotta Tunic</button>
+              <button class="choice-pill" data-outfit="1">Olive Gardener</button>
+              <button class="choice-pill" data-outfit="2">Sky Pilgrim</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-enter-home" class="primary-btn">
+          <span class="btn-icon">🏡</span>
+          <span class="btn-text">ENTER MY HOME</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 3: UNCLE BARNABY DIALOGUE BOX (IN-CANVAS)
+       ============================================================ -->
+  <div id="dialogue-overlay" class="dialogue-overlay hidden" role="dialog" aria-modal="false" aria-labelledby="dialogue-speaker">
+    <div class="dialogue-plank">
+      <!-- NPC PORTRAIT -->
+      <div class="npc-portrait-frame">
+        <div class="npc-portrait barnaby-portrait" aria-label="Portrait of Uncle Barnaby with straw hat">
+          <div class="portrait-hat"></div>
+          <div class="portrait-face">
+            <div class="portrait-eyes"></div>
+            <div class="portrait-beard"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DIALOGUE CONTENT -->
+      <div class="dialogue-body">
+        <div class="speaker-tag-row">
+          <span id="dialogue-speaker" class="speaker-name">Uncle Barnaby</span>
+          <span class="speaker-role">Garden Elder &bull; Veranda</span>
+        </div>
+
+        <div id="dialogue-text" class="dialogue-typewriter-text" aria-live="polite">
+          <!-- Populated dynamically via typewriter script -->
+        </div>
+
+        <div class="dialogue-actions">
+          <button id="dialogue-next-btn" class="dialogue-btn" aria-label="Continue Dialogue">
+            <span id="dialogue-btn-text">NEXT ▶</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 4: QUEST DETAIL CARD (OFFER / ACCEPT)
+       ============================================================ -->
+  <div id="quest-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="quest-modal-title">
+    <div class="parchment-card quest-parchment-card">
+      <div class="parchment-seal">📜</div>
+      <header class="card-header centered">
+        <span class="deckled-category">PERSONAL CALLING &bull; QUEST #001</span>
+        <h2 id="quest-modal-title">STEWARD OF THE GARDEN</h2>
+      </header>
+
+      <div class="quest-narrative-box">
+        <p>"Morning, Alex. Look at our potted ferns outside. Real stewardship doesn't start with grand speeches; it begins with small, quiet things that cannot say 'thank you' back."</p>
+      </div>
+
+      <div class="real-world-mission-highlight">
+        <div class="mission-icon">🌿</div>
+        <div class="mission-details">
+          <strong>YOUR REAL-WORLD MISSION:</strong>
+          <p>Water the plants at home.</p>
+        </div>
+      </div>
+
+      <div class="household-fallback-box">
+        <span class="fallback-badge">Household Fallback:</span>
+        <p>If you don't have plants right now: refill a pet's water dish, wipe down a shared kitchen table, or tidy a small shared home counter.</p>
+      </div>
+
+      <div class="rewards-breakdown-card">
+        <span class="breakdown-title">REWARDS (PROTOTYPE TEST VALUES):</span>
+        <div class="rewards-grid">
+          <div class="reward-entry">
+            <span class="reward-icon">🪙</span>
+            <span class="reward-val">+5 Life Points</span>
+          </div>
+          <div class="reward-entry">
+            <span class="reward-icon">🛡️</span>
+            <span class="reward-val">+5 Character XP</span>
+          </div>
+          <div class="reward-entry">
+            <span class="reward-icon">🌱</span>
+            <span class="reward-val">+15 Stewardship XP</span>
+          </div>
+          <div class="reward-entry">
+            <span class="reward-icon">🪵</span>
+            <span class="reward-val">+5 Responsibility XP</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-accept-quest" class="primary-btn pulse-glow">
+          <span class="btn-icon">🌿</span>
+          <span class="btn-text">ACCEPT &amp; STEP INTO REALITY</span>
+        </button>
+        <button id="btn-close-quest-modal" class="secondary-btn">NOT JUST YET</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 5: SIGNATURE EXIT-RAMP SCREEN ("YOUR TURN")
+       ============================================================ -->
+  <div id="exit-ramp-modal" class="modal-backdrop exit-ramp-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="exit-ramp-title">
+    <div class="exit-ramp-card">
+      <div class="exit-ramp-emblem">☀️</div>
+
+      <h2 id="exit-ramp-title" class="exit-ramp-headline">
+        YOUR TURN —<br>IN THE REAL WORLD
+      </h2>
+
+      <div class="exit-mission-card">
+        <span class="mission-tag">ACTIVE MISSION</span>
+        <p class="mission-text">Water the plants at home.</p>
+        <p class="mission-fallback-sub">(Or refill a pet's water dish / wipe down a shared table)</p>
+      </div>
+
+      <p class="exit-ramp-subtext">
+        "The next part of this adventure doesn't happen on this screen."
+      </p>
+
+      <div class="exit-ramp-actions">
+        <button id="btn-step-out" class="primary-btn large-btn terracotta-btn">
+          <span class="btn-icon">🌿</span>
+          <span class="btn-text">I'M STEPPING OUT NOW</span>
+        </button>
+      </div>
+
+      <p class="calm-assurance">
+        The virtual world will quietly rest until you return. No timers. No penalties.
+      </p>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 6: CALM STANDBY SCREEN ("MISSION IN PROGRESS")
+       ============================================================ -->
+  <div id="standby-modal" class="modal-backdrop standby-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="standby-title">
+    <div class="standby-card">
+      <div class="resting-avatar-art">
+        <div class="tree-canopy">🌿</div>
+        <div class="resting-avatar">😴</div>
+        <div class="resting-ground"></div>
+      </div>
+
+      <h2 id="standby-title" class="standby-headline">MISSION IN PROGRESS</h2>
+      <p class="standby-encouragement">
+        "Go be a blessing out there. Your virtual world is resting until you return."
+      </p>
+
+      <div class="standby-mission-reminder">
+        <span class="reminder-label">CURRENT TASK:</span>
+        <span class="reminder-value">Water plants at home (or household care)</span>
+      </div>
+
+      <div class="standby-actions">
+        <button id="btn-im-back" class="primary-btn dawn-gold-btn pulse-glow">
+          <span class="btn-icon">☀️</span>
+          <span class="btn-text">I'M BACK</span>
+        </button>
+
+        <button id="btn-review-quest" class="secondary-btn">
+          <span class="btn-icon">📜</span>
+          <span class="btn-text">REVIEW MY QUEST</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 7: RETURN / VERIFICATION SELECTION
+       ============================================================ -->
+  <div id="verification-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="verify-modal-title">
+    <div class="parchment-card verification-card">
+      <header class="card-header centered">
+        <span class="deckled-category">QUEST COMPLETION</span>
+        <h2 id="verify-modal-title">HOW SHOULD WE COMPLETE THIS QUEST?</h2>
+        <p class="card-desc">Select how you'd like to certify your real-world stewardship.</p>
+      </header>
+
+      <div class="verification-options-grid">
+        <!-- TRUST OPTION -->
+        <div class="verify-option-card" id="option-trust">
+          <div class="option-icon">🤝</div>
+          <div class="option-content">
+            <h3>I COMPLETED IT</h3>
+            <span class="option-badge trust-badge">TRUST (HONOR SYSTEM)</span>
+            <p>I certify on my word of honor that I carried out my real-world stewardship mission.</p>
+          </div>
+          <button id="btn-choose-trust" class="primary-btn">
+            <span class="btn-icon">✓</span>
+            <span class="btn-text">CONFIRM ON MY HONOR</span>
+          </button>
+        </div>
+
+        <!-- FAMILY DEMO OPTION -->
+        <div class="verify-option-card" id="option-family">
+          <div class="option-icon">👨‍👩‍👧</div>
+          <div class="option-content">
+            <h3>ASK A PARENT / GUARDIAN</h3>
+            <span class="option-badge family-badge">FAMILY DEMO</span>
+            <p>Hand device directly to a parent or guardian for a single tap confirmation.</p>
+          </div>
+          <button id="btn-choose-family" class="secondary-btn">
+            <span class="btn-icon">📲</span>
+            <span class="btn-text">START FAMILY DEMO</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 8: FAMILY DIRECT HANDOFF SIMULATION
+       ============================================================ -->
+  <div id="family-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="family-modal-title">
+    <div class="parchment-card family-card">
+      <div class="family-icon-banner">👨‍👩‍👧 &bull; FAMILY CONFIRMATION</div>
+      <h2 id="family-modal-title">Please hand the device to your parent or guardian.</h2>
+
+      <div class="family-message-box">
+        <p><strong>Parent / Guardian Note:</strong></p>
+        <p>Alex has completed: <em>Water the plants at home (Quest #001: Steward of the Garden)</em>.</p>
+        <p class="small-text">This prototype demonstrates the direct handover workflow approved by the Product Owner.</p>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-parent-confirm" class="primary-btn">
+          <span class="btn-icon">✓</span>
+          <span class="btn-text">CONFIRM AS PARENT / GUARDIAN</span>
+        </button>
+        <button id="btn-family-back" class="secondary-btn">GO BACK</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 9: REFLECTION MODAL
+       ============================================================ -->
+  <div id="reflection-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="reflection-modal-title">
+    <div class="parchment-card reflection-card">
+      <div class="card-seal">✍️</div>
+      <header class="card-header centered">
+        <span class="deckled-category">MOMENT OF REFLECTION</span>
+        <h2 id="reflection-modal-title">Quiet Reflection</h2>
+        <p class="card-desc">Take 30 seconds to capture one small thought before moving on.</p>
+      </header>
+
+      <div class="reflection-prompt-box">
+        <label for="reflection-input" class="reflection-prompt-label">
+          "One small thing I noticed while doing this was..."
+        </label>
+        <textarea id="reflection-input" class="reflection-textarea" rows="4" placeholder="e.g. The soil was really parched and drank up the water immediately; the green leaves looked perked up right away..."></textarea>
+      </div>
+
+      <p class="reflection-privacy-note">
+        🔒 This reflection remains browser-local for this prototype session.
+      </p>
+
+      <div class="card-actions">
+        <button id="btn-submit-reflection" class="primary-btn pulse-glow">
+          <span class="btn-icon">🌿</span>
+          <span class="btn-text">COMPLETE QUEST</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 10: NON-CASINO REWARD EXPERIENCE
+       ============================================================ -->
+  <div id="reward-modal" class="modal-backdrop reward-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="reward-headline">
+    <div class="reward-sunburst-bg"></div>
+
+    <div class="reward-card">
+      <!-- FLOATING LEAF ACCENTS -->
+      <div class="floating-leaves-container" aria-hidden="true">
+        <span class="floating-leaf leaf-1">🌱</span>
+        <span class="floating-leaf leaf-2">🍃</span>
+        <span class="floating-leaf leaf-3">🌿</span>
+      </div>
+
+      <div class="reward-laurel">✨ 🌿 ✨</div>
+
+      <h2 id="reward-headline" class="reward-title">QUEST COMPLETE</h2>
+      <p class="reward-quest-name">Steward of the Garden</p>
+
+      <!-- TRANSPARENT LEDGER -->
+      <div class="reward-ledger">
+        <div class="ledger-row lp-row">
+          <span class="ledger-icon">🪙</span>
+          <span class="ledger-label">Life Points Awarded:</span>
+          <span class="ledger-value">+5 LP</span>
+          <span class="ledger-balance-note">(120 → 125 LP)</span>
+        </div>
+
+        <div class="ledger-row">
+          <span class="ledger-icon">🛡️</span>
+          <span class="ledger-label">Character XP:</span>
+          <span class="ledger-value">+5 XP</span>
+        </div>
+
+        <div class="ledger-row stewardship-highlight">
+          <span class="ledger-icon">🌱</span>
+          <span class="ledger-label">Stewardship XP:</span>
+          <span class="ledger-value">+15 XP</span>
+        </div>
+
+        <div class="ledger-row">
+          <span class="ledger-icon">🪵</span>
+          <span class="ledger-label">Responsibility XP:</span>
+          <span class="ledger-value">+5 XP</span>
+        </div>
+      </div>
+
+      <div class="growth-proclamation">
+        <span class="proclamation-star">☀️</span>
+        <span class="proclamation-text">YOUR WORLD GREW.</span>
+        <span class="proclamation-star">☀️</span>
+      </div>
+
+      <div class="reward-actions">
+        <button id="btn-see-community" class="primary-btn dawn-gold-btn pulse-glow">
+          <span class="btn-icon">🤝</span>
+          <span class="btn-text">SEE COMMUNITY IMPACT</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 11: COMMUNITY CONTRIBUTION IMPACT
+       ============================================================ -->
+  <div id="community-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="comm-modal-title">
+    <div class="parchment-card community-parchment-card">
+      <div class="comm-banner-emblem">🤝</div>
+      <header class="card-header centered">
+        <span class="deckled-category">SHARED FELLOWSHIP IMPACT</span>
+        <h2 id="comm-modal-title">FOG COMMUNITY GARDEN</h2>
+      </header>
+
+      <p class="comm-impact-narrative">
+        Your private stewardship chore at home contributed directly to our collective youth community project.
+      </p>
+
+      <div class="comm-large-meter-card">
+        <div class="meter-stat-row">
+          <span class="meter-name">Stewardship Contribution</span>
+          <span id="comm-modal-meter-num" class="meter-num">157 / 500</span>
+        </div>
+        <div class="comm-meter-track large-track">
+          <div id="comm-modal-meter-fill" class="comm-meter-fill" style="width: 31.4%;"></div>
+        </div>
+        <div class="comm-delta-pill">+15 from your quest!</div>
+      </div>
+
+      <div class="comm-quote-frame">
+        <p>"We build this together."</p>
+      </div>
+
+      <div class="card-actions">
+        <button id="btn-watch-garden-transform" class="primary-btn">
+          <span class="btn-icon">🌻</span>
+          <span class="btn-text">RETURN &amp; TRANSFORM GARDEN</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       MODAL 12: FOG COMMUNITY CENTER TEASER
+       ============================================================ -->
+  <div id="teaser-modal" class="modal-backdrop teaser-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="teaser-title">
+    <div class="teaser-card">
+      <div class="teaser-scenery-view">
+        <div class="distant-hills"></div>
+        <div class="church-steeple-silhouette">⛪</div>
+        <div class="community-center-silhouette">🏛️</div>
+        <div class="sunbeam-rays"></div>
+      </div>
+
+      <div class="teaser-content">
+        <div class="teaser-badge">NEW HORIZON UNLOCKED</div>
+        <h2 id="teaser-title">FOG COMMUNITY CENTER</h2>
+        <p class="teaser-tagline">"Your journey continues here."</p>
+
+        <p class="teaser-body">
+          You have taken your first step in personal stewardship. Beyond this garden gate lies the country trail to the FOG Youth Hall, Fellowship Circles, and the Grand Community Garden.
+        </p>
+
+        <div class="teaser-status-summary">
+          <div class="summary-chip">🪙 Balance: <strong>125 LP</strong></div>
+          <div class="summary-chip">🌱 Stewardship: <strong>15 XP</strong></div>
+          <div class="summary-chip">🪵 Responsibility: <strong>5 XP</strong></div>
+          <div class="summary-chip">🚪 Gate: <strong>OPEN</strong></div>
+        </div>
+
+        <div class="teaser-actions">
+          <button id="btn-end-prototype" class="primary-btn large-btn dawn-gold-btn">
+            <span class="btn-icon">🏁</span>
+            <span class="btn-text">END PROTOTYPE REVIEW</span>
+          </button>
+          <button id="btn-back-to-veranda" class="secondary-btn">
+            <span class="btn-icon">🏡</span>
+            <span class="btn-text">EXPLORE MY HOME</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script src="game.js"></script>
+</body>
+</html>
