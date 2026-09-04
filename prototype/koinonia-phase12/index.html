@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>KOINONIA — Fire of God Ministries Virtual Community</title>
+
+  <!-- Google Fonts: EB Garamond (Devotional) & Inter / Clear Sans (UI) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css?v=0.12">
+</head>
+<body>
+
+  <!-- MAIN APPLICATION SHELL -->
+  <div id="app-container">
+
+    <!-- GLOBAL BRAND HEADER -->
+    <header id="global-header" role="banner">
+      <div class="header-brand-group">
+        <div class="koinonia-mark" aria-hidden="true" title="KOINONIA">K</div>
+        <div class="brand-title-wrap">
+          <span class="brand-title">KOINONIA</span>
+          <span class="brand-subtitle">Fire of God Ministries Virtual Community</span>
+        </div>
+      </div>
+
+      <div class="header-status-group">
+        <!-- LIFE POINTS PILL (NON-GAMBLING METRIC) -->
+        <div class="lp-pill" title="Prototype Fake Life Points (Non-Gambling Metric)">
+          <span class="lp-icon" aria-hidden="true">🪙</span>
+          <span id="header-lp-amount">120</span>
+          <span class="lp-label">LP</span>
+        </div>
+
+        <!-- AUDIO TOGGLE (MUTED BY DEFAULT) -->
+        <button id="audio-toggle-btn" class="header-btn audio-btn muted" aria-label="Toggle Sound (Currently Muted)" title="Toggle Sound">
+          <span id="audio-icon" aria-hidden="true">🔈</span>
+          <span id="audio-label" class="sr-only">Muted</span>
+        </button>
+
+        <!-- PROTOTYPE RESET BUTTON -->
+        <button id="dev-reset-btn" class="header-btn" aria-label="Reset Prototype Demo" title="Reset Prototype State">
+          <span aria-hidden="true">🔄</span>
+          <span class="sr-only">Reset</span>
+        </button>
+
+        <!-- KOINONIA STUDIO ADMIN SHORTCUT -->
+        <button id="btn-open-admin" class="header-btn" aria-label="Open Koinonia Studio Admin" title="Studio Admin">
+          <span aria-hidden="true">⚙️</span>
+          <span class="sr-only">Studio</span>
+        </button>
+
+        <!-- OBVIOUS EXIT BUTTON DURING ACTIVE GAMEPLAY -->
+        <button id="btn-exit-world" class="header-btn header-btn-exit-world" aria-label="Exit World to Home" title="Exit to Home">
+          <span aria-hidden="true">✕</span>
+          <span>EXIT WORLD</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN STUDIO BODY / GAMEPLAY STAGE -->
+    <div id="studio-body">
+
+      <!-- LEFT SIDEBAR: PILGRIM PROFILE & SKILLS (DESKTOP OR MOBILE DRAWER) -->
+      <aside id="panel-left" class="studio-panel panel-left" aria-label="Pilgrim Profile and Skills">
+        <div class="profile-card-inner">
+          <div class="profile-avatar-box" id="sidebar-avatar-face">🧑</div>
+          <div class="profile-meta-wrap">
+            <h2 class="profile-name" id="sidebar-profile-name">Alex</h2>
+            <div class="profile-title-tag">Pilgrim • Level <span id="sidebar-char-level">1</span></div>
+          </div>
+          <button id="btn-close-drawer-left" class="header-btn" style="display: none;" aria-label="Close Profile">✕</button>
+        </div>
+
+        <!-- Character XP Progress -->
+        <div style="padding: 12px 16px 6px 16px;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.72rem; font-weight: 700; margin-bottom: 4px;">
+            <span>Character Progress</span>
+            <span id="sidebar-xp-text" style="color: var(--brand-fire-orange);">0 / 100 XP</span>
+          </div>
+          <div style="height: 6px; background-color: var(--surface-card-subtle); border-radius: var(--radius-pill); overflow: hidden; border: 1px solid var(--border-light);">
+            <div id="sidebar-xp-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--brand-flame-gold), var(--brand-fire-orange)); border-radius: var(--radius-pill); transition: width 0.3s ease;"></div>
+          </div>
+        </div>
+
+        <!-- Botanical Skill Chips -->
+        <div class="skills-garden-box">
+          <div class="section-label">
+            <span>🌱</span>
+            <span>Botanical Virtues</span>
+          </div>
+          <div class="skills-list">
+            <div class="team-chip">
+              <span class="team-chip-title">🌿 Domestic Stewardship</span>
+              <span id="dt-stewardship-xp" class="team-chip-score">0 XP</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">🤝 Family Responsibility</span>
+              <span id="dt-responsibility-xp" class="team-chip-score">0 XP</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">📖 Sacred Discipline</span>
+              <span id="dt-discipline-xp" class="team-chip-score">0 XP</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">👥 Teamwork &amp; Fellowship</span>
+              <span id="dt-teamwork-xp" class="team-chip-score">0 XP</span>
+            </div>
+            <div class="team-chip">
+              <span class="team-chip-title">🤲 Humble Service</span>
+              <span id="dt-service-xp" class="team-chip-score">0 XP</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Responsibility Growth Path Accordion -->
+        <div style="padding: 0 16px 16px 16px;">
+          <div class="collapsible-box open">
+            <div class="collapsible-trigger">
+              <span>5-Day Responsibility Growth</span>
+              <span class="chevron">▼</span>
+            </div>
+            <div class="collapsible-content">
+              <p style="font-size: 0.76rem; color: var(--brand-charcoal); opacity: 0.8; margin-bottom: 8px;">
+                Gentle, forgiving milestones without harsh streak penalties.
+              </p>
+              <div style="display: flex; gap: 4px;">
+                <span class="team-chip" style="flex: 1; text-align: center; justify-content: center; font-size: 0.7rem; font-weight: 800; background: var(--tint-amber);">D1 ✓</span>
+                <span class="team-chip" style="flex: 1; text-align: center; justify-content: center; font-size: 0.7rem; opacity: 0.5;">D2</span>
+                <span class="team-chip" style="flex: 1; text-align: center; justify-content: center; font-size: 0.7rem; opacity: 0.5;">D3</span>
+                <span class="team-chip" style="flex: 1; text-align: center; justify-content: center; font-size: 0.7rem; opacity: 0.5;">D4</span>
+                <span class="team-chip" style="flex: 1; text-align: center; justify-content: center; font-size: 0.7rem; opacity: 0.5;">D5</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- CENTER CONTENT AREA: CONTAINS EITHER PORTRAIT PLAY VIEW OR RESPONSIVE GAME STAGE -->
+      <main class="panel-center" role="main" aria-label="Koinonia Interactive Stage">
+
+        <!-- 1. PORTRAIT HOME PLAY CARD EXPERIENCE (PORTRAIT DEFAULT) -->
+        <section id="portrait-home-view" aria-label="Koinonia Pilgrim Home">
+          <div class="portrait-play-card">
+            <div class="play-card-emblem" id="portrait-place-emblem" aria-hidden="true">🏡</div>
+            <h1 class="play-card-place-title" id="portrait-place-title">My Home</h1>
+            <div class="play-card-zone" id="portrait-place-zone">Garden Veranda • Hearth Room</div>
+
+            <div class="play-card-quest-box">
+              <div class="play-card-quest-tag">ACTIVE REAL-WORLD CALLING</div>
+              <h2 class="play-card-quest-name" id="portrait-quest-title">🌱 Steward of the Garden</h2>
+              <p class="play-card-quest-desc" id="portrait-quest-desc">
+                Water the potted plants at home to care for living creation right outside your window.
+              </p>
+            </div>
+
+            <!-- Prominent Enter World CTA (Portrait-First direct game entry) -->
+            <button id="btn-enter-world-portrait" class="btn-enter-world-cta" autofocus>
+              <span>🌿 ENTER WORLD</span>
+            </button>
+
+            <p class="play-card-hint">
+              Tap <strong>Enter World</strong> to explore in portrait RPG mode. No rotation required!
+            </p>
+          </div>
+
+          <!-- Quick Pilgrim Progress Summary -->
+          <div class="portrait-stats-grid">
+            <div class="portrait-stat-card">
+              <div class="portrait-stat-val" id="portrait-stat-lp">120</div>
+              <div class="portrait-stat-lbl">Life Points</div>
+            </div>
+            <div class="portrait-stat-card">
+              <div class="portrait-stat-val" id="portrait-stat-virtue">Garden</div>
+              <div class="portrait-stat-lbl">Today's Focus</div>
+            </div>
+          </div>
+
+          <!-- Quick Action Shortcuts in Portrait -->
+          <div style="display: flex; gap: 8px;">
+            <button id="btn-quick-world-portrait" class="secondary-btn" style="flex: 1; padding: 12px 10px;">
+              <span>🗺️ Places of Fellowship</span>
+            </button>
+            <button id="btn-quick-quests-portrait" class="secondary-btn" style="flex: 1; padding: 12px 10px;">
+              <span>📜 Quests &amp; Readiness</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- 2. GAME STAGE (PORTRAIT-FIRST CAMERA VIEWPORT ON MOBILE & EXPANDING DESKTOP STAGE) -->
+        <div id="game-stage">
+          <canvas id="gameCanvas" width="800" height="576" aria-label="Koinonia Interactive 2D World Canvas"></canvas>
+
+          <!-- Floating Place Watermark Chip -->
+          <div id="canvas-place-badge" class="canvas-place-badge">
+            <span id="canvas-place-icon" aria-hidden="true">🏡</span>
+            <span id="canvas-place-label">My Home</span>
+            <span id="canvas-place-lifecycle" class="lifecycle-chip">Hearth</span>
+          </div>
+
+          <!-- Compact Floating Quest Chip -->
+          <div id="compact-quest-chip" class="compact-quest-chip" role="button" tabindex="0" title="View Active Quest">
+            <span class="chip-quest-icon" aria-hidden="true">🌱</span>
+            <div class="chip-quest-text-wrap">
+              <span class="chip-quest-tag">ACTIVE CALLING</span>
+              <span id="chip-quest-title" class="chip-quest-title">Steward of the Garden</span>
+            </div>
+          </div>
+
+          <!-- Proximity Prompt -->
+          <div id="proximity-prompt" class="proximity-prompt hidden">
+            <span>Tap to Talk / Press E</span>
+          </div>
+
+          <!-- On-Screen Mobile Gameplay Controls Overlay (Portrait Mode) -->
+          <div id="mobile-controls" class="mobile-controls" aria-label="On-Screen Touch Controls">
+            <!-- Left Thumb 4-Way D-Pad -->
+            <div class="dpad" id="dpad" aria-label="Directional Controls">
+              <button id="dpad-up" class="dpad-btn dpad-up" aria-label="Move Up">▲</button>
+              <button id="dpad-down" class="dpad-btn dpad-down" aria-label="Move Down">▼</button>
+              <button id="dpad-left" class="dpad-btn dpad-left" aria-label="Move Left">◀</button>
+              <button id="dpad-right" class="dpad-btn dpad-right" aria-label="Move Right">▶</button>
+            </div>
+
+            <!-- Right Thumb Action & Emote Buttons -->
+            <button id="mobile-action-btn" class="action-btn-primary" aria-label="Action or Talk">
+              <span class="action-icon" aria-hidden="true">💬</span>
+              <span class="action-label">ACTION</span>
+            </button>
+            <button id="mobile-emote-btn" class="emote-btn-compact" aria-label="Emote Pray">
+              <span>🙏</span>
+            </button>
+          </div>
+        </div>
+      </main>
+
+      <!-- RIGHT SIDEBAR: PILGRIM LEDGER & QUESTS (DESKTOP OR MOBILE DRAWER) -->
+      <aside id="panel-right" class="studio-panel panel-right" aria-label="Pilgrim Ledger and Quests">
+        <div style="padding: 16px; border-bottom: 1px solid var(--border-light); background-color: var(--surface-card-subtle);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="font-family: var(--font-devotional); font-size: 1.15rem; font-weight: 800; color: var(--brand-burgundy);">
+              Pilgrim's Ledger
+            </h2>
+            <button id="btn-close-drawer-right" class="header-btn" style="display: none;" aria-label="Close Ledger">✕</button>
+          </div>
+          <p style="font-size: 0.72rem; color: var(--brand-charcoal); opacity: 0.75; margin-top: 2px;">
+            Faithful actions growing virtual fellowship
+          </p>
+        </div>
+
+        <div style="padding: 16px;">
+          <!-- Accordion 1: Place Callings -->
+          <div class="collapsible-box open">
+            <div class="collapsible-trigger">
+              <span>Place Callings (<span id="ledger-place-count">3</span>)</span>
+              <span class="chevron">▼</span>
+            </div>
+            <div class="collapsible-content">
+              <div id="ledger-quests-list" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Populated dynamically via JS -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 2: Gratitude Week Readiness -->
+          <div class="collapsible-box open">
+            <div class="collapsible-trigger">
+              <span>Gratitude Week • 79% Readiness</span>
+              <span class="chevron">▼</span>
+            </div>
+            <div class="collapsible-content">
+              <p style="font-size: 0.76rem; color: var(--brand-charcoal); opacity: 0.8; margin-bottom: 8px;">
+                Get Into the Glory — Fire of God weekly prayer and worship preparation.
+              </p>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                <div class="team-chip"><span class="team-chip-title">☕ Hospitality</span><span class="team-chip-score">72%</span></div>
+                <div class="team-chip"><span class="team-chip-title">🎵 Music</span><span class="team-chip-score">85%</span></div>
+                <div class="team-chip"><span class="team-chip-title">🕯️ Prayer</span><span class="team-chip-score">67%</span></div>
+                <div class="team-chip"><span class="team-chip-title">🧹 Facilities</span><span class="team-chip-score">90%</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 3: AYS Sequence -->
+          <div class="collapsible-box">
+            <div class="collapsible-trigger">
+              <span>AYS: Week of Questions</span>
+              <span class="chevron">▼</span>
+            </div>
+            <div class="collapsible-content">
+              <p style="font-size: 0.76rem; color: var(--brand-charcoal); opacity: 0.8;">
+                6-Day sequence cultivating curiosity and spiritual dialogue among youth.
+              </p>
+            </div>
+          </div>
+
+          <!-- Accordion 4: Place History -->
+          <div class="collapsible-box">
+            <div class="collapsible-trigger">
+              <span>Place Milestones &amp; Memory</span>
+              <span class="chevron">▼</span>
+            </div>
+            <div class="collapsible-content">
+              <p style="font-size: 0.76rem; color: var(--brand-charcoal); opacity: 0.8;">
+                3,420 Life Points invested by Fire of God youth into communal flourishing.
+              </p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+
+    <!-- PAUSED LANDSCAPE COMPANION SCREEN (PHONE LANDSCAPE ONLY) -->
+    <div id="landscape-companion-screen" aria-label="Paused Landscape Companion Screen">
+      <div class="companion-container">
+        <div class="companion-header">
+          <div class="koinonia-mark" style="width: 36px; height: 36px; font-size: 1.4rem;" aria-hidden="true">K</div>
+          <div style="text-align: left;">
+            <div style="font-family: var(--font-devotional); font-size: 1.25rem; font-weight: 800; color: var(--brand-burgundy);">KOINONIA</div>
+            <div style="font-size: 0.65rem; font-weight: 700; color: var(--brand-fire-orange); text-transform: uppercase;">Fire of God Ministries Virtual Community</div>
+          </div>
+        </div>
+
+        <div style="margin: 12px 0;">
+          <div class="companion-rotate-badge">
+            <span aria-hidden="true">↻</span>
+            <span>Turn your phone upright to play</span>
+          </div>
+          <p style="font-size: 0.88rem; color: var(--brand-charcoal); line-height: 1.4;">
+            Your journey continues in <strong>portrait mode</strong>.<br>
+            Active gameplay is portrait-first — no phone rotation needed.
+          </p>
+        </div>
+
+        <!-- Companion Overview Cards -->
+        <div class="companion-grid">
+          <div class="companion-item">
+            <div class="companion-item-tag">Current Place</div>
+            <div class="companion-item-val" id="companion-place">My Home</div>
+          </div>
+          <div class="companion-item">
+            <div class="companion-item-tag">Active Quest</div>
+            <div class="companion-item-val" id="companion-quest" style="font-size: 0.78rem;">Garden Care</div>
+          </div>
+          <div class="companion-item">
+            <div class="companion-item-tag">Life Points</div>
+            <div class="companion-item-val" id="companion-lp">120 LP</div>
+          </div>
+          <div class="companion-item">
+            <div class="companion-item-tag">Today's Focus</div>
+            <div class="companion-item-val" id="companion-virtue">Stewardship</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MOBILE BOTTOM NAVIGATION (PORTRAIT BROWSING) -->
+    <nav id="mobile-bottom-nav" aria-label="Mobile Navigation">
+      <button id="nav-tab-home" class="nav-tab-btn active" data-tab="home" aria-label="Home / Play">
+        <span class="nav-icon" aria-hidden="true">🏡</span>
+        <span class="nav-label">Home</span>
+      </button>
+      <button id="nav-tab-world" class="nav-tab-btn" data-tab="world" aria-label="World Map">
+        <span class="nav-icon" aria-hidden="true">🗺️</span>
+        <span class="nav-label">World</span>
+      </button>
+      <button id="nav-tab-quests" class="nav-tab-btn" data-tab="quests" aria-label="Quests">
+        <span class="nav-icon" aria-hidden="true">📜</span>
+        <span class="nav-label">Quests</span>
+      </button>
+      <button id="nav-tab-journey" class="nav-tab-btn" data-tab="journey" aria-label="Journey">
+        <span class="nav-icon" aria-hidden="true">📖</span>
+        <span class="nav-label">Journey</span>
+      </button>
+      <button id="nav-tab-me" class="nav-tab-btn" data-tab="me" aria-label="Me / Profile">
+        <span class="nav-icon" aria-hidden="true">👤</span>
+        <span class="nav-label">Me</span>
+      </button>
+    </nav>
+
+    <!-- ON-SCREEN DIAGNOSTIC DEBUG HUD (?debug=1) -->
+    <div id="debug-hud" aria-label="Diagnostics HUD"></div>
+
+  </div>
+
+  <!-- ============================================================
+       MODAL 1: TITLE SPLASH SCREEN
+       ============================================================ -->
+  <div id="title-screen" class="modal-backdrop active" role="dialog" aria-modal="true" aria-labelledby="title-headline">
+    <div class="bottom-sheet" style="border-radius: var(--radius-lg); margin: auto; max-width: 420px;">
+      <div class="sheet-body" style="text-align: center; padding: 28px 20px;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 16px;">
+          <div class="koinonia-mark" style="width: 58px; height: 58px; font-size: 2.3rem; border-radius: var(--radius-md);" aria-hidden="true">K</div>
+          <h1 id="title-headline" style="font-family: var(--font-devotional); font-size: 2.2rem; font-weight: 800; color: var(--brand-burgundy); letter-spacing: 0.04em; line-height: 1.1;">KOINONIA</h1>
+          <div style="font-size: 0.82rem; font-weight: 700; color: var(--brand-fire-orange); text-transform: uppercase; letter-spacing: 0.04em;">Fire of God Ministries Virtual Community</div>
+        </div>
+        <p style="font-family: var(--font-devotional); font-size: 1.1rem; font-style: italic; color: var(--brand-charcoal); opacity: 0.85; margin-bottom: 20px;">
+          "A virtual world that grows when you grow in real life."
+        </p>
+
+        <button id="btn-begin-adventure" class="primary-btn" autofocus>
+          <span>🌿 ENTER THE WORLD</span>
+        </button>
+
+        <p style="font-size: 0.72rem; color: var(--brand-charcoal); opacity: 0.6; margin-top: 14px;">
+          🔈 Audio is muted by default. You may enable sound in the header.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 2: WORLD MAP (PLACES OF FELLOWSHIP)
+       ============================================================ -->
+  <div id="world-map-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="map-modal-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon" aria-hidden="true">🗺️</span>
+          <div>
+            <h2 id="map-modal-title" class="sheet-title">Places of Fellowship</h2>
+            <span class="sheet-subtitle">Fire of God Ministries Virtual Community</span>
+          </div>
+        </div>
+        <button id="btn-close-world-map" class="sheet-close-btn" aria-label="Close World Map">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div id="world-places-list" style="display: flex; flex-direction: column; gap: 10px;">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 3: NPC DIALOGUE OVERLAY (UNCLE BARNABY)
+       ============================================================ -->
+  <div id="npc-dialogue-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="dialogue-speaker">
+    <div class="bottom-sheet" style="max-width: 480px;">
+      <div class="sheet-body" style="padding: 18px;">
+        <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px;">
+          <div style="font-size: 2.2rem; background: var(--tint-amber); border-radius: var(--radius-md); padding: 4px;" aria-hidden="true">👴</div>
+          <div>
+            <h3 id="dialogue-speaker" style="font-family: var(--font-devotional); font-size: 1.15rem; font-weight: 800; color: var(--brand-burgundy);">Uncle Barnaby</h3>
+            <span style="font-size: 0.65rem; color: var(--brand-fire-orange); font-weight: 800; text-transform: uppercase;">Hearth Elder • My Home</span>
+          </div>
+        </div>
+        <p id="dialogue-text" style="font-size: 0.95rem; line-height: 1.45; color: var(--brand-charcoal); margin-bottom: 16px;">
+          "Peace be with you, Alex! The plants on our veranda are looking thirsty today..."
+        </p>
+        <div style="display: flex; gap: 8px;">
+          <button id="btn-dialogue-action" class="primary-btn" style="flex: 1;">
+            <span>VIEW GARDEN QUEST</span>
+          </button>
+          <button id="btn-dialogue-close" class="secondary-btn">
+            <span>CLOSE</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 4: QUEST DETAIL PREVIEW (STEWARD OF THE GARDEN)
+       ============================================================ -->
+  <div id="quest-detail-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="quest-detail-title">
+    <div class="bottom-sheet" style="max-width: 480px;">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon" aria-hidden="true">🌱</span>
+          <div>
+            <h2 id="quest-detail-title" class="sheet-title">Steward of the Garden</h2>
+            <span class="sheet-subtitle">Domestic Stewardship Calling</span>
+          </div>
+        </div>
+        <button id="btn-close-quest-detail" class="sheet-close-btn" aria-label="Close">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div style="background-color: var(--surface-card-subtle); border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px;">
+          <div style="font-size: 0.65rem; font-weight: 800; color: var(--brand-fire-orange); text-transform: uppercase; margin-bottom: 4px;">MISSION IN THE REAL WORLD</div>
+          <p id="quest-modal-mission" class="play-card-quest-desc" style="font-weight: 700; margin-bottom: 6px;">Water the plants at home or refill pet water.</p>
+          <p id="quest-modal-fallback" style="font-size: 0.78rem; color: var(--brand-charcoal); opacity: 0.75;">Refill a pet's water dish, wipe down a shared table, or tidy a small counter.</p>
+        </div>
+
+        <!-- Approved Rewards Preview: +5 LP, +5 Char XP, +15 Stewardship, +5 Responsibility -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 16px;">
+          <div class="team-chip" style="text-align: center;">
+            <span class="team-chip-title">Life Points</span>
+            <span class="team-chip-score">+5 LP</span>
+          </div>
+          <div class="team-chip" style="text-align: center;">
+            <span class="team-chip-title">Character XP</span>
+            <span class="team-chip-score" style="color: var(--brand-fire-orange);">+5 XP</span>
+          </div>
+          <div class="team-chip" style="text-align: center;">
+            <span class="team-chip-title">Stewardship</span>
+            <span class="team-chip-score" style="color: var(--accent-success);">+15 XP</span>
+          </div>
+          <div class="team-chip" style="text-align: center;">
+            <span class="team-chip-title">Responsibility</span>
+            <span class="team-chip-score" style="color: var(--brand-burgundy);">+5 XP</span>
+          </div>
+        </div>
+
+        <button id="btn-accept-quest" class="primary-btn">
+          <span>🌿 ACCEPT THIS CALLING</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 5: REAL-WORLD EXIT RAMP ("YOUR TURN IN REAL WORLD")
+       ============================================================ -->
+  <div id="exit-ramp-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="exit-ramp-title">
+    <div class="bottom-sheet" style="max-width: 440px; margin: auto; border-radius: var(--radius-xl);">
+      <div class="sheet-body" style="text-align: center; padding: 24px 20px;">
+        <div style="font-size: 2.8rem; margin-bottom: 8px;" aria-hidden="true">☀️</div>
+        <h2 id="exit-ramp-title" style="font-family: var(--font-devotional); font-size: 1.6rem; font-weight: 800; color: var(--brand-burgundy); line-height: 1.2; margin-bottom: 12px;">
+          YOUR TURN —<br>IN THE REAL WORLD
+        </h2>
+        <div style="background-color: var(--tint-amber); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px; border: 1px solid var(--brand-amber);">
+          <div style="font-size: 0.65rem; font-weight: 800; color: var(--brand-fire-orange); text-transform: uppercase;">ACTIVE REAL-WORLD TASK</div>
+          <p style="font-size: 0.95rem; font-weight: 800; color: var(--brand-burgundy); margin-top: 4px;">Water the plants at home.</p>
+        </div>
+        <p style="font-family: var(--font-devotional); font-size: 1.05rem; font-style: italic; color: var(--brand-charcoal); opacity: 0.85; margin-bottom: 20px;">
+          "The next part of this adventure doesn't happen on this screen."
+        </p>
+        <button id="btn-exit-to-real-world" class="primary-btn">
+          <span>I'LL DO THIS NOW</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 6: STANDBY MODE ("MISSION IN PROGRESS")
+       ============================================================ -->
+  <div id="standby-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="standby-title">
+    <div class="bottom-sheet" style="max-width: 440px; margin: auto; border-radius: var(--radius-xl);">
+      <div class="sheet-body" style="text-align: center; padding: 24px 20px;">
+        <div style="font-size: 2.8rem; margin-bottom: 8px;" aria-hidden="true">⏳</div>
+        <h2 id="standby-title" style="font-family: var(--font-devotional); font-size: 1.4rem; font-weight: 800; color: var(--brand-burgundy); margin-bottom: 6px;">
+          MISSION IN PROGRESS
+        </h2>
+        <p style="font-size: 0.86rem; color: var(--brand-charcoal); margin-bottom: 16px;">
+          Take your time in the physical world. When you're finished, return here to reflect and claim your rewards.
+        </p>
+        <button id="btn-return-completed" class="primary-btn">
+          <span>I COMPLETED THIS TASK</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 7: PARENT / GUARDIAN CONFIRMATION HANDOFF
+       ============================================================ -->
+  <div id="family-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="family-title">
+    <div class="bottom-sheet" style="max-width: 440px; margin: auto; border-radius: var(--radius-xl);">
+      <div class="sheet-body" style="text-align: center; padding: 24px 20px;">
+        <div style="font-size: 2.8rem; margin-bottom: 8px;" aria-hidden="true">👨‍👩‍👧</div>
+        <h2 id="family-title" style="font-family: var(--font-devotional); font-size: 1.4rem; font-weight: 800; color: var(--brand-burgundy); margin-bottom: 6px;">
+          PARENT / GUARDIAN CONFIRMATION
+        </h2>
+        <p style="font-size: 0.86rem; color: var(--brand-charcoal); margin-bottom: 16px;">
+          Please hand your device to a parent or guardian to verify this domestic stewardship.
+        </p>
+        <div style="background-color: var(--surface-card-subtle); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px; border: 1px solid var(--border-light);">
+          <p style="font-size: 0.85rem; font-weight: 700; color: var(--brand-charcoal);">
+            "Did Alex water the potted plants at home today?"
+          </p>
+        </div>
+        <button id="btn-family-confirm" class="primary-btn">
+          <span>✓ YES, MISSION COMPLETED</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 8: REFLECTION PROMPT
+       ============================================================ -->
+  <div id="reflection-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="reflection-title">
+    <div class="bottom-sheet" style="max-width: 460px; margin: auto; border-radius: var(--radius-xl);">
+      <div class="sheet-body" style="padding: 22px 20px;">
+        <div style="font-size: 2.2rem; text-align: center; margin-bottom: 6px;" aria-hidden="true">📝</div>
+        <h2 id="reflection-title" style="font-family: var(--font-devotional); font-size: 1.35rem; font-weight: 800; color: var(--brand-burgundy); text-align: center; margin-bottom: 8px;">
+          MOMENT OF REFLECTION
+        </h2>
+        <p style="font-size: 0.86rem; font-style: italic; color: var(--brand-charcoal); opacity: 0.85; margin-bottom: 12px;">
+          One small thing I noticed while doing this was...
+        </p>
+        <textarea id="reflection-input" class="form-textarea" rows="3" placeholder="e.g. The dry leaves perked up once the soil drank the water..."></textarea>
+        <button id="btn-submit-reflection" class="primary-btn" style="margin-top: 14px;">
+          <span>RECORD IN JOURNEY &amp; CLAIM REWARDS</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 10: CELEBRATORY REWARDS SCREEN (APPROVED REWARDS)
+       ============================================================ -->
+  <div id="reward-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="reward-headline">
+    <div class="bottom-sheet" style="max-width: 460px; margin: auto; border-radius: var(--radius-xl);">
+      <div class="sheet-body" style="text-align: center; padding: 24px 20px;">
+        <div style="font-size: 2.8rem; margin-bottom: 6px;" aria-hidden="true">🌱✨</div>
+        <h2 id="reward-headline" style="font-family: var(--font-devotional); font-size: 1.5rem; font-weight: 800; color: var(--brand-burgundy); margin-bottom: 8px;">
+          YOUR WORLD GREW.
+        </h2>
+        <p style="font-size: 0.86rem; color: var(--brand-charcoal); margin-bottom: 16px;">
+          Because you cared for living creation in the physical world, your virtual garden has blossomed!
+        </p>
+
+        <!-- Approved Reward Calibration: +5 LP (125 Total), +5 Char XP, +15 Stewardship, +5 Responsibility -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px;">
+          <div class="team-chip">
+            <span class="team-chip-title">Life Points</span>
+            <span id="reward-lp-num" class="team-chip-score">+5 LP</span>
+            <span style="font-size: 0.65rem; color: var(--brand-charcoal); opacity: 0.7;">(125 Total)</span>
+          </div>
+          <div class="team-chip">
+            <span class="team-chip-title">Character XP</span>
+            <span class="team-chip-score" style="color: var(--brand-fire-orange);">+5 XP</span>
+            <span style="font-size: 0.65rem; color: var(--brand-charcoal); opacity: 0.7;">(Level 1)</span>
+          </div>
+          <div class="team-chip">
+            <span class="team-chip-title">Stewardship</span>
+            <span class="team-chip-score" style="color: var(--accent-success);">+15 XP</span>
+            <span style="font-size: 0.65rem; color: var(--brand-charcoal); opacity: 0.7;">(Bloom)</span>
+          </div>
+          <div class="team-chip">
+            <span class="team-chip-title">Responsibility</span>
+            <span class="team-chip-score" style="color: var(--brand-burgundy);">+5 XP</span>
+            <span style="font-size: 0.65rem; color: var(--brand-charcoal); opacity: 0.7;">(Habit)</span>
+          </div>
+        </div>
+
+        <button id="btn-close-reward" class="primary-btn">
+          <span>RETURN TO THE WORLD</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 11: QUESTS & CAMPAIGNS TAB VIEW (PORTRAIT FULL SCREEN)
+       ============================================================ -->
+  <div id="quests-tab-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="quests-tab-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon" aria-hidden="true">📜</span>
+          <div>
+            <h2 id="quests-tab-title" class="sheet-title">Quests &amp; Campaigns</h2>
+            <span class="sheet-subtitle">Fire of God Ministries Virtual Community</span>
+          </div>
+        </div>
+        <button id="btn-close-quests-tab" class="sheet-close-btn" aria-label="Close Quests">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div id="quests-tab-list" style="display: flex; flex-direction: column; gap: 10px;">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 12: JOURNEY TIMELINE TAB VIEW
+       ============================================================ -->
+  <div id="journey-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="journey-modal-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon" aria-hidden="true">📖</span>
+          <div>
+            <h2 id="journey-modal-title" class="sheet-title">Alex's Journey</h2>
+            <span class="sheet-subtitle">2026 Spiritual &amp; Community Milestones</span>
+          </div>
+        </div>
+        <button id="btn-close-journey" class="sheet-close-btn" aria-label="Close Journey">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div id="journey-timeline-list" style="display: flex; flex-direction: column; gap: 12px;">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 13: ME TAB (PROFILE, SPORTS PB, MEMORIES, STUDIO)
+       ============================================================ -->
+  <div id="me-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="me-modal-title">
+    <div class="bottom-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon" aria-hidden="true">👤</span>
+          <div>
+            <h2 id="me-modal-title" class="sheet-title">Pilgrim Profile &amp; Records</h2>
+            <span class="sheet-subtitle">Fire of God Fellowship Member</span>
+          </div>
+        </div>
+        <button id="btn-close-me" class="sheet-close-btn" aria-label="Close Me">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px; background-color: var(--surface-card-subtle); padding: 14px; border-radius: var(--radius-md);">
+          <div style="font-size: 2.2rem; background-color: var(--tint-amber); padding: 8px; border-radius: var(--radius-md);" aria-hidden="true">🧑</div>
+          <div>
+            <h3 style="font-family: var(--font-devotional); font-size: 1.25rem; font-weight: 800; color: var(--brand-burgundy);">Alex</h3>
+            <span style="font-size: 0.72rem; color: var(--brand-fire-orange); font-weight: 800; text-transform: uppercase;">Youth Pilgrim • Level 1</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+          <button id="btn-open-sports-from-me" class="secondary-btn" style="text-align: left; padding: 12px 14px; font-weight: 700;">
+            🏀 <strong>Sports PBs:</strong> FOG Youth Basketball Day (68–62, +3 PBs)
+          </button>
+          <button id="btn-open-memories-from-me" class="secondary-btn" style="text-align: left; padding: 12px 14px; font-weight: 700;">
+            📸 <strong>Community Memories:</strong> 6 Fellowship Photos
+          </button>
+          <button id="btn-open-admin-from-me" class="secondary-btn" style="text-align: left; padding: 12px 14px; font-weight: 700; background-color: var(--tint-gold);">
+            ⚙️ <strong>Koinonia Studio:</strong> Custom Place Creator (7 Steps)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 14: KOINONIA STUDIO ADMIN (7-STEP WIZARD)
+       ============================================================ -->
+  <div id="admin-studio-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="studio-wizard-title">
+    <div class="bottom-sheet" style="max-width: 520px;">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <span class="sheet-icon" aria-hidden="true">⚙️</span>
+          <div>
+            <h2 id="studio-wizard-title" class="sheet-title">Koinonia Studio</h2>
+            <span class="sheet-subtitle">Custom Place &amp; Calling Creator</span>
+          </div>
+        </div>
+        <button id="btn-close-admin-studio" class="sheet-close-btn" aria-label="Close Studio">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div id="wizard-step-box" style="margin-bottom: 16px;">
+          <div style="font-size: 0.72rem; font-weight: 800; color: var(--brand-fire-orange); text-transform: uppercase; margin-bottom: 6px;">
+            Step <span id="wizard-step-num">1</span> of 7
+          </div>
+          <div id="step-1-content" class="wizard-step-content">
+            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">Place Name</label>
+            <input id="wizard-place-name" class="form-input" placeholder="e.g. Prayer Garden" value="Prayer Garden">
+          </div>
+          <div id="step-2-content" class="wizard-step-content" style="display: none;">
+            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">Place Template</label>
+            <select id="wizard-place-template" class="form-select">
+              <option value="courtyard">Courtyard Garden</option>
+              <option value="hall">Fellowship Hall</option>
+              <option value="room">Quiet Study Room</option>
+            </select>
+          </div>
+          <div id="step-3-content" class="wizard-step-content" style="display: none;">
+            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">Zone Layout</label>
+            <input id="wizard-place-zone" class="form-input" placeholder="e.g. East Reflection Bower" value="East Reflection Bower">
+          </div>
+          <div id="step-4-content" class="wizard-step-content" style="display: none;">
+            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">NPC Elder</label>
+            <input id="wizard-npc-name" class="form-input" placeholder="e.g. Sister Grace" value="Sister Grace">
+          </div>
+          <div id="step-5-content" class="wizard-step-content" style="display: none;">
+            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">Real-World Calling</label>
+            <input id="wizard-quest-title" class="form-input" placeholder="e.g. Sunset Intercession" value="Sunset Intercession">
+          </div>
+          <div id="step-6-content" class="wizard-step-content" style="display: none;">
+            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">Verification Type</label>
+            <select id="wizard-quest-verify" class="form-select">
+              <option value="TRUST">Trust (Personal/Household)</option>
+              <option value="FAMILY">Family (Parent Handoff)</option>
+              <option value="LEADER">Leader Verification</option>
+            </select>
+          </div>
+          <div id="step-7-content" class="wizard-step-content" style="display: none;">
+            <div style="background: var(--tint-gold); padding: 12px; border-radius: var(--radius-md); text-align: center;">
+              <span style="font-size: 1.8rem;">✨</span>
+              <p style="font-size: 0.85rem; font-weight: 800; color: var(--brand-burgundy); margin-top: 4px;">Ready to Register Custom Place</p>
+              <p style="font-size: 0.76rem; color: var(--brand-charcoal); opacity: 0.8;">Zero eval / script execution. Safe schema instantiation.</p>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <button id="btn-wizard-prev" class="secondary-btn" style="flex: 1; display: none;">Previous</button>
+          <button id="btn-wizard-next" class="primary-btn" style="flex: 1;">Next Step</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOAD DATA MODULES (CACHE BUSTED ?v=0.12) -->
+  <script src="data/places.js?v=0.12"></script>
+  <script src="data/quests.js?v=0.12"></script>
+  <script src="data/campaigns.js?v=0.12"></script>
+  <script src="data/events.js?v=0.12"></script>
+  <script src="data/memories.js?v=0.12"></script>
+
+  <!-- GAME ENGINE SCRIPT -->
+  <script src="game.js?v=0.12"></script>
+</body>
+</html>
