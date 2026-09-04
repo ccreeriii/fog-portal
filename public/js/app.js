@@ -1926,16 +1926,24 @@ window.handleSelfProfileUpdate = async function(e) {
     let picBase64 = undefined;
     if (fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
 
+    const passwordInput = document.getElementById('myEditPassword');
+    const requestedPassword = passwordInput ? passwordInput.value : '';
+    if (requestedPassword && (requestedPassword.length < 8 || requestedPassword.length > 128 || !/\S/.test(requestedPassword))) {
+        return alert('Password must be 8 to 128 characters.');
+    }
+
     const payload = {
         name: document.getElementById('myEditName').value, email: document.getElementById('myEditEmail').value,
         age: document.getElementById('myEditAge').value, birthday: document.getElementById('myEditBirthday').value,
         social_media: document.getElementById('myEditSocial').value, parents_name: document.getElementById('myEditParents').value,
-        password: document.getElementById('myEditPassword').value, profile_picture: picBase64, actor: currentUser
+        profile_picture: picBase64, actor: currentUser
     };
+    if (requestedPassword) payload.password = requestedPassword;
     window.triggerActionConfirmation(`Save changes to your personal profile?`, async () => {
         const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await res.json();
         if (data.success) {
+            if (passwordInput) passwordInput.value = '';
             alert('Profile updated successfully!');
             window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
             window.populateProfileTab(currentMember);
@@ -2095,7 +2103,7 @@ window.submitFastEditProfile = async function(doCheckIn) {
         name: document.getElementById('fastEditName').value, email: document.getElementById('fastEditEmail').value,
         age: document.getElementById('fastEditAge').value, birthday: document.getElementById('fastEditBirthday').value,
         social_media: document.getElementById('fastEditSocial').value, parents_name: document.getElementById('fastEditParents').value,
-        profile_picture: picBase64, password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, actor: currentUser
+        profile_picture: picBase64, actor: currentUser
     };
     window.triggerActionConfirmation(`Confirm updating profile for ${payload.name}?`, async () => {
         const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
@@ -2320,7 +2328,7 @@ window.saveMemberEditWithConfirm = async function() {
         name: document.getElementById('editMemberName').value, email: document.getElementById('editMemberEmail').value,
         age: document.getElementById('editMemberAge').value, birthday: document.getElementById('editMemberBirthday').value,
         social_media: document.getElementById('editMemberSocial').value, parents_name: document.getElementById('editMemberParents').value,
-        password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, profile_picture: picBase64, actor: currentUser
+        profile_picture: picBase64, actor: currentUser
     };
     window.triggerActionConfirmation(`Confirm updating member profile for '${payload.name}'?`, async () => {
         await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });

@@ -423,6 +423,26 @@ function requireSelfOr(permission, getRequestedMemberId) {
     );
 }
 
+function getAuthorizedProfilePasswordChange(req, res) {
+    if (!Object.prototype.hasOwnProperty.call(req.body, 'password') || req.body.password === '') {
+        return { requested: false };
+    }
+    if (!isCanonicalSelf(req.auth, req.params.id)) {
+        sendForbidden(res);
+        return null;
+    }
+    if (
+        typeof req.body.password !== 'string' ||
+        req.body.password.length < 8 ||
+        req.body.password.length > 128 ||
+        !/\S/.test(req.body.password)
+    ) {
+        res.status(400).json({ success: false, error: 'Password must be 8 to 128 characters.' });
+        return null;
+    }
+    return { requested: true, password: req.body.password };
+}
+
 const RESOURCE_OWNERSHIP = Object.freeze({
     journal: Object.freeze({ table: 'private_journals', ownerColumn: 'youth_id' }),
     personalInbox: Object.freeze({ table: 'personal_inbox', ownerColumn: 'receiver_id' }),
@@ -1174,8 +1194,8 @@ db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
 
     db.all(`SELECT id, qr_code FROM youth WHERE id NOT IN (SELECT youth_id FROM users WHERE youth_id IS NOT NULL)`, [], (err, rows) => {
         if (rows && rows?.length || 0 > 0) {
-            const stmt = db.prepare(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`);
-            rows.forEach(r => { if(r.qr_code) stmt.run([r.qr_code, r.qr_code, r.id, getManilaTime()]); });
+            const stmt = db.prepare(`INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at) VALUES (?, '[]', ?, ?)`);
+            rows.forEach(r => { if(r.qr_code) stmt.run([r.qr_code, r.id, getManilaTime()]); });
             stmt.finalize();
         }
     });
@@ -1594,10 +1614,10 @@ app.post('/api/auth/google', async (req, res) => {
                     db.get(`SELECT MAX(id) as maxId FROM youth`, [], (err, row) => {
                         const nextId = (row && row.maxId ? row.maxId : 0) + 1;
                         const qrCode = `FOG-PASS-${String(nextId).padStart(3, '0')}`;
-                        db.run(`INSERT INTO youth (name, email, profile_picture, google_id, account_tier, qr_code, password, created_at) VALUES (?, ?, ?, ?, 'New Member', ?, ?, ?)`,
-                            [name, email, picture, google_id, qrCode, qrCode, getManilaTime()], function(err) {
+                        db.run(`INSERT INTO youth (name, email, profile_picture, google_id, account_tier, qr_code, created_at) VALUES (?, ?, ?, ?, 'New Member', ?, ?)`,
+                            [name, email, picture, google_id, qrCode, getManilaTime()], function(err) {
                             const newId = this.lastID;
-                            db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`, [qrCode, qrCode, newId, getManilaTime()]);
+                            db.run(`INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at) VALUES (?, '[]', ?, ?)`, [qrCode, newId, getManilaTime()]);
                             logActivity('System', 'NEW_MEMBER_CREATED', `Auto-provisioned New Member '${name}' via Google`);
                             db.get(`SELECT * FROM youth WHERE id = ?`, [newId], (err, newMember) => {
                                 return sendAuthenticatedLogin(req, res, { userId: null, youthId: newId, username: newMember.qr_code }, { success: true, username: newMember.qr_code, permissions: [], member: newMember, is_admin: false, is_new: true });
@@ -1707,16 +1727,28 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-app.put('/api/youth/profile/:id', (req, res) => {
-    const { name, age, birthday, social_media, parents_name, password, email, profile_picture, gender, actor } = req.body;
-    let sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, password=?, email=?, gender=? WHERE id=?`;
-    let params = [name, age, birthday, social_media, parents_name, password, email, gender, req.params.id];
-    if (profile_picture !== undefined) { sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, password=?, email=?, profile_picture=?, gender=? WHERE id=?`; params = [name, age, birthday, social_media, parents_name, password, email, profile_picture, gender, req.params.id]; }
+app.put('/api/youth/profile/:id', requireSelfOr('edit_entries', req => req.params.id), (req, res) => {
+    const passwordChange = getAuthorizedProfilePasswordChange(req, res);
+    if (!passwordChange) return;
+
+    const { name, age, birthday, social_media, parents_name, email, profile_picture, gender } = req.body;
+    let sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, email=?, gender=?`;
+    const params = [name, age, birthday, social_media, parents_name, email, gender];
+    if (profile_picture !== undefined) { sql += `, profile_picture=?`; params.push(profile_picture); }
+    if (passwordChange.requested) { sql += `, password=?`; params.push(passwordChange.password); }
+    sql += ` WHERE id=?`;
+    params.push(req.params.id);
     db.run(sql, params, function (err) {
         if (err) return res.status(500).json({ error: err.message });
-        db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [password, req.params.id]);
-        logActivity(actor || name, 'UPDATE_PROFILE', `Updated profile details for ID ${req.params.id}`);
-        db.get(`SELECT * FROM youth WHERE id = ?`, [req.params.id], (e, member) => { res.json({ success: true, member: sanitizeMemberForClient(member) }); });
+        const finish = () => {
+            logActivity(getCanonicalAuditActor(req), 'UPDATE_PROFILE', `Updated profile details for ID ${req.params.id}`);
+            db.get(`SELECT * FROM youth WHERE id = ?`, [req.params.id], (e, member) => { res.json({ success: true, member: sanitizeMemberForClient(member) }); });
+        };
+        if (!passwordChange.requested) return finish();
+        db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [passwordChange.password, req.params.id], function(passwordErr) {
+            if (passwordErr) return res.status(500).json({ success: false, error: 'Unable to update password.' });
+            finish();
+        });
     });
 });
 
@@ -1731,12 +1763,12 @@ app.put('/api/youth/:id/permissions', requireStrongAdmin, (req, res) => {
             if (existingUser) {
                 db.run(`UPDATE users SET permissions = ?, youth_id = ? WHERE id = ?`, [permString, youthId, existingUser.id], function(err3) { logActivity(actor, 'UPDATE_PERMISSIONS', `Updated permissions for Member ID ${youthId}`); return res.json({ success: true }); });
             } else {
-                db.run(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, ?, ?, ?)`, [targetQr, targetQr, permString, youthId, getManilaTime()], function(err4) {
+                db.run(`INSERT INTO users (username, permissions, youth_id, created_at) VALUES (?, ?, ?, ?)`, [targetQr, permString, youthId, getManilaTime()], function(err4) {
                     if (err4) {
                         const safeQr = `FOG-MEMBER-${youthId}-${Date.now()}`;
-                        db.run(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, ?, ?, ?)`, [safeQr, safeQr, permString, youthId, getManilaTime()], function(err5) { db.run(`UPDATE youth SET qr_code = ?, password = ? WHERE id = ?`, [safeQr, safeQr, youthId]); return res.json({ success: true }); });
+                        db.run(`INSERT INTO users (username, permissions, youth_id, created_at) VALUES (?, ?, ?, ?)`, [safeQr, permString, youthId, getManilaTime()], function(err5) { db.run(`UPDATE youth SET qr_code = ? WHERE id = ?`, [safeQr, youthId]); return res.json({ success: true }); });
                     } else {
-                        if (!youth.qr_code) db.run(`UPDATE youth SET qr_code = ?, password = ? WHERE id = ?`, [targetQr, targetQr, youthId]);
+                        if (!youth.qr_code) db.run(`UPDATE youth SET qr_code = ? WHERE id = ?`, [targetQr, youthId]);
                         logActivity(actor, 'UPDATE_PERMISSIONS', `Created user & assigned permissions for Member ID ${youthId}`);
                         return res.json({ success: true });
                     }
@@ -2789,19 +2821,30 @@ app.get('/api/admin/ministry-logs-v36', requirePermission('edit_entries'), (req,
 
 
 // --- V37: PROFILE DETAILS & PRIORITY ENDPOINTS ---
-app.put('/api/youth-v37/profile/:id', (req, res) => {
-    const { name, email, age, birthday, gender, mobile, address, social_media, parents_name, profile_picture, password } = req.body;
+app.put('/api/youth-v37/profile/:id', requireSelfOr('edit_entries', req => req.params.id), (req, res) => {
+    const passwordChange = getAuthorizedProfilePasswordChange(req, res);
+    if (!passwordChange) return;
+
+    const { name, email, age, birthday, gender, mobile, address, social_media, parents_name, profile_picture } = req.body;
     let query = "UPDATE youth SET name=?, email=?, age=?, birthday=?, gender=?, mobile=?, address=?, social_media=?, parents_name=?";
     let params = [name, email, age, birthday, gender, mobile, address, social_media, parents_name];
     
     if (profile_picture) { query += ", profile_picture=?"; params.push(profile_picture); }
-    if (password) { query += ", password=?"; params.push(password); }
+    if (passwordChange.requested) { query += ", password=?"; params.push(passwordChange.password); }
     query += " WHERE id=?";
     params.push(req.params.id);
 
     db.run(query, params, function(err) {
         if(err) return res.status(500).json({success: false, error: err.message});
-        db.get("SELECT * FROM youth WHERE id=?", [req.params.id], (err, member) => { res.json({success: true, member: sanitizeMemberForClient(member)}); });
+        const finish = () => {
+            logActivity(getCanonicalAuditActor(req), 'UPDATE_PROFILE', `Updated profile details for ID ${req.params.id}`);
+            db.get("SELECT * FROM youth WHERE id=?", [req.params.id], (err, member) => { res.json({success: true, member: sanitizeMemberForClient(member)}); });
+        };
+        if (!passwordChange.requested) return finish();
+        db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [passwordChange.password, req.params.id], function(passwordErr) {
+            if (passwordErr) return res.status(500).json({ success: false, error: 'Unable to update password.' });
+            finish();
+        });
     });
 });
 
@@ -2938,6 +2981,9 @@ app.post('/api/public/register-wanderer', (req, res) => {
     
     if (!name || !email) {
         return res.status(400).json({ error: "Name and email are strictly required." });
+    }
+    if (typeof password !== 'string' || password.length < 8 || password.length > 128 || !/\S/.test(password)) {
+        return res.status(400).json({ error: "A password of 8 to 128 characters is required." });
     }
     
     if (typeof db !== 'undefined') {

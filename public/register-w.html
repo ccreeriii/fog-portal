@@ -149,7 +149,7 @@
                 </div>
                 <div class="form-group" style="margin-bottom: 25px;">
                     <label style="font-weight: bold; font-size: 0.9rem; color: var(--text-main);">Create Password</label>
-                    <input type="password" class="form-control" placeholder="Make it secure" required style="border-radius: 8px; padding: 12px; background: #F8FAFC;">
+                    <input type="password" class="form-control" placeholder="Make it secure" minlength="8" maxlength="128" required style="border-radius: 8px; padding: 12px; background: #F8FAFC;">
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%; font-weight: bold; padding: 14px; font-size: 1.1rem; border-radius: 12px; background: #F59E0B; border: none;">Create Player Profile</button>
             </form>
@@ -223,10 +223,11 @@
                     const nameInput = form.querySelector('input[type="text"], input[placeholder*="Name"], input[id*="name"], input[placeholder*="name"]');
                     const emailInput = form.querySelector('input[type="email"], input[placeholder*="Email"], input[id*="email"], input[placeholder*="email"]');
                     
+                    const passwordInput = form.querySelector('input[type="password"], input[placeholder*="Password"]');
                     const payload = {
                         name: nameInput ? nameInput.value.trim() : '',
                         email: emailInput ? emailInput.value.trim() : '',
-                        password: (form.querySelector('input[type="password"], input[placeholder*="Password"]') ? form.querySelector('input[type="password"], input[placeholder*="Password"]').value.trim() : 'defaultWandererPass') // Placeholder if no password field exists
+                        password: passwordInput ? passwordInput.value : ''
                     };
                     
                     try {
