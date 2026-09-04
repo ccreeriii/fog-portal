@@ -429,7 +429,12 @@ const RESOURCE_OWNERSHIP = Object.freeze({
     notification: Object.freeze({ table: 'user_notifications', ownerColumn: 'youth_id' }),
     prayer: Object.freeze({ table: 'prayer_requests', ownerColumn: 'youth_id' }),
     blockout: Object.freeze({ table: 'blockout_dates', ownerColumn: 'youth_id' }),
-    eventRole: Object.freeze({ table: 'event_roles', ownerColumn: 'youth_id' })
+    eventRole: Object.freeze({ table: 'event_roles', ownerColumn: 'youth_id' }),
+    ministryMember: Object.freeze({ table: 'ministry_members', ownerColumn: 'youth_id' }),
+    smallGroup: Object.freeze({ table: 'small_groups', ownerColumn: 'leader_id' }),
+    groupSession: Object.freeze({
+        ownerQuery: `SELECT sg.leader_id AS youth_id FROM group_sessions gs JOIN small_groups sg ON sg.id = gs.group_id WHERE gs.id = ?`
+    })
 });
 
 function loadResourceOwnerYouthId(resourceType, resourceId) {
@@ -438,8 +443,10 @@ function loadResourceOwnerYouthId(resourceType, resourceId) {
     if (!ownership || normalizedResourceId === null) return Promise.resolve(null);
 
     return new Promise((resolve, reject) => {
+        const ownerQuery = ownership.ownerQuery ||
+            `SELECT ${ownership.ownerColumn} AS youth_id FROM ${ownership.table} WHERE id = ?`;
         db.get(
-            `SELECT ${ownership.ownerColumn} AS youth_id FROM ${ownership.table} WHERE id = ?`,
+            ownerQuery,
             [normalizedResourceId],
             (err, row) => {
                 if (err) return reject(err);
@@ -452,6 +459,60 @@ function loadResourceOwnerYouthId(resourceType, resourceId) {
 async function isCanonicalResourceOwner(auth, resourceType, resourceId) {
     const ownerYouthId = await loadResourceOwnerYouthId(resourceType, resourceId);
     return isCanonicalSelf(auth, ownerYouthId);
+}
+
+function requireResourceOwnerOrAllPermissions(resourceType, permissions, getResourceId = req => req.params.id) {
+    if (!Object.prototype.hasOwnProperty.call(RESOURCE_OWNERSHIP, resourceType)) {
+        throw new TypeError(`Unknown resource ownership type: ${resourceType}`);
+    }
+    const requiredPermissions = normalizeRequiredPermissions(permissions);
+    if (typeof getResourceId !== 'function') {
+        throw new TypeError('A resource ID resolver is required');
+    }
+    return (req, res, next) => authorizeRequest(
+        req,
+        res,
+        next,
+        async auth => requiredPermissions.every(permission => authorizationHasPermission(auth, permission)) ||
+            isCanonicalResourceOwner(auth, resourceType, getResourceId(req))
+    );
+}
+
+function requireMinistryMemberDeleteAccess(req, res, next) {
+    return authorizeRequest(req, res, next, async auth => {
+        const mappingId = normalizeCanonicalId(req.params.mapping_id);
+        const ministryId = normalizeCanonicalId(req.params.ministry_id);
+        if (mappingId === null || ministryId === null) return false;
+
+        const target = await new Promise((resolve, reject) => {
+            db.get(
+                `SELECT ministry_id, youth_id, role FROM ministry_members WHERE id = ?`,
+                [mappingId],
+                (err, row) => {
+                    if (err) return reject(err);
+                    resolve(row || null);
+                }
+            );
+        });
+
+        if (!target || normalizeCanonicalId(target.ministry_id) !== ministryId) return false;
+
+        const canAccessMinistries = authorizationHasPermission(auth, 'access_ministries');
+        const canDeleteEntries = authorizationHasPermission(auth, 'delete_entries');
+        if (canAccessMinistries && canDeleteEntries) {
+            req.ministryMemberDeleteMode = 'staff';
+            return true;
+        }
+        if (target.role === 'Applicant' && canAccessMinistries) {
+            req.ministryMemberDeleteMode = 'pending';
+            return true;
+        }
+        if (target.role !== 'Applicant' && isCanonicalSelf(auth, target.youth_id)) {
+            req.ministryMemberDeleteMode = 'owner';
+            return true;
+        }
+        return false;
+    });
 }
 
 function getCanonicalAuditActor(req) {
@@ -1714,7 +1775,14 @@ app.post('/api/youth', (req, res) => {
         );
     });
 });
-app.delete('/api/youth/:id', (req, res) => { db.run(`DELETE FROM youth WHERE id=?`, [req.params.id], function (err) { db.run(`DELETE FROM users WHERE youth_id=?`, [req.params.id]); logActivity(req.body.actor, 'DELETE_MEMBER', `Deleted member record`); res.json({ deleted: this.changes }); }); });
+app.delete('/api/youth/:id', requireAllPermissions(['access_directory', 'delete_entries']), (req, res) => {
+    const actor = getCanonicalAuditActor(req);
+    db.run(`DELETE FROM youth WHERE id=?`, [req.params.id], function (err) {
+        db.run(`DELETE FROM users WHERE youth_id=?`, [req.params.id]);
+        logActivity(actor, 'DELETE_MEMBER', `Deleted member record`);
+        res.json({ deleted: this.changes });
+    });
+});
 app.get('/api/users/list', requirePermission('access_permissions'), (req, res) => { db.all(`SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`, [], (err, rows) => { res.json(rows.map(r => ({ id: r.id, username: r.username, display_name: r.member_name ? `${r.member_name}` : r.username, qr_code: r.member_code || r.username, youth_id: r.youth_id, permissions: r.permissions || '[]' }))); }); });
 
 app.post('/api/checkin', (req, res) => {
@@ -1741,7 +1809,7 @@ app.post('/api/checkin', (req, res) => {
 });
 app.get('/api/attendance/logs', (req, res) => { db.all(`SELECT a.id, a.checked_in_at, a.is_walkin, y.name as member_name, e.name as event_name, a.youth_id, a.event_id FROM attendance a JOIN youth y ON a.youth_id = y.id JOIN events e ON a.event_id = e.id ORDER BY a.checked_in_at DESC`, [], (err, rows) => { res.json(rows); }); });
 app.put('/api/attendance/:id', (req, res) => { db.run(`UPDATE attendance SET checked_in_at = ?, is_walkin = ? WHERE id = ?`, [req.body.checked_in_at, req.body.is_walkin ? 1 : 0, req.params.id], function (err) { res.json({ updated: this.changes }); }); });
-app.delete('/api/attendance/:id', (req, res) => { db.run(`DELETE FROM attendance WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
+app.delete('/api/attendance/:id', requireAllPermissions(['access_attendance', 'delete_entries']), (req, res) => { db.run(`DELETE FROM attendance WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
 
 app.get('/api/events', async (req, res) => {
     const auth = await loadOptionalAuthorizationContext(req);
@@ -1776,11 +1844,11 @@ app.get('/api/events/:id/analytics', requireAnyPermission(['access_events', 'acc
 app.get('/api/events/:id/poster.jpg', (req, res) => { db.get(`SELECT poster, prereg_banner FROM events WHERE id = ?`, [req.params.id], (err, event) => { if (!event) return res.status(404).send('Not found'); const b64 = event.poster || event.prereg_banner; if (b64 && b64.startsWith('data:image')) { const parts = b64.split(';'); res.writeHead(200, { 'Content-Type': parts[0].split(':')[1] }); res.end(Buffer.from(parts[1].split(',')[1], 'base64')); } else res.status(404).send('No image'); }); });
 app.post('/api/events', (req, res) => { db.run(`INSERT INTO events (name, event_date, time_start, venue, poster, photos_url, materials_url, event_points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, getManilaTime()], function (err) { res.json({ id: this.lastID }); }); });
 app.put('/api/events/:id', (req, res) => { if (req.body.poster !== undefined && req.body.poster !== null) { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, poster=?, photos_url=?, materials_url=?, event_points=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, req.params.id], function(err) { res.json({ updated: this.changes }); }); } else { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, photos_url=?, materials_url=?, event_points=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, req.params.id], function(err) { res.json({ updated: this.changes }); }); } });
-app.delete('/api/events/:id', (req, res) => { db.run(`DELETE FROM events WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
+app.delete('/api/events/:id', requireAllPermissions(['access_events', 'delete_entries']), (req, res) => { db.run(`DELETE FROM events WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
 app.post('/api/events/:id/prereg-settings', (req, res) => { db.run(`UPDATE events SET prereg_banner = ?, prereg_bottom_banner = ?, prereg_title = ?, prereg_info = ? WHERE id = ?`, [req.body.banner, req.body.bottom_banner, req.body.title, req.body.info, req.params.id], function(err) { res.json({ success: true }); }); });
 app.get('/api/events/:id/preregs', (req, res) => { db.all(`SELECT youth_id FROM pre_registrations WHERE event_id = ?`, [req.params.id], (err, rows) => { res.json(rows.map(r => r.youth_id)); }); });
 app.post('/api/preregister', (req, res) => { db.run(`INSERT OR IGNORE INTO pre_registrations (event_id, youth_id, created_at) VALUES (?, ?, ?)`, [req.body.event_id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
-app.delete('/api/events/:event_id/preregs/:youth_id', (req, res) => { db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`, [req.params.event_id, req.params.youth_id], function(err) { res.json({ success: true, deleted: this.changes }); }); });
+app.delete('/api/events/:event_id/preregs/:youth_id', requireAllPermissions(['access_events', 'delete_entries']), (req, res) => { db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`, [req.params.event_id, req.params.youth_id], function(err) { res.json({ success: true, deleted: this.changes }); }); });
 
 app.get('/api/ministries', async (req, res) => {
     const auth = await loadOptionalAuthorizationContext(req);
@@ -1796,11 +1864,20 @@ app.get('/api/ministries', async (req, res) => {
 });
 app.post('/api/ministries', (req, res) => { db.run(`INSERT INTO ministries (name, description, logo, created_at) VALUES (?, ?, ?, ?)`, [req.body.name, req.body.description, req.body.logo, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
 app.put('/api/ministries/:id', (req, res) => { let sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ? WHERE id = ?`; let params = [req.body.name, req.body.description, req.body.restricted_notes, req.params.id]; if (req.body.logo !== undefined) { sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ?, logo = ? WHERE id = ?`; params = [req.body.name, req.body.description, req.body.restricted_notes, req.body.logo, req.params.id]; } db.run(sql, params, function(err) { res.json({ success: true }); }); });
-app.delete('/api/ministries/:id', (req, res) => { db.run(`DELETE FROM ministries WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM ministry_members WHERE ministry_id = ?`, [req.params.id]); res.json({ success: true }); }); });
+app.delete('/api/ministries/:id', requireAllPermissions(['access_ministries', 'delete_entries']), (req, res) => { db.run(`DELETE FROM ministries WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM ministry_members WHERE ministry_id = ?`, [req.params.id]); res.json({ success: true }); }); });
 app.get('/api/ministries/:id/members', requireAuth, (req, res) => { db.all(`SELECT mm.id as mapping_id, mm.role, mm.sub_role, mm.assigned_at, y.id, y.name, y.profile_picture FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 app.post('/api/ministries/:id/members', (req, res) => { db.run(`INSERT INTO ministry_members (ministry_id, youth_id, role, sub_role, assigned_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.role, req.body.sub_role, getManilaTime()], function(err) { res.json({ success: true }); }); });
 app.put('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.run(`UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?`, [req.body.role, req.body.sub_role, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
-app.delete('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.run(`DELETE FROM ministry_members WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
+app.delete('/api/ministries/:ministry_id/members/:mapping_id', requireMinistryMemberDeleteAccess, (req, res) => {
+    let sql = `DELETE FROM ministry_members WHERE id = ? AND ministry_id = ?`;
+    if (req.ministryMemberDeleteMode === 'pending') sql += ` AND role = 'Applicant'`;
+    if (req.ministryMemberDeleteMode === 'owner') sql += ` AND (role IS NULL OR role <> 'Applicant')`;
+    db.run(sql, [req.params.mapping_id, req.params.ministry_id], function(err) {
+        if (err) return res.status(500).json({ error: 'Unable to remove ministry membership.' });
+        if (this.changes === 0) return sendForbidden(res);
+        return res.json({ success: true });
+    });
+});
 app.get('/api/youth/:id/ministries', (req, res) => { db.all(`SELECT mm.id as mapping_id, m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at, mm.is_priority FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 
 app.get('/api/events/:id/roles', requireAuth, (req, res) => { db.all(`SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, er.status, y.id, y.name, y.profile_picture FROM event_roles er JOIN youth y ON er.youth_id = y.id WHERE er.event_id = ? ORDER BY er.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
@@ -1819,12 +1896,12 @@ app.post('/api/events/:id/roles', (req, res) => {
 });
 app.post('/api/events/:id/roles-notes', (req, res) => { db.run(`UPDATE events SET roles_restricted_notes = ? WHERE id = ?`, [req.body.roles_restricted_notes, req.params.id], function(err) { res.json({ success: true }); }); });
 app.put('/api/events/:event_id/roles/:mapping_id', (req, res) => { db.run(`UPDATE event_roles SET role_name = ?, sub_role = ? WHERE id = ?`, [req.body.role_name, req.body.sub_role, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
-app.delete('/api/events/:event_id/roles/:mapping_id', (req, res) => { db.run(`DELETE FROM event_roles WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
+app.delete('/api/events/:event_id/roles/:mapping_id', requireResourceOwnerOrAllPermissions('eventRole', ['access_events', 'delete_entries'], req => req.params.mapping_id), (req, res) => { db.run(`DELETE FROM event_roles WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.get('/api/youth/:id/event_roles', (req, res) => { db.all(`SELECT er.id as mapping_id, e.id as event_id, e.name as event_name, er.role_name, er.sub_role, er.assigned_at, er.status, e.event_date FROM event_roles er JOIN events e ON er.event_id = e.id WHERE er.youth_id = ? ORDER BY e.event_date DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 app.put('/api/events/:event_id/roles/:mapping_id/status', (req, res) => { db.run(`UPDATE event_roles SET status = ? WHERE id = ?`, [req.body.status, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 app.get('/api/youth/:id/blockouts', (req, res) => { db.all(`SELECT * FROM blockout_dates WHERE youth_id = ? ORDER BY block_date ASC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 app.post('/api/blockouts', (req, res) => { db.run(`INSERT INTO blockout_dates (youth_id, block_date, reason, created_at) VALUES (?, ?, ?, ?)`, [req.body.youth_id, req.body.block_date, req.body.reason, getManilaTime()], function(err) { if (err) return res.status(400).json({ error: 'Date already blocked.' }); res.json({ success: true }); }); });
-app.delete('/api/blockouts/:id', (req, res) => { db.run(`DELETE FROM blockout_dates WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); });
+app.delete('/api/blockouts/:id', requireResourceOwnerOrAllPermissions('blockout', ['access_events', 'delete_entries']), (req, res) => { db.run(`DELETE FROM blockout_dates WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); });
 
 // NEW DISCIPLESHIP API (WITH POINTS)
 app.get('/api/discipleship/next-step/:youth_id', (req, res) => { db.all(`SELECT p.*, m.status as member_status, m.completed_at FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, steps) => { let nextStep = steps.find(s => s.member_status !== 'Completed'); if (!nextStep && steps?.length || 0 > 0) nextStep = steps[steps?.length || 0 - 1]; res.json({ nextStep, allSteps: steps }); }); });
@@ -1845,7 +1922,7 @@ app.post('/api/discipleship/milestones', (req, res) => {
 app.get('/api/discipleship/pathways', (req, res) => { db.all(`SELECT * FROM discipleship_pathways ORDER BY step_order ASC`, [], (err, rows) => { res.json(rows); }); });
 app.post('/api/discipleship/pathways', (req, res) => { db.run(`INSERT INTO discipleship_pathways (title, description, step_order, points, created_at) VALUES (?, ?, ?, ?, ?)`, [req.body.title, req.body.description, req.body.step_order, req.body.points || 50, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
 app.put('/api/discipleship/pathways/:id', (req, res) => { db.run(`UPDATE discipleship_pathways SET title=?, description=?, step_order=?, points=? WHERE id=?`, [req.body.title, req.body.description, req.body.step_order, req.body.points || 50, req.params.id], function(err) { res.json({ success: true }); }); });
-app.delete('/api/discipleship/pathways/:id', (req, res) => { db.run(`DELETE FROM discipleship_pathways WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM member_milestones WHERE pathway_id=?`, [req.params.id]); res.json({ success: true }); }); });
+app.delete('/api/discipleship/pathways/:id', requireAllPermissions(['access_discipleship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM discipleship_pathways WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM member_milestones WHERE pathway_id=?`, [req.params.id]); res.json({ success: true }); }); });
 app.get('/api/discipleship/member-progress/:youth_id', (req, res) => { db.all(`SELECT p.id as pathway_id, p.title, m.status, m.completed_at, m.notes as pastoral_notes FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, rows) => { res.json(rows); }); });
 app.get('/api/discipleship/analytics/stages', (req, res) => { db.all(`WITH UserMaxStep AS (SELECT youth_id, MAX(pathway_id) as max_path_id FROM member_milestones WHERE status = 'Completed' OR status = 'In Progress' GROUP BY youth_id) SELECT p.title, COUNT(u.youth_id) as user_count FROM discipleship_pathways p LEFT JOIN UserMaxStep u ON p.id = u.max_path_id GROUP BY p.id, p.title ORDER BY p.step_order ASC`, [], (err, stepRows) => { db.get(`SELECT COUNT(*) as total FROM youth`, [], (err, youthRow) => { const totalYouth = youthRow ? youthRow.total : 0; let assignedYouth = 0; stepRows.forEach(r => assignedYouth += r.user_count); res.json({ stages: stepRows, unassigned: totalYouth - assignedYouth > 0 ? totalYouth - assignedYouth : 0 }); }); }); });
 
@@ -1866,7 +1943,7 @@ app.post('/api/journals', (req, res) => {
     });
 });
 app.put('/api/journals/:id', (req, res) => { db.run(`UPDATE private_journals SET title = ?, mood = ?, content = ? WHERE id = ?`, [req.body.title, req.body.mood, req.body.content, req.params.id], function(err) { res.json({ success: true }); }); });
-app.delete('/api/journals/:id', (req, res) => { db.run(`DELETE FROM private_journals WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); });
+app.delete('/api/journals/:id', requireResourceOwnerOrAllPermissions('journal', ['delete_entries']), (req, res) => { db.run(`DELETE FROM private_journals WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); });
 
 // NEW PRAYER API (WITH DAILY POINTS)
 app.get('/api/prayers', (req, res) => { db.all(`SELECT p.*, y.name as author_name FROM prayer_requests p LEFT JOIN youth y ON p.youth_id = y.id ORDER BY p.created_at DESC`, [], (err, rows) => { res.json(rows); }); });
@@ -1963,7 +2040,7 @@ app.patch('/api/small-groups/:id/privacy', (req, res) => {
     });
 });
 app.put('/api/small-groups/:id', (req, res) => { db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=?, points=?, logo=?, privacy_level=? WHERE id=?`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, req.body.privacy_level || 'Open', req.params.id], function(err) { res.json({ success: true }); }); });
-app.delete('/api/small-groups/:id', (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
+app.delete('/api/small-groups/:id', requireResourceOwnerOrAllPermissions('smallGroup', ['delete_entries']), (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
 
 
 app.get('/api/small-groups/:id/sessions', (req, res) => {
@@ -1987,7 +2064,7 @@ app.put('/api/small-groups/sessions/:session_id', (req, res) => {
     });
 });
 
-app.delete('/api/small-groups/sessions/:session_id', (req, res) => {
+app.delete('/api/small-groups/sessions/:session_id', requireResourceOwnerOrAllPermissions('groupSession', ['delete_entries'], req => req.params.session_id), (req, res) => {
     db.run(`DELETE FROM group_sessions WHERE id = ?`, [req.params.session_id], function(err) {
         res.json({ success: true });
     });
@@ -2025,7 +2102,7 @@ app.post('/api/small-groups/:id/join', (req, res) => {
     });
 });
 
-app.post('/api/small-groups/:id/members/:youth_id/status', (req, res) => {
+app.post('/api/small-groups/:id/members/:youth_id/status', requireResourceOwnerOrAllPermissions('smallGroup', ['delete_entries'], req => req.params.id), (req, res) => {
     const { status } = req.body;
     if (status === 'Denied') {
         db.run(`DELETE FROM small_group_members WHERE group_id = ? AND youth_id = ?`, [req.params.id, req.params.youth_id], () => res.json({success:true}));
@@ -2212,13 +2289,13 @@ app.post('/api/small-groups/react-v2', (req, res) => {
 app.get('/api/worship/songs', (req, res) => { db.all(`SELECT * FROM songs ORDER BY title ASC`, [], (err, rows) => { res.json(rows); }); });
 app.post('/api/worship/songs', (req, res) => { db.run(`INSERT INTO songs (title, artist, song_key, bpm, audio_url, youtube_url, chord_chart_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.title, req.body.artist, req.body.song_key, req.body.bpm, req.body.audio_url, req.body.youtube_url, req.body.chord_chart_url, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
 app.put('/api/worship/songs/:id', (req, res) => { db.run(`UPDATE songs SET title=?, artist=?, song_key=?, bpm=?, audio_url=?, youtube_url=?, chord_chart_url=? WHERE id=?`, [req.body.title, req.body.artist, req.body.song_key, req.body.bpm, req.body.audio_url, req.body.youtube_url, req.body.chord_chart_url, req.params.id], function(err) { res.json({ success: true }); }); });
-app.delete('/api/worship/songs/:id', (req, res) => { db.run(`DELETE FROM songs WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM setlist_songs WHERE song_id=?`, [req.params.id]); res.json({ success: true }); }); });
+app.delete('/api/worship/songs/:id', requireAllPermissions(['access_worship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM songs WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM setlist_songs WHERE song_id=?`, [req.params.id]); res.json({ success: true }); }); });
 app.get('/api/worship/setlists', (req, res) => { db.all(`SELECT * FROM setlists ORDER BY scheduled_date DESC`, [], (err, rows) => { res.json(rows); }); });
 app.post('/api/worship/setlists', (req, res) => { db.run(`INSERT INTO setlists (name, scheduled_date, created_at) VALUES (?, ?, ?)`, [req.body.name, req.body.scheduled_date, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
-app.delete('/api/worship/setlists/:id', (req, res) => { db.run(`DELETE FROM setlists WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM setlist_songs WHERE setlist_id=?`, [req.params.id]); res.json({ success: true }); }); });
+app.delete('/api/worship/setlists/:id', requireAllPermissions(['access_worship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM setlists WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM setlist_songs WHERE setlist_id=?`, [req.params.id]); res.json({ success: true }); }); });
 app.get('/api/worship/setlists/:id/songs', (req, res) => { db.all(`SELECT ss.id as mapping_id, s.* FROM setlist_songs ss JOIN songs s ON ss.song_id = s.id WHERE ss.setlist_id = ? ORDER BY ss.sort_order ASC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 app.post('/api/worship/setlists/:id/songs', (req, res) => { db.get(`SELECT MAX(sort_order) as max_sort FROM setlist_songs WHERE setlist_id = ?`, [req.params.id], (err, row) => { const nextSort = (row && row.max_sort !== null ? row.max_sort : 0) + 1; db.run(`INSERT OR IGNORE INTO setlist_songs (setlist_id, song_id, sort_order) VALUES (?, ?, ?)`, [req.params.id, req.body.song_id, nextSort], function(err) { res.json({ success: true }); }); }); });
-app.delete('/api/worship/setlists/:setlist_id/songs/:mapping_id', (req, res) => { db.run(`DELETE FROM setlist_songs WHERE id=?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
+app.delete('/api/worship/setlists/:setlist_id/songs/:mapping_id', requireAllPermissions(['access_worship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM setlist_songs WHERE id=?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
 
 
 // [KOINONIA PATCH] PRIVATE PRAYER INBOX
@@ -2269,7 +2346,7 @@ app.post('/api/communications/subscribe', (req, res) => {
     const { username, subscription } = req.body;
     db.run(`INSERT INTO push_subscriptions (username, subscription, created_at) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET subscription = excluded.subscription`, [username, JSON.stringify(subscription), getManilaTime()], function(err) { res.json({ success: true }); });
 });
-app.post('/api/communications/unsubscribe', (req, res) => { db.run(`DELETE FROM push_subscriptions WHERE username = ?`, [req.body.username], function(err) { res.json({ success: true }); }); });
+app.post('/api/communications/unsubscribe', requireAuth, (req, res) => { db.run(`DELETE FROM push_subscriptions WHERE username = ?`, [req.auth.username], function(err) { res.json({ success: true }); }); });
 app.post('/api/communications/broadcast', (req, res) => {
     const { target, title, message, actor } = req.body;
     db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', getManilaTime()], function(err) {
@@ -2308,14 +2385,10 @@ app.post('/api/communications/broadcast', (req, res) => {
     });
 });
 app.get('/api/communications/history', (req, res) => { db.all(`SELECT id, title, target_audience as target, message, author as sender, created_at FROM announcements ORDER BY created_at DESC`, [], (err, rows) => { res.json(rows || []); }); });
-app.delete('/api/communications/broadcast/:id', (req, res) => {
-    const { actor } = req.body;
-    if (actor === 'celsocreeriii@gmail.com') { executeDelete(); return; }
-    db.get(`SELECT permissions FROM users WHERE username = ?`, [actor], (err, user) => {
-        if (!user || !JSON.parse(user.permissions).includes('delete_entries')) return res.status(403).json({ error: 'Unauthorized' });
-        executeDelete();
-    });
+app.delete('/api/communications/broadcast/:id', requireAllPermissions(['access_communications', 'delete_entries']), (req, res) => {
+    const actor = getCanonicalAuditActor(req);
     function executeDelete() { db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]); logActivity(actor, 'DELETE_BROADCAST', `Deleted global broadcast ID ${req.params.id}`); res.json({ success: true }); }); }
+    executeDelete();
 });
 app.get('/api/communications/inbox', (req, res) => {
     const username = req.query.username;
@@ -2325,9 +2398,23 @@ app.get('/api/communications/inbox', (req, res) => {
         db.all(`SELECT n.id as notification_id, a.title, a.message, a.author, a.created_at FROM user_notifications n JOIN announcements a ON n.announcement_id = a.id WHERE n.youth_id = ? ORDER BY a.created_at DESC LIMIT 50`, [youth.id], (err, rows) => { res.json(rows || []); });
     });
 });
-app.delete('/api/communications/inbox/:id', (req, res) => {
-    if (req.body.username === 'celsocreeriii@gmail.com') { db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]); logActivity(req.body.actor, 'DELETE_INBOX_MSG', `Admin deleted global broadcast ID ${req.params.id}`); res.json({ success: true }); }); }
-    else { db.run(`DELETE FROM user_notifications WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); }
+app.delete('/api/communications/inbox/:id', requireAuth, async (req, res) => {
+    if (isStrongAdmin(req.auth)) {
+        const actor = getCanonicalAuditActor(req);
+        return db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) {
+            db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]);
+            logActivity(actor, 'DELETE_INBOX_MSG', `Admin deleted global broadcast ID ${req.params.id}`);
+            res.json({ success: true });
+        });
+    }
+
+    try {
+        const isOwner = await isCanonicalResourceOwner(req.auth, 'notification', req.params.id);
+        if (!isOwner) return sendForbidden(res);
+        return db.run(`DELETE FROM user_notifications WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); });
+    } catch (err) {
+        return sendAuthorizationUnavailable(res);
+    }
 });
 
 app.get('/api/leaderboards/:type/:timeframe', (req, res) => {
