@@ -29,6 +29,14 @@ const PASSWORD_SCRYPT_PARAMS = Object.freeze({
 });
 const PASSWORD_HASH_PREFIX = `${PASSWORD_HASH_SCHEME}$${PASSWORD_HASH_VERSION}$`;
 const PASSWORD_MAX_INPUT_BYTES = 1024;
+const PASSWORD_LOGIN_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const PASSWORD_LOGIN_IP_ATTEMPT_LIMIT = 30;
+const PASSWORD_LOGIN_ACCOUNT_FAILURE_LIMIT = 6;
+const PASSWORD_LOGIN_IP_KEY_LIMIT = 2048;
+const PASSWORD_LOGIN_ACCOUNT_KEY_LIMIT = 4096;
+const PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const passwordLoginIpAttempts = new Map();
+const passwordLoginAccountFailures = new Map();
 
 function deriveScryptKey(password, salt, params = PASSWORD_SCRYPT_PARAMS) {
     return new Promise((resolve, reject) => {
@@ -131,6 +139,179 @@ async function verifyPassword(password, storedValue) {
         return false;
     }
 }
+
+function digestPasswordLoginLimiterKey(namespace, value) {
+    return crypto.createHash('sha256')
+        .update(namespace)
+        .update('\0')
+        .update(value)
+        .digest('base64url');
+}
+
+function normalizePasswordLoginIdentifierForLimiter(value) {
+    if (typeof value !== 'string') return '<missing>';
+    const normalized = value.normalize('NFKC').trim().toLowerCase();
+    return normalized || '<empty>';
+}
+
+function getPasswordLoginIpKey(req) {
+    // Express defaults to trust proxy=false, so req.ip resolves from the socket.
+    // Do not read forwarding headers here without an explicit trusted-proxy review.
+    const address = req && typeof req.ip === 'string' && req.ip
+        ? req.ip
+        : req && req.socket && typeof req.socket.remoteAddress === 'string' && req.socket.remoteAddress
+            ? req.socket.remoteAddress
+            : '<unknown>';
+    return digestPasswordLoginLimiterKey('ip', address);
+}
+
+function getPasswordLoginAccountKey(identifier) {
+    return digestPasswordLoginLimiterKey(
+        'account',
+        normalizePasswordLoginIdentifierForLimiter(identifier)
+    );
+}
+
+function cleanupExpiredPasswordLoginLimiterEntries(store, now = Date.now()) {
+    for (const [key, entry] of store) {
+        if (!entry || !Number.isFinite(entry.resetAt) || entry.resetAt <= now) {
+            store.delete(key);
+        }
+    }
+}
+
+function getPasswordLoginRetryAfterSeconds(entry, now = Date.now()) {
+    const remainingMs = entry && Number.isFinite(entry.resetAt)
+        ? entry.resetAt - now
+        : PASSWORD_LOGIN_LIMIT_WINDOW_MS;
+    return Math.max(1, Math.ceil(Math.max(0, remainingMs) / 1000));
+}
+
+function getPasswordLoginCapacityRetryAfterSeconds(store, now = Date.now()) {
+    let earliestResetAt = Infinity;
+    for (const entry of store.values()) {
+        if (entry && Number.isFinite(entry.resetAt)) {
+            earliestResetAt = Math.min(earliestResetAt, entry.resetAt);
+        }
+    }
+    return getPasswordLoginRetryAfterSeconds(
+        Number.isFinite(earliestResetAt) ? { resetAt: earliestResetAt } : null,
+        now
+    );
+}
+
+function ensurePasswordLoginLimiterCapacity(store, maximumKeys, now = Date.now()) {
+    if (store.size < maximumKeys) return true;
+    cleanupExpiredPasswordLoginLimiterEntries(store, now);
+    return store.size < maximumKeys;
+}
+
+function consumePasswordLoginIpAttempt(req, now = Date.now()) {
+    const key = getPasswordLoginIpKey(req);
+    let entry = passwordLoginIpAttempts.get(key);
+    if (entry && entry.resetAt <= now) {
+        passwordLoginIpAttempts.delete(key);
+        entry = null;
+    }
+
+    if (!entry) {
+        if (!ensurePasswordLoginLimiterCapacity(passwordLoginIpAttempts, PASSWORD_LOGIN_IP_KEY_LIMIT, now)) {
+            return {
+                allowed: false,
+                retryAfterSeconds: getPasswordLoginCapacityRetryAfterSeconds(passwordLoginIpAttempts, now)
+            };
+        }
+        entry = { count: 0, resetAt: now + PASSWORD_LOGIN_LIMIT_WINDOW_MS };
+        passwordLoginIpAttempts.set(key, entry);
+    }
+
+    if (entry.count >= PASSWORD_LOGIN_IP_ATTEMPT_LIMIT) {
+        return { allowed: false, retryAfterSeconds: getPasswordLoginRetryAfterSeconds(entry, now) };
+    }
+
+    entry.count += 1;
+    return { allowed: true };
+}
+
+function beginPasswordLoginAccountAttempt(identifier, now = Date.now()) {
+    const key = getPasswordLoginAccountKey(identifier);
+    let entry = passwordLoginAccountFailures.get(key);
+    if (entry && entry.resetAt <= now) {
+        passwordLoginAccountFailures.delete(key);
+        entry = null;
+    }
+
+    if (!entry) {
+        if (!ensurePasswordLoginLimiterCapacity(passwordLoginAccountFailures, PASSWORD_LOGIN_ACCOUNT_KEY_LIMIT, now)) {
+            return {
+                allowed: false,
+                retryAfterSeconds: getPasswordLoginCapacityRetryAfterSeconds(passwordLoginAccountFailures, now)
+            };
+        }
+        entry = { failures: 0, pending: 0, resetAt: now + PASSWORD_LOGIN_LIMIT_WINDOW_MS };
+        passwordLoginAccountFailures.set(key, entry);
+    }
+
+    if (entry.failures + entry.pending >= PASSWORD_LOGIN_ACCOUNT_FAILURE_LIMIT) {
+        return { allowed: false, retryAfterSeconds: getPasswordLoginRetryAfterSeconds(entry, now) };
+    }
+
+    entry.pending += 1;
+    return { allowed: true, key, entry };
+}
+
+function completePasswordLoginAccountAttempt(reservation, succeeded, now = Date.now()) {
+    if (!reservation || !reservation.allowed || !reservation.key || !reservation.entry) return;
+    const entry = passwordLoginAccountFailures.get(reservation.key);
+    if (entry !== reservation.entry) return;
+
+    entry.pending = Math.max(0, entry.pending - 1);
+    if (entry.resetAt <= now) {
+        entry.failures = 0;
+        entry.resetAt = now + PASSWORD_LOGIN_LIMIT_WINDOW_MS;
+    }
+
+    if (succeeded) {
+        entry.failures = 0;
+        if (entry.pending === 0) passwordLoginAccountFailures.delete(reservation.key);
+        return;
+    }
+
+    entry.failures = Math.min(PASSWORD_LOGIN_ACCOUNT_FAILURE_LIMIT, entry.failures + 1);
+}
+
+function beginPasswordLoginAttempt(req, identifier, now = Date.now()) {
+    const ipDecision = consumePasswordLoginIpAttempt(req, now);
+    if (!ipDecision.allowed) return ipDecision;
+
+    const accountDecision = beginPasswordLoginAccountAttempt(identifier, now);
+    if (!accountDecision.allowed) return accountDecision;
+    return { allowed: true, accountReservation: accountDecision };
+}
+
+function completePasswordLoginAttempt(attempt, succeeded, now = Date.now()) {
+    if (!attempt || !attempt.allowed) return;
+    completePasswordLoginAccountAttempt(attempt.accountReservation, succeeded, now);
+}
+
+function sendPasswordLoginRateLimited(res, retryAfterSeconds) {
+    const retryAfter = Number.isFinite(retryAfterSeconds)
+        ? Math.max(1, Math.ceil(retryAfterSeconds))
+        : Math.ceil(PASSWORD_LOGIN_LIMIT_WINDOW_MS / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(429).json({
+        success: false,
+        message: 'Too many sign-in attempts. Please try again later.'
+    });
+}
+
+const passwordLoginLimiterCleanupTimer = setInterval(() => {
+    const now = Date.now();
+    cleanupExpiredPasswordLoginLimiterEntries(passwordLoginIpAttempts, now);
+    cleanupExpiredPasswordLoginLimiterEntries(passwordLoginAccountFailures, now);
+}, PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS);
+passwordLoginLimiterCleanupTimer.unref();
 
 function parseCookies(req) {
     const cookies = Object.create(null);
@@ -1800,13 +1981,26 @@ app.use('/api/login', koinoniaAuthMiddleware);
 app.post('/api/login', (req, res) => {
     const username = req.body && typeof req.body.username === 'string' ? req.body.username : '';
     const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+    const loginAttempt = beginPasswordLoginAttempt(req, username);
+    if (!loginAttempt.allowed) {
+        return sendPasswordLoginRateLimited(res, loginAttempt.retryAfterSeconds);
+    }
+
+    let loginAttemptCompleted = false;
+    const completeLoginAttempt = (succeeded) => {
+        if (loginAttemptCompleted) return;
+        loginAttemptCompleted = true;
+        completePasswordLoginAttempt(loginAttempt, succeeded);
+    };
     const rejectInvalidCredentials = () => {
+        completeLoginAttempt(false);
         logActivity(username, 'FAILED_LOGIN', 'Invalid credentials attempt');
         res.status(401).json({ success: false, message: 'Invalid credentials' });
     };
 
     db.get(`SELECT * FROM users WHERE username = ? OR username = (SELECT email FROM youth WHERE qr_code = ?)`, [username, username], async (err, user) => {
         if (!err && user && await verifyPassword(password, user.password)) {
+            completeLoginAttempt(true);
             logActivity(username, 'LOGIN', 'User logged in');
             if (user.youth_id) {
                 db.get(`SELECT * FROM youth WHERE id = ?`, [user.youth_id], (e, member) => { return sendAuthenticatedLogin(req, res, { userId: user.id, youthId: user.youth_id, username: user.username }, { success: true, username: user.username, permissions: JSON.parse(user.permissions || '[]'), member, is_admin: true }); });
@@ -1815,6 +2009,7 @@ app.post('/api/login', (req, res) => {
         }
         db.get(`SELECT * FROM youth WHERE qr_code = ? OR email = ? OR name = ?`, [username, username, username], async (err2, member) => {
             if (!err2 && member && await verifyPassword(password, member.password)) {
+                completeLoginAttempt(true);
                 logActivity(member.name, 'LOGIN', 'Member logged into profile');
                 return sendAuthenticatedLogin(req, res, { userId: null, youthId: member.id, username: member.qr_code }, { success: true, username: member.qr_code, permissions: [], member, is_admin: false });
             }
