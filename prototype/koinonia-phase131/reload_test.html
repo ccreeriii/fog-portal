@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>KOINONIA Phase 0.13.1 — Real-Browser Persistence Test</title>
+  <link rel="stylesheet" href="styles.css?v=0.13.1">
+  <style>
+    body {
+      background: var(--bg-warm);
+      color: var(--brand-charcoal);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 16px;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    .test-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: #FFFFFF;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(74, 14, 22, 0.08);
+      border: 1px solid rgba(74, 14, 22, 0.1);
+    }
+    .header-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: var(--tint-gold);
+      color: var(--brand-burgundy);
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-family: Georgia, serif;
+      color: var(--brand-burgundy);
+      font-size: 1.4rem;
+      margin: 0 0 6px 0;
+    }
+    p {
+      font-size: 0.88rem;
+      line-height: 1.45;
+      color: #555;
+      margin: 0 0 14px 0;
+    }
+    .status-card {
+      background: #FDF9F3;
+      border: 1px solid #EADBCC;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 0.82rem;
+      border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+    .status-row:last-child {
+      border-bottom: none;
+    }
+    .badge-pass {
+      background: #E6F4EA;
+      color: #137333;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+    .badge-fail {
+      background: #FCE8E6;
+      color: #C5221F;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+    .badge-warn {
+      background: #FEF7E0;
+      color: #B06000;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .btn-test {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      text-decoration: none;
+      text-align: center;
+      transition: transform 0.1s ease;
+    }
+    .btn-test:active {
+      transform: scale(0.98);
+    }
+    .btn-primary-test {
+      background: var(--brand-burgundy);
+      color: #FFFFFF;
+    }
+    .btn-accent-test {
+      background: var(--brand-fire-orange);
+      color: #FFFFFF;
+    }
+    .btn-secondary-test {
+      background: #F1EAE2;
+      color: var(--brand-burgundy);
+    }
+    .json-preview {
+      background: #202124;
+      color: #8AB4F8;
+      padding: 10px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.72rem;
+      overflow-x: auto;
+      max-height: 180px;
+      margin-top: 10px;
+      white-space: pre-wrap;
+    }
+    .instructions {
+      background: #E8F0FE;
+      border-left: 4px solid #1A73E8;
+      padding: 10px 12px;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.8rem;
+      color: #174EA6;
+      margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="test-container">
+    <span class="header-badge">Real Physical Browser Test</span>
+    <h1>KOINONIA Persistence Verifier</h1>
+    <p>Phase 0.13.1 Critical Real-Browser Storage & Hydration Verification</p>
+
+    <div class="instructions">
+      <strong>How to test on phone (iPhone / Android):</strong>
+      <ol style="margin: 6px 0 0 16px; padding: 0;">
+        <li>Tap <b>"Simulate Completed Quest & Test Reload"</b> below.</li>
+        <li>Observe state auto-hydrates with 125 LP, Lush Garden, Gate Unlocked.</li>
+        <li>Tap browser refresh / reload button multiple times.</li>
+        <li>Verify progress is never lost and no infinite reset occurs!</li>
+      </ol>
+    </div>
+
+    <div class="status-card">
+      <div style="font-weight: 800; font-size: 0.88rem; color: var(--brand-burgundy); margin-bottom: 8px;">
+        Live Storage Inspection (<code>koinonia.phase131.save</code>)
+      </div>
+
+      <div class="status-row">
+        <span>Storage Available:</span>
+        <span id="stat-avail" class="badge-warn">Checking...</span>
+      </div>
+      <div class="status-row">
+        <span>Origin:</span>
+        <span id="stat-origin" style="font-family: monospace; font-size: 0.75rem;">-</span>
+      </div>
+      <div class="status-row">
+        <span>Save Key Exists:</span>
+        <span id="stat-exists" class="badge-warn">-</span>
+      </div>
+      <div class="status-row">
+        <span>Save Version:</span>
+        <span id="stat-version">-</span>
+      </div>
+      <div class="status-row">
+        <span>Life Points (LP):</span>
+        <span id="stat-lp">-</span>
+      </div>
+      <div class="status-row">
+        <span>Quest #001 Status:</span>
+        <span id="stat-quest">-</span>
+      </div>
+      <div class="status-row">
+        <span>Garden State:</span>
+        <span id="stat-garden">-</span>
+      </div>
+      <div class="status-row">
+        <span>Perimeter Gate:</span>
+        <span id="stat-gate">-</span>
+      </div>
+      <div class="status-row">
+        <span>FOG Center Unlocked:</span>
+        <span id="stat-fog">-</span>
+      </div>
+      <div class="status-row">
+        <span>Visited FOG Center:</span>
+        <span id="stat-visited">-</span>
+      </div>
+      <div class="status-row">
+        <span>Last Save Reason:</span>
+        <span id="stat-reason">-</span>
+      </div>
+      <div class="status-row">
+        <span>Last Save Time:</span>
+        <span id="stat-time" style="font-size: 0.7rem; color: #666;">-</span>
+      </div>
+
+      <div style="margin-top: 10px;">
+        <span style="font-size: 0.75rem; font-weight: 700; color: #666;">Raw Storage Content:</span>
+        <div id="raw-json" class="json-preview">No save found.</div>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button id="btn-simulate-complete" class="btn-test btn-primary-test">
+        🌱 Simulate Quest #001 Completed & Reload Test
+      </button>
+
+      <a id="btn-launch-game" href="index.html?debug=1" class="btn-test btn-accent-test">
+        🎮 Open Game with Debug HUD (index.html?debug=1)
+      </a>
+
+      <button id="btn-test-reset" class="btn-test btn-secondary-test">
+        🔄 Test One-Shot Reset (?reset=1)
+      </button>
+
+      <button id="btn-refresh-inspect" class="btn-test btn-secondary-test">
+        🔍 Refresh Inspector Values
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const SAVE_KEY = 'koinonia.phase131.save';
+    const SAVE_VERSION = 1;
+
+    function checkStorage() {
+      let avail = false;
+      try {
+        localStorage.setItem('__test__', '1');
+        localStorage.removeItem('__test__');
+        avail = true;
+      } catch (e) {
+        avail = false;
+      }
+
+      document.getElementById('stat-avail').textContent = avail ? 'AVAILABLE (PASS)' : 'UNAVAILABLE (FAIL)';
+      document.getElementById('stat-avail').className = avail ? 'badge-pass' : 'badge-fail';
+      document.getElementById('stat-origin').textContent = window.location.origin;
+
+      if (!avail) return;
+
+      const raw = localStorage.getItem(SAVE_KEY);
+      const existsEl = document.getElementById('stat-exists');
+      const versionEl = document.getElementById('stat-version');
+      const lpEl = document.getElementById('stat-lp');
+      const questEl = document.getElementById('stat-quest');
+      const gardenEl = document.getElementById('stat-garden');
+      const gateEl = document.getElementById('stat-gate');
+      const fogEl = document.getElementById('stat-fog');
+      const visitedEl = document.getElementById('stat-visited');
+      const reasonEl = document.getElementById('stat-reason');
+      const timeEl = document.getElementById('stat-time');
+      const jsonEl = document.getElementById('raw-json');
+
+      if (!raw) {
+        existsEl.textContent = 'NO SAVE';
+        existsEl.className = 'badge-warn';
+        versionEl.textContent = '-';
+        lpEl.textContent = '120 (default)';
+        questEl.textContent = 'ready (default)';
+        gardenEl.textContent = 'dry (default)';
+        gateEl.textContent = 'false (default)';
+        fogEl.textContent = 'false (default)';
+        visitedEl.textContent = 'false (default)';
+        reasonEl.textContent = 'clean_initial';
+        timeEl.textContent = 'None';
+        jsonEl.textContent = 'localStorage.getItem("' + SAVE_KEY + '") is null';
+        return;
+      }
+
+      existsEl.textContent = 'EXISTS (PASS)';
+      existsEl.className = 'badge-pass';
+
+      try {
+        const d = JSON.parse(raw);
+        versionEl.textContent = d.version === SAVE_VERSION ? `${d.version} (PASS)` : `${d.version} (MISMATCH)`;
+        
+        lpEl.textContent = `${d.lp} LP`;
+        lpEl.className = d.lp === 125 ? 'badge-pass' : (d.lp === 120 ? 'badge-warn' : 'badge-fail');
+
+        questEl.textContent = d.questStatus;
+        questEl.className = d.questStatus === 'completed' ? 'badge-pass' : 'badge-warn';
+
+        gardenEl.textContent = d.gardenState;
+        gardenEl.className = d.gardenState === 'lush' ? 'badge-pass' : 'badge-warn';
+
+        gateEl.textContent = d.gateOpen ? 'OPEN (true)' : 'CLOSED (false)';
+        gateEl.className = d.gateOpen ? 'badge-pass' : 'badge-warn';
+
+        fogEl.textContent = d.fogCenterUnlocked ? 'UNLOCKED (true)' : 'LOCKED (false)';
+        fogEl.className = d.fogCenterUnlocked ? 'badge-pass' : 'badge-warn';
+
+        visitedEl.textContent = d.visitedFogCenter ? 'TRUE' : 'FALSE';
+        visitedEl.className = d.visitedFogCenter ? 'badge-pass' : 'badge-warn';
+
+        reasonEl.textContent = d.saveReason || 'manual';
+        timeEl.textContent = d.timestamp || 'Unknown';
+        jsonEl.textContent = JSON.stringify(d, null, 2);
+      } catch (e) {
+        jsonEl.textContent = 'Malformed JSON: ' + e.message;
+      }
+    }
+
+    document.getElementById('btn-simulate-complete').addEventListener('click', () => {
+      const completedSave = {
+        version: SAVE_VERSION,
+        communityId: 'fog',
+        timestamp: new Date().toISOString(),
+        saveReason: 'simulated_complete_quest001',
+        activePlaceId: 'home',
+        spawnId: 'default',
+        isPlayingGame: false,
+        avatar: { x: 4.5, y: 14.5, dir: 'down' },
+        lp: 125,
+        charLevel: 1,
+        charXp: 5,
+        skills: {
+          stewardship: 15,
+          responsibility: 5,
+          discipline: 0,
+          teamwork: 0,
+          service: 0,
+          compassion: 0
+        },
+        gardenState: 'lush',
+        gateOpen: true,
+        fogCenterUnlocked: true,
+        visitedFogCenter: true,
+        unlockedPlaces: ['home', 'fog_center'],
+        questStatus: 'completed',
+        rewardClaimed: true,
+        currentObjective: 'Walk through the South Gate to visit FOG Community Center',
+        reflectionText: 'Real stewardship begins at home.',
+        audioMuted: true
+      };
+
+      localStorage.setItem(SAVE_KEY, JSON.stringify(completedSave));
+      checkStorage();
+      alert('✅ Simulated Completed Quest #001 state saved!\nLP: 125\nQuest: completed\nGate: open\n\nRedirecting to game with ?debug=1...');
+      window.location.href = 'index.html?debug=1';
+    });
+
+    document.getElementById('btn-test-reset').addEventListener('click', () => {
+      if (confirm('Test One-Shot Reset? This will navigate to index.html?reset=1&debug=1 to verify that reset parameter is stripped.')) {
+        window.location.href = 'index.html?reset=1&debug=1';
+      }
+    });
+
+    document.getElementById('btn-refresh-inspect').addEventListener('click', checkStorage);
+
+    // Initial check
+    checkStorage();
+  </script>
+</body>
+</html>
