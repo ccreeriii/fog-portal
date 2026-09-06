@@ -5,13 +5,27 @@ node_modules/
 .env.*
 !.env.example
 !.env.*.example
-fog_community.db
-fog_community.db-journal
+
+# SQLite runtime databases, sidecars, and local backups
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+backup/
+backups/
+
+# Local archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Runtime and operating-system artifacts
 *.log
 .DS_Store
-backups/
-*.db
-fog_community.db
-fog_community_PRE_MIGRATION_backup.db
-backups/
-node_modules/
