@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phase 0.20 — Quest Circles Test Lab</title>
+  <style>
+    :root {
+      --bg: #FDFBF7;
+      --card-bg: #FFFFFF;
+      --text: #2C2623;
+      --border: #E5E0D8;
+      --brand-burgundy: #5C2D2D;
+      --brand-flame-gold: #F59E0B;
+      --brand-fire-orange: #EB5F12;
+      --success: #059669;
+      --danger: #DC2626;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 16px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border);
+    }
+    h1 {
+      font-size: 1.35rem;
+      color: var(--brand-burgundy);
+      margin: 0 0 6px 0;
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 0.82rem;
+      font-weight: 800;
+      background: #E5E7EB;
+      color: #374151;
+      margin-top: 4px;
+      letter-spacing: 0.03em;
+    }
+    .status-pill.ready { background: #D1FAE5; color: var(--success); }
+    .status-pill.success { background: #FEF3C7; color: #92400E; }
+    .status-pill.cleared { background: #FEE2E2; color: var(--danger); }
+    .status-pill.error { background: #7F1D1D; color: #FFF; }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    h2 {
+      font-size: 0.92rem;
+      color: var(--brand-burgundy);
+      margin: 0 0 10px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    button {
+      background: #FAF5EE;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+    }
+    button:active {
+      transform: scale(0.98);
+      filter: brightness(0.95);
+    }
+    button.primary {
+      background: linear-gradient(135deg, var(--brand-flame-gold) 0%, var(--brand-fire-orange) 100%);
+      color: #FFF;
+      border: none;
+    }
+    button.action {
+      background: #EEF2FF;
+      color: #4338CA;
+      border-color: #C7D2FE;
+    }
+    button.success {
+      background: #ECFDF5;
+      color: #065F46;
+      border-color: #A7F3D0;
+    }
+    button.warning {
+      background: #FEF3C7;
+      color: #92400E;
+      border-color: #FCD34D;
+    }
+    button.danger {
+      background: #FEE2E2;
+      color: #991B1B;
+      border-color: #FECACA;
+    }
+
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .telemetry-item {
+      background: #F9FAFB;
+      padding: 8px;
+      border-radius: 6px;
+      text-align: center;
+      border: 1px solid #E5E7EB;
+    }
+    .telemetry-val {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--brand-burgundy);
+    }
+    .telemetry-lbl {
+      font-size: 0.65rem;
+      color: #6B7280;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+    .notice-box {
+      font-size: 0.78rem;
+      color: #4B5563;
+      background: #F3F4F6;
+      padding: 8px 10px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border-left: 3px solid #9CA3AF;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>PHASE 0.20 — QUEST CIRCLES TEST LAB</h1>
+    <div id="qa-lab-status" class="status-pill ready">QA LAB READY</div>
+  </header>
+
+  <!-- SECTION A: BASELINE -->
+  <section class="card">
+    <h2>SECTION A — BASELINE</h2>
+    <div class="notice-box">
+      Canonical clean baseline: Level 2 Explorer, 135 LP, 15 XP, Member role, 0 Quest Circles.
+    </div>
+    <div class="btn-grid">
+      <button class="danger" onclick="resetPhase20()">🗑️ RESET PHASE 0.20 SAVE</button>
+      <button class="primary" onclick="seedCircleReadyClean()">🌱 SEED CIRCLE-READY CLEAN STATE</button>
+      <button class="action" onclick="launchPrototype()">🚀 LAUNCH PROTOTYPE</button>
+    </div>
+    <div class="telemetry-grid">
+      <div class="telemetry-item">
+        <div class="telemetry-val" id="t-level">-</div>
+        <div class="telemetry-lbl">Level</div>
+      </div>
+      <div class="telemetry-item">
+        <div class="telemetry-val" id="t-lp">-</div>
+        <div class="telemetry-lbl">LP</div>
+      </div>
+      <div class="telemetry-item">
+        <div class="telemetry-val" id="t-xp">-</div>
+        <div class="telemetry-lbl">XP</div>
+      </div>
+      <div class="telemetry-item">
+        <div class="telemetry-val" id="t-role">-</div>
+        <div class="telemetry-lbl">Circle Role</div>
+      </div>
+      <div class="telemetry-item">
+        <div class="telemetry-val" id="t-circles">-</div>
+        <div class="telemetry-lbl">Circle Count</div>
+      </div>
+      <div class="telemetry-item">
+        <div class="telemetry-val" id="t-active-circles">-</div>
+        <div class="telemetry-lbl">Active Circles</div>
+      </div>
+      <div class="telemetry-item">
+        <div class="telemetry-val" id="t-assignments">-</div>
+        <div class="telemetry-lbl">Assignments</div>
+      </div>
+      <div class="telemetry-item">
+        <div class="telemetry-val" id="t-activity">-</div>
+        <div class="telemetry-lbl">Activity Logs</div>
+      </div>
+      <div class="telemetry-item">
+        <div class="telemetry-val" id="t-reactions">-</div>
+        <div class="telemetry-lbl">Reactions</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION B: ROLE TESTS -->
+  <section class="card">
+    <h2>SECTION B — ROLE TESTS</h2>
+    <div class="notice-box">
+      Member mode cannot create Circles. Leader mode unlocks Leader Tools and creation.
+    </div>
+    <div class="btn-grid">
+      <button class="action" onclick="setRole('MEMBER')">👤 SET ROLE: MEMBER</button>
+      <button class="warning" onclick="setRole('LEADER')">👑 SET ROLE: LEADER</button>
+    </div>
+  </section>
+
+  <!-- SECTION C: ADMIN / CAPACITY SETTINGS -->
+  <section class="card">
+    <h2>SECTION C — ADMIN / CAPACITY SETTINGS</h2>
+    <div class="notice-box">
+      Admin controls community maximum Quest Circle capacity (default 12). Leader-configured capacity cannot exceed community maximum.
+    </div>
+    <div style="margin-bottom: 10px; font-size: 0.85rem; font-weight: 700; color: #1F2937;">
+      Community Max Participants: <span id="qa-community-max" style="color: #991B1B; font-size: 1.05rem; font-weight: 800;">12</span>
+    </div>
+    <div class="btn-grid">
+      <button class="primary" onclick="setCommunityMaxQa(12)">🏛️ SET COMMUNITY MAX TO 12</button>
+      <button class="warning" onclick="setCommunityMaxQa(10)">🏛️ SET COMMUNITY MAX TO 10</button>
+      <button class="danger" onclick="testCircleMax12RejectionQa()">🚫 TEST CIRCLE MAX 12 — EXPECT REJECTION</button>
+      <button class="success" onclick="testCircleMax10AcceptedQa()">✅ TEST CIRCLE MAX 10 — EXPECT ACCEPTED</button>
+    </div>
+  </section>
+
+  <!-- SECTION D: DEMO CIRCLE CAPACITY (MIN 5, MAX 12) -->
+  <section class="card">
+    <h2>SECTION D — DEMO CIRCLE CAPACITY (MIN 5, MAX 12)</h2>
+    <div class="notice-box">
+      Test capacity boundaries: Draft allowed with 4, activation blocked under 5, active allowed at 5-12, 13th member rejected.
+    </div>
+    <div class="btn-grid">
+      <button class="action" onclick="seed4MemberDraft()">🌱 1. SEED 4-MEMBER DRAFT CIRCLE</button>
+      <button class="warning" onclick="testActivateUnder5()">🚫 2. TEST ACTIVATE 4-MEMBER CIRCLE — EXPECT REJECTION</button>
+      <button class="action" onclick="add5thDemoMember()">➕ 3. ADD 5TH DEMO MEMBER</button>
+      <button class="success" onclick="activateCircleDemo()">✅ 4. ACTIVATE 5-MEMBER CIRCLE</button>
+      <button class="action" onclick="addMembersTo12()">👥 5. ADD MEMBERS TO 12 MAX CAPACITY</button>
+      <button class="danger" onclick="test13thMemberRejection()">🛑 6. TEST 13TH MEMBER — EXPECT REJECTION</button>
+      <button class="action" onclick="testPerCircleCapacityOverride()">🎯 TEST PER-CIRCLE CAPACITY: CREATE 8-MAX CIRCLE</button>
+      <button class="warning" onclick="testLowerBelowMemberCount()">🛡️ TEST SAFETY: ATTEMPT LOWERING CAPACITY BELOW MEMBER COUNT</button>
+    </div>
+  </section>
+
+  <!-- SECTION E: QUEST PROGRESS & INDIVIDUAL COMPLETION -->
+  <section class="card">
+    <h2>SECTION E — QUEST PROGRESS</h2>
+    <div class="notice-box">
+      Individual completion principle: Alex completing quest records 1/N. 0 LP/XP awarded for circle completion.
+    </div>
+    <div class="btn-grid">
+      <button class="action" onclick="assignStewardOfGarden()">📜 ASSIGN STEWARD OF THE GARDEN</button>
+      <button class="success" onclick="markAlexCompleteQa()">🧑 MARK LOCAL PLAYER COMPLETE — QA</button>
+      <button class="action" onclick="markDemoMemberComplete('demo_member_a')">👤 MARK DEMO MEMBER A COMPLETE</button>
+      <button class="action" onclick="markDemoMemberComplete('demo_member_b')">👤 MARK DEMO MEMBER B COMPLETE</button>
+      <button class="primary" onclick="completeAllDemoMembers()">🌟 COMPLETE ALL PARTICIPANTS (CELEBRATION)</button>
+    </div>
+  </section>
+
+  <!-- SECTION F: OPEN UI SHORTCUTS -->
+  <section class="card">
+    <h2>SECTION F — OPEN UI SHORTCUTS</h2>
+    <div class="notice-box">
+      Verify UI flows directly. Validates Phase 0.20 seed before navigating.
+    </div>
+    <div class="btn-grid">
+      <button class="primary" onclick="openUiShortcut('circles')">👥 OPEN QUEST CIRCLES</button>
+      <button class="action" onclick="openUiShortcut('circle_detail')">🔍 OPEN ACTIVE CIRCLE</button>
+      <button class="action" onclick="openUiShortcut('overview')">📄 OPEN OVERVIEW TAB</button>
+      <button class="action" onclick="openUiShortcut('quest')">📜 OPEN QUEST TAB</button>
+      <button class="action" onclick="openUiShortcut('members')">👥 OPEN MEMBERS TAB</button>
+      <button class="action" onclick="openUiShortcut('activity')">⚡ OPEN ACTIVITY TAB</button>
+    </div>
+  </section>
+</div>
+
+<!-- DATA SCRIPTS -->
+<script src="data/places.js?v=0.20"></script>
+<script src="data/quests.js?v=0.20"></script>
+<script src="data/progression.js?v=0.20"></script>
+<script src="data/campaigns.js?v=0.20"></script>
+<script src="data/events.js?v=0.20"></script>
+<script src="data/memories.js?v=0.20"></script>
+<script src="data/sports.js?v=0.20"></script>
+<script src="data/circles.js?v=0.20"></script>
+
+<script>
+  const STORAGE_KEY = 'koinonia.phase20.save';
+
+  function setStatus(text, type = 'success') {
+    const el = document.getElementById('qa-lab-status');
+    if (el) {
+      el.textContent = text;
+      el.className = `status-pill ${type}`;
+    }
+  }
+
+  function getSaveData() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeSaveData(data) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      updateTelemetry();
+      return true;
+    } catch (e) {
+      setStatus('STORAGE WRITE ERROR', 'error');
+      return false;
+    }
+  }
+
+  function updateTelemetry() {
+    const data = getSaveData();
+    if (!data) {
+      document.getElementById('t-level').textContent = '-';
+      document.getElementById('t-lp').textContent = '-';
+      document.getElementById('t-xp').textContent = '-';
+      document.getElementById('t-role').textContent = 'NONE';
+      document.getElementById('t-circles').textContent = '0';
+      document.getElementById('t-active-circles').textContent = '0';
+      document.getElementById('t-assignments').textContent = '0';
+      document.getElementById('t-activity').textContent = '0';
+      document.getElementById('t-reactions').textContent = '0';
+      return;
+    }
+
+    document.getElementById('t-level').textContent = data.charLevel || 2;
+    document.getElementById('t-lp').textContent = data.lp || 135;
+    document.getElementById('t-xp').textContent = data.charXp || 15;
+    document.getElementById('t-role').textContent = data.circleRole || 'MEMBER';
+
+    const circles = data.questCircles || [];
+    document.getElementById('t-circles').textContent = circles.length;
+
+    const activeCount = circles.filter(c => c.status === 'ACTIVE').length;
+    document.getElementById('t-active-circles').textContent = activeCount;
+
+    const assignments = data.circleAssignments || [];
+    document.getElementById('t-assignments').textContent = assignments.length;
+
+    let totalActivity = 0;
+    circles.forEach(c => {
+      if (c.activityLog) totalActivity += c.activityLog.length;
+    });
+    document.getElementById('t-activity').textContent = totalActivity;
+
+    const reactions = (data.circleMetrics && data.circleMetrics.reactionsGivenCount) || 0;
+    document.getElementById('t-reactions').textContent = reactions;
+
+    const commMax = (data.questCircleSettings && data.questCircleSettings.communityMaxParticipants) || 12;
+    const commMaxEl = document.getElementById('qa-community-max');
+    if (commMaxEl) commMaxEl.textContent = commMax;
+  }
+
+  function resetPhase20() {
+    localStorage.removeItem(STORAGE_KEY);
+    setStatus('SAVE CLEARED', 'cleared');
+    updateTelemetry();
+  }
+
+  function seedCircleReadyClean() {
+    const cData = window.KOINONIA_CIRCLES;
+    if (!cData) {
+      setStatus('CIRCLES DATA MISSING', 'error');
+      return;
+    }
+
+    const state = cData.createCircleReadyQaState({ role: 'MEMBER' });
+    writeSaveData(state);
+    setStatus('SEED SUCCESSFUL', 'success');
+  }
+
+  function setRole(role) {
+    let state = getSaveData();
+    if (!state) {
+      seedCircleReadyClean();
+      state = getSaveData();
+    }
+    state.circleRole = role;
+    writeSaveData(state);
+    setStatus(`ROLE UPDATED: ${role}`, 'success');
+  }
+
+  function seed4MemberDraft() {
+    const cData = window.KOINONIA_CIRCLES;
+    let state = getSaveData();
+    if (!state) {
+      seedCircleReadyClean();
+      state = getSaveData();
+    }
+    state.circleRole = 'LEADER';
+
+    // Create draft circle with 4 members (Alex + 3 demo members)
+    const draftCircle = cData.createCircle({
+      id: 'circle_demo_qa',
+      name: 'Lightbearers',
+      subtitle: 'Youth Adventure Group',
+      description: 'Growing together in faith, service, and stewardship.',
+      memberIds: ['user_alex', 'demo_member_a', 'demo_member_b', 'demo_member_c'],
+      status: 'DRAFT',
+      isDemo: true
+    });
+
+    state.questCircles = [draftCircle];
+    state.selectedCircleId = draftCircle.id;
+    writeSaveData(state);
+    setStatus('CIRCLE CREATED (4 MEMBERS - DRAFT)', 'success');
+  }
+
+  function testActivateUnder5() {
+    const cData = window.KOINONIA_CIRCLES;
+    const state = getSaveData();
+    if (!state || !state.questCircles || state.questCircles.length === 0) {
+      setStatus('SEED 4-MEMBER DRAFT FIRST', 'error');
+      return;
+    }
+
+    const circle = state.questCircles[0];
+    const res = cData.activateCircle(circle, state);
+    if (!res.success) {
+      setStatus('ACTIVATION BLOCKED — NEED 5 MEMBERS', 'cleared');
+      alert(`Expected Rejection: ${res.error}`);
+    } else {
+      setStatus('ERROR: Activated invalid circle!', 'error');
+    }
+    updateTelemetry();
+  }
+
+  function add5thDemoMember() {
+    const cData = window.KOINONIA_CIRCLES;
+    const state = getSaveData();
+    if (!state || !state.questCircles || state.questCircles.length === 0) {
+      setStatus('SEED DRAFT CIRCLE FIRST', 'error');
+      return;
+    }
+
+    const circle = state.questCircles[0];
+    const res = cData.addMemberToCircle(circle, 'demo_member_d', state);
+    if (res.success) {
+      writeSaveData(state);
+      setStatus('ADDED 5TH DEMO MEMBER (ELIGIBLE FOR ACTIVATION)', 'success');
+    } else {
+      setStatus(`FAIL: ${res.error}`, 'error');
+    }
+  }
+
+  function activateCircleDemo() {
+    const cData = window.KOINONIA_CIRCLES;
+    const state = getSaveData();
+    if (!state || !state.questCircles || state.questCircles.length === 0) {
+      setStatus('SEED DRAFT CIRCLE FIRST', 'error');
+      return;
+    }
+
+    const circle = state.questCircles[0];
+    const res = cData.activateCircle(circle, state);
+    if (res.success) {
+      writeSaveData(state);
+      setStatus('CIRCLE ACTIVATED', 'ready');
+    } else {
+      setStatus(`ACTIVATION BLOCKED: ${res.error}`, 'cleared');
+      alert(res.error);
+    }
+  }
+
+  function setCommunityMaxQa(val) {
+    const cData = window.KOINONIA_CIRCLES;
+    let state = getSaveData();
+    if (!state) {
+      seedCircleReadyClean();
+      state = getSaveData();
+    }
+    state.circleRole = 'ADMIN';
+    const res = cData.setCommunityMaxParticipants(state, val);
+    if (res.success) {
+      writeSaveData(state);
+      setStatus(`COMMUNITY MAX SET TO ${val}`, 'success');
+    } else {
+      setStatus(`ERROR: ${res.error}`, 'error');
+    }
+    updateTelemetry();
+  }
+
+  function testCircleMax12RejectionQa() {
+    const cData = window.KOINONIA_CIRCLES;
+    let state = getSaveData();
+    if (!state) {
+      seedCircleReadyClean();
+      state = getSaveData();
+    }
+    // A. Ensure community maximum is 10
+    state.circleRole = 'ADMIN';
+    cData.setCommunityMaxParticipants(state, 10);
+
+    // B. Confirm communityMaxParticipants === 10
+    const commMax = (state.questCircleSettings && state.questCircleSettings.communityMaxParticipants) || 12;
+    if (commMax !== 10) {
+      setStatus('ERROR: Community max not 10', 'error');
+      updateTelemetry();
+      return;
+    }
+
+    // C. As LEADER, attempt to update Circle with maxParticipants = 12
+    state.circleRole = 'LEADER';
+    let circle = (state.questCircles && state.questCircles[0]) || null;
+    if (!circle) {
+      seed4MemberDraft();
+      state = getSaveData();
+      state.circleRole = 'LEADER';
+      circle = (state.questCircles && state.questCircles[0]) || null;
+    }
+    if (!circle) {
+      setStatus('ERROR: No Circle available to test', 'error');
+      updateTelemetry();
+      return;
+    }
+
+    const prevCircleMax = circle.maxParticipants || 10;
+    const rejRes = cData.setCircleMaxParticipants(circle, 12, state);
+
+    // D & E. Confirm rejected with expected message
+    if (!rejRes.success && rejRes.error === 'Maximum allowed for this community is 10.') {
+      // F. Confirm after rejection: communityMaxParticipants === 10
+      const currentCommMax = state.questCircleSettings.communityMaxParticipants;
+      // G. Confirm Circle max did NOT become 12
+      const currentCircleMax = circle.maxParticipants;
+
+      if (currentCommMax === 10 && currentCircleMax !== 12) {
+        writeSaveData(state);
+        setStatus('REJECTED: Maximum allowed for this community is 10.', 'cleared');
+        alert(`Expected Rejection: ${rejRes.error}\n\nCommunity maximum strictly remains 10.\nCircle capacity remains ${currentCircleMax}.`);
+      } else {
+        setStatus('ERROR: Community limit leaked into state', 'error');
+      }
+    } else {
+      setStatus(`FAIL: ${rejRes.error || 'Limit not enforced'}`, 'error');
+    }
+    updateTelemetry();
+  }
+
+  function testCircleMax10AcceptedQa() {
+    const cData = window.KOINONIA_CIRCLES;
+    let state = getSaveData();
+    if (!state) {
+      seedCircleReadyClean();
+      state = getSaveData();
+    }
+    // Ensure community maximum is 10
+    state.circleRole = 'ADMIN';
+    cData.setCommunityMaxParticipants(state, 10);
+    state.circleRole = 'LEADER';
+    let circle = (state.questCircles && state.questCircles[0]) || null;
+    if (!circle) {
+      seed4MemberDraft();
+      state = getSaveData();
+      state.circleRole = 'LEADER';
+      circle = (state.questCircles && state.questCircles[0]) || null;
+    }
+    if (!circle) {
+      setStatus('ERROR: No Circle available to test', 'error');
+      updateTelemetry();
+      return;
+    }
+    const okRes = cData.setCircleMaxParticipants(circle, 10, state);
+    if (okRes.success && circle.maxParticipants === 10) {
+      writeSaveData(state);
+      setStatus('ACCEPTED: Circle capacity set to 10', 'success');
+      alert(`Accepted: Circle capacity successfully set to 10.\n\nCommunity maximum remains 10.`);
+    } else {
+      setStatus(`FAIL: ${okRes.error || 'Could not set capacity 10'}`, 'error');
+    }
+    updateTelemetry();
+  }
+
+  window.testAdminLimitQa = testCircleMax12RejectionQa;
+
+  function addMembersTo12() {
+    const cData = window.KOINONIA_CIRCLES;
+    const state = getSaveData();
+    if (!state || !state.questCircles || state.questCircles.length === 0) {
+      setStatus('SEED DRAFT CIRCLE FIRST', 'error');
+      return;
+    }
+
+    const circle = state.questCircles[0];
+    // Ensure circle has max capacity of 12
+    circle.maxParticipants = 12;
+    ['demo_member_e', 'demo_member_f', 'demo_member_g', 'demo_member_h', 'demo_member_i', 'demo_member_j', 'demo_member_k'].forEach(mId => {
+      cData.addMemberToCircle(circle, mId, state);
+    });
+
+    writeSaveData(state);
+    setStatus('CIRCLE FULL — 12 OF 12', 'success');
+  }
+
+  function test13thMemberRejection() {
+    const cData = window.KOINONIA_CIRCLES;
+    const state = getSaveData();
+    if (!state || !state.questCircles || state.questCircles.length === 0) {
+      setStatus('SEED DRAFT CIRCLE FIRST', 'error');
+      return;
+    }
+
+    const circle = state.questCircles[0];
+    const res = cData.addMemberToCircle(circle, 'demo_member_l', state);
+    if (!res.success) {
+      setStatus('REJECTED: CIRCLE FULL (12 OF 12)', 'cleared');
+      alert(`Expected Rejection: ${res.error}`);
+    } else {
+      setStatus('ERROR: Added 13th participant!', 'error');
+    }
+  }
+
+  function testPerCircleCapacityOverride() {
+    const cData = window.KOINONIA_CIRCLES;
+    let state = getSaveData();
+    if (!state) {
+      seedCircleReadyClean();
+      state = getSaveData();
+    }
+    state.circleRole = 'LEADER';
+
+    // Create a circle with maxParticipants = 8
+    const circle8 = cData.createCircle({
+      id: 'circle_override_8',
+      name: 'Eight Explorers',
+      subtitle: 'Youth Adventure Group',
+      description: 'Circle with custom 8-participant capacity.',
+      memberIds: ['user_alex', 'demo_member_a', 'demo_member_b', 'demo_member_c', 'demo_member_d'],
+      maxParticipants: 8,
+      status: 'ACTIVE',
+      isDemo: true
+    }, state);
+
+    // Add members until 8
+    cData.addMemberToCircle(circle8, 'demo_member_e', state);
+    cData.addMemberToCircle(circle8, 'demo_member_f', state);
+    cData.addMemberToCircle(circle8, 'demo_member_g', state);
+
+    // Attempt 9th
+    const res9th = cData.addMemberToCircle(circle8, 'demo_member_h', state);
+    if (!res9th.success && res9th.error === 'This Quest Circle is full (8 of 8).') {
+      state.questCircles = state.questCircles || [];
+      state.questCircles = state.questCircles.filter(c => c.id !== circle8.id);
+      state.questCircles.unshift(circle8);
+      state.selectedCircleId = circle8.id;
+      writeSaveData(state);
+      setStatus('PER-CIRCLE MAX 8 VERIFIED (9TH REJECTED)', 'cleared');
+      alert(`Custom Per-Circle Capacity Passed:\n8 allowed, 9th rejected with:\n"${res9th.error}"`);
+    } else {
+      setStatus('ERROR in per-circle capacity test', 'error');
+    }
+    updateTelemetry();
+  }
+
+  function testLowerBelowMemberCount() {
+    const cData = window.KOINONIA_CIRCLES;
+    let state = getSaveData();
+    if (!state || !state.questCircles || state.questCircles.length === 0) {
+      setStatus('SEED CIRCLE FIRST', 'error');
+      return;
+    }
+    const circle = state.questCircles[0];
+    const memberCount = circle.memberIds.length;
+    state.circleRole = 'LEADER';
+
+    // Attempt to set capacity below member count
+    const attemptMax = Math.max(1, memberCount - 2);
+    const res = cData.setCircleMaxParticipants(circle, attemptMax, state);
+    if (!res.success && res.error.includes(`already has ${memberCount} participants`)) {
+      setStatus('SAFETY CHECK PASSED (CANNOT LOWER BELOW COUNT)', 'success');
+      alert(`Safety check passed:\n${res.error}`);
+    } else {
+      setStatus('FAIL: Allowed lowering below member count!', 'error');
+    }
+    updateTelemetry();
+  }
+
+  function assignStewardOfGarden() {
+    const cData = window.KOINONIA_CIRCLES;
+    const state = getSaveData();
+    if (!state || !state.questCircles || state.questCircles.length === 0) {
+      setStatus('CREATE/ACTIVATE CIRCLE FIRST', 'error');
+      return;
+    }
+
+    const circle = state.questCircles[0];
+    if (circle.status !== 'ACTIVE') {
+      cData.activateCircle(circle, state);
+    }
+
+    const res = cData.assignQuestToCircle(circle, 'Q-001', state);
+    if (res.success) {
+      state.circleAssignments = state.circleAssignments || [];
+      // Remove any existing duplicate assignment for Q-001
+      state.circleAssignments = state.circleAssignments.filter(a => a.circleId !== circle.id || a.questId !== 'Q-001');
+      state.circleAssignments.push(res.assignment);
+      writeSaveData(state);
+      setStatus('QUEST ASSIGNED: Q-001', 'ready');
+    } else {
+      setStatus(`ASSIGNMENT NOTICE: ${res.error}`, 'cleared');
+      alert(res.error);
+    }
+  }
+
+  function markAlexCompleteQa() {
+    const cData = window.KOINONIA_CIRCLES;
+    const state = getSaveData();
+    if (!state || !state.questCircles || state.questCircles.length === 0) {
+      setStatus('ASSIGN QUEST FIRST', 'error');
+      return;
+    }
+
+    const circle = state.questCircles[0];
+    const assignment = (state.circleAssignments || []).find(a => a.circleId === circle.id && a.questId === 'Q-001');
+    if (!assignment) {
+      setStatus('ASSIGN QUEST FIRST', 'error');
+      return;
+    }
+
+    const initLp = state.lp;
+    const initXp = state.charXp;
+
+    const res = cData.recordMemberQuestCompletion(circle, assignment, 'user_alex', 'Q-001', state);
+    if (res.success) {
+      writeSaveData(state);
+      // Verify no duplicate reward was granted through circle completion
+      if (state.lp === initLp && state.charXp === initXp) {
+        setStatus('MEMBER COMPLETION RECORDED (NO DUPLICATE REWARD)', 'success');
+      } else {
+        setStatus('WARNING: LP/XP drifted during circle completion!', 'error');
+      }
+    } else {
+      setStatus(`NOTICE: ${res.error}`, 'cleared');
+    }
+  }
+
+  function markDemoMemberComplete(memberId) {
+    const cData = window.KOINONIA_CIRCLES;
+    const state = getSaveData();
+    if (!state || !state.questCircles || state.questCircles.length === 0) {
+      setStatus('ASSIGN QUEST FIRST', 'error');
+      return;
+    }
+
+    const circle = state.questCircles[0];
+    const assignment = (state.circleAssignments || []).find(a => a.circleId === circle.id && a.questId === 'Q-001');
+    if (!assignment) {
+      setStatus('ASSIGN QUEST FIRST', 'error');
+      return;
+    }
+
+    const res = cData.recordMemberQuestCompletion(circle, assignment, memberId, 'Q-001', state);
+    if (res.success) {
+      writeSaveData(state);
+      setStatus(`MEMBER COMPLETION RECORDED: ${memberId}`, 'success');
+    } else {
+      setStatus(`NOTICE: ${res.error}`, 'cleared');
+    }
+  }
+
+  function completeAllDemoMembers() {
+    const cData = window.KOINONIA_CIRCLES;
+    const state = getSaveData();
+    if (!state || !state.questCircles || state.questCircles.length === 0) {
+      setStatus('ASSIGN QUEST FIRST', 'error');
+      return;
+    }
+
+    const circle = state.questCircles[0];
+    const assignment = (state.circleAssignments || []).find(a => a.circleId === circle.id && a.questId === 'Q-001');
+    if (!assignment) {
+      setStatus('ASSIGN QUEST FIRST', 'error');
+      return;
+    }
+
+    circle.memberIds.forEach(mId => {
+      cData.recordMemberQuestCompletion(circle, assignment, mId, 'Q-001', state);
+    });
+
+    writeSaveData(state);
+    setStatus('ALL PARTICIPANTS COMPLETED (RECOGNITION ONLY, 0 REWARD FARMING)', 'ready');
+  }
+
+  function launchPrototype() {
+    const state = getSaveData();
+    if (!state) {
+      alert('Please seed a state first using SEED CIRCLE-READY CLEAN STATE.');
+      return;
+    }
+    window.location.href = 'index.html?v=0.20-test';
+  }
+
+  function openUiShortcut(target) {
+    let state = getSaveData();
+    if (!state) {
+      seedCircleReadyClean();
+      state = getSaveData();
+    }
+
+    // Direct navigation to prototype with UI target
+    window.location.href = `index.html?v=0.20-test&target=${target}`;
+  }
+
+  // Initialize Telemetry on Load
+  window.addEventListener('DOMContentLoaded', () => {
+    updateTelemetry();
+  });
+</script>
+
+</body>
+</html>
