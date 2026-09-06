@@ -7,8 +7,8 @@
     
     <meta property="og:title" content="Faith Quest Challenge">
     <meta property="og:description" content="Play daily faith-based challenges, test your Bible knowledge, and climb the leaderboards. Join the fun!">
-    <meta property="og:image" content="https://staging.fogmin.site/img/faith-quest-thumb.png">
-    <meta property="og:url" content="https://staging.fogmin.site/?faith=quest">
+    <meta property="og:image" content="https://fogmin.site/img/faith-quest-thumb.png">
+    <meta property="og:url" content="https://fogmin.site/?faith=quest">
     <meta property="og:type" content="website">
 
     <title>Faith Quest Challenge</title>
@@ -1028,7 +1028,7 @@
                 const shareData = {
                     title: 'Faith Quest Challenge',
                     text: `I just scored ${score} XP in ${gameName} on Faith Quest Challenge! Can you beat my score? Play now!`,
-                    url: 'https://staging.fogmin.site/seeker-arcade.html'
+                    url: new URL('/seeker-arcade.html', window.location.origin).href
                 };
                 if (navigator.share) {
                     navigator.share(shareData).catch(()=>{});
@@ -1053,7 +1053,7 @@
                 
                 const shareBtn = `<button onclick="shareScore('${gName}', '${finalScore}')" style="background:#3B82F6; color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; margin-bottom: 10px; cursor:pointer; box-shadow:0 4px 10px rgba(59, 130, 246, 0.3);">📢 Challenge Friends</button>`;
                 const continueBtn = `<button onclick="document.getElementById('fqResultOverlay').style.display='none'; if(typeof openPreGame==='function') openPreGame('${gName}'); else window.location.reload();" style="background:var(--primary, #059669); color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; cursor:pointer; box-shadow:0 4px 10px rgba(5, 150, 105, 0.3);">Continue</button>`;
-                const saveScoreBtn = `<button onclick="window.location.href='https://staging.fogmin.site/register-w.html'" style="background:#F59E0B; color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; margin-bottom: 10px; cursor:pointer; box-shadow:0 4px 10px rgba(245, 158, 11, 0.3);">💾 Save Score</button>`;
+                const saveScoreBtn = `<button onclick="window.location.href='/register-w.html'" style="background:#F59E0B; color:#FFF; border:none; padding:12px 20px; border-radius:12px; font-weight:800; font-size:1.05rem; width:100%; margin-bottom: 10px; cursor:pointer; box-shadow:0 4px 10px rgba(245, 158, 11, 0.3);">💾 Save Score</button>`;
 
                 const actionButtons = isGuest ? (saveScoreBtn + shareBtn + continueBtn) : (shareBtn + continueBtn);
                 
