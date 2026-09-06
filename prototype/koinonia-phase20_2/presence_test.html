@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Koinonia Phase 0.20.2 — Real-Time Presence Test Harness</title>
+  <link rel="icon" type="image/x-icon" href="assets/branding/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/branding/favicon-32x32.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css?v=0.20.2">
+  <style>
+    body {
+      background-color: #EFE8DF;
+      color: #262220;
+      font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, sans-serif);
+      margin: 0;
+      padding: 0;
+      overflow-y: auto;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .qa-header {
+      background: #FFF9F3;
+      border-bottom: 2px solid #D22F0A;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .qa-title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .qa-logo {
+      height: 28px;
+      width: auto;
+      object-fit: contain;
+    }
+    .qa-title {
+      font-weight: 800;
+      font-size: 0.95rem;
+      color: #6A0E04;
+    }
+    .qa-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      background: #E8DCD1;
+      color: #262220;
+    }
+    .qa-badge.connected {
+      background: #E8F5E9;
+      color: #2E7D32;
+      border: 1px solid #81C784;
+    }
+    .qa-badge.disconnected {
+      background: #FFEBEE;
+      color: #C62828;
+      border: 1px solid #E57373;
+    }
+    .qa-content {
+      flex: 1;
+      padding: 12px;
+      max-width: 600px;
+      margin: 0 auto;
+      width: 100%;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .qa-card {
+      background: #FFFFFF;
+      border-radius: 12px;
+      border: 1px solid #E8DCD1;
+      padding: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .qa-card h3 {
+      margin: 0 0 8px 0;
+      font-size: 0.88rem;
+      font-weight: 800;
+      color: #6A0E04;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .qa-btn {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #D5C2B1;
+      background: #FAF5EF;
+      color: #262220;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .qa-btn:hover {
+      background: #FFF4CC;
+      border-color: #F99320;
+    }
+    .qa-btn:active {
+      transform: scale(0.97);
+    }
+    .qa-btn.primary {
+      background: #6A0E04;
+      color: #FFFFFF;
+      border-color: #6A0E04;
+    }
+    .qa-btn.active {
+      background: #D22F0A;
+      color: #FFFFFF;
+      border-color: #D22F0A;
+      box-shadow: 0 2px 4px rgba(210,47,10,0.25);
+    }
+    .qa-canvas-container {
+      position: relative;
+      width: 100%;
+      height: 250px;
+      background: #263124;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid #541208;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.55);
+      touch-action: none;
+    }
+    #presence-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .canvas-overlay-controls {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      display: grid;
+      grid-template-columns: repeat(3, 34px);
+      gap: 4px;
+      z-index: 10;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .dpad-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: rgba(255, 249, 243, 0.92);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      border: 1px solid #D5C2B1;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.25);
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    .dpad-btn:active {
+      background: #FDC63F;
+      transform: scale(0.92);
+    }
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      font-size: 0.76rem;
+    }
+    .telemetry-item {
+      background: #FAF5EF;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #E8DCD1;
+    }
+    .telemetry-label {
+      font-weight: 700;
+      color: #786C65;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 2px;
+    }
+    .telemetry-val {
+      font-weight: 800;
+      color: #262220;
+      word-break: break-word;
+    }
+    .log-box {
+      background: #1E281D;
+      color: #A7F3D0;
+      font-family: monospace;
+      font-size: 0.72rem;
+      padding: 8px;
+      border-radius: 6px;
+      height: 100px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .active-bubble {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #FFF9F3;
+      border: 1px solid #D97706;
+      border-radius: 9999px;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #6A0E04;
+      animation: popIn 0.2s ease;
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.8); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="qa-header">
+    <div class="qa-title-group">
+      <img src="assets/branding/koinonia-header-logo.png" class="qa-logo" alt="Koinonia">
+      <span class="qa-title">Presence Test Lab</span>
+    </div>
+    <div id="conn-badge" class="qa-badge disconnected">
+      <span>●</span>
+      <span id="conn-status-text">DISCONNECTED</span>
+    </div>
+  </header>
+
+  <!-- CONTENT -->
+  <main class="qa-content">
+
+    <!-- 1. IDENTITY SELECTOR -->
+    <section class="qa-card">
+      <h3>
+        <span>1. Identity Selection</span>
+        <span id="active-id-preview" style="font-size: 0.75rem; font-weight: normal; color: #D22F0A;"></span>
+      </h3>
+      <div class="btn-row">
+        <button id="btn-id-a" class="qa-btn primary active">
+          <span>🧑</span>
+          <span>OPEN AS DEMO MEMBER A (Alex)</span>
+        </button>
+        <button id="btn-id-b" class="qa-btn">
+          <span>👧</span>
+          <span>OPEN AS DEMO MEMBER B (Jamie)</span>
+        </button>
+      </div>
+      <div style="font-size: 0.72rem; color: #786C65; margin-top: 6px;">
+        Demo Member A: <b>Alex Rivera</b> (<code>youth_demo_01</code>, left spawn) • Demo Member B: <b>Jamie Santos</b> (<code>youth_demo_02</code>, right spawn)
+      </div>
+    </section>
+
+    <!-- 2. PLACE SELECTOR -->
+    <section class="qa-card">
+      <h3>2. Scoped Place Rooms</h3>
+      <div class="btn-row">
+        <button id="btn-place-fog" class="qa-btn active">
+          <span>🏛️</span>
+          <span>FOG COMMUNITY CENTER</span>
+        </button>
+        <button id="btn-place-sports" class="qa-btn">
+          <span>🏃</span>
+          <span>SPORTS HUB</span>
+        </button>
+        <button id="btn-place-school" class="qa-btn">
+          <span>🏫</span>
+          <span>SCHOOL</span>
+        </button>
+        <button id="btn-place-home" class="qa-btn">
+          <span>🏡</span>
+          <span>MY HOME</span>
+        </button>
+        <button id="btn-place-outreach" class="qa-btn">
+          <span>🌾</span>
+          <span>OUTREACH SITE</span>
+        </button>
+        <button id="btn-place-leave" class="qa-btn" style="color: #DC2626;">
+          <span>🚪</span>
+          <span>LEAVE PLACE</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 3. REAL-TIME CANVAS -->
+    <section class="qa-card">
+      <h3>
+        <span>3. Live In-World Presence</span>
+        <span id="room-member-indicator" class="active-bubble">👥 1 Pilgrim</span>
+      </h3>
+      <div class="qa-canvas-container">
+        <canvas id="presence-canvas" width="480" height="250"></canvas>
+        <div class="canvas-overlay-controls">
+          <div></div>
+          <button id="btn-move-up" class="dpad-btn" title="Up" aria-label="Up">⬆️</button>
+          <div></div>
+          <button id="btn-move-left" class="dpad-btn" title="Left" aria-label="Left">⬅️</button>
+          <button id="btn-move-down" class="dpad-btn" title="Down" aria-label="Down">⬇️</button>
+          <button id="btn-move-right" class="dpad-btn" title="Right" aria-label="Right">➡️</button>
+        </div>
+      </div>
+      <div style="font-size: 0.72rem; color: #786C65; margin-top: 4px;">
+        💡 Tap canvas or use D-pad to move. Both Phone A & Phone B will render their own and each other's avatars in real time.
+      </div>
+    </section>
+
+    <!-- 4. SAFE SOCIAL ACTIONS -->
+    <section class="qa-card">
+      <h3>4. Safe Structured Social Actions (No Free Text • 0 LP)</h3>
+      <div style="margin-bottom: 6px; font-weight: 700; font-size: 0.76rem; color: #786C65;">APPROVED EMOTES:</div>
+      <div class="btn-row" id="emote-buttons-row">
+        <!-- populated dynamically -->
+      </div>
+
+      <div style="margin: 10px 0 6px 0; font-weight: 700; font-size: 0.76rem; color: #786C65;">APPROVED PRESET MESSAGES:</div>
+      <div class="btn-row" id="preset-buttons-row">
+        <!-- populated dynamically -->
+      </div>
+    </section>
+
+    <!-- 5. TELEMETRY & LOG -->
+    <section class="qa-card">
+      <h3>5. Real-Time Telemetry</h3>
+      <div class="telemetry-grid">
+        <div class="telemetry-item">
+          <div class="telemetry-label">ROOM & INSTANCE</div>
+          <div id="telem-room" class="telemetry-val">FOG COMMUNITY CENTER (fog_center-01)</div>
+        </div>
+        <div class="telemetry-item">
+          <div class="telemetry-label">PRESENCE COUNT</div>
+          <div id="telem-count" class="telemetry-val">1 Online</div>
+        </div>
+        <div class="telemetry-item">
+          <div class="telemetry-label">LOCAL PLAYER</div>
+          <div id="telem-local" class="telemetry-val">Alex Rivera [youth_demo_01] @ (8.0, 8.0) right</div>
+        </div>
+        <div class="telemetry-item">
+          <div class="telemetry-label">REMOTE PLAYERS</div>
+          <div id="telem-remote" class="telemetry-val">None in room</div>
+        </div>
+        <div class="telemetry-item" style="grid-column: span 2;">
+          <div class="telemetry-label">SOCKET / LAST ACTION</div>
+          <div id="telem-socket" class="telemetry-val">Connecting...</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <span style="font-weight: 700; font-size: 0.76rem; color: #786C65;">PACKET EVENT LOG:</span>
+          <button id="btn-clear-log" style="font-size: 0.68rem; padding: 2px 6px; cursor: pointer;">Clear</button>
+        </div>
+        <div id="log-box" class="log-box">Initializing presence harness...</div>
+      </div>
+    </section>
+
+    <!-- NAVIGATION LINKS -->
+    <div style="display: flex; gap: 8px; justify-content: center; margin: 6px 0 20px 0;">
+      <a href="index.html" class="qa-btn">🏡 Open Main Koinonia App</a>
+      <a href="consolidation_test.html" class="qa-btn">🧪 Open Test Lab</a>
+    </div>
+
+  </main>
+
+  <!-- SCRIPTS -->
+  <script src="data/presence_client.js?v=0.20.2"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      // Demo Identities
+      const IDENTITIES = {
+        A: {
+          memberId: 'youth_demo_01',
+          displayName: 'Alex Rivera',
+          avatar: '🧑',
+          defaultSpawn: { x: 8.0, y: 8.0, facing: 'right' }
+        },
+        B: {
+          memberId: 'youth_demo_02',
+          displayName: 'Jamie Santos',
+          avatar: '👧',
+          defaultSpawn: { x: 16.0, y: 8.0, facing: 'left' }
+        }
+      };
+
+      const PLACE_LABELS = {
+        'fog_center': 'FOG COMMUNITY CENTER',
+        'sports_hub': 'SPORTS HUB',
+        'school': 'SCHOOL',
+        'home': 'MY HOME',
+        'outreach_site': 'OUTREACH SITE'
+      };
+
+      let activeIdKey = 'A';
+      let currentPlaceId = 'fog_center';
+      let lastActionSummary = 'Connecting...';
+
+      // Check query param for phone identity: ?id=b
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('id') && urlParams.get('id').toUpperCase() === 'B') {
+        activeIdKey = 'B';
+      }
+      if (urlParams.get('place') && PLACE_LABELS[urlParams.get('place')]) {
+        currentPlaceId = urlParams.get('place');
+      }
+
+      // UI Elements
+      const connBadge = document.getElementById('conn-badge');
+      const connStatusText = document.getElementById('conn-status-text');
+      const btnIdA = document.getElementById('btn-id-a');
+      const btnIdB = document.getElementById('btn-id-b');
+      const activeIdPreview = document.getElementById('active-id-preview');
+      const telemRoom = document.getElementById('telem-room');
+      const telemCount = document.getElementById('telem-count');
+      const telemLocal = document.getElementById('telem-local');
+      const telemRemote = document.getElementById('telem-remote');
+      const telemSocket = document.getElementById('telem-socket');
+      const roomMemberIndicator = document.getElementById('room-member-indicator');
+      const logBox = document.getElementById('log-box');
+      const canvas = document.getElementById('presence-canvas');
+      const ctx = canvas.getContext('2d');
+
+      // Coordinate scaling (24 columns x 16 rows)
+      const WORLD_COLS = 24.0;
+      const WORLD_ROWS = 16.0;
+
+      // Local speech/emote bubble tracking
+      let localBubble = null;
+      let localBubbleTimer = null;
+
+      function logEvent(msg) {
+        const time = new Date().toLocaleTimeString();
+        logBox.textContent = `[${time}] ${msg}\n` + logBox.textContent.slice(0, 4000);
+      }
+
+      document.getElementById('btn-clear-log').addEventListener('click', () => {
+        logBox.textContent = '';
+      });
+
+      // Initialize Presence Client
+      const activeIdent = IDENTITIES[activeIdKey];
+      const client = new window.KoinoniaPresenceClient({
+        memberId: activeIdent.memberId,
+        displayName: activeIdent.displayName,
+        avatar: activeIdent.avatar,
+        port: window.location.port || 18107
+      });
+
+      // Set initial local position to deterministic QA spawn
+      client.localMember.x = activeIdent.defaultSpawn.x;
+      client.localMember.y = activeIdent.defaultSpawn.y;
+      client.localMember.facing = activeIdent.defaultSpawn.facing;
+
+      function updateIdentityUI() {
+        const ident = IDENTITIES[activeIdKey];
+        btnIdA.classList.toggle('active', activeIdKey === 'A');
+        btnIdA.classList.toggle('primary', activeIdKey === 'A');
+        btnIdB.classList.toggle('active', activeIdKey === 'B');
+        btnIdB.classList.toggle('primary', activeIdKey === 'B');
+        activeIdPreview.textContent = `Current: ${ident.displayName} (${ident.memberId})`;
+      }
+
+      function switchIdentity(newKey) {
+        if (activeIdKey === newKey && client.connectionStatus === 'CONNECTED') return;
+        activeIdKey = newKey;
+        updateIdentityUI();
+        const ident = IDENTITIES[activeIdKey];
+        client.setIdentity({
+          memberId: ident.memberId,
+          displayName: ident.displayName,
+          avatar: ident.avatar
+        });
+        client.localMember.x = ident.defaultSpawn.x;
+        client.localMember.y = ident.defaultSpawn.y;
+        client.localMember.facing = ident.defaultSpawn.facing;
+        logEvent(`Switched identity to Member ${activeIdKey}: ${ident.displayName}`);
+        lastActionSummary = `Switched to ${ident.displayName}`;
+        client.joinPlace(currentPlaceId, ident.defaultSpawn);
+      }
+
+      btnIdA.addEventListener('click', () => switchIdentity('A'));
+      btnIdB.addEventListener('click', () => switchIdentity('B'));
+      updateIdentityUI();
+
+      // Place Selection Buttons
+      const placeButtons = {
+        'fog_center': document.getElementById('btn-place-fog'),
+        'sports_hub': document.getElementById('btn-place-sports'),
+        'school': document.getElementById('btn-place-school'),
+        'home': document.getElementById('btn-place-home'),
+        'outreach_site': document.getElementById('btn-place-outreach')
+      };
+
+      function updatePlaceButtonsUI() {
+        Object.keys(placeButtons).forEach(pId => {
+          if (placeButtons[pId]) {
+            placeButtons[pId].classList.toggle('active', pId === currentPlaceId);
+          }
+        });
+      }
+
+      Object.keys(placeButtons).forEach(pId => {
+        if (placeButtons[pId]) {
+          placeButtons[pId].addEventListener('click', () => {
+            currentPlaceId = pId;
+            updatePlaceButtonsUI();
+            const ident = IDENTITIES[activeIdKey];
+            client.joinPlace(pId, ident.defaultSpawn);
+            logEvent(`Joined place: ${PLACE_LABELS[pId] || pId}`);
+            lastActionSummary = `Joined ${PLACE_LABELS[pId] || pId}`;
+          });
+        }
+      });
+
+      document.getElementById('btn-place-leave').addEventListener('click', () => {
+        currentPlaceId = null;
+        updatePlaceButtonsUI();
+        client.leavePlace();
+        logEvent('Left current place.');
+        lastActionSummary = 'Left room';
+      });
+
+      // Emotes & Preset Buttons Generation
+      const emoteRow = document.getElementById('emote-buttons-row');
+      const emotes = client.getEmoteCatalog();
+      Object.keys(emotes).forEach(key => {
+        const entry = emotes[key];
+        const btn = document.createElement('button');
+        btn.className = 'qa-btn';
+        btn.innerHTML = `<span>${entry.emoji}</span> <span>${entry.text.toUpperCase()}</span>`;
+        btn.addEventListener('click', () => {
+          client.sendEmote(entry.id);
+          localBubble = { text: `${entry.emoji} ${entry.text}`, isEmote: true };
+          if (localBubbleTimer) clearTimeout(localBubbleTimer);
+          localBubbleTimer = setTimeout(() => { localBubble = null; }, 3000);
+          lastActionSummary = `Sent emote ${entry.emoji} ${entry.text}`;
+          logEvent(`Sent Emote -> ${entry.emoji} ${entry.text}`);
+        });
+        emoteRow.appendChild(btn);
+      });
+
+      const presetRow = document.getElementById('preset-buttons-row');
+      const presets = client.getPresetMessageCatalog();
+      Object.keys(presets).forEach(key => {
+        const entry = presets[key];
+        const btn = document.createElement('button');
+        btn.className = 'qa-btn';
+        btn.innerHTML = `<span>💬</span> <span>"${entry.text}"</span>`;
+        btn.addEventListener('click', () => {
+          client.sendPresetMessage(entry.id);
+          localBubble = { text: entry.text, isEmote: false };
+          if (localBubbleTimer) clearTimeout(localBubbleTimer);
+          localBubbleTimer = setTimeout(() => { localBubble = null; }, 3500);
+          lastActionSummary = `Sent preset "${entry.text}"`;
+          logEvent(`Sent Preset Msg -> "${entry.text}"`);
+        });
+        presetRow.appendChild(btn);
+      });
+
+      // D-Pad Controls
+      const step = 1.0;
+      function moveLocal(dx, dy, dir) {
+        const newX = Math.max(1.5, Math.min(22.5, client.localMember.x + dx));
+        const newY = Math.max(1.5, Math.min(14.5, client.localMember.y + dy));
+        client.sendMove(Number(newX.toFixed(2)), Number(newY.toFixed(2)), dir);
+        lastActionSummary = `Moved ${dir} to (${newX.toFixed(1)}, ${newY.toFixed(1)})`;
+      }
+
+      document.getElementById('btn-move-up').addEventListener('click', () => moveLocal(0, -step, 'up'));
+      document.getElementById('btn-move-down').addEventListener('click', () => moveLocal(0, step, 'down'));
+      document.getElementById('btn-move-left').addEventListener('click', () => moveLocal(-step, 0, 'left'));
+      document.getElementById('btn-move-right').addEventListener('click', () => moveLocal(step, 0, 'right'));
+
+      // Canvas Tap-to-Move
+      canvas.addEventListener('pointerdown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = ((e.clientX - rect.left) / rect.width) * WORLD_COLS;
+        const clickY = ((e.clientY - rect.top) / rect.height) * WORLD_ROWS;
+        const dx = clickX - client.localMember.x;
+        const dy = clickY - client.localMember.y;
+        let facing = client.localMember.facing || 'down';
+        if (Math.abs(dx) > Math.abs(dy)) {
+          facing = dx > 0 ? 'right' : 'left';
+        } else {
+          facing = dy > 0 ? 'down' : 'up';
+        }
+        const targetX = Math.max(1.5, Math.min(22.5, clickX));
+        const targetY = Math.max(1.5, Math.min(14.5, clickY));
+        client.sendMove(Number(targetX.toFixed(2)), Number(targetY.toFixed(2)), facing);
+        lastActionSummary = `Tapped to (${targetX.toFixed(1)}, ${targetY.toFixed(1)})`;
+      });
+
+      // Client Event Listeners
+      client.on('status_change', ({ status, error }) => {
+        connStatusText.textContent = status;
+        if (status === 'CONNECTED') {
+          connBadge.className = 'qa-badge connected';
+          logEvent('WebSocket connection established.');
+          lastActionSummary = 'Connected to server';
+        } else if (status === 'CONNECTING') {
+          connBadge.className = 'qa-badge';
+          logEvent('Connecting to WebSocket server...');
+          lastActionSummary = 'Connecting...';
+        } else {
+          connBadge.className = 'qa-badge disconnected';
+          logEvent(`Disconnected from server. ${error ? 'Error: ' + error : ''}`);
+          lastActionSummary = 'Disconnected';
+        }
+      });
+
+      client.on('welcome', (msg) => {
+        logEvent(`Server Welcome: connectionId=${msg.connectionId}`);
+        // Auto join current place on welcome
+        const ident = IDENTITIES[activeIdKey];
+        client.joinPlace(currentPlaceId, ident.defaultSpawn);
+      });
+
+      client.on('snapshot', (msg) => {
+        logEvent(`Snapshot received: ${msg.members.length} remote pilgrims in ${msg.instanceId}`);
+        lastActionSummary = `Joined ${msg.instanceId}`;
+      });
+
+      client.on('member_joined', (msg) => {
+        logEvent(`Pilgrim entered: ${msg.member.displayName} (${msg.member.memberId})`);
+        lastActionSummary = `${msg.member.displayName} entered room`;
+      });
+
+      client.on('member_left', (msg) => {
+        logEvent(`Pilgrim left: connectionId=${msg.connectionId}`);
+        lastActionSummary = `Pilgrim left room`;
+      });
+
+      client.on('member_emote', (msg) => {
+        logEvent(`Received Emote from ${msg.memberId || msg.connectionId}: ${msg.emoji} ${msg.emoteText}`);
+        lastActionSummary = `${msg.emoji} ${msg.emoteText} from peer`;
+      });
+
+      client.on('member_preset_message', (msg) => {
+        logEvent(`Received Preset Msg from ${msg.memberId || msg.connectionId}: "${msg.messageText}"`);
+        lastActionSummary = `"${msg.messageText}" from peer`;
+      });
+
+      // Coordinate Mapping & Clamping Function
+      function toCanvasCoords(gx, gy) {
+        const cw = canvas.width;
+        const ch = canvas.height;
+        let x = Number.isFinite(Number(gx)) ? Number(gx) : 12.0;
+        let y = Number.isFinite(Number(gy)) ? Number(gy) : 8.0;
+
+        // If coordinates passed as raw canvas pixels (>30), normalize
+        if (x > 30) x = (x / cw) * WORLD_COLS;
+        if (y > 30) y = (y / ch) * WORLD_ROWS;
+
+        let px = (x / WORLD_COLS) * cw;
+        let py = (y / WORLD_ROWS) * ch;
+
+        // Clamping ensures avatar circle (14px radius) + nameplate + shadow stay fully visible
+        const padX = 26;
+        const padY = 32;
+        px = Math.max(padX, Math.min(cw - padX, px));
+        py = Math.max(padY, Math.min(ch - padY, py));
+
+        return { px, py };
+      }
+
+      // Draw Avatar Function (takes px, py in canvas pixels)
+      function drawAvatar(px, py, name, emoji, facing, isSelf, emote, preset) {
+        ctx.save();
+
+        // 1. Drop Shadow
+        ctx.beginPath();
+        ctx.ellipse(px, py + 14, 13, 6, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.fill();
+
+        // 2. Avatar Outer Glow Ring
+        ctx.beginPath();
+        ctx.arc(px, py, 17, 0, Math.PI * 2);
+        ctx.fillStyle = isSelf ? 'rgba(253, 198, 63, 0.3)' : 'rgba(147, 197, 253, 0.3)';
+        ctx.fill();
+
+        // 3. Avatar Body Circle
+        ctx.beginPath();
+        ctx.arc(px, py, 14, 0, Math.PI * 2);
+        ctx.fillStyle = isSelf ? '#6A0E04' : '#1E3A8A';
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = isSelf ? '#FDC63F' : '#93C5FD';
+        ctx.stroke();
+
+        // 4. Emoji Head / Sprite
+        ctx.font = '16px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(emoji || (isSelf ? '🧑' : '👧'), px, py);
+
+        // 5. Directional Facing Dot
+        ctx.fillStyle = isSelf ? '#FDC63F' : '#FFFFFF';
+        let fx = px, fy = py;
+        if (facing === 'up') fy -= 14;
+        else if (facing === 'down') fy += 14;
+        else if (facing === 'left') fx -= 14;
+        else if (facing === 'right') fx += 14;
+        else fy += 14;
+        ctx.beginPath();
+        ctx.arc(fx, fy, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 6. Name Tag with Online Dot
+        ctx.font = 'bold 9px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const displayName = name || (isSelf ? 'Alex Rivera (YOU)' : 'Pilgrim');
+        const textW = ctx.measureText(displayName).width;
+        const tagW = Math.max(textW + 16, 40);
+        const tagH = 14;
+        const tagY = py - 24;
+
+        ctx.fillStyle = isSelf ? 'rgba(40, 15, 10, 0.88)' : 'rgba(15, 30, 60, 0.88)';
+        ctx.strokeStyle = isSelf ? '#D97706' : '#60A5FA';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(px - tagW / 2, tagY - tagH / 2, tagW, tagH, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        // Green Online Dot on Nameplate
+        ctx.fillStyle = '#22C55E';
+        ctx.beginPath();
+        ctx.arc(px - tagW / 2 + 5, tagY, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Nameplate Text
+        ctx.fillStyle = isSelf ? '#FDC63F' : '#FFFFFF';
+        ctx.fillText(displayName, px + 3, tagY + 0.5);
+
+        // 7. Floating Emote or Preset Speech Bubble
+        if (emote || preset) {
+          const bubbleText = emote ? (emote.emoji ? `${emote.emoji} ${emote.text || ''}` : emote.text) : (preset.text || preset);
+          ctx.font = 'bold 10px -apple-system, sans-serif';
+          const bWidth = Math.max(ctx.measureText(bubbleText).width + 14, 36);
+          const bubbleY = py - 46;
+
+          ctx.fillStyle = '#FFF9F3';
+          ctx.strokeStyle = emote ? '#D97706' : '#2563EB';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.roundRect(px - bWidth / 2, bubbleY - 10, bWidth, 20, 6);
+          ctx.fill();
+          ctx.stroke();
+
+          // Bubble pointer triangle
+          ctx.beginPath();
+          ctx.moveTo(px - 4, bubbleY + 10);
+          ctx.lineTo(px, bubbleY + 14);
+          ctx.lineTo(px + 4, bubbleY + 10);
+          ctx.fillStyle = '#FFF9F3';
+          ctx.fill();
+
+          ctx.fillStyle = emote ? '#6A0E04' : '#1E40AF';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(bubbleText, px, bubbleY);
+        }
+
+        ctx.restore();
+      }
+
+      // Main Render Frame
+      let lastFrameTime = performance.now();
+
+      function renderFrame() {
+        const now = performance.now();
+        const dt = Math.min((now - lastFrameTime) / 1000, 0.1);
+        lastFrameTime = now;
+
+        // Smooth interpolation for remote avatars
+        client.updateInterpolation(dt);
+
+        const cw = canvas.width;
+        const ch = canvas.height;
+        const scaleX = cw / WORLD_COLS;
+        const scaleY = ch / WORLD_ROWS;
+
+        // 1. Background Fill
+        ctx.fillStyle = '#263124';
+        ctx.fillRect(0, 0, cw, ch);
+
+        // 2. Subtle Fellowship Grid
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= WORLD_COLS; x++) {
+          ctx.beginPath();
+          ctx.moveTo(x * scaleX, 0);
+          ctx.lineTo(x * scaleX, ch);
+          ctx.stroke();
+        }
+        for (let y = 0; y <= WORLD_ROWS; y++) {
+          ctx.beginPath();
+          ctx.moveTo(0, y * scaleY);
+          ctx.lineTo(cw, y * scaleY);
+          ctx.stroke();
+        }
+
+        // 3. Room Perimeter Border
+        ctx.strokeStyle = '#541208';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(1.5, 1.5, cw - 3, ch - 3);
+
+        // 4. Room & Instance Label (Fixed: Uses actual joined room title and instance)
+        const placeTitle = PLACE_LABELS[client.currentPlaceId] || (client.currentPlaceId ? client.currentPlaceId.toUpperCase() : 'CONNECTING...');
+        const instanceLabel = client.currentInstanceId ? client.currentInstanceId : (client.connectionStatus === 'CONNECTED' ? 'instance pending' : 'offline');
+
+        ctx.save();
+        ctx.font = 'bold 11px -apple-system, sans-serif';
+        const labelText = `🏛️ ${placeTitle} [${instanceLabel}]`;
+        const labelWidth = ctx.measureText(labelText).width + 16;
+
+        ctx.fillStyle = 'rgba(20, 30, 20, 0.75)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(8, 8, labelWidth, 22, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#FFF9F3';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(labelText, 16, 19);
+        ctx.restore();
+
+        // 5. Draw Remote Avatars First
+        const remotes = client.getRemoteMembers();
+        remotes.forEach(remote => {
+          const { px, py } = toCanvasCoords(remote.x, remote.y);
+          drawAvatar(px, py, remote.displayName, remote.avatar, remote.facing, false, remote.emote, remote.presetMsg);
+        });
+
+        // 6. Draw Local Player Avatar on Top
+        const localPos = toCanvasCoords(client.localMember.x, client.localMember.y);
+        const localName = `${client.localMember.displayName} (YOU)`;
+        drawAvatar(localPos.px, localPos.py, localName, client.localMember.avatar, client.localMember.facing, true, localBubble && localBubble.isEmote ? localBubble : null, localBubble && !localBubble.isEmote ? localBubble : null);
+
+        // 7. Update Telemetry UI Displays
+        const totalCount = remotes.length + 1;
+        roomMemberIndicator.textContent = `👥 ${totalCount} Pilgrim${totalCount !== 1 ? 's' : ''}`;
+        telemRoom.textContent = `${placeTitle} (${client.currentInstanceId || 'pending'})`;
+        telemCount.textContent = `${totalCount} Online (1 Local, ${remotes.length} Remote)`;
+        telemLocal.textContent = `${client.localMember.displayName} [${client.localMember.memberId}] @ (${client.localMember.x.toFixed(1)}, ${client.localMember.y.toFixed(1)}) ${client.localMember.facing}`;
+        telemRemote.textContent = remotes.length > 0
+          ? remotes.map(r => `${r.displayName} [${r.memberId}] @ (${r.x.toFixed(1)}, ${r.y.toFixed(1)}) ${r.facing}`).join(' | ')
+          : 'None (waiting for peer on second phone)';
+        telemSocket.textContent = `${client.connectionId || 'connecting...'} • ${lastActionSummary}`;
+      }
+
+      // Safe RAF Render Loop with Error Boundary
+      function render() {
+        try {
+          renderFrame();
+        } catch (err) {
+          console.error('Presence render error:', err);
+        }
+        requestAnimationFrame(render);
+      }
+
+      // Start Connection & Render Loop
+      client.connect();
+      requestAnimationFrame(render);
+
+    })();
+  </script>
+</body>
+</html>

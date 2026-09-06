@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phase 0.19 — Journey Test Lab</title>
+  <style>
+    :root {
+      --bg: #FDFBF7;
+      --card-bg: #FFFFFF;
+      --text: #2C2623;
+      --accent: #D97706;
+      --border: #E5E0D8;
+      --brand-burgundy: #5C2D2D;
+      --brand-flame-gold: #F59E0B;
+      --brand-fire-orange: #EB5F12;
+      --success: #059669;
+      --danger: #DC2626;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 16px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border);
+    }
+    h1 {
+      font-size: 1.35rem;
+      color: var(--brand-burgundy);
+      margin: 0 0 6px 0;
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 0.82rem;
+      font-weight: 800;
+      background: #E5E7EB;
+      color: #374151;
+      margin-top: 4px;
+      letter-spacing: 0.03em;
+    }
+    .status-pill.ready { background: #D1FAE5; color: var(--success); }
+    .status-pill.success { background: #FEF3C7; color: #92400E; }
+    .status-pill.cleared { background: #FEE2E2; color: var(--danger); }
+    .status-pill.error { background: #7F1D1D; color: #FFF; }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    h2 {
+      font-size: 0.92rem;
+      color: var(--brand-burgundy);
+      margin: 0 0 10px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    button {
+      background: #FAF5EE;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+    }
+    button:active {
+      transform: scale(0.98);
+      filter: brightness(0.95);
+    }
+    button.primary {
+      background: linear-gradient(135deg, var(--brand-flame-gold) 0%, var(--brand-fire-orange) 100%);
+      color: #FFFFFF;
+      border: none;
+      box-shadow: 0 2px 5px rgba(235, 95, 18, 0.3);
+    }
+    button.launch {
+      background: linear-gradient(135deg, #059669 0%, #10B981 100%);
+      color: #FFFFFF;
+      border: none;
+      box-shadow: 0 2px 5px rgba(16, 185, 129, 0.3);
+      font-size: 1rem;
+      padding: 14px;
+    }
+    button.danger {
+      background: #FEE2E2;
+      color: var(--danger);
+      border-color: #FCA5A5;
+    }
+    button.secondary {
+      background: #F3F4F6;
+      color: #374151;
+      border-color: #D1D5DB;
+    }
+
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      font-size: 0.80rem;
+    }
+    .telemetry-item {
+      background: #F9FAFB;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid #E5E7EB;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .telemetry-item strong {
+      color: var(--brand-burgundy);
+    }
+    .telemetry-val {
+      font-weight: 800;
+      color: var(--brand-fire-orange);
+    }
+
+    .test-result-box {
+      font-family: monospace;
+      font-size: 0.76rem;
+      background: #1E1B18;
+      color: #E6EDF3;
+      padding: 12px;
+      border-radius: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>PHASE 0.19 — JOURNEY TEST LAB</h1>
+      <div id="qa-status-pill" class="status-pill ready">STATUS: QA LAB READY</div>
+    </header>
+
+    <!-- SECTION A: BASELINE SEEDING -->
+    <div class="card">
+      <h2>SECTION A — BASELINE</h2>
+      <div class="btn-grid">
+        <button class="danger" onclick="window.resetPhase19()">RESET PHASE 0.19 SAVE</button>
+        <button class="primary" onclick="window.seedJourneyReady()">SEED JOURNEY-READY CLEAN STATE</button>
+        <button class="launch" onclick="window.launchPrototype()">🚀 LAUNCH PROTOTYPE</button>
+      </div>
+    </div>
+
+    <!-- SECTION B: MEMORY GENERATION TESTS -->
+    <div class="card">
+      <h2>SECTION B — MEMORY GENERATION TESTS</h2>
+      <div class="btn-grid">
+        <button onclick="window.createQuestMemory()">CREATE QUEST MEMORY (Q-001)</button>
+        <button onclick="window.createEventMemory()">CREATE EVENT MEMORY [DEMO]</button>
+        <button onclick="window.createPbMemory()">CREATE PERSONAL BEST MEMORY [DEMO]</button>
+        <button onclick="window.createPlaceDiscoveryMemory()">CREATE PLACE DISCOVERY MEMORY</button>
+        <button onclick="window.createMilestoneMemory()">CREATE MILESTONE MEMORY [DEMO]</button>
+      </div>
+    </div>
+
+    <!-- SECTION C: DIRECT UI SHORTCUTS -->
+    <div class="card">
+      <h2>SECTION C — OPEN UI</h2>
+      <div class="btn-grid">
+        <button class="secondary" onclick="window.qaLaunch('journey', 'timeline')">OPEN MY JOURNEY</button>
+        <button class="secondary" onclick="window.qaLaunch('journey', 'timeline')">OPEN TIMELINE</button>
+        <button class="secondary" onclick="window.qaLaunch('journey', 'memories')">OPEN MEMORIES</button>
+        <button class="secondary" onclick="window.qaLaunch('journey', 'places')">OPEN PLACES</button>
+        <button class="secondary" onclick="window.qaLaunch('journey', 'growth')">OPEN GROWTH</button>
+      </div>
+    </div>
+
+    <!-- SECTION D: DEMO HISTORY SEED -->
+    <div class="card">
+      <h2>SECTION D — DEMO HISTORY</h2>
+      <div class="btn-grid">
+        <button class="primary" onclick="window.seedDemoHistory()">SEED JOURNEY DEMO HISTORY</button>
+      </div>
+    </div>
+
+    <!-- LIVE TELEMETRY -->
+    <div class="card">
+      <h2>QA LIVE TELEMETRY</h2>
+      <div class="telemetry-grid">
+        <div class="telemetry-item"><span>Level / LP / XP:</span> <span id="tel-char" class="telemetry-val">--</span></div>
+        <div class="telemetry-item"><span>Memory Count:</span> <span id="tel-mem-count" class="telemetry-val">0</span></div>
+        <div class="telemetry-item"><span>Quest Memories:</span> <span id="tel-quests" class="telemetry-val">0</span></div>
+        <div class="telemetry-item"><span>Event Memories:</span> <span id="tel-events" class="telemetry-val">0</span></div>
+        <div class="telemetry-item"><span>PB Memories:</span> <span id="tel-pbs" class="telemetry-val">0</span></div>
+        <div class="telemetry-item"><span>Place Memories:</span> <span id="tel-places" class="telemetry-val">0</span></div>
+        <div class="telemetry-item"><span>Milestone Memories:</span> <span id="tel-milestones" class="telemetry-val">0</span></div>
+        <div class="telemetry-item"><span>Private Reflections:</span> <span id="tel-reflections" class="telemetry-val">0</span></div>
+        <div class="telemetry-item" style="grid-column: span 2;"><span>Places With History:</span> <span id="tel-places-hist" class="telemetry-val">0</span></div>
+      </div>
+    </div>
+
+    <!-- IN-BROWSER TEST SUITE -->
+    <div class="card">
+      <h2>SELF-VERIFICATION TEST SUITE</h2>
+      <button class="secondary" style="width: 100%;" onclick="window.runInBrowserTests()">RUN IN-BROWSER TESTS</button>
+      <div id="test-results-log" class="test-result-box" style="display: none;"></div>
+    </div>
+  </div>
+
+  <!-- LOAD DATA MODULES -->
+  <script src="data/places.js?v=0.19"></script>
+  <script src="data/quests.js?v=0.19"></script>
+  <script src="data/progression.js?v=0.19"></script>
+  <script src="data/campaigns.js?v=0.19"></script>
+  <script src="data/events.js?v=0.19"></script>
+  <script src="data/sports.js?v=0.19"></script>
+  <script src="data/memories.js?v=0.19"></script>
+
+  <!-- TEST LAB RUNTIME SCRIPT -->
+  <script>
+    (function () {
+      'use strict';
+
+      const SAVE_KEY = 'koinonia.phase19.save';
+
+      function updateStatusPill(text, type = 'ready') {
+        const pill = document.getElementById('qa-status-pill');
+        if (!pill) return;
+        pill.textContent = `STATUS: ${text}`;
+        pill.className = `status-pill ${type}`;
+      }
+
+      function getRawSave() {
+        try {
+          const raw = localStorage.getItem(SAVE_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function writeRawSave(data) {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+      }
+
+      function updateTelemetry() {
+        const s = getRawSave();
+        const charEl = document.getElementById('tel-char');
+        const countEl = document.getElementById('tel-mem-count');
+        const qEl = document.getElementById('tel-quests');
+        const evEl = document.getElementById('tel-events');
+        const pbEl = document.getElementById('tel-pbs');
+        const plEl = document.getElementById('tel-places');
+        const mEl = document.getElementById('tel-milestones');
+        const refEl = document.getElementById('tel-reflections');
+        const plHistEl = document.getElementById('tel-places-hist');
+
+        if (!s) {
+          if (charEl) charEl.textContent = 'None';
+          if (countEl) countEl.textContent = '0';
+          if (qEl) qEl.textContent = '0';
+          if (evEl) evEl.textContent = '0';
+          if (pbEl) pbEl.textContent = '0';
+          if (plEl) plEl.textContent = '0';
+          if (mEl) mEl.textContent = '0';
+          if (refEl) refEl.textContent = '0';
+          if (plHistEl) plHistEl.textContent = '0';
+          return;
+        }
+
+        const mems = Array.isArray(s.memories) ? s.memories : [];
+        if (charEl) charEl.textContent = `Lv.${s.charLevel || 1} / ${s.lp || 0}LP / ${s.charXp || 0}XP`;
+        if (countEl) countEl.textContent = mems.length;
+        if (qEl) qEl.textContent = mems.filter(m => m.memoryType === 'QUEST_COMPLETED').length;
+        if (evEl) evEl.textContent = mems.filter(m => m.memoryType === 'EVENT_ATTENDED').length;
+        if (pbEl) pbEl.textContent = mems.filter(m => m.memoryType === 'PERSONAL_BEST').length;
+        if (plEl) plEl.textContent = mems.filter(m => m.memoryType === 'PLACE_DISCOVERED').length;
+        if (mEl) mEl.textContent = mems.filter(m => m.memoryType === 'MILESTONE_UNLOCKED').length;
+        if (refEl) refEl.textContent = mems.filter(m => Boolean(m.reflectionText)).length;
+        if (plHistEl) plHistEl.textContent = s.placeHistory ? Object.keys(s.placeHistory).length : 0;
+      }
+
+      window.resetPhase19 = function () {
+        try {
+          localStorage.removeItem(SAVE_KEY);
+          updateStatusPill('SAVE CLEARED', 'cleared');
+          updateTelemetry();
+          alert('Phase 0.19 save cleared from localStorage.');
+        } catch (e) {
+          updateStatusPill('SCRIPT ERROR', 'error');
+          alert('Failed to clear storage: ' + e.message);
+        }
+      };
+
+      window.seedJourneyReady = function () {
+        try {
+          const memData = window.KOINONIA_DATA;
+          if (!memData || typeof memData.createJourneyReadyQaState !== 'function') {
+            throw new Error('createJourneyReadyQaState function missing from data/memories.js');
+          }
+
+          const freshState = memData.createJourneyReadyQaState();
+          writeRawSave(freshState);
+
+          updateStatusPill('SEED SUCCESSFUL', 'success');
+          updateTelemetry();
+          alert('Success! Seeded Journey-Ready Clean State (Level 2, 135 LP, 15 XP, 0 Memories).');
+        } catch (e) {
+          updateStatusPill('SEED FAILED', 'error');
+          alert('Failed to seed QA state: ' + e.message);
+        }
+      };
+
+      window.createQuestMemory = function () {
+        try {
+          let s = getRawSave();
+          if (!s) {
+            alert('Please seed a Journey-Ready baseline state first!');
+            return;
+          }
+          const memData = window.KOINONIA_DATA;
+          const res = memData.addMemoryIfNew(s, {
+            memoryType: memData.MEMORY_TYPES.QUEST_COMPLETED,
+            sourceType: memData.SOURCE_TYPES.QUEST,
+            sourceId: 'Q-001',
+            title: 'Steward of the Garden',
+            subtitle: 'Watered plants at home with joyful patience',
+            description: 'You cared for something entrusted to you on the garden veranda.',
+            placeId: 'my_home',
+            icon: '🌱',
+            tags: ['quest', 'stewardship'],
+            reflectionText: 'Remember to check soil moisture in the morning.'
+          });
+
+          writeRawSave(s);
+          updateTelemetry();
+          if (res.added) {
+            updateStatusPill('MEMORY CREATED', 'success');
+            alert('Created Quest Memory (Q-001)!');
+          } else {
+            updateStatusPill('MEMORY DEDUPED', 'ready');
+            alert('Deduplication Active: Quest Q-001 memory already exists. No duplicate created.');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      };
+
+      window.createEventMemory = function () {
+        try {
+          let s = getRawSave();
+          if (!s) {
+            alert('Please seed a Journey-Ready baseline state first!');
+            return;
+          }
+          const memData = window.KOINONIA_DATA;
+          const res = memData.addMemoryIfNew(s, {
+            id: 'qa_demo_event_alpha1',
+            memoryType: memData.MEMORY_TYPES.EVENT_ATTENDED,
+            sourceType: memData.SOURCE_TYPES.EVENT,
+            sourceId: 'alpha_s01_20260912',
+            title: 'Alpha Youth Series — Session 1',
+            subtitle: 'Life: Is This It? • FOG Community Center',
+            description: 'Gathered with youth fellowship for discussion, hospitality, and honest questions.',
+            placeId: 'fog_center',
+            occurredAt: '2026-09-12T15:00:00+08:00',
+            icon: '❓',
+            tags: ['event', 'alpha'],
+            metadata: {
+              eventName: 'Alpha Youth Series',
+              sessionTitle: 'Life: Is This It?',
+              participated: true,
+              badgeText: 'YOU WERE THERE'
+            },
+            reflectionText: 'Great discussion with everyone around the table.',
+            isDemo: true
+          });
+
+          writeRawSave(s);
+          updateTelemetry();
+          if (res.added) {
+            updateStatusPill('MEMORY CREATED', 'success');
+            alert('Created Demo Event Memory (Alpha Session 1)!');
+          } else {
+            updateStatusPill('MEMORY DEDUPED', 'ready');
+            alert('Deduplication Active: Event already remembered. No duplicate created.');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      };
+
+      window.createPbMemory = function () {
+        try {
+          let s = getRawSave();
+          if (!s) {
+            alert('Please seed a Journey-Ready baseline state first!');
+            return;
+          }
+          const memData = window.KOINONIA_DATA;
+          const res = memData.addMemoryIfNew(s, {
+            id: 'qa_demo_pb_bball',
+            memoryType: memData.MEMORY_TYPES.PERSONAL_BEST,
+            sourceType: memData.SOURCE_TYPES.FIT_QUEST,
+            sourceId: 'FQ-V001',
+            title: 'New Personal Best: Free Throw Focus',
+            subtitle: '7 / 10 shots made (Previous: 4 / 10)',
+            description: 'Maintained steady rhythm and eye focus at the Sports Hub basketball court.',
+            placeId: 'sports_hub',
+            icon: '🏀',
+            tags: ['sports', 'fitquest', 'basketball'],
+            metadata: {
+              challengeId: 'FQ-V001',
+              challengeName: 'Free Throw Focus',
+              sportId: 'basketball',
+              previousScore: 4,
+              newScore: 7,
+              scoreDisplay: '7/10 makes',
+              isPersonalBest: true
+            },
+            isDemo: true
+          });
+
+          writeRawSave(s);
+          updateTelemetry();
+          if (res.added) {
+            updateStatusPill('MEMORY CREATED', 'success');
+            alert('Created Personal Best Memory (Free Throw 7/10)!');
+          } else {
+            updateStatusPill('MEMORY DEDUPED', 'ready');
+            alert('Deduplication Active: Exact PB memory already exists.');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      };
+
+      window.createPlaceDiscoveryMemory = function () {
+        try {
+          let s = getRawSave();
+          if (!s) {
+            alert('Please seed a Journey-Ready baseline state first!');
+            return;
+          }
+          const memData = window.KOINONIA_DATA;
+          memData.recordPlaceVisit(s, 'sports_hub');
+          writeRawSave(s);
+          updateTelemetry();
+          updateStatusPill('MEMORY CREATED', 'success');
+          alert('Recorded visit to Sports Hub! Checked Place Discovery memory.');
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      };
+
+      window.createMilestoneMemory = function () {
+        try {
+          let s = getRawSave();
+          if (!s) {
+            alert('Please seed a Journey-Ready baseline state first!');
+            return;
+          }
+          const memData = window.KOINONIA_DATA;
+          const res = memData.addMemoryIfNew(s, {
+            id: 'qa_demo_milestone_fit',
+            memoryType: memData.MEMORY_TYPES.MILESTONE_UNLOCKED,
+            sourceType: memData.SOURCE_TYPES.MILESTONE,
+            sourceId: 'm_first_fitquest',
+            title: 'Milestone: First Step in Movement',
+            subtitle: 'Completed your first Faith Quest activity',
+            description: 'Honoring God through healthy physical activity and movement.',
+            placeId: 'sports_hub',
+            icon: '🏃',
+            tags: ['milestone', 'progression'],
+            isDemo: true
+          });
+
+          writeRawSave(s);
+          updateTelemetry();
+          if (res.added) {
+            updateStatusPill('MEMORY CREATED', 'success');
+            alert('Created Milestone Memory!');
+          } else {
+            updateStatusPill('MEMORY DEDUPED', 'ready');
+            alert('Deduplication Active: Milestone already remembered.');
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      };
+
+      window.seedDemoHistory = function () {
+        try {
+          let s = getRawSave();
+          if (!s) {
+            s = window.KOINONIA_DATA.createJourneyReadyQaState();
+          }
+          window.KOINONIA_DATA.seedJourneyDemoHistory(s);
+          writeRawSave(s);
+          updateTelemetry();
+          updateStatusPill('SEED SUCCESSFUL', 'success');
+          alert('Seeded representative Journey Demo History! (All demo entries marked isDemo: true)');
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      };
+
+      window.launchPrototype = function () {
+        const s = getRawSave();
+        if (!s) {
+          alert('WARNING: No Phase 0.19 save state found! Please tap "SEED JOURNEY-READY CLEAN STATE" first.');
+          return;
+        }
+        window.location.href = 'index.html';
+      };
+
+      window.qaLaunch = function (target, tab) {
+        const s = getRawSave();
+        if (!s) {
+          alert('WARNING: No Phase 0.19 save state found! Please tap "SEED JOURNEY-READY CLEAN STATE" first.');
+          return;
+        }
+        let url = 'index.html';
+        if (target === 'journey') {
+          url += `?open=journey&tab=${tab || 'timeline'}`;
+        }
+        window.location.href = url;
+      };
+
+      window.runInBrowserTests = function () {
+        const logBox = document.getElementById('test-results-log');
+        if (logBox) logBox.style.display = 'block';
+        let logs = [];
+        const log = (msg) => { logs.push(msg); if (logBox) logBox.textContent = logs.join('\n'); };
+
+        log('=== STARTING IN-BROWSER SELF-VERIFICATION ===');
+        const memData = window.KOINONIA_DATA;
+        let pass = 0, fail = 0;
+
+        function assert(cond, name) {
+          if (cond) {
+            pass++;
+            log(`[PASS] ${name}`);
+          } else {
+            fail++;
+            log(`[FAIL] ${name}`);
+          }
+        }
+
+        try {
+          assert(memData && typeof memData.createMemory === 'function', 'Memory factory createMemory exists');
+          assert(memData && typeof memData.addMemoryIfNew === 'function', 'addMemoryIfNew deduplication helper exists');
+
+          // Test clean baseline
+          const testState = memData.createJourneyReadyQaState();
+          assert(testState.lp === 135 && testState.charXp === 15, 'Clean baseline provides 135 LP, 15 XP');
+          assert(Array.isArray(testState.memories) && testState.memories.length === 0, 'Clean baseline has 0 memories');
+          assert(testState.storageKey === 'koinonia.phase19.save', 'Storage key is koinonia.phase19.save');
+
+          // Test deduplication
+          const r1 = memData.addMemoryIfNew(testState, {
+            memoryType: 'QUEST_COMPLETED',
+            sourceType: 'QUEST',
+            sourceId: 'Q-001',
+            title: 'Steward of the Garden'
+          });
+          assert(r1.added === true, 'First quest memory created');
+          assert(testState.memories.length === 1, 'Memory count is now 1');
+
+          const r2 = memData.addMemoryIfNew(testState, {
+            memoryType: 'QUEST_COMPLETED',
+            sourceType: 'QUEST',
+            sourceId: 'Q-001',
+            title: 'Steward of the Garden'
+          });
+          assert(r2.added === false, 'Duplicate quest memory blocked by deduplication');
+          assert(testState.memories.length === 1, 'Memory count remains 1');
+
+          // Test private reflection
+          const memId = testState.memories[0].id;
+          memData.addPrivateReflection(testState, memId, 'Loved the morning garden work.');
+          assert(testState.memories[0].reflectionText === 'Loved the morning garden work.', 'Private reflection attached to memory');
+          assert(testState.lp === 135 && testState.charXp === 15, 'Reflection editing preserves economy (135 LP, 15 XP)');
+
+          // Test place history
+          memData.recordPlaceVisit(testState, 'sports_hub');
+          assert(testState.placeHistory['sports_hub'] && testState.placeHistory['sports_hub'].visitCount === 1, 'Place visit recorded (visitCount: 1)');
+          memData.recordPlaceVisit(testState, 'sports_hub');
+          assert(testState.placeHistory['sports_hub'].visitCount === 2, 'Second place visit increments count to 2');
+
+          log(`\n=== COMPLETE: ${pass} PASSED, ${fail} FAILED ===`);
+        } catch (err) {
+          log('ERROR during tests: ' + err.message);
+        }
+      };
+
+      // Initial telemetry update
+      updateTelemetry();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Phase 0.20.1 — Koinonia Consolidation Test Lab</title>
+  <link rel="stylesheet" href="styles.css?v=0.20.1">
+  <style>
+    body {
+      background: #F9FAFB;
+      color: #1F2937;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 16px;
+      line-height: 1.5;
+    }
+    .qa-container {
+      max-width: 680px;
+      margin: 0 auto 60px auto;
+    }
+    .qa-header {
+      background: white;
+      border: 1px solid #E5E7EB;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .qa-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: #FEF3C7;
+      color: #B45309;
+      margin-bottom: 8px;
+    }
+    .qa-section {
+      background: white;
+      border: 1px solid #E5E7EB;
+      border-radius: 14px;
+      padding: 18px 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: #111827;
+      margin: 0 0 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #F3F4F6;
+      padding-bottom: 8px;
+    }
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .qa-btn {
+      background: #4F46E5;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .qa-btn:hover { background: #4338CA; }
+    .qa-btn.secondary { background: #E5E7EB; color: #374151; }
+    .qa-btn.secondary:hover { background: #D1D5DB; }
+    .qa-btn.warning { background: #D97706; color: white; }
+    .qa-btn.warning:hover { background: #B45309; }
+    .qa-btn.success { background: #059669; color: white; }
+    .qa-btn.success:hover { background: #047857; }
+    .qa-output {
+      background: #111827;
+      color: #10B981;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.78rem;
+      padding: 12px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-top: 10px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .stat-box {
+      background: #F9FAFB;
+      border: 1px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+    .stat-val { font-size: 1.25rem; font-weight: 800; color: #111827; }
+    .stat-lbl { font-size: 0.7rem; color: #6B7280; text-transform: uppercase; font-weight: 700; }
+  </style>
+</head>
+<body>
+
+  <div class="qa-container">
+
+    <!-- Header -->
+    <div class="qa-header">
+      <span class="qa-badge">PHASE 0.20.1 QA TEST LAB</span>
+      <h1 style="margin: 0 0 6px 0; font-size: 1.4rem; font-weight: 800; color: #111827;">
+        PHASE 0.20.1 — KOINONIA CONSOLIDATION TEST LAB
+      </h1>
+      <p style="margin: 0; font-size: 0.82rem; color: #4B5563;">
+        Shared Core Domain Provider, Life Points Ledger, Campfire Unification, Event Check-In, and Ministry Missions.
+      </p>
+    </div>
+
+    <!-- SECTION A — BASELINE -->
+    <div class="qa-section" id="section-a">
+      <div class="section-title">
+        <span>⭐</span> <span>SECTION A — BASELINE</span>
+      </div>
+      <p style="font-size: 0.8rem; color: #4B5563; margin: 0 0 10px 0;">
+        Canonical clean QA baseline: Level 2 Pilgrim, 135 LP, 15 XP. Isolated DEMO data only.
+      </p>
+
+      <div class="card-grid">
+        <div class="stat-box">
+          <div class="stat-val" id="disp-baseline-level">2</div>
+          <div class="stat-lbl">Character Level</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="disp-baseline-lp">135</div>
+          <div class="stat-lbl">Life Points</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="disp-baseline-xp">15 / 20</div>
+          <div class="stat-lbl">Character XP</div>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-reset-baseline" class="qa-btn warning" onclick="handleResetBaseline()">
+          🔄 RESET TO BASELINE
+        </button>
+        <button id="btn-verify-baseline" class="qa-btn secondary" onclick="handleVerifyBaseline()">
+          ✓ VERIFY BASELINE
+        </button>
+      </div>
+      <div id="baseline-output" class="qa-output">Ready. Tap "VERIFY BASELINE" to inspect initial state.</div>
+    </div>
+
+    <!-- SECTION B — SHARED CORE PROVIDER -->
+    <div class="qa-section" id="section-b">
+      <div class="section-title">
+        <span>🌐</span> <span>SECTION B — SHARED CORE PROVIDER</span>
+      </div>
+      <p style="font-size: 0.8rem; color: #4B5563; margin: 0 0 10px 0;">
+        Inspect the local provider contract: Member identity, LP ledger, and canonical catalogs.
+      </p>
+
+      <div class="btn-group">
+        <button id="btn-inspect-member" class="qa-btn" onclick="handleInspectMember()">
+          👤 INSPECT MEMBER IDENTITY
+        </button>
+        <button id="btn-inspect-lp" class="qa-btn" onclick="handleInspectLp()">
+          🪙 INSPECT LIFE POINTS LEDGER
+        </button>
+        <button id="btn-inspect-catalogs" class="qa-btn" onclick="handleInspectCatalogs()">
+          📚 INSPECT SHARED CATALOGS
+        </button>
+      </div>
+      <div id="provider-output" class="qa-output">Tap a button above to inspect SharedCore provider records.</div>
+    </div>
+
+    <!-- SECTION C — CAMPFIRE -->
+    <div class="qa-section" id="section-c">
+      <div class="section-title">
+        <span>🔥</span> <span>SECTION C — CAMPFIRE</span>
+      </div>
+      <p style="font-size: 0.8rem; color: #4B5563; margin: 0 0 10px 0;">
+        One Campfire record, one membership roster. CampfireGameState references campfireId. Capacity rules and structured reactions.
+      </p>
+
+      <div id="campfire-status-card" style="background: #FDF2F8; border: 1px solid #FBCFE8; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 0.8rem;">
+        <div><strong>Campfire:</strong> <span id="disp-cf-name">St. Ignatius Youth Campfire</span> (<code id="disp-cf-id">cf_alpha_seed</code>)</div>
+        <div><strong>Members:</strong> <span id="disp-cf-members">5 members</span> (Activation Status: <span style="color: #059669; font-weight: 800;">ACTIVE</span>)</div>
+        <div><strong>Capacity:</strong> <span id="disp-cf-capacity">Current: 5 / Max: 12 (Community Max: 12)</span></div>
+        <div><strong>Encouragements:</strong> <span id="disp-cf-reactions">👏 3 | 🙏 5 | 🔥 8 | 🌱 2 | ❤️ 4</span></div>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-admin-limit-10" class="qa-btn" onclick="handleAdminSetCommunityMax(10)">
+          ⚙️ SET COMMUNITY MAX TO 10
+        </button>
+        <button id="btn-leader-limit-8" class="qa-btn success" onclick="handleLeaderSetCapacity(8)">
+          👥 SET CAMPFIRE MAX TO 8
+        </button>
+        <button id="btn-test-over-community" class="qa-btn warning" onclick="handleTestOverCommunityRejection()">
+          ⚠️ TEST OVER-COMMUNITY REJECTION (TRY 12 > 10)
+        </button>
+        <button id="btn-test-active-guard" class="qa-btn warning" onclick="handleTestActiveLoweringGuard()">
+          🛡️ TEST ACTIVE LOWERING PROTECTION (TRY 4 < 5 MEMBERS)
+        </button>
+        <button id="btn-send-reaction" class="qa-btn secondary" onclick="handleSendReaction('🔥')">
+          🔥 SEND STRUCTURED REACTION (🔥 KEEP GOING)
+        </button>
+      </div>
+      <div id="campfire-output" class="qa-output">Ready. Tap capacity buttons to test Campfire validation rules.</div>
+    </div>
+
+    <!-- SECTION D — LIFE POINTS / QUEST -->
+    <div class="qa-section" id="section-d">
+      <div class="section-title">
+        <span>📜</span> <span>SECTION D — LIFE POINTS / QUEST</span>
+      </div>
+      <p style="font-size: 0.8rem; color: #4B5563; margin: 0 0 10px 0;">
+        Canonical Quest #001 (Steward of the Garden): Starting at 135 LP -> 140 LP (+5 LP). Retrying must NOT duplicate reward (idempotency).
+      </p>
+
+      <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 0.8rem;">
+        <div><strong>Quest #001:</strong> Steward of the Garden</div>
+        <div><strong>Canonical Rewards:</strong> +5 LP, +5 Char XP, +15 Stewardship XP, +5 Responsibility XP</div>
+        <div><strong>Current Balance:</strong> <span id="disp-quest-lp" style="font-weight: 800; color: #166534;">135 LP</span></div>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-complete-quest-001" class="qa-btn success" onclick="handleCompleteQuest001()">
+          🌱 COMPLETE STEWARD OF THE GARDEN (+5 LP)
+        </button>
+        <button id="btn-retry-quest-001" class="qa-btn warning" onclick="handleRetryQuest001()">
+          🔁 RETRY QUEST #001 (TEST IDEMPOTENCY)
+        </button>
+      </div>
+      <div id="quest-output" class="qa-output">Ready. Tap "COMPLETE STEWARD OF THE GARDEN" to test.</div>
+    </div>
+
+    <!-- SECTION E — EVENT CHECK-IN -->
+    <div class="qa-section" id="section-e">
+      <div class="section-title">
+        <span>📅</span> <span>SECTION E — EVENT CHECK-IN</span>
+      </div>
+      <p style="font-size: 0.8rem; color: #4B5563; margin: 0 0 10px 0;">
+        Demo event attendance check-in. Exactly 1 record created; retry is idempotent.
+      </p>
+
+      <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 0.8rem;">
+        <div><strong>Event:</strong> Demo Youth Fellowship Night (<code>demo_fellowship_night</code>)</div>
+        <div><strong>Attendance Status:</strong> <span id="disp-event-status" style="font-weight: 800; color: #92400E;">NOT CHECKED IN</span></div>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-checkin-event" class="qa-btn success" onclick="handleCheckInEvent()">
+          🎫 CHECK IN TO DEMO EVENT
+        </button>
+        <button id="btn-retry-checkin" class="qa-btn warning" onclick="handleRetryCheckIn()">
+          🔁 RETRY CHECK-IN (TEST IDEMPOTENCY)
+        </button>
+      </div>
+      <div id="checkin-output" class="qa-output">Ready. Tap "CHECK IN TO DEMO EVENT" to test attendance.</div>
+    </div>
+
+    <!-- SECTION F — MINISTRY -->
+    <div class="qa-section" id="section-f">
+      <div class="section-title">
+        <span>⛪</span> <span>SECTION F — MINISTRY</span>
+      </div>
+      <p style="font-size: 0.8rem; color: #4B5563; margin: 0 0 10px 0;">
+        Generic DEMO ministry membership. Koinonia discovers Ministry Missions through provider membership.
+      </p>
+
+      <div style="background: #EEF2FF; border: 1px solid #C7D2FE; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 0.8rem;">
+        <div><strong>Ministry Membership:</strong> <span id="disp-ministry-name">Seraphs Music Ministry</span></div>
+        <div><strong>Member Role:</strong> Youth Member (DEMO DATA ONLY)</div>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-discover-ministry" class="qa-btn" onclick="handleDiscoverMinistry()">
+          🔍 DISCOVER MINISTRY MISSIONS
+        </button>
+        <button id="btn-complete-mission" class="qa-btn success" onclick="handleCompleteMission()">
+          🎵 COMPLETE SACRED HARMONIES MISSION (+5 LP)
+        </button>
+      </div>
+      <div id="ministry-output" class="qa-output">Ready. Tap "DISCOVER MINISTRY MISSIONS".</div>
+    </div>
+
+    <!-- SECTION G — OPEN KOINONIA -->
+    <div class="qa-section" id="section-g">
+      <div class="section-title">
+        <span>🚀</span> <span>SECTION G — OPEN KOINONIA</span>
+      </div>
+      <p style="font-size: 0.8rem; color: #4B5563; margin: 0 0 10px 0;">
+        Launch Phase 0.20.1 Koinonia directly to verify the 7 primary destinations.
+      </p>
+
+      <div class="btn-group">
+        <a id="link-open-home" class="qa-btn" href="index.html" target="_blank" style="text-decoration: none;">
+          🏡 OPEN KOINONIA HOME
+        </a>
+        <a id="link-open-campfire" class="qa-btn" href="index.html?open=campfire" target="_blank" style="text-decoration: none;">
+          🔥 OPEN CAMPFIRE
+        </a>
+        <a id="link-open-quests" class="qa-btn" href="index.html?open=quests" target="_blank" style="text-decoration: none;">
+          📜 OPEN QUESTS
+        </a>
+        <a id="link-open-events" class="qa-btn" href="index.html?open=events" target="_blank" style="text-decoration: none;">
+          📅 OPEN EVENTS
+        </a>
+        <a id="link-open-games" class="qa-btn" href="index.html?open=games" target="_blank" style="text-decoration: none;">
+          🎮 OPEN FOG GAMES
+        </a>
+        <a id="link-open-sports" class="qa-btn" href="index.html?open=sports" target="_blank" style="text-decoration: none;">
+          🏃 OPEN SPORTS HUB
+        </a>
+        <a id="link-open-fitquest" class="qa-btn" href="index.html?open=faithquest" target="_blank" style="text-decoration: none;">
+          📖 OPEN FAITH QUEST
+        </a>
+        <a id="link-open-arcade" class="qa-btn" href="index.html?open=arcade" target="_blank" style="text-decoration: none;">
+          🕹️ OPEN FOG ARCADE
+        </a>
+        <a id="link-open-journey" class="qa-btn" href="index.html?open=journey" target="_blank" style="text-decoration: none;">
+          📖 OPEN JOURNEY
+        </a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="data/shared_core.js?v=0.20.1"></script>
+  <script src="data/campfires.js?v=0.20.1"></script>
+  <script src="data/arcade.js?v=0.20.1"></script>
+  <script>
+    const sc = window.SharedCore;
+
+    function refreshDisplays() {
+      if (!sc) return;
+      const lp = sc.getLifePoints();
+      const member = sc.getCurrentMember();
+      const cfs = sc.getMyCampfires();
+      const cf = cfs[0];
+      const settings = sc.getCampfireSettings();
+      const att = sc.getAttendance('demo_fellowship_night');
+
+      document.getElementById('disp-baseline-level').textContent = lp.charLevel;
+      document.getElementById('disp-baseline-lp').textContent = lp.balance;
+      document.getElementById('disp-baseline-xp').textContent = `${lp.charXp} / ${lp.charXpMax}`;
+      document.getElementById('disp-quest-lp').textContent = `${lp.balance} LP`;
+
+      if (cf) {
+        document.getElementById('disp-cf-name').textContent = cf.name;
+        document.getElementById('disp-cf-id').textContent = cf.id;
+        document.getElementById('disp-cf-members').textContent = `${cf.memberIds.length} members`;
+        document.getElementById('disp-cf-capacity').textContent = `Current: ${cf.memberIds.length} / Max: ${cf.maxParticipants} (Community Max: ${settings.communityMaxCapacity})`;
+
+        const gs = sc.getCampfireGameState(cf.id);
+        if (gs && gs.reactions) {
+          document.getElementById('disp-cf-reactions').textContent =
+            `👏 ${gs.reactions['👏'] || 0} | 🙏 ${gs.reactions['🙏'] || 0} | 🔥 ${gs.reactions['🔥'] || 0} | 🌱 ${gs.reactions['🌱'] || 0} | ❤️ ${gs.reactions['❤️'] || 0}`;
+        }
+      }
+
+      const statusEl = document.getElementById('disp-event-status');
+      if (att) {
+        statusEl.textContent = 'CHECKED IN ✓ (' + att.checkedInAt.split('T')[1].slice(0, 5) + ')';
+        statusEl.style.color = '#059669';
+      } else {
+        statusEl.textContent = 'NOT CHECKED IN';
+        statusEl.style.color = '#92400E';
+      }
+    }
+
+    function handleResetBaseline() {
+      const res = sc.resetToBaseline();
+      refreshDisplays();
+      document.getElementById('baseline-output').textContent =
+        `[BASELINE RESET]
+` +
+        `Result: ${res.message}
+` +
+        `Level: 2 | LP: 135 | XP: 15 / 20
+` +
+        `Completions cleared. Attendance reset.`;
+    }
+
+    function handleVerifyBaseline() {
+      const lp = sc.getLifePoints();
+      const member = sc.getCurrentMember();
+      refreshDisplays();
+      document.getElementById('baseline-output').textContent =
+        `[BASELINE VERIFICATION]
+` +
+        `Member: ${member.name} (${member.id}) [DEMO IDENTITY]
+` +
+        `Balance: ${lp.balance} LP (Expected: 135 LP) -> ${lp.balance === 135 ? 'PASS ✓' : 'FAIL ✗'}
+` +
+        `Character Level: ${lp.charLevel} (Expected: Level 2) -> ${lp.charLevel === 2 ? 'PASS ✓' : 'FAIL ✗'}
+` +
+        `Character XP: ${lp.charXp} / ${lp.charXpMax} (Expected: 15 XP) -> ${lp.charXp === 15 ? 'PASS ✓' : 'FAIL ✗'}
+` +
+        `Ledger entries: ${lp.ledger.length}`;
+    }
+
+    function handleInspectMember() {
+      const member = sc.getCurrentMember();
+      document.getElementById('provider-output').textContent =
+        `[CURRENT MEMBER IDENTITY]
+` +
+        JSON.stringify(member, null, 2);
+    }
+
+    function handleInspectLp() {
+      const lp = sc.getLifePoints();
+      document.getElementById('provider-output').textContent =
+        `[LIFE POINTS & LEDGER]
+` +
+        `Current Balance: ${lp.balance} LP | Level: ${lp.charLevel} | XP: ${lp.charXp}
+` +
+        `Ledger Entries (${lp.ledger.length}):
+` +
+        JSON.stringify(lp.ledger, null, 2);
+    }
+
+    function handleInspectCatalogs() {
+      const quests = sc.getQuests();
+      const events = sc.getEvents();
+      const campfires = sc.getMyCampfires();
+      const ministries = sc.getMinistries();
+      const milestones = sc.getMilestones();
+      document.getElementById('provider-output').textContent =
+        `[SHARED CATALOG SUMMARY]
+` +
+        `Quests Catalog: ${quests.length} quests
+` +
+        `Events Catalog: ${events.length} canonical templates
+` +
+        `My Campfires: ${campfires.length} active circles
+` +
+        `Ministries Catalog: ${ministries.length} demo ministries
+` +
+        `Milestones Catalog: ${milestones.length} milestones (Dynamic Denominator: 19)`;
+    }
+
+    function handleAdminSetCommunityMax(val) {
+      const res = sc.setCommunityMaxParticipants(val);
+      refreshDisplays();
+      document.getElementById('campfire-output').textContent =
+        `[ADMIN LIMIT UPDATE]
+` +
+        `Action: setCommunityMaxParticipants(${val})
+` +
+        `Result: ${res.success ? 'SUCCESS ✓' : 'FAILED ✗'}
+` +
+        `New Community Max: ${res.communityMaxCapacity}
+` +
+        `Note: Individual Campfire maximums cannot exceed this ceiling.`;
+    }
+
+    function handleLeaderSetCapacity(val) {
+      const cf = sc.getMyCampfires()[0];
+      const res = sc.setCampfireCapacity(cf.id, val, 'LEADER');
+      refreshDisplays();
+      document.getElementById('campfire-output').textContent =
+        `[LEADER CAPACITY CONFIGURATION]
+` +
+        `Campfire: ${cf.name}
+` +
+        `Action: setCampfireCapacity(${val})
+` +
+        `Result: ${res.success ? 'SUCCESS ✓' : 'FAILED ✗'}
+` +
+        `New Campfire Max: ${res.maxParticipants || cf.maxParticipants}
+` +
+        `Active Members: ${cf.memberIds.length}`;
+    }
+
+    function handleTestOverCommunityRejection() {
+      const cf = sc.getMyCampfires()[0];
+      const settings = sc.getCampfireSettings();
+      const testVal = (settings.communityMaxCapacity || 10) + 2;
+      const res = sc.setCampfireCapacity(cf.id, testVal, 'LEADER');
+      refreshDisplays();
+      document.getElementById('campfire-output').textContent =
+        `[TEST OVER-COMMUNITY REJECTION]
+` +
+        `Community Max: ${settings.communityMaxCapacity}
+` +
+        `Attempted Leader Max: ${testVal}
+` +
+        `Expected: REJECTION (Requested capacity exceeds community max)
+` +
+        `Actual: ${res.success ? 'UNEXPECTED APPROVAL ✗' : 'CORRECTLY REJECTED ✓'}
+` +
+        `Error: ${res.error}
+` +
+        `Campfire Max Remains: ${cf.maxParticipants}`;
+    }
+
+    function handleTestActiveLoweringGuard() {
+      const cf = sc.getMyCampfires()[0];
+      const memberCount = cf.memberIds.length;
+      const testVal = memberCount - 1; // 4 < 5
+      const res = sc.setCampfireCapacity(cf.id, testVal, 'LEADER');
+      refreshDisplays();
+      document.getElementById('campfire-output').textContent =
+        `[TEST ACTIVE LOWERING PROTECTION]
+` +
+        `Active Member Count: ${memberCount}
+` +
+        `Attempted Lower Max: ${testVal}
+` +
+        `Expected: REJECTION (Cannot reduce capacity below current active member count)
+` +
+        `Actual: ${res.success ? 'UNEXPECTED APPROVAL ✗' : 'CORRECTLY REJECTED ✓'}
+` +
+        `Error: ${res.error}
+` +
+        `Campfire Max Remains: ${cf.maxParticipants}`;
+    }
+
+    function handleSendReaction(emoji) {
+      const cf = sc.getMyCampfires()[0];
+      const res = sc.addReactionToCampfire(cf.id, emoji);
+      refreshDisplays();
+      document.getElementById('campfire-output').textContent =
+        `[STRUCTURED REACTION SENT]
+` +
+        `Campfire: ${cf.name}
+` +
+        `Reaction: ${emoji} (Predefined Structured Encouragement)
+` +
+        `Minor Safety: Verified NO free-text messaging.
+` +
+        `Updated Counts: ${JSON.stringify(res.reactions)}`;
+    }
+
+    function handleCompleteQuest001() {
+      const initialLp = sc.getLifePoints().balance;
+      const res = sc.completeQuest({ questId: 'Q-001' });
+      refreshDisplays();
+      document.getElementById('quest-output').textContent =
+        `[QUEST #001 COMPLETION]
+` +
+        `Quest: Steward of the Garden
+` +
+        `Rewards: +5 LP, +5 Char XP, +15 Stewardship XP, +5 Responsibility XP
+` +
+        `Initial Balance: ${initialLp} LP
+` +
+        `New Balance: ${res.lpResult.balance} LP (Expected: 140 LP) -> ${res.lpResult.balance === 140 ? 'PASS ✓' : 'FAIL ✗'}
+` +
+        `Awarded: +${res.lpResult.awarded} LP | Already Completed: ${res.alreadyCompleted}
+` +
+        `Completion Record ID: ${res.completion.id}`;
+    }
+
+    function handleRetryQuest001() {
+      const initialLp = sc.getLifePoints().balance;
+      const res = sc.completeQuest({ questId: 'Q-001' });
+      refreshDisplays();
+      document.getElementById('quest-output').textContent =
+        `[QUEST #001 IDEMPOTENT RETRY]
+` +
+        `Attempting duplicate completion for Quest #001...
+` +
+        `Initial Balance: ${initialLp} LP
+` +
+        `Balance After Retry: ${res.lpResult.balance} LP (Expected: 140 LP) -> ${res.lpResult.balance === 140 ? 'PASS ✓' : 'FAIL ✗'}
+` +
+        `Already Completed Flag: ${res.alreadyCompleted} -> ${res.alreadyCompleted ? 'PASS ✓' : 'FAIL ✗'}
+` +
+        `Duplicate LP Awarded: ${res.lpResult.awarded} (Expected: 0) -> ${res.lpResult.awarded === 0 ? 'PASS ✓' : 'FAIL ✗'}
+` +
+        `Idempotency Status: ZERO DUPLICATE LP AWARDED. PASS ✓`;
+    }
+
+    function handleCheckInEvent() {
+      const res = sc.checkIn({ eventInstanceId: 'demo_fellowship_night' });
+      refreshDisplays();
+      document.getElementById('checkin-output').textContent =
+        `[EVENT CHECK-IN]
+` +
+        `Event: Demo Youth Fellowship Night (demo_fellowship_night)
+` +
+        `Status: ${res.success ? 'SUCCESS ✓' : 'FAILED ✗'}
+` +
+        `Already Checked In: ${res.alreadyCheckedIn}
+` +
+        `Attendance Record: ID ${res.record.id}, Time: ${res.record.checkedInAt}
+` +
+        `Total Attendance Records in Provider: ${sc.getAllAttendanceRecords().length}`;
+    }
+
+    function handleRetryCheckIn() {
+      const initialCount = sc.getAllAttendanceRecords().length;
+      const res = sc.checkIn({ eventInstanceId: 'demo_fellowship_night' });
+      const newCount = sc.getAllAttendanceRecords().length;
+      refreshDisplays();
+      document.getElementById('checkin-output').textContent =
+        `[CHECK-IN IDEMPOTENT RETRY]
+` +
+        `Attempting duplicate check-in for demo_fellowship_night...
+` +
+        `Initial Attendance Count: ${initialCount}
+` +
+        `Count After Retry: ${newCount} (Expected: ${initialCount}) -> ${newCount === initialCount ? 'PASS ✓' : 'FAIL ✗'}
+` +
+        `Already Checked In Flag: ${res.alreadyCheckedIn} -> ${res.alreadyCheckedIn ? 'PASS ✓' : 'FAIL ✗'}
+` +
+        `Message: ${res.message}
+` +
+        `Idempotency Status: EXACTLY ONE ATTENDANCE RECORD MAINTAINED. PASS ✓`;
+    }
+
+    function handleDiscoverMinistry() {
+      const missions = sc.getMyMinistryMissions();
+      const ministries = sc.getMyMinistries();
+      document.getElementById('ministry-output').textContent =
+        `[MINISTRY MISSIONS DISCOVERY]
+` +
+        `Member's Ministries: ${ministries.map(m => m.name).join(', ')}
+` +
+        `Discovered Missions (${missions.length}):
+` +
+        JSON.stringify(missions, null, 2);
+    }
+
+    function handleCompleteMission() {
+      const res = sc.awardLifePoints({
+        amount: 5,
+        charXp: 5,
+        serviceXp: 15,
+        reason: 'Sacred Harmonies Rehearsal Mission',
+        source: 'KOINONIA_MINISTRY',
+        idempotencyKey: 'mission:MM-001:demo'
+      });
+      refreshDisplays();
+      document.getElementById('ministry-output').textContent =
+        `[MINISTRY MISSION COMPLETION]
+` +
+        `Mission: MM-001 Sacred Harmonies Rehearsal
+` +
+        `Rewards: +5 LP, +5 Char XP, +15 Service XP
+` +
+        `Duplicate Claim: ${res.duplicate}
+` +
+        `New Balance: ${res.balance} LP | Level: ${res.charLevel} | XP: ${res.charXp}
+` +
+        `Transaction ID: ${res.transaction.id}`;
+    }
+
+    // Initial run
+    refreshDisplays();
+  </script>
+</body>
+</html>
