@@ -47,6 +47,58 @@ function requirePushAvailable(req, res, next) {
     if (!pushNotificationsAvailable) return sendPushUnavailable(res);
     return next();
 }
+
+const MAX_PUSH_SUBSCRIPTION_BYTES = 16 * 1024;
+const MAX_PUSH_ENDPOINT_LENGTH = 4096;
+const MAX_PUSH_KEY_LENGTH = 1024;
+
+function serializeValidatedPushSubscription(subscription) {
+    if (!subscription || typeof subscription !== 'object' || Array.isArray(subscription)) return null;
+
+    const { endpoint, expirationTime = null, keys } = subscription;
+    if (
+        typeof endpoint !== 'string' ||
+        endpoint.length === 0 ||
+        endpoint.length > MAX_PUSH_ENDPOINT_LENGTH ||
+        !keys ||
+        typeof keys !== 'object' ||
+        Array.isArray(keys) ||
+        typeof keys.p256dh !== 'string' ||
+        keys.p256dh.length === 0 ||
+        keys.p256dh.length > MAX_PUSH_KEY_LENGTH ||
+        typeof keys.auth !== 'string' ||
+        keys.auth.length === 0 ||
+        keys.auth.length > MAX_PUSH_KEY_LENGTH ||
+        (expirationTime !== null && (!Number.isFinite(expirationTime) || expirationTime < 0))
+    ) return null;
+
+    try {
+        const endpointUrl = new URL(endpoint);
+        if (endpointUrl.protocol !== 'https:' || endpointUrl.username || endpointUrl.password) return null;
+    } catch (err) {
+        return null;
+    }
+
+    const serialized = JSON.stringify({
+        endpoint,
+        expirationTime,
+        keys: {
+            p256dh: keys.p256dh,
+            auth: keys.auth
+        }
+    });
+    return Buffer.byteLength(serialized, 'utf8') <= MAX_PUSH_SUBSCRIPTION_BYTES
+        ? serialized
+        : null;
+}
+
+function getCanonicalPushSubscriptionUsername(auth) {
+    const memberQrCode = auth && auth.member && auth.member.qr_code;
+    if (typeof memberQrCode === 'string' && memberQrCode.length > 0) return memberQrCode;
+    return auth && typeof auth.username === 'string' && auth.username.length > 0
+        ? auth.username
+        : null;
+}
 const SESSION_COOKIE_NAME = 'koinonia_session';
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const SESSION_CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
@@ -971,6 +1023,14 @@ process.on('unhandledRejection', (reason, promise) => console.error('Unhandled R
 
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+
+app.get('/api/push/config', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({
+        enabled: pushNotificationsAvailable,
+        publicKey: pushNotificationsAvailable ? VAPID_PUBLIC_KEY : null
+    });
+});
 
 
 // --- V114: BULLETPROOF COMMUNICATION ENGINE ---
@@ -2749,11 +2809,31 @@ app.get('/api/inbox/personal/:youth_id', (req, res) => {
     });
 });
 
-app.post('/api/communications/subscribe', requirePushAvailable, (req, res) => {
-    const { username, subscription } = req.body;
-    db.run(`INSERT INTO push_subscriptions (username, subscription, created_at) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET subscription = excluded.subscription`, [username, JSON.stringify(subscription), getManilaTime()], function(err) { res.json({ success: true }); });
+app.post('/api/communications/subscribe', requireAuth, requirePushAvailable, (req, res) => {
+    const canonicalUsername = getCanonicalPushSubscriptionUsername(req.auth);
+    const serializedSubscription = serializeValidatedPushSubscription(req.body && req.body.subscription);
+    if (typeof canonicalUsername !== 'string' || canonicalUsername.length === 0) return sendForbidden(res);
+    if (!serializedSubscription) {
+        return res.status(400).json({ success: false, error: 'Invalid push subscription.' });
+    }
+
+    db.run(
+        'INSERT INTO push_subscriptions (username, subscription, created_at) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET subscription = excluded.subscription, created_at = excluded.created_at',
+        [canonicalUsername, serializedSubscription, getManilaTime()],
+        err => {
+            if (err) return res.status(500).json({ success: false, error: 'Unable to save push subscription.' });
+            return res.json({ success: true });
+        }
+    );
 });
-app.post('/api/communications/unsubscribe', requireAuth, (req, res) => { db.run(`DELETE FROM push_subscriptions WHERE username = ?`, [req.auth.username], function(err) { res.json({ success: true }); }); });
+app.post('/api/communications/unsubscribe', requireAuth, (req, res) => {
+    const canonicalUsername = getCanonicalPushSubscriptionUsername(req.auth);
+    if (typeof canonicalUsername !== 'string' || canonicalUsername.length === 0) return sendForbidden(res);
+    db.run('DELETE FROM push_subscriptions WHERE username = ?', [canonicalUsername], err => {
+        if (err) return res.status(500).json({ success: false, error: 'Unable to remove push subscription.' });
+        return res.json({ success: true });
+    });
+});
 app.post('/api/communications/broadcast', requirePushAvailable, (req, res) => {
     const { target, title, message, actor } = req.body;
     db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', getManilaTime()], function(err) {

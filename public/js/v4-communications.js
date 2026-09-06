@@ -1,6 +1,3 @@
-// Your unique Public VAPID Key from the backend
-const PUBLIC_VAPID_KEY = 'BPjMZjGy5VeLPQXNdkiJvfgeMAzQ0db3Pp_0ulzDv8s222iCcF6A7W0sFMdB1uVgz3QlkH7RMU93AX_epSv4IJY';
-
 // Helper function to convert the VAPID key for the browser
 function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -11,6 +8,72 @@ function urlBase64ToUint8Array(base64String) {
         outputArray[i] = rawData.charCodeAt(i);
     }
     return outputArray;
+}
+
+async function getPushConfig() {
+    const response = await fetch('/api/push/config', {
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json' }
+    });
+    if (!response.ok) return { enabled: false, publicKey: null };
+
+    const config = await response.json();
+    if (
+        !config ||
+        config.enabled !== true ||
+        typeof config.publicKey !== 'string' ||
+        config.publicKey.length === 0 ||
+        config.publicKey.length > 256
+    ) return { enabled: false, publicKey: null };
+
+    return { enabled: true, publicKey: config.publicKey };
+}
+
+function pushSubscriptionUsesKey(subscription, configuredKey) {
+    const subscriptionKey = subscription &&
+        subscription.options &&
+        subscription.options.applicationServerKey;
+    if (!subscriptionKey) return false;
+
+    const currentKey = new Uint8Array(subscriptionKey);
+    if (currentKey.length !== configuredKey.length) return false;
+    return currentKey.every((value, index) => value === configuredKey[index]);
+}
+
+async function removeCanonicalPushSubscription() {
+    const response = await fetch('/api/communications/unsubscribe', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+    });
+    if (!response.ok) throw new Error('Unable to remove the previous push subscription.');
+}
+
+async function storeCanonicalPushSubscription(subscription) {
+    const response = await fetch('/api/communications/subscribe', {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ subscription })
+    });
+    if (!response.ok) throw new Error('Unable to save the push subscription.');
+}
+
+async function createAndStorePushSubscription(registration, configuredKey) {
+    const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: configuredKey
+    });
+    try {
+        await storeCanonicalPushSubscription(subscription);
+        return subscription;
+    } catch (err) {
+        try {
+            await subscription.unsubscribe();
+        } catch (cleanupErr) {}
+        throw err;
+    }
 }
 
 window.V4Communications = {
@@ -53,15 +116,30 @@ window.V4Communications = {
         }
 
         try {
+            const config = await getPushConfig();
+            if (!config.enabled) {
+                statusTxt.innerText = "Status: Unavailable";
+                statusTxt.style.color = "var(--danger)";
+                subTxt.innerText = "Push notifications are temporarily unavailable.";
+                btn.innerText = "Unavailable";
+                btn.className = "btn btn-outline btn-sm";
+                btn.disabled = true;
+                return;
+            }
+
+            const configuredKey = urlBase64ToUint8Array(config.publicKey);
             const registration = await navigator.serviceWorker.ready;
             const subscription = await registration.pushManager.getSubscription();
 
             if (subscription) {
-                statusTxt.innerText = "Status: Enabled";
-                statusTxt.style.color = "var(--success)";
-                subTxt.innerText = "You are receiving notifications.";
-                btn.innerText = "Disable";
-                btn.className = "btn btn-outline btn-sm";
+                const usesCurrentKey = pushSubscriptionUsesKey(subscription, configuredKey);
+                statusTxt.innerText = usesCurrentKey ? "Status: Enabled" : "Status: Reactivation required";
+                statusTxt.style.color = usesCurrentKey ? "var(--success)" : "var(--primary)";
+                subTxt.innerText = usesCurrentKey
+                    ? "You are receiving notifications."
+                    : "Tap Reactivate to update notifications securely.";
+                btn.innerText = usesCurrentKey ? "Disable" : "Reactivate";
+                btn.className = usesCurrentKey ? "btn btn-outline btn-sm" : "btn btn-primary btn-sm";
                 btn.disabled = false;
             } else {
                 statusTxt.innerText = "Status: Disabled";
@@ -80,6 +158,12 @@ window.V4Communications = {
             }
         } catch(e) {
             console.error("UI Status check failed", e);
+            statusTxt.innerText = "Status: Unavailable";
+            statusTxt.style.color = "var(--danger)";
+            subTxt.innerText = "Push notification status could not be verified.";
+            btn.innerText = "Unavailable";
+            btn.className = "btn btn-outline btn-sm";
+            btn.disabled = true;
         }
     },
 
@@ -89,50 +173,51 @@ window.V4Communications = {
         btn.innerText = "Working...";
 
         try {
+            const config = await getPushConfig();
+            if (!config.enabled) {
+                alert('Push notifications are temporarily unavailable.');
+                await this.updateUIStatus();
+                return;
+            }
+
+            const configuredKey = urlBase64ToUint8Array(config.publicKey);
             const registration = await navigator.serviceWorker.ready;
             const subscription = await registration.pushManager.getSubscription();
+            const usesCurrentKey = subscription &&
+                pushSubscriptionUsesKey(subscription, configuredKey);
 
-            if (subscription) {
+            if (subscription && usesCurrentKey) {
                 // User wants to Disable
-                await subscription.unsubscribe();
-                await fetch('/api/communications/unsubscribe', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser })
-                });
-                this.updateUIStatus();
+                const removed = await subscription.unsubscribe();
+                if (!removed) throw new Error('Unable to disable the browser push subscription.');
+                await removeCanonicalPushSubscription();
             } else {
-                // User wants to Enable
-                const permission = await Notification.requestPermission();
+                const isReactivation = Boolean(subscription);
+                const permission = Notification.permission === 'granted'
+                    ? 'granted'
+                    : await Notification.requestPermission();
                 if (permission !== 'granted') {
                     alert('Notifications denied. Please enable them in your browser settings.');
-                    this.updateUIStatus();
+                    await this.updateUIStatus();
                     return;
                 }
 
-                const newSub = await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
-                });
-
-                const res = await fetch('/api/communications/subscribe', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser, subscription: newSub })
-                });
-
-                if (res.ok) {
-                    alert('Push notifications enabled successfully!');
-                    this.updateUIStatus();
-                } else {
-                    alert('Failed to save subscription to server.');
-                    this.updateUIStatus();
+                if (isReactivation) {
+                    const removed = await subscription.unsubscribe();
+                    if (!removed) throw new Error('Unable to remove the previous browser push subscription.');
+                    await removeCanonicalPushSubscription();
                 }
+
+                await createAndStorePushSubscription(registration, configuredKey);
+                alert(isReactivation
+                    ? 'Push notifications reactivated successfully!'
+                    : 'Push notifications enabled successfully!');
             }
+            await this.updateUIStatus();
         } catch (err) {
             console.error('Failed to toggle:', err);
             alert('Failed to toggle notifications. Ensure you are using HTTPS.');
-            this.updateUIStatus();
+            await this.updateUIStatus();
         }
     },
 
