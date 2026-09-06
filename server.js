@@ -1511,8 +1511,7 @@ db.serialize(() => {
 
     db.run(`CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, message TEXT, target_audience TEXT, author TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS user_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, announcement_id INTEGER, is_read INTEGER DEFAULT 0, created_at DATETIME)`);
-    db.run("ALTER TABLE personal_inbox ADD COLUMN status TEXT DEFAULT 'Delivered'", () => {});
-    db.run(`CREATE TABLE IF NOT EXISTS personal_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER, receiver_id INTEGER, title TEXT, message TEXT, is_read INTEGER DEFAULT 0, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS personal_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER, receiver_id INTEGER, title TEXT, message TEXT, is_read INTEGER DEFAULT 0, created_at DATETIME, status TEXT DEFAULT 'Delivered')`);
     db.run(`CREATE TABLE IF NOT EXISTS push_subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, subscription TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS blockout_dates (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, block_date TEXT, reason TEXT, created_at DATETIME, UNIQUE(youth_id, block_date))`);
     db.run(`CREATE TABLE IF NOT EXISTS gamification_points (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER UNIQUE, points INTEGER DEFAULT 0, arcade_xp INTEGER DEFAULT 0, growth_xp INTEGER DEFAULT 0, event_xp INTEGER DEFAULT 0, created_at DATETIME)`);
@@ -1542,7 +1541,6 @@ db.serialize(() => {
     db.run("CREATE TABLE IF NOT EXISTS secret_prayer_pals (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, pal_youth_id INTEGER, week_start TEXT, UNIQUE(youth_id, week_start))", ()=>{});
     db.run(`ALTER TABLE youth ADD COLUMN google_id TEXT`, () => {});
     db.run(`ALTER TABLE youth ADD COLUMN facebook_id TEXT`, () => {});
-    db.run(`ALTER TABLE youth ADD COLUMN account_tier TEXT DEFAULT 'New Member'`, () => {});
 
     db.run("ALTER TABLE prayer_requests ADD COLUMN reactions TEXT DEFAULT '{}'", ()=>{});
     db.run("ALTER TABLE group_memories ADD COLUMN reactions TEXT DEFAULT '{}'", ()=>{});
@@ -1566,7 +1564,6 @@ db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE users ADD COLUMN youth_id INTEGER`, () => {});
     db.run(`ALTER TABLE ministry_members ADD COLUMN sub_role TEXT`, () => {});
     db.run(`ALTER TABLE event_roles ADD COLUMN sub_role TEXT`, () => {});
-    db.run(`ALTER TABLE event_roles ADD COLUMN status TEXT DEFAULT 'Pending'`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN roles_restricted_notes TEXT`, () => {});
     db.run(`ALTER TABLE ministries ADD COLUMN logo TEXT`, () => {});
     db.run(`ALTER TABLE songs ADD COLUMN youtube_url TEXT`, () => {});
@@ -1730,6 +1727,130 @@ db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
         }
     });
 });
+
+const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
+    youth: Object.freeze([
+        'id', 'name', 'email', 'qr_code', 'password', 'profile_picture', 'gender',
+        'commitment_intent', 'google_id', 'facebook_id', 'account_tier',
+        'commitment_date', 'commitment_accepted_at', 'commitment_accepted_by', 'address'
+    ]),
+    users: Object.freeze(['id', 'username', 'password', 'permissions', 'youth_id']),
+    events: Object.freeze(['id', 'name', 'event_date', 'event_points', 'roles_restricted_notes']),
+    attendance: Object.freeze(['id', 'youth_id', 'event_id', 'checked_in_at']),
+    pre_registrations: Object.freeze(['id', 'youth_id', 'event_id']),
+    ministries: Object.freeze(['id', 'name', 'restricted_notes', 'logo']),
+    ministry_members: Object.freeze(['id', 'ministry_id', 'youth_id', 'role', 'sub_role', 'is_priority', 'intent_message']),
+    event_roles: Object.freeze(['id', 'event_id', 'youth_id', 'role_name', 'sub_role', 'status']),
+    activity_logs: Object.freeze(['id', 'username', 'action', 'details', 'created_at']),
+    app_settings: Object.freeze(['key', 'value']),
+    personal_inbox: Object.freeze(['id', 'sender_id', 'receiver_id', 'status']),
+    ministry_role_history: Object.freeze(['id', 'ministry_id', 'youth_id', 'role', 'actor', 'timestamp', 'intent_message']),
+    push_subscriptions: Object.freeze(['id', 'username', 'subscription']),
+    discipleship_pathways: Object.freeze(['id', 'title', 'step_order', 'points']),
+    member_milestones: Object.freeze(['id', 'youth_id', 'pathway_id', 'status']),
+    gamification_points: Object.freeze(['id', 'youth_id', 'points', 'arcade_xp', 'growth_xp', 'event_xp']),
+    point_transactions: Object.freeze(['id', 'youth_id', 'type', 'amount']),
+    secret_prayer_pals: Object.freeze(['id', 'youth_id', 'pal_youth_id', 'week_start'])
+});
+
+function quoteMigrationIdentifier(value) {
+    return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+function runMigrationStatement(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function(err) {
+            if (err) return reject(err);
+            resolve({ changes: this.changes });
+        });
+    });
+}
+
+function queryMigrationRows(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows || []));
+    });
+}
+
+async function ensureRuntimeColumn(table, column, declaration) {
+    const columns = await queryMigrationRows(`PRAGMA table_info(${quoteMigrationIdentifier(table)})`);
+    if (columns.some(existing => existing.name === column)) return false;
+    await runMigrationStatement(
+        `ALTER TABLE ${quoteMigrationIdentifier(table)} ADD COLUMN ${declaration}`
+    );
+    return true;
+}
+
+async function assertRuntimeSchema() {
+    for (const [table, requiredColumns] of Object.entries(REQUIRED_RUNTIME_SCHEMA)) {
+        const columns = await queryMigrationRows(`PRAGMA table_info(${quoteMigrationIdentifier(table)})`);
+        if (columns.length === 0) throw new Error(`required table is missing: ${table}`);
+        const available = new Set(columns.map(column => column.name));
+        const missing = requiredColumns.filter(column => !available.has(column));
+        if (missing.length > 0) {
+            throw new Error(`required columns are missing from ${table}: ${missing.join(', ')}`);
+        }
+    }
+}
+
+async function applyDeterministicRuntimeMigration() {
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS ministry_role_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ministry_id INTEGER,
+        youth_id INTEGER,
+        role TEXT,
+        actor TEXT,
+        timestamp DATETIME,
+        intent_message TEXT
+    )`);
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS personal_inbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER,
+        receiver_id INTEGER,
+        title TEXT,
+        message TEXT,
+        is_read INTEGER DEFAULT 0,
+        created_at DATETIME,
+        status TEXT DEFAULT 'Delivered'
+    )`);
+
+    await ensureRuntimeColumn('personal_inbox', 'status', "status TEXT DEFAULT 'Delivered'");
+    await ensureRuntimeColumn('youth', 'address', 'address TEXT');
+    await ensureRuntimeColumn('youth', 'commitment_date', 'commitment_date TEXT');
+    await ensureRuntimeColumn('youth', 'commitment_accepted_at', 'commitment_accepted_at TEXT');
+    await ensureRuntimeColumn('youth', 'commitment_accepted_by', 'commitment_accepted_by TEXT');
+
+    const eventRoleStatusAdded = await ensureRuntimeColumn(
+        'event_roles',
+        'status',
+        "status TEXT DEFAULT 'Pending'"
+    );
+    if (eventRoleStatusAdded) {
+        await runMigrationStatement("UPDATE event_roles SET status = 'Accepted'");
+    }
+
+    const accountTierAdded = await ensureRuntimeColumn(
+        'youth',
+        'account_tier',
+        "account_tier TEXT DEFAULT 'New Member'"
+    );
+    if (accountTierAdded) {
+        await runMigrationStatement('UPDATE youth SET account_tier = NULL');
+    }
+
+    await assertRuntimeSchema();
+}
+
+async function startServerAfterRuntimeSchemaReady() {
+    try {
+        await applyDeterministicRuntimeMigration();
+        console.log('[MIGRATION] Runtime database schema verified.');
+        app.listen(PORT, () => { console.log(`Server running safely on Port ${PORT}`); });
+    } catch (err) {
+        console.error(`[MIGRATION] Runtime database schema verification failed: ${err.message}`);
+        db.close(() => process.exit(1));
+    }
+}
 
 function logActivity(username, action, details) {
     db.run(`INSERT INTO activity_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)`, [username || 'System', action, details, getManilaTime()]);
@@ -3311,8 +3432,6 @@ app.post('/api/ministries-v37/priority/:mappingId', (req, res) => {
     });
 });
 
-app.listen(PORT, () => { console.log(`Server running safely on Port ${PORT}`); });
-
 app.post('/api/ministries/:id/apply', (req, res) => {
     const { youth_id, intent_message, actor } = req.body;
     if (!youth_id) return res.status(400).json({ error: 'Session error. Please log out and log in again.' });
@@ -3497,3 +3616,5 @@ app.get('/api/admin/users/search', requireAuth, (req, res) => {
         res.json([]);
     }
 });
+
+startServerAfterRuntimeSchemaReady();
