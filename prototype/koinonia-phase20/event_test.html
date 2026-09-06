@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>KOINONIA Phase 0.17 — Event & Campaign Test Lab</title>
+  <link rel="stylesheet" href="styles.css?v=0.17">
+  <style>
+    :root {
+      --brand-burgundy: #4A0E16;
+      --brand-fire-orange: #E65100;
+      --brand-amber-gold: #F59E0B;
+      --tint-gold: #FEF3C7;
+      --bg-warm: #FAF6F0;
+      --brand-charcoal: #2D3748;
+    }
+    html, body {
+      width: 100% !important;
+      height: auto !important;
+      min-height: 100% !important;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      display: block !important;
+      -webkit-overflow-scrolling: touch !important;
+      background: var(--bg-warm);
+      color: var(--brand-charcoal);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 16px;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    .test-container {
+      max-width: 680px;
+      margin: 0 auto;
+      background: #FFFFFF;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(74, 14, 22, 0.08);
+      border: 1px solid rgba(74, 14, 22, 0.1);
+    }
+    .header-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: var(--tint-gold);
+      color: var(--brand-burgundy);
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-family: Georgia, serif;
+      color: var(--brand-burgundy);
+      font-size: 1.4rem;
+      margin: 0 0 6px 0;
+    }
+    p {
+      font-size: 0.88rem;
+      line-height: 1.45;
+      color: #555;
+      margin: 0 0 14px 0;
+    }
+    .status-card {
+      background: #FDF9F3;
+      border: 1px solid #EADBCC;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 0.82rem;
+      border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+    .status-row:last-child {
+      border-bottom: none;
+    }
+    .badge-pass {
+      background: #E6F4EA;
+      color: #137333;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+    .badge-live {
+      background: #FCE8E6;
+      color: #C5221F;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.78rem;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
+    .badge-warn {
+      background: #FEF7E0;
+      color: #B06000;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+    .btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    @media (max-width: 500px) {
+      .btn-group {
+        grid-template-columns: 1fr;
+      }
+    }
+    .btn-test {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 13px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      text-decoration: none;
+      text-align: center;
+      transition: transform 0.1s ease;
+    }
+    .btn-test:active {
+      transform: scale(0.98);
+    }
+    .btn-primary-test {
+      background: var(--brand-burgundy);
+      color: #FFFFFF;
+    }
+    .btn-accent-test {
+      background: var(--brand-fire-orange);
+      color: #FFFFFF;
+    }
+    .btn-secondary-test {
+      background: #F1EAE2;
+      color: var(--brand-burgundy);
+    }
+    .btn-danger-test {
+      background: #FDEDED;
+      color: #C5221F;
+      border: 1px solid #F5C6CB;
+    }
+    .json-preview {
+      background: #202124;
+      color: #8AB4F8;
+      padding: 10px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.72rem;
+      overflow-x: auto;
+      max-height: 180px;
+      margin-top: 10px;
+      white-space: pre-wrap;
+    }
+    .instructions {
+      background: #E8F0FE;
+      border-left: 4px solid #1A73E8;
+      padding: 10px 12px;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.8rem;
+      color: #174EA6;
+      margin-bottom: 14px;
+    }
+    .time-control-box {
+      background: #FFF9F2;
+      border: 1px solid #F2DCC3;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .quick-date-btn {
+      padding: 6px 10px;
+      font-size: 0.75rem;
+      border-radius: 6px;
+      border: 1px solid #D5C2AF;
+      background: #FFF;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .quick-date-btn:hover {
+      background: #F4E8DB;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="test-container">
+    <span class="header-badge">PHASE 0.17 EVENT TEST LAB</span>
+    <h1>Campaigns &amp; Real FOG Events</h1>
+    <p>Deterministic Time Travel, Event Lifecycle, Recurrence Testing &amp; Campaign Progression Verifier.<br><span style='color:#DC2626; font-weight:700; font-size:0.75rem;'>⚠️ NOTICE: All simulated dates/times below are TEST / DEMO INSTANCES ONLY for QA verification. They do not represent official church schedules.</span></p>
+
+    <div class="instructions">
+      <strong>Event Test Lab Quick Guide:</strong>
+      <ul style="margin: 6px 0 0 16px; padding: 0; font-size: 0.78rem;">
+        <li>Use <b>Quick Clock Jumps</b> to jump time into exact live event windows.</li>
+        <li>Inspect <b>Active Events</b>, <b>Active Campaign</b>, and <b>Milestones</b> telemetry.</li>
+        <li>Launch the Prototype to verify in-world live event banners, interactive stages, NPC overrides, and Notice Board!</li>
+      </ul>
+    </div>
+
+    <!-- Time Travel Controls -->
+    <div class="time-control-box">
+      <div style="font-weight: 800; font-size: 0.88rem; color: var(--brand-burgundy); margin-bottom: 8px;">
+        ⏱️ Deterministic Clock Control (Demo Time)
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;">
+        <button class="quick-date-btn" onclick="setTime('2026-09-06T10:00:00+08:00')">📅 [QA DEMO] Sun Sep 6 (Upcoming)</button>
+        <button class="quick-date-btn" onclick="setTime('2026-09-11T20:15:00+08:00')">🔥 [QA DEMO] Sep 11 8:15pm (Demo Glory)</button>
+        <button class="quick-date-btn" onclick="setTime('2026-09-12T15:30:00+08:00')">🔥 [QA DEMO] Sep 12 3:30pm (Demo Alpha Session - 15:00 Start)</button>
+        <button class="quick-date-btn" onclick="setTime('2026-10-03T15:30:00+08:00')">🔥 [QA DEMO] Oct 3 3:30pm (Demo 1st Sat Hangout - 15:00 Start)</button>
+        <button class="quick-date-btn" onclick="setTime('2026-10-24T09:30:00+08:00')">🔥 [QA DEMO] Oct 24 9:30am (Demo Alpha Day - 08:30 Start)</button>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="datetime-local" id="custom-datetime" style="padding: 6px; border: 1px solid #CCC; border-radius: 6px; font-size: 0.82rem; flex: 1;">
+        <button class="quick-date-btn" style="background: var(--brand-burgundy); color: #FFF;" onclick="applyCustomTime()">Set Clock</button>
+        <button class="quick-date-btn" onclick="resetClock()">Reset Clock</button>
+      </div>
+    </div>
+
+    <!-- Status & Telemetry Card -->
+    <div class="status-card">
+      <div style="font-weight: 800; font-size: 0.88rem; color: var(--brand-burgundy); margin-bottom: 8px;">
+        Live Telemetry (<code>koinonia.phase17.save</code>)
+      </div>
+
+      <div class="status-row">
+        <span>Current System Clock:</span>
+        <span id="stat-system-clock" style="font-family: monospace; font-size: 0.75rem;">-</span>
+      </div>
+      <div class="status-row">
+        <span>Active Demo Clock:</span>
+        <span id="stat-demo-clock" style="font-family: monospace; font-size: 0.75rem; font-weight: 700;">-</span>
+      </div>
+      <div class="status-row">
+        <span>Live Events Right Now:</span>
+        <span id="stat-live-events" class="badge-warn">None</span>
+      </div>
+      <div class="status-row">
+        <span>Active Campaign:</span>
+        <span id="stat-active-campaign" style="font-weight: 700;">None</span>
+      </div>
+      <div class="status-row">
+        <span>Current Chapter:</span>
+        <span id="stat-current-chapter">-</span>
+      </div>
+      <div class="status-row">
+        <span>Chapters Completed:</span>
+        <span id="stat-chapters-count">-</span>
+      </div>
+      <div class="status-row">
+        <span>Events Attended Count:</span>
+        <span id="stat-events-attended">0</span>
+      </div>
+      <div class="status-row">
+        <span>Milestones Unlocked:</span>
+        <span id="stat-milestones" style="font-weight: 700; color: var(--brand-burgundy);">-</span>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="btn-group">
+      <button class="btn-test btn-primary-test" onclick="seedEventReady()">
+        🌱 SEED EVENT-READY STATE
+      </button>
+      <button class="btn-test btn-accent-test" onclick="seedActiveAlphaSession()">
+        📖 SEED ACTIVE ALPHA SESSION
+      </button>
+      <button class="btn-test btn-accent-test" onclick="seedLiveYouthHangout()">
+        🍕 SEED LIVE YOUTH HANGOUT
+      </button>
+      <button class="btn-test btn-accent-test" onclick="seedLiveGloryWorship()">
+        🙌 SEED LIVE GLORY WORSHIP
+      </button>
+      <button class="btn-test btn-danger-test" onclick="resetPhase17()">
+        🗑️ RESET PHASE 0.17 SAVE
+      </button>
+      <a class="btn-test btn-secondary-test" href="index.html" target="_self">
+        🚀 LAUNCH PROTOTYPE
+      </a>
+    </div>
+
+    <!-- Test Suite Quick Run -->
+    <div style="margin-top: 18px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <span style="font-weight: 700; font-size: 0.85rem; color: var(--brand-burgundy);">In-Browser Diagnostic Suite</span>
+        <button class="quick-date-btn" onclick="runInBrowserTests()">Run All Checks</button>
+      </div>
+      <div id="test-results" class="json-preview">// Click 'Run All Checks' to execute live browser assertions...</div>
+    </div>
+
+  </div>
+
+  <script src="data/places.js?v=0.17"></script>
+  <script src="data/quests.js?v=0.17"></script>
+  <script src="data/progression.js?v=0.17"></script>
+  <script src="data/campaigns.js?v=0.17"></script>
+  <script src="data/events.js?v=0.17"></script>
+  <script>
+    const SAVE_KEY = 'koinonia.phase17.save';
+
+    function getSave() {
+      try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function writeSave(saveObj) {
+      try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(saveObj));
+        updateTelemetry();
+      } catch (e) {
+        console.error('Save error', e);
+      }
+    }
+
+    function formatManilaIso(dateOrStr) {
+      if (!dateOrStr) return null;
+      if (typeof dateOrStr === 'string' && dateOrStr.includes('+08:00')) return dateOrStr;
+      if (typeof dateOrStr === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(dateOrStr)) {
+        return dateOrStr.length === 16 ? dateOrStr + ':00+08:00' : dateOrStr + '+08:00';
+      }
+      const d = new Date(dateOrStr);
+      if (isNaN(d.getTime())) return null;
+      const manilaMs = d.getTime() + (8 * 3600000);
+      const md = new Date(manilaMs);
+      const y = md.getUTCFullYear();
+      const m = String(md.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(md.getUTCDate()).padStart(2, '0');
+      const h = String(md.getUTCHours()).padStart(2, '0');
+      const min = String(md.getUTCMinutes()).padStart(2, '0');
+      const s = String(md.getUTCSeconds()).padStart(2, '0');
+      return `${y}-${m}-${day}T${h}:${min}:${s}+08:00`;
+    }
+
+    function setTime(isoStr) {
+      const save = getSave() || createDefaultSave();
+      save.demoNow = formatManilaIso(isoStr);
+      writeSave(save);
+      updateTelemetry();
+    }
+
+    function applyCustomTime() {
+      const val = document.getElementById('custom-datetime').value;
+      if (val) {
+        setTime(val);
+      }
+    }
+
+    function resetClock() {
+      const save = getSave();
+      if (save) {
+        delete save.demoNow;
+        writeSave(save);
+      }
+      updateTelemetry();
+    }
+
+    function createDefaultSave(overrides = {}) {
+      if (window.KOINONIA_EVENTS && typeof window.KOINONIA_EVENTS.createEventReadyQaState === 'function') {
+        return window.KOINONIA_EVENTS.createEventReadyQaState(overrides);
+      }
+      const base = {
+        saveStorageKey: 'koinonia.phase17.save',
+        version: 1,
+        communityId: 'fog',
+        timestamp: new Date().toISOString(),
+        saveReason: 'qa_seed_event_ready',
+        activePlaceId: 'fog_center',
+        spawnId: 'default',
+        isPlayingGame: false,
+        avatar: { x: 12.0, y: 14.8, dir: 'up' },
+        lp: 135,
+        charLevel: 2,
+        charXp: 15,
+        highestLevelReached: 2,
+        levelUpHistory: [{ level: 2, timestamp: '2026-09-06T10:30:00+08:00', title: 'Active Explorer', unlockedPerk: 'Journey Explorer Badge' }],
+        growthAreas: { stewardship: 15, responsibility: 15, service: 10, reflection: 10, discipline: 0, teamwork: 0 },
+        skills: { stewardship: 15, responsibility: 15, discipline: 0, teamwork: 0, service: 10, compassion: 0, reflection: 10 },
+        growthAreaRanks: { stewardship: 'Growing', responsibility: 'Growing', service: 'Growing', reflection: 'Growing', discipline: 'Beginning', teamwork: 'Beginning' },
+        milestones: {},
+        unlockedMilestones: ['m_first_steps', 'm_novice_pilgrim', 'm_gatherer', 'm_visit_school', 'm_visit_sports', 'm_visit_outreach', 'm_five_places'],
+        unlockedPerks: ['Journey Journal Started', 'Journey Explorer Badge'],
+        gardenState: 'lush',
+        gardenLush: true,
+        gateOpen: true,
+        fogCenterUnlocked: true,
+        visitedFogCenter: true,
+        visitedPlaces: ['home', 'fog_center', 'school', 'sports_hub', 'outreach_site'],
+        firstVisitedAt: { home: '2026-09-06T09:00:00+08:00', fog_center: '2026-09-06T10:00:00+08:00', school: '2026-09-06T10:15:00+08:00', sports_hub: '2026-09-06T10:30:00+08:00', outreach_site: '2026-09-06T10:45:00+08:00' },
+        visitCount: { home: 3, fog_center: 2, school: 1, sports_hub: 1, outreach_site: 1 },
+        unlockedPlaces: ['home', 'fog_center', 'school', 'sports_hub', 'outreach_site'],
+        spokenToNpc: { barnaby: true, sister_grace: true, teacher_mia: true, coach_daniel: true, ate_maria: true },
+        questStatus: 'completed',
+        rewardClaimed: true,
+        currentObjective: 'Explore gatherings at FOG Community Center',
+        reflectionText: 'Grateful for peace, stewardship, and family.',
+        audioMuted: true,
+        trackedQuestId: 'Q-004',
+        questProgress: {
+          'Q-001': { status: 'COMPLETED', currentStepIndex: 2, rewardClaimed: true, reflectionText: 'Watered veranda plants quietly.', completedAt: '2026-09-06T09:30:00+08:00' },
+          'Q-002': { status: 'COMPLETED', currentStepIndex: 2, rewardClaimed: true, reflectionText: 'Helped clean table after meal.', completedAt: '2026-09-06T10:00:00+08:00' },
+          'Q-003': { status: 'COMPLETED', currentStepIndex: 2, rewardClaimed: true, reflectionText: 'Spent two quiet minutes in gratitude.', completedAt: '2026-09-06T10:30:00+08:00' },
+          'Q-004': { status: 'AVAILABLE', currentStepIndex: 0, rewardClaimed: false, reflectionText: '', completedAt: null },
+          'Q-005': { status: 'LOCKED', currentStepIndex: 0, rewardClaimed: false, reflectionText: '', completedAt: null }
+        },
+        campaignProgress: {},
+        activeCampaignIds: [],
+        completedCampaignIds: [],
+        eventParticipation: [],
+        completedEventInstances: [],
+        eventsAttendedCount: 0,
+        eventQuestProgress: {},
+        demoNow: '2026-09-06T10:00:00+08:00'
+      };
+      return Object.assign(base, overrides);
+    }
+
+    function seedEventReady() {
+      const s = createDefaultSave({ demoNow: '2026-09-06T10:00:00+08:00' });
+      writeSave(s);
+      alert('Seeded Event-Ready State (Level 2 Active Explorer, 135 LP, 15 XP, Sun Sep 6 2026).');
+    }
+
+    function seedActiveAlphaSession() {
+      const s = createDefaultSave({ demoNow: '2026-09-12T15:30:00+08:00' });
+      s.activeCampaignIds = ['alpha_youth_series'];
+      s.campaignProgress = s.campaignProgress || {};
+      s.campaignProgress['alpha_youth_series'] = {
+        campaignId: 'alpha_youth_series',
+        status: 'ACTIVE',
+        currentChapterIndex: 1,
+        completedChapterIds: ['alpha_ch01'],
+        startedAt: '2026-09-05T10:00:00+08:00',
+        completedAt: null
+      };
+      if (!s.unlockedMilestones.includes('m_campaign_start')) {
+        s.unlockedMilestones.push('m_campaign_start');
+      }
+      writeSave(s);
+      alert('Seeded Active Alpha Session: Chapter 2 ready, time set to Sat Sep 12 15:30 (Live Alpha Session, 15:00 start).');
+    }
+
+    function seedLiveYouthHangout() {
+      const s = createDefaultSave({ demoNow: '2026-10-03T15:30:00+08:00' });
+      writeSave(s);
+      alert('Seeded Live Youth Hangout: Time set to 1st Saturday Oct 3 15:30 (15:00 start).');
+    }
+
+    function seedLiveGloryWorship() {
+      const s = createDefaultSave({ demoNow: '2026-09-11T20:15:00+08:00' });
+      writeSave(s);
+      alert('Seeded Live Glory Worship: Time set to Friday Sep 11 20:15 (20:00 demo start).');
+    }
+
+    function resetPhase17() {
+      if (confirm('Clear ONLY koinonia.phase17.save from localStorage?')) {
+        localStorage.removeItem(SAVE_KEY);
+        updateTelemetry();
+        alert('Phase 0.17 state reset.');
+      }
+    }
+
+    function updateTelemetry() {
+      const s = getSave();
+      const now = s && s.demoNow ? new Date(s.demoNow) : new Date();
+
+      document.getElementById('stat-system-clock').textContent = new Date().toLocaleString();
+      document.getElementById('stat-demo-clock').textContent = s && s.demoNow ? new Date(s.demoNow).toLocaleString() + ' (Demo Override)' : 'Real-time System Clock';
+
+      // Live events
+      let liveList = [];
+      if (window.KOINONIA_EVENTS && typeof window.KOINONIA_EVENTS.getLiveEvents === 'function') {
+        liveList = window.KOINONIA_EVENTS.getLiveEvents(now);
+      }
+      const liveElem = document.getElementById('stat-live-events');
+      if (liveList.length > 0) {
+        liveElem.className = 'badge-live';
+        liveElem.textContent = liveList.map(e => e.title).join(', ') + ' (' + liveList.length + ' LIVE)';
+      } else {
+        liveElem.className = 'badge-warn';
+        liveElem.textContent = 'None';
+      }
+
+      // Campaign
+      const activeCampId = s && s.activeCampaignIds && s.activeCampaignIds[0];
+      const campElem = document.getElementById('stat-active-campaign');
+      if (campElem) campElem.textContent = activeCampId || 'None';
+
+      const curChElem = document.getElementById('stat-current-chapter');
+      const countChElem = document.getElementById('stat-chapters-count');
+      if (activeCampId && s.campaignProgress && s.campaignProgress[activeCampId]) {
+        const cp = s.campaignProgress[activeCampId];
+        const completedCount = (cp.completedChapterIds || []).length;
+        const currentIdx = (typeof cp.currentChapterIndex === 'number') ? cp.currentChapterIndex : completedCount;
+        const currentSeq = currentIdx + 1;
+        if (curChElem) curChElem.textContent = `Chapter ${currentSeq} (Index ${currentIdx})`;
+        if (countChElem) countChElem.textContent = `${completedCount} completed`;
+      } else {
+        if (curChElem) curChElem.textContent = '-';
+        if (countChElem) countChElem.textContent = '0 completed';
+      }
+
+      // Events attended
+      document.getElementById('stat-events-attended').textContent = s && s.eventsAttendedCount ? s.eventsAttendedCount : '0';
+
+      // Milestones
+      const totalMilestones = (window.KOINONIA_GROWTH && window.KOINONIA_GROWTH.MILESTONES) ? window.KOINONIA_GROWTH.MILESTONES.length : 19;
+      const unlockedCount = s && s.unlockedMilestones ? s.unlockedMilestones.length : 0;
+      document.getElementById('stat-milestones').textContent = unlockedCount + ' / ' + totalMilestones;
+    }
+
+    function runInBrowserTests() {
+      const results = [];
+      function assert(cond, name) {
+        if (cond) {
+          results.push('✅ PASS: ' + name);
+        } else {
+          results.push('❌ FAIL: ' + name);
+        }
+      }
+
+      try {
+        assert(window.KOINONIA_CAMPAIGNS && window.KOINONIA_CAMPAIGNS.CAMPAIGNS.length > 0, 'Campaigns registry loaded');
+        const alpha = window.KOINONIA_CAMPAIGNS.getCampaignById('alpha_youth_series');
+        assert(alpha && alpha.chapters.length === 12, 'Alpha Youth Series has canonical 12 chapters');
+        assert(alpha.chapters[11].type === 'DAY_AWAY', 'Alpha Chapter 12 is Alpha Youth Day (DAY_AWAY)');
+        assert(alpha.chapters[8].type === 'SESSION', 'Alpha Chapter 9 is regular SESSION');
+        
+        assert(window.KOINONIA_EVENTS && window.KOINONIA_EVENTS.EVENT_TEMPLATES.length >= 4, 'Event templates loaded (>= 4)');
+        
+        // Test Friday Glory Worship (Demo instance, +08:00)
+        const friDate = window.KOINONIA_EVENTS.parseDate('2026-09-11T20:15:00+08:00');
+        const liveFri = window.KOINONIA_EVENTS.getLiveEvents(friDate);
+        assert(liveFri.some(e => e.id === 'inst_gitg_20260911' || e.templateId === 'get_into_the_glory'), 'Friday Glory is LIVE on Friday Sep 11 20:15 (+08:00)');
+
+        // Test Saturday Alpha Session (Demo instance, 15:00 start, +08:00)
+        const satDate = window.KOINONIA_EVENTS.parseDate('2026-09-12T15:30:00+08:00');
+        const liveSat = window.KOINONIA_EVENTS.getLiveEvents(satDate);
+        assert(liveSat.some(e => e.id === 'inst_alpha_20260912' || e.templateId === 'alpha_session_event'), 'Alpha Session is LIVE on Saturday Sep 12 15:30 (+08:00)');
+
+        // Test 1st Saturday Youth Hangout (Demo instance, 15:00 start, +08:00)
+        const hangoutDate = window.KOINONIA_EVENTS.parseDate('2026-10-03T15:30:00+08:00');
+        const liveHangout = window.KOINONIA_EVENTS.getLiveEvents(hangoutDate);
+        assert(liveHangout.some(e => e.id === 'inst_hangout_20261003' || e.templateId === 'youth_hangouts'), 'Youth Hangout is LIVE on 1st Sat Oct 3 15:30 (+08:00)');
+
+        // Test Non-Event Date
+        const nonDate = window.KOINONIA_EVENTS.parseDate('2026-09-08T12:00:00+08:00');
+        const liveNon = window.KOINONIA_EVENTS.getLiveEvents(nonDate);
+        assert(liveNon.length === 0, 'No live events on Tuesday Sep 8 noon (+08:00)');
+
+        // Milestones count
+        const milestones = window.KOINONIA_GROWTH ? window.KOINONIA_GROWTH.MILESTONES : [];
+        assert(milestones.length === 19, 'Milestones registry has exactly 19 canonical milestones');
+        assert(milestones.some(m => m.id === 'm_campaign_start'), 'm_campaign_start milestone exists');
+        assert(milestones.some(m => m.id === 'm_campaign_complete'), 'm_campaign_complete milestone exists');
+        assert(milestones.some(m => m.id === 'm_first_event_attended'), 'm_first_event_attended milestone exists');
+
+        // Event quests
+        assert(window.KOINONIA_DATA && window.KOINONIA_DATA.CALLING_CATALOG, 'Calling catalog loaded');
+        const callings = window.KOINONIA_DATA.CALLING_CATALOG;
+        assert(callings.some(c => c.id === 'E-Q001' && c.rewards.lifePoints === 5 && c.rewards.charXp === 5), 'E-Q001 event calling configured (+5 LP, +5 XP)');
+        assert(callings.some(c => c.id === 'E-Q002'), 'E-Q002 event calling exists');
+        assert(callings.some(c => c.id === 'E-Q003'), 'E-Q003 event calling exists');
+
+        document.getElementById('test-results').textContent = results.join('\n');
+      } catch (e) {
+        document.getElementById('test-results').textContent = 'Error running tests: ' + e.message;
+      }
+    }
+
+    // Initialize telemetry
+    updateTelemetry();
+    setInterval(updateTelemetry, 3000);
+  </script>
+</body>
+</html>
