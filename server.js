@@ -29,24 +29,6 @@ const PASSWORD_SCRYPT_PARAMS = Object.freeze({
 });
 const PASSWORD_HASH_PREFIX = `${PASSWORD_HASH_SCHEME}$${PASSWORD_HASH_VERSION}$`;
 const PASSWORD_MAX_INPUT_BYTES = 1024;
-const CREDENTIAL_RISK_CLASSIFICATION = Object.freeze({
-    PASSWORDLESS: 'PASSWORDLESS',
-    VERSIONED_SCRYPT: 'VERSIONED_SCRYPT',
-    LEGACY_NON_PREDICTABLE: 'LEGACY_NON_PREDICTABLE',
-    LEGACY_PREDICTABLE: 'LEGACY_PREDICTABLE',
-    MALFORMED_VERSIONED: 'MALFORMED_VERSIONED',
-    UNKNOWN_UNSAFE: 'UNKNOWN_UNSAFE'
-});
-const ACCOUNT_CREDENTIAL_SECURITY_CLASSIFICATION = Object.freeze({
-    PASSWORDLESS: 'PASSWORDLESS',
-    VERSIONED_SCRYPT: 'VERSIONED_SCRYPT',
-    MALFORMED_VERSIONED: 'MALFORMED_VERSIONED',
-    UNKNOWN_UNSAFE: 'UNKNOWN_UNSAFE',
-    PRIVILEGED_LEGACY_PREDICTABLE_QUARANTINE_REQUIRED: 'PRIVILEGED_LEGACY_PREDICTABLE_QUARANTINE_REQUIRED',
-    ORDINARY_LEGACY_PREDICTABLE_TEMPORARILY_ALLOWED: 'ORDINARY_LEGACY_PREDICTABLE_TEMPORARILY_ALLOWED',
-    LEGACY_PRIVILEGED_ROTATION_REQUIRED: 'LEGACY_PRIVILEGED_ROTATION_REQUIRED',
-    LEGACY_NON_PREDICTABLE: 'LEGACY_NON_PREDICTABLE'
-});
 const PASSWORD_LOGIN_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const PASSWORD_LOGIN_IP_ATTEMPT_LIMIT = 30;
 const PASSWORD_LOGIN_ACCOUNT_FAILURE_LIMIT = 6;
@@ -55,7 +37,6 @@ const PASSWORD_LOGIN_ACCOUNT_KEY_LIMIT = 4096;
 const PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const passwordLoginIpAttempts = new Map();
 const passwordLoginAccountFailures = new Map();
-const passwordLoginQuarantineAudits = new Map();
 
 function deriveScryptKey(password, salt, params = PASSWORD_SCRYPT_PARAMS) {
     return new Promise((resolve, reject) => {
@@ -163,88 +144,6 @@ async function verifyPassword(password, storedValue) {
     }
 }
 
-function classifyStoredCredentialRisk(storedCredential, canonicalUser = null, canonicalMember = null) {
-    if (storedCredential === null || storedCredential === '') {
-        return CREDENTIAL_RISK_CLASSIFICATION.PASSWORDLESS;
-    }
-    if (typeof storedCredential !== 'string') {
-        return CREDENTIAL_RISK_CLASSIFICATION.UNKNOWN_UNSAFE;
-    }
-    if (isVersionedPasswordHash(storedCredential)) {
-        return parseVersionedPasswordHash(storedCredential)
-            ? CREDENTIAL_RISK_CLASSIFICATION.VERSIONED_SCRYPT
-            : CREDENTIAL_RISK_CLASSIFICATION.MALFORMED_VERSIONED;
-    }
-
-    // These are the only public identifiers historically used as default passwords.
-    const canonicalPredictableValues = [
-        canonicalUser && canonicalUser.username,
-        canonicalMember && canonicalMember.qr_code
-    ].filter(value => typeof value === 'string' && value.length > 0);
-    let matchesPredictableValue = false;
-    for (const value of canonicalPredictableValues) {
-        if (timingSafeCredentialEqual(storedCredential, value)) matchesPredictableValue = true;
-    }
-    return matchesPredictableValue
-        ? CREDENTIAL_RISK_CLASSIFICATION.LEGACY_PREDICTABLE
-        : CREDENTIAL_RISK_CLASSIFICATION.LEGACY_NON_PREDICTABLE;
-}
-
-function canonicalUserHasElevatedPermissions(canonicalUser) {
-    if (!canonicalUser) return false;
-    const auth = { permissions: normalizeAuthorizationPermissions(canonicalUser.permissions) };
-
-    // Each permission below independently satisfies a current privileged backend guard.
-    // All current multi-permission staff guards include delete_entries, which already
-    // grants an independent override. Incomplete combinations and ordinary self/owner
-    // access do not add privilege. Keep this list aligned with backend guard changes.
-    return [
-        'edit_entries',       // Settings, restricted notes, and staff profile overrides.
-        'delete_entries',     // Journal/group resource overrides.
-        'access_permissions', // Administrative users listing.
-        'access_ministries',  // Pending applications and Applicant decline.
-        'access_events',      // Event analytics (any of these three access permissions).
-        'access_attendance',
-        'access_checkin'
-    ].some(permission => authorizationHasPermission(auth, permission));
-}
-
-function isCanonicalStrongAdminUser(canonicalUser) {
-    return Boolean(
-        canonicalUser &&
-        normalizeCanonicalId(canonicalUser.id) !== null &&
-        canonicalUser.username === BOOTSTRAP_STRONG_ADMIN_USERNAME &&
-        normalizeAuthorizationPermissions(canonicalUser.permissions).includes('access_permissions')
-    );
-}
-
-function assessCanonicalPasswordAccount(storedCredential, canonicalUser = null, canonicalMember = null) {
-    const credentialRisk = classifyStoredCredentialRisk(storedCredential, canonicalUser, canonicalMember);
-    const privileged = canonicalUserHasElevatedPermissions(canonicalUser);
-    const strongAdmin = isCanonicalStrongAdminUser(canonicalUser);
-    let accountSecurityClassification = credentialRisk;
-
-    if (credentialRisk === CREDENTIAL_RISK_CLASSIFICATION.LEGACY_PREDICTABLE) {
-        accountSecurityClassification = privileged
-            ? ACCOUNT_CREDENTIAL_SECURITY_CLASSIFICATION.PRIVILEGED_LEGACY_PREDICTABLE_QUARANTINE_REQUIRED
-            : ACCOUNT_CREDENTIAL_SECURITY_CLASSIFICATION.ORDINARY_LEGACY_PREDICTABLE_TEMPORARILY_ALLOWED;
-    } else if (
-        privileged &&
-        credentialRisk === CREDENTIAL_RISK_CLASSIFICATION.LEGACY_NON_PREDICTABLE
-    ) {
-        accountSecurityClassification = ACCOUNT_CREDENTIAL_SECURITY_CLASSIFICATION.LEGACY_PRIVILEGED_ROTATION_REQUIRED;
-    }
-
-    return Object.freeze({
-        credentialRisk,
-        privileged,
-        strongAdmin,
-        accountSecurityClassification,
-        requiresPasswordLoginQuarantine: privileged &&
-            credentialRisk === CREDENTIAL_RISK_CLASSIFICATION.LEGACY_PREDICTABLE
-    });
-}
-
 function digestPasswordLoginLimiterKey(namespace, value) {
     return crypto.createHash('sha256')
         .update(namespace)
@@ -309,36 +208,6 @@ function ensurePasswordLoginLimiterCapacity(store, maximumKeys, now = Date.now()
     if (store.size < maximumKeys) return true;
     cleanupExpiredPasswordLoginLimiterEntries(store, now);
     return store.size < maximumKeys;
-}
-
-function getCanonicalPasswordAccountAuditIdentity(canonicalUser, canonicalMember) {
-    const userId = normalizeCanonicalId(canonicalUser && canonicalUser.id);
-    if (userId !== null) return { key: `user:${userId}`, actor: `User ID ${userId}` };
-    const memberId = normalizeCanonicalId(canonicalMember && canonicalMember.id);
-    if (memberId !== null) return { key: `member:${memberId}`, actor: `Member ID ${memberId}` };
-    return null;
-}
-
-function auditPasswordLoginQuarantine(canonicalUser, canonicalMember, now = Date.now()) {
-    const identity = getCanonicalPasswordAccountAuditIdentity(canonicalUser, canonicalMember);
-    if (!identity) return false;
-    const key = digestPasswordLoginLimiterKey('quarantine-audit', identity.key);
-    const existing = passwordLoginQuarantineAudits.get(key);
-    if (existing && existing.resetAt > now) return false;
-    if (existing) passwordLoginQuarantineAudits.delete(key);
-    if (!ensurePasswordLoginLimiterCapacity(
-        passwordLoginQuarantineAudits,
-        PASSWORD_LOGIN_ACCOUNT_KEY_LIMIT,
-        now
-    )) return false;
-
-    passwordLoginQuarantineAudits.set(key, { resetAt: now + PASSWORD_LOGIN_LIMIT_WINDOW_MS });
-    logActivity(
-        identity.actor,
-        'PASSWORD_LOGIN_QUARANTINED',
-        'Privileged password login blocked pending secure activation'
-    );
-    return true;
 }
 
 function consumePasswordLoginIpAttempt(req, now = Date.now()) {
@@ -441,19 +310,10 @@ function sendPasswordLoginRateLimited(res, retryAfterSeconds) {
     });
 }
 
-function sendPasswordLoginActivationRequired(res) {
-    res.setHeader('Cache-Control', 'no-store');
-    return res.status(403).json({
-        success: false,
-        message: 'Secure account activation is required before password sign-in.'
-    });
-}
-
 const passwordLoginLimiterCleanupTimer = setInterval(() => {
     const now = Date.now();
     cleanupExpiredPasswordLoginLimiterEntries(passwordLoginIpAttempts, now);
     cleanupExpiredPasswordLoginLimiterEntries(passwordLoginAccountFailures, now);
-    cleanupExpiredPasswordLoginLimiterEntries(passwordLoginQuarantineAudits, now);
 }, PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS);
 passwordLoginLimiterCleanupTimer.unref();
 
@@ -2146,24 +2006,12 @@ app.post('/api/login', (req, res) => {
         return res.status(500).json({ success: false, message: 'Unable to complete sign-in.' });
     };
     const finishVerifiedPasswordLogin = ({
-        storedCredential,
-        canonicalUser,
-        canonicalMember,
         auditActor,
         auditDetails,
         sessionIdentity,
         responseBody
     }) => {
-        const assessment = assessCanonicalPasswordAccount(
-            storedCredential,
-            canonicalUser,
-            canonicalMember
-        );
         completeLoginAttempt(true);
-        if (assessment.requiresPasswordLoginQuarantine) {
-            auditPasswordLoginQuarantine(canonicalUser, canonicalMember);
-            return sendPasswordLoginActivationRequired(res);
-        }
         logActivity(auditActor, 'LOGIN', auditDetails);
         return sendAuthenticatedLogin(req, res, sessionIdentity, responseBody);
     };
@@ -2174,9 +2022,6 @@ app.post('/api/login', (req, res) => {
                 return db.get(`SELECT * FROM youth WHERE id = ?`, [user.youth_id], (memberErr, member) => {
                     if (memberErr) return rejectLoginUnavailable();
                     return finishVerifiedPasswordLogin({
-                        storedCredential: user.password,
-                        canonicalUser: user,
-                        canonicalMember: member || null,
                         auditActor: username,
                         auditDetails: 'User logged in',
                         sessionIdentity: { userId: user.id, youthId: user.youth_id, username: user.username },
@@ -2185,9 +2030,6 @@ app.post('/api/login', (req, res) => {
                 });
             }
             return finishVerifiedPasswordLogin({
-                storedCredential: user.password,
-                canonicalUser: user,
-                canonicalMember: null,
                 auditActor: username,
                 auditDetails: 'User logged in',
                 sessionIdentity: { userId: user.id, youthId: null, username: user.username },
@@ -2196,22 +2038,12 @@ app.post('/api/login', (req, res) => {
         }
         db.get(`SELECT * FROM youth WHERE qr_code = ? OR email = ? OR name = ?`, [username, username, username], async (err2, member) => {
             if (!err2 && member && await verifyPassword(password, member.password)) {
-                return db.get(
-                    `SELECT id, username, permissions, youth_id FROM users WHERE youth_id = ?`,
-                    [member.id],
-                    (linkedUserErr, linkedUser) => {
-                        if (linkedUserErr) return rejectLoginUnavailable();
-                        return finishVerifiedPasswordLogin({
-                            storedCredential: member.password,
-                            canonicalUser: linkedUser || null,
-                            canonicalMember: member,
-                            auditActor: member.name,
-                            auditDetails: 'Member logged into profile',
-                            sessionIdentity: { userId: null, youthId: member.id, username: member.qr_code },
-                            responseBody: { success: true, username: member.qr_code, permissions: [], member, is_admin: false }
-                        });
-                    }
-                );
+                return finishVerifiedPasswordLogin({
+                    auditActor: member.name,
+                    auditDetails: 'Member logged into profile',
+                    sessionIdentity: { userId: null, youthId: member.id, username: member.qr_code },
+                    responseBody: { success: true, username: member.qr_code, permissions: [], member, is_admin: false }
+                });
             }
             rejectInvalidCredentials();
         });
