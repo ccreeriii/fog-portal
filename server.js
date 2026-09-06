@@ -10,6 +10,43 @@ const cron = require('node-cron');
 const app = express();
 
 const BOOTSTRAP_STRONG_ADMIN_USERNAME = 'celsocreeriii@gmail.com';
+const BOOTSTRAP_STRONG_ADMIN_PASSWORD = typeof process.env.KOINONIA_BOOTSTRAP_ADMIN_PASSWORD === 'string'
+    ? process.env.KOINONIA_BOOTSTRAP_ADMIN_PASSWORD
+    : '';
+const VAPID_SUBJECT = typeof process.env.VAPID_SUBJECT === 'string'
+    ? process.env.VAPID_SUBJECT.trim()
+    : '';
+const VAPID_PUBLIC_KEY = typeof process.env.VAPID_PUBLIC_KEY === 'string'
+    ? process.env.VAPID_PUBLIC_KEY.trim()
+    : '';
+const VAPID_PRIVATE_KEY = typeof process.env.VAPID_PRIVATE_KEY === 'string'
+    ? process.env.VAPID_PRIVATE_KEY.trim()
+    : '';
+let pushNotificationsAvailable = false;
+
+if (VAPID_SUBJECT && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+    try {
+        webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+        pushNotificationsAvailable = true;
+    } catch (err) {
+        console.warn('Push notifications disabled: invalid VAPID configuration.');
+    }
+} else {
+    console.warn('Push notifications disabled: VAPID configuration is incomplete.');
+}
+
+function sendPushUnavailable(res) {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(503).json({
+        success: false,
+        error: 'Push notifications are unavailable.'
+    });
+}
+
+function requirePushAvailable(req, res, next) {
+    if (!pushNotificationsAvailable) return sendPushUnavailable(res);
+    return next();
+}
 const SESSION_COOKIE_NAME = 'koinonia_session';
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const SESSION_CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
@@ -938,7 +975,7 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // --- V114: BULLETPROOF COMMUNICATION ENGINE ---
 const sendCustomPush = (db, webpush, youthId, title, message, urlPath) => {
-    if (!webpush) return;
+    if (!pushNotificationsAvailable || !webpush) return false;
     db.get("SELECT qr_code FROM youth WHERE id = ?", [youthId], (err, y) => {
         if (y && y.qr_code) {
             db.all("SELECT subscription FROM push_subscriptions WHERE username = ?", [y.qr_code], (err, subs) => {
@@ -1014,7 +1051,7 @@ app.post('/api/inbox/personal/:id/respond', (req, res) => {
     } catch (e) { res.status(500).json({error: e.message}); }
 });
 
-app.post('/api/communications/broadcast', (req, res) => {
+app.post('/api/communications/broadcast', requirePushAvailable, (req, res) => {
     try {
         if (!req.body || !req.body.target) return res.status(400).json({error: "Missing body data."});
         const { target, title, message, actor } = req.body;
@@ -1221,7 +1258,7 @@ app.get('/api/small-groups/:id/memories', (req, res) => {
     });
 });
 
-app.post('/api/communications/broadcast', (req, res) => {
+app.post('/api/communications/broadcast', requirePushAvailable, (req, res) => {
     try {
         const { target, title, message, actor } = req.body;
         if (!target || !title || !message) return res.status(400).json({success: false, error: 'Missing parameters'});
@@ -1289,9 +1326,6 @@ app.post('/api/communications/broadcast', (req, res) => {
 
 
 
-const publicVapidKey = 'BPjMZjGy5VeLPQXNdkiJvfgeMAzQ0db3Pp_0ulzDv8s222iCcF6A7W0sFMdB1uVgz3QlkH7RMU93AX_epSv4IJY';
-const privateVapidKey = 'rIOhhPjfafLULXqq96N6S3g5xxVllVVrf50GkDiLmYc';
-webpush.setVapidDetails('mailto:celsocreeriii@gmail.com', publicVapidKey, privateVapidKey);
 
 
 // SILAS SECRET PRAYER PAL ENGINE (STRICT GENDER MATCHING)
@@ -1498,7 +1532,15 @@ db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.get(`SELECT id FROM users WHERE username = ?`, [BOOTSTRAP_STRONG_ADMIN_USERNAME], (err, existingAdmin) => {
         if (err) return console.error('Unable to verify bootstrap administrator');
         if (existingAdmin) return;
-        hashPassword('JesusisLord').then(encodedPassword => {
+        if (
+            BOOTSTRAP_STRONG_ADMIN_PASSWORD.length < 8 ||
+            BOOTSTRAP_STRONG_ADMIN_PASSWORD.length > 128 ||
+            !/\S/.test(BOOTSTRAP_STRONG_ADMIN_PASSWORD)
+        ) {
+            console.warn('Bootstrap administrator not created: password configuration is missing or invalid.');
+            return;
+        }
+        hashPassword(BOOTSTRAP_STRONG_ADMIN_PASSWORD).then(encodedPassword => {
             db.run(
                 `INSERT OR IGNORE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
                 [BOOTSTRAP_STRONG_ADMIN_USERNAME, encodedPassword, superadminPermissions, getManilaTime()],
@@ -1634,6 +1676,7 @@ function logActivity(username, action, details) {
 }
 
 function pushToUser(youthId, title, message, urlPath = '/') {
+    if (!pushNotificationsAvailable) return false;
     db.get(`SELECT qr_code FROM youth WHERE id = ?`, [youthId], (err, y) => {
         if (y && y.qr_code) {
             db.all(`SELECT subscription FROM push_subscriptions WHERE username = ?`, [y.qr_code], (err, subs) => {
@@ -2706,12 +2749,12 @@ app.get('/api/inbox/personal/:youth_id', (req, res) => {
     });
 });
 
-app.post('/api/communications/subscribe', (req, res) => {
+app.post('/api/communications/subscribe', requirePushAvailable, (req, res) => {
     const { username, subscription } = req.body;
     db.run(`INSERT INTO push_subscriptions (username, subscription, created_at) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET subscription = excluded.subscription`, [username, JSON.stringify(subscription), getManilaTime()], function(err) { res.json({ success: true }); });
 });
 app.post('/api/communications/unsubscribe', requireAuth, (req, res) => { db.run(`DELETE FROM push_subscriptions WHERE username = ?`, [req.auth.username], function(err) { res.json({ success: true }); }); });
-app.post('/api/communications/broadcast', (req, res) => {
+app.post('/api/communications/broadcast', requirePushAvailable, (req, res) => {
     const { target, title, message, actor } = req.body;
     db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', getManilaTime()], function(err) {
             const announcementId = this.lastID;
