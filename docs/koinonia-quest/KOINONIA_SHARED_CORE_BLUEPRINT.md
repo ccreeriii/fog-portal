@@ -595,20 +595,107 @@ interface ISharedCoreProvider {
 
 ---
 
-### 23. Staging-Audit Safety Report
+#### 22.3 Phase 0.22 Specification: Stage 2 Deep Read-Only Audit & Shared Core Integration Contract
 
-- **Staging Directory**: `/home/raspi4/fog-portal-staging`
-- **Files Modified**: **ZERO (0)**
-- **SQLite Database**: **TOUCHED: NO. ALTERED: NO. READ-ONLY INSPECTION ONLY.**
-- **PM2 Process**: `fog-staging` running uninterrupted.
-- **Secrets / Environment**: `.env` and VAPID keys preserved unread and uncommitted.
+> **IMPLEMENTATION STATUS (Phase 0.22)**:
+> Stage 2 is **COMPLETE**. An exhaustive, fact-based read-only architectural audit of the active Main FOG App staging codebase (`/home/raspi4/fog-portal-staging`) and live SQLite database (`fog_community.db`) was executed.
+>
+> - **Factual Scope**: Audited all 53 database tables, their full DDLs, foreign key lists, unique indexes, and 192 Express API routes in `server.js`.
+> - **Comprehensive Gap Matrix**: Mapped all 30 methods in `LocalSharedCoreProvider` against Main App reality:
+>   - 9 methods (30.0%) **DIRECTLY MAPPABLE** (e.g. `getCurrentMember`, `getEvents`, `getMyCampfires`, `getMinistries`, `getMilestones`).
+>   - 10 methods (33.3%) **MAPPABLE WITH ADAPTER** (e.g. `getLifePoints`, `getEvent`, `getCampfireMembers`, `getMyMinistryMissions`, `emitActivityEvent`).
+>   - 6 methods (20.0%) **POLICY DECISION GOVERNED** (Campfire capacity, quest storage, minor chat safety, studio publishing).
+>   - 2 methods (6.7%) **REQUIRES SCHEMA CHANGE** (canonical `quest_completions` contract).
+>   - 2 methods (6.7%) **REQUIRES NEW BACKEND API** (authenticated idempotent points award, secured attendance check-in boundary).
+>   - 1 method (3.3%) **PROTOTYPE ONLY** (`resetToBaseline`).
+> - **Data Ownership Matrix Formalized**: Established the definitive System of Record (SoR) for Member Identity, Life Points, XP, Events, Attendance, Campfires, Ministries, Milestones, Quests, Artifacts, and Places, explicitly distinguishing current Main App write pathways from target secured Koinonia Shared Core endpoints.
+> - **Integrity Insights Discovered**:
+>   - `PRAGMA foreign_keys` is disabled at runtime in Main App connections, leading to 4 orphaned records in `attendance`. Safe joins (`LEFT JOIN` with fallbacks) required in Stage 3.
+>   - 4 of 8 members in `gamification_points` show discrepancies with `point_transactions` due to legacy migration script semantics. Stage 3 will treat `point_transactions` as canonical ledger.
+>   - Sports/Fit Quest is **100% absent** from Main App staging. The SPORTS HUB / Fit Quest system remains completely separate from FAITH QUEST CHALLENGE.
+>   - Existing Bible/catechism game in Main App is canonically named **📖 FAITH QUEST CHALLENGE** (`fq_daily_scores`), cleanly segregated from generic Koinonia Studio template **📜 QUEST**.
+> - **Architectural Security Contract**: Documented that future `/api/v1/shared/*` mutation endpoints must enforce authentication, role-aware target-member and target-resource authorization (preserving IDOR protection while supporting authorized staff/admin workflows), idempotency, server authority over LP/XP, bounded rewards, replay protection, and audit logging. Raw staging mutation routes (such as `POST /api/checkin` and `POST /api/games/universal-submit`) must NEVER be exposed as direct Koinonia client write paths.
 
 ---
 
-### 24. Unresolved Questions Discovered During Read-Only Audit
+### 23. Staging-Audit Safety Report (Phase 0.22 Verified)
 
-The following technical questions were identified during the audit and will be addressed in Stage 2/3 planning:
-1. **XP Category Alignment**: Staging categorizes XP into `arcade_xp`, `growth_xp`, and `event_xp`. Koinonia structures character development into six Catholic virtues (Stewardship, Responsibility, Discipline, Teamwork, Service, Reflection). In Stage 3, should the shared database store virtue XP in a JSON column, or maintain separate tables?
-2. **Small Groups Schema Migration**: Staging's `small_groups` table currently lacks a `max_participants` column. A non-destructive migration will be needed in Stage 3 to add `max_participants INTEGER DEFAULT 12`.
-3. **Minor Chat Policy**: Staging has a `small_group_chats` table with free-text messaging. Koinonia Phase 0.20 strictly enforces predefined structured reactions (👏, 🙏, 🔥, 🌱, ❤️) for minor safety. The community leadership must decide whether to retain free-text chat with adult moderation or adopt structured reactions community-wide.
-4. **Quests Table Introduction**: Staging currently has no `quests` table. A canonical `quests` and `quest_completions` schema will be introduced in Stage 3.
+- **Target Repository**: `/home/raspi4/fog-portal-staging`
+- **Staging Working Tree**: **100% CLEAN (Zero files created, modified, or deleted)**.
+- **SQLite Database**: `/home/raspi4/fog-portal-staging/fog_community.db`
+  - **Baseline SHA256**: `f545bd91fce9ff1fab4a3de9b7109ac162036d74d29c14c11207491e33a34a12`
+  - **Post-Audit SHA256**: `f545bd91fce9ff1fab4a3de9b7109ac162036d74d29c14c11207491e33a34a12`
+  - **Verification**: **MATCH CONFIRMED. ZERO BYTES ALTERED.**
+- **Process Safety**: PM2 process `fog-staging` (id 4, port 3001) remained online and completely undisturbed throughout the audit.
+- **Secrets & Credentials**: Zero credentials, tokens, or private keys accessed or stored.
+
+---
+
+### 24. Product Owner Architectural Directives (Stage 3 Integration Contract)
+
+The Product Owner review of the Phase 0.22 read-only audit established the following binding architectural decisions governing Shared Core Stage 3:
+
+#### Directive 1: Life Points & Virtue XP Architecture
+- **Canonical Ledger**: `point_transactions` is confirmed as the eventual authoritative Life Points ledger.
+- **Virtue XP Storage**: Koinonia's six detailed Virtue XP dimensions (**Stewardship, Responsibility, Discipline, Teamwork, Service, Reflection**) must NOT remain permanently client-only. They will eventually have canonical **server-side Shared Core storage**.
+- **Compatibility Projection**: Main App may receive and project an aggregated `growth_xp` value for backward compatibility.
+- **Stage 3 Scope**: Stage 3 will design the API and data contract for Virtue XP without migrating the staging database in Phase 0.22.
+
+#### Directive 2: Campfire Capacity & Quest Circles
+- **Canonical Group Hierarchy**: Campfire remains the canonical group system. Quest Circles are a gameplay layer attached directly to Campfire.
+- **Capacity Rules & Enforcement**:
+  - Minimum participants required to ACTIVATE: **5**.
+  - Default maximum participants: **12**.
+  - Community maximum: configurable by Admin, default **12**.
+  - Leader may configure per-Campfire maximum between **5** and the Community Maximum.
+  - Active Campfire cannot have capacity lowered below its current active member count.
+  - No duplicate roster between Campfires and Quest Circles.
+- **Rollout Strategy**: For the upcoming prototype and internet beta, application/API-level enforcement in the service layer is acceptable. Long-term, capacity will be persisted canonically server-side (e.g. `max_capacity`) via a later approved, non-destructive migration. Zero staging schema changes in Phase 0.22.
+
+#### Directive 3: Youth Communication Safety Policy
+- **Canonical Product Rule**: **NO UNRESTRICTED FREE-TEXT MESSAGING FOR MINORS**.
+- **Default Interaction**: Koinonia strictly enforces structured reactions (👏, 🙏, 🔥, 🌱, ❤️) and approved/preset social interactions as the default for minor accounts.
+- **Policy Attribution**: This is established as **Koinonia / Fire of God youth-safety policy** (and is not to be generalized as a universal Catholic standard without explicit policy citation).
+- **Adult Communication**: Future architecture may allow separately gated adult/staff communication with appropriate moderation and authorization, but minor accounts must not receive unrestricted free-text messaging.
+- **Phase 0.22 Boundary**: Zero chat implementation changes in Phase 0.22.
+
+#### Directive 4: Canonical Quest Storage Architecture
+- **Separation of Concepts**: `member_milestones` is **NOT** the permanent storage mechanism for Quest completions. Milestones and Quests are distinct canonical concepts.
+- **Internet Beta Phase**: Static and prototype-local Quest definitions and completions are acceptable for the upcoming Koinonia internet beta.
+- **Stage 3 Contract**: Stage 3 will design a proper canonical Quest content and completion contract conceptually supporting `quests` and `quest_completions`. Exact schema is not approved yet; zero tables created or migrated in Phase 0.22.
+
+#### Directive 5: Mandatory Canonical Terminology
+- **Main App Bible/Catechism Game**: **📖 FAITH QUEST CHALLENGE**. It uses trivia and game mechanics, but its official product name remains **FAITH QUEST CHALLENGE**. It must NOT be renamed to alternative trivia titles.
+- **Generic Koinonia Studio Content Type**: **📜 QUEST**. It must NOT be renamed to alternative quest titles.
+- **Sports & Fitness Separation**: The **SPORTS HUB / Fit Quest** system is completely separate from FAITH QUEST CHALLENGE.
+
+#### Directive 6: Studio Publication Governance Contract
+- **Governance Flow**: `ADMIN authors` → `Request Review` → `SUPERADMIN reviews & approves` → `Publish`.
+- **Publication Destination**: After Superadmin approval, published Studio content must pass through a **validated Shared Core CONTENT REGISTRY / API**.
+- **Prohibited Models**: Direct raw production-database writes are **prohibited** as the publication model. Direct Git or static-file commits to staging are **prohibited** as the publication model.
+- **Interim State**: Phase 0.21 prototype-local publishing remains unchanged until the validated Content Registry API is implemented.
+
+#### Directive 7: Shared Core API Security Architecture
+Existing staging mutation routes (e.g. `/api/games/universal-submit`, `/api/checkin`) are callable without session authentication. Stage 3 **MUST NOT** simply expose or reuse these raw mutation endpoints as Koinonia's public Shared Core contract. Any consequential Koinonia mutation must go through authenticated `/api/v1/shared/*` services (including attendance check-in via `/api/v1/shared/attendance/check-in`, Life Points/progression, Campfire membership/settings, milestones/progression, Studio publication). Raw unauthenticated routes in Main App must NOT be used as direct Koinonia client write APIs (existing Main App business logic may later be called internally behind secure wrappers where applicable).
+
+Future `/api/v1/shared/*` mutation endpoints must enforce:
+1. **Authenticated Member/Session Identity**: Strict session validation. For production/shared authenticated member data, an invalid or missing authenticated session must NOT silently grant member privileges through a generic guest identity. Authenticated Shared Core operations must return/reject appropriately with HTTP 401 when no valid member session exists. (Guest/anonymous mode may exist only as an explicitly scoped read-only experience if later approved.)
+2. **Server-Side Authorization**: Verification of caller roles and permissions.
+3. **Target-Member / Target-Resource Authorization (Role-Aware IDOR Protection)**:
+   - An authenticated ordinary MEMBER may mutate only their own authorized member state.
+   - A mutation targeting another member or protected resource is permitted ONLY when the authenticated session possesses an explicit server-side role/permission authorizing that action.
+   - The server must verify BOTH: (1) authenticated caller identity, and (2) authorization for the specific target member/resource and operation.
+   - Never trust a client-supplied target `youth_id` merely because it was submitted. Preserve strict IDOR protection.
+   - Unauthorized cross-member access must return an appropriate authorization error (HTTP 403 Forbidden).
+   - Examples:
+     - Normal member Quest completion: authenticated `youth_id` must equal target member ID.
+     - Event check-in by member: authenticated `youth_id` must equal target member ID.
+     - Event check-in by authorized check-in staff: target member may differ, but server must verify explicit check-in/admin permission.
+     - Campfire settings: only authorized Campfire Leader/Admin/Superadmin.
+     - Studio publication: only authorized SUPERADMIN after approved workflow.
+4. **Mandatory Idempotency Keys**: Required unique tokens for progression and LP mutations.
+5. **Server Authority Over Rewards**: Server calculates all awards; clients must NEVER declare arbitrary LP or XP amounts.
+6. **Validation & Bounded Rewards**: All LP and XP rewards must be bounded by server-side canonical content/reward definitions. Exact reward ceilings are governed configuration and must never be supplied or controlled by the client.
+7. **Replay & Double-Submit Protection**: Atomic or conditional writes preventing race conditions.
+8. **Anti-CSRF Protection**: Defenses against cross-site request forgery if cookie authentication is utilized.
+9. **Comprehensive Audit Logging**: Detailed logs in `activity_logs` for all consequential state changes.
