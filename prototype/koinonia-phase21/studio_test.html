@@ -1,0 +1,2626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Koinonia Studio — Safe No-Code Content Creation</title>
+  <link rel="icon" href="assets/branding/koinonia-app-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    :root {
+      --font-display: 'Cinzel', serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+      --color-burgundy: #6A0E04;
+      --color-burgundy-dark: #4A0802;
+      --color-amber: #D97706;
+      --color-gold: #F59E0B;
+      --color-charcoal: #1F2937;
+      --color-surface: #FFFFFF;
+      --color-bg: #FDF8F0;
+      --color-card: #FFFFFF;
+      --color-border: rgba(106, 14, 4, 0.15);
+      --color-border-subtle: #E5E7EB;
+      --color-error: #DC2626;
+      --color-success: #059669;
+      --color-info: #2563EB;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+      --shadow-md: 0 4px 12px rgba(106, 14, 4, 0.08);
+      --shadow-lg: 0 8px 24px rgba(106, 14, 4, 0.12);
+    }
+
+    html {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    *, *::before, *::after {
+      box-sizing: inherit;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 100%;
+      max-width: 100%;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+      display: block !important;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      background-color: var(--color-bg);
+      font-family: var(--font-body);
+      color: var(--color-charcoal);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      padding-bottom: max(80px, calc(env(safe-area-inset-bottom, 20px) + 60px));
+    }
+
+    /* 1. Role Simulation Top Bar (QA Harness) */
+    .role-bar {
+      background: linear-gradient(135deg, #2D0502 0%, #4A0802 100%);
+      color: #FFF;
+      padding: 10px 16px;
+      padding-top: max(10px, env(safe-area-inset-top));
+      padding-left: max(16px, env(safe-area-inset-left));
+      padding-right: max(16px, env(safe-area-inset-right));
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 2px solid var(--color-gold);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      box-shadow: var(--shadow-md);
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    .role-bar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .role-bar-icon {
+      font-size: 1.25rem;
+    }
+
+    .role-bar-titles {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .role-bar-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.5px;
+      color: var(--color-gold);
+      line-height: 1.2;
+    }
+
+    .role-bar-sub {
+      font-size: 0.68rem;
+      color: #D1D5DB;
+    }
+
+    .role-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      width: auto;
+    }
+
+    .role-label-row {
+      display: flex;
+      align-items: center;
+    }
+
+    .role-label {
+      font-size: 0.75rem;
+      color: #E5E7EB;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .role-selector-group {
+      display: flex;
+      flex-wrap: wrap;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-pill);
+      padding: 3px;
+      gap: 3px;
+      max-width: 100%;
+    }
+
+    .role-pill-btn {
+      background: transparent;
+      border: none;
+      color: #E5E7EB;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      transition: all 0.2s ease;
+      min-height: 38px;
+      white-space: nowrap;
+      flex: 1 1 auto;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .role-pill-btn:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .role-pill-btn.active {
+      background: var(--color-gold);
+      color: #4A0802;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    /* Mobile Responsive Header & Role Controls */
+    @media (max-width: 768px) {
+      .role-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 8px 12px;
+        padding-top: max(8px, env(safe-area-inset-top));
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
+      }
+      .role-bar-left {
+        justify-content: flex-start;
+      }
+      .role-bar-right {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 5px;
+        width: 100%;
+      }
+      .role-label {
+        font-size: 0.72rem;
+      }
+      .role-selector-group {
+        border-radius: var(--radius-md);
+        width: 100%;
+      }
+      .role-pill-btn {
+        flex: 1 1 auto;
+        font-size: 0.72rem;
+        padding: 8px 6px;
+        min-height: 40px;
+      }
+    }
+
+
+    /* QA Status & Error Bar */
+    .qa-status-bar {
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 12px 0;
+      animation: fadeIn 0.2s ease-out;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .qa-status-info { background: #EFF6FF; color: #1E40AF; border: 1px solid #BFDBFE; }
+    .qa-status-success { background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }
+    .qa-status-error { background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; }
+
+    /* 2. Main Studio Container */
+    .studio-container {
+      width: 100%;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 16px;
+      padding-left: max(14px, env(safe-area-inset-left));
+      padding-right: max(14px, env(safe-area-inset-right));
+      box-sizing: border-box;
+    }
+
+    @media (max-width: 480px) {
+      .studio-container {
+        padding: 12px 10px;
+      }
+    }
+
+    /* 3. Studio Header */
+    .studio-header {
+      background: linear-gradient(135deg, #FFF9F3 0%, #FFF2E5 100%);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: var(--shadow-sm);
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .studio-header::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 140px;
+      height: 100%;
+      background: radial-gradient(circle at right, rgba(245, 158, 11, 0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .studio-logo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(106, 14, 4, 0.08);
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      width: fit-content;
+      max-width: 100%;
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: var(--color-burgundy);
+      letter-spacing: 0.5px;
+      word-break: break-word;
+    }
+    .studio-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.25rem, 5vw, 1.6rem);
+      font-weight: 800;
+      color: var(--color-burgundy);
+      line-height: 1.2;
+      word-break: break-word;
+    }
+    .studio-subtitle {
+      font-size: clamp(0.82rem, 3.2vw, 0.9rem);
+      color: #4B5563;
+      max-width: 600px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    @media (max-width: 480px) {
+      .studio-header {
+        padding: 16px 14px;
+        margin-bottom: 14px;
+      }
+    }
+
+    /* 4. Studio Navigation Tabs */
+    .studio-nav {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .studio-nav-btn {
+      background: #FFF;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #4B5563;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+      min-height: 42px;
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+    .studio-nav-btn:hover {
+      border-color: var(--color-burgundy);
+      color: var(--color-burgundy);
+    }
+    .studio-nav-btn.active {
+      background: var(--color-burgundy);
+      color: #FFF;
+      border-color: var(--color-burgundy);
+      box-shadow: 0 2px 6px rgba(106, 14, 4, 0.2);
+    }
+    .badge-count {
+      background: rgba(255, 255, 255, 0.25);
+      padding: 2px 6px;
+      border-radius: var(--radius-pill);
+      font-size: 0.72rem;
+    }
+    .studio-nav-btn.active .badge-count {
+      background: rgba(255, 255, 255, 0.3);
+      color: #FFF;
+    }
+
+    @media (min-width: 769px) {
+      .studio-nav {
+        overflow-x: auto;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+      }
+      .studio-nav-btn {
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .studio-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 16px;
+      }
+      .studio-nav-btn {
+        flex: 1 1 calc(50% - 6px);
+        font-size: 0.78rem;
+        padding: 8px 8px;
+        min-height: 42px;
+      }
+    }
+
+    /* Views */
+    .studio-view { display: none; width: 100%; box-sizing: border-box; }
+    .studio-view.active { display: block; animation: fadeIn 0.25s ease-out; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Access Denied View */
+    .access-denied-card {
+      background: #FFF;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 36px 20px;
+      text-align: center;
+      box-shadow: var(--shadow-sm);
+      margin-top: 16px;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .access-denied-icon { font-size: 3.5rem; margin-bottom: 16px; }
+    .access-denied-title {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      color: var(--color-burgundy);
+      margin-bottom: 8px;
+      font-weight: 800;
+      word-break: break-word;
+    }
+    .access-denied-text {
+      color: #4B5563;
+      font-size: 0.92rem;
+      max-width: 480px;
+      margin: 0 auto 20px;
+      word-break: break-word;
+    }
+
+    /* 5. Studio Home Dashboard Cards (One Column on Mobile) */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    @media (max-width: 768px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr; /* Strictly 1 full-width column on mobile */
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+    }
+
+    .dashboard-card {
+      background: #FFF;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+      transition: transform 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .dashboard-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+      border-color: var(--color-burgundy);
+    }
+    .dash-card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .dash-card-icon {
+      font-size: 2rem;
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      background: #FFF2E5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .dash-card-title {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--color-burgundy);
+      word-break: break-word;
+    }
+    .dash-card-desc {
+      font-size: 0.82rem;
+      color: #6B7280;
+      word-break: break-word;
+    }
+    .dash-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--color-amber);
+      border-top: 1px solid var(--color-border-subtle);
+      padding-top: 10px;
+    }
+
+    /* 6. Template Selector */
+    .template-selector-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    @media (max-width: 768px) {
+      .template-selector-grid {
+        grid-template-columns: 1fr; /* 1 column on mobile */
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+    }
+
+    .template-card {
+      background: #FFF;
+      border: 2px solid var(--color-border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .template-card:hover {
+      border-color: var(--color-gold);
+      background: #FFFBF5;
+    }
+    .template-card.selected {
+      border-color: var(--color-burgundy);
+      background: #FFF5EC;
+      box-shadow: 0 0 0 3px rgba(106, 14, 4, 0.1);
+    }
+    .template-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .template-icon { font-size: 1.6rem; flex-shrink: 0; }
+    .template-name {
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--color-burgundy);
+      word-break: break-word;
+    }
+    .template-desc {
+      font-size: 0.8rem;
+      color: #6B7280;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    /* 7. Form Container & Responsive Fields */
+    .form-card {
+      background: #FFF;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    @media (max-width: 480px) {
+      .form-card {
+        padding: 16px 14px;
+        margin-bottom: 16px;
+      }
+    }
+
+    .form-header {
+      border-bottom: 1px solid var(--color-border-subtle);
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      width: 100%;
+    }
+    .form-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.1rem, 4vw, 1.25rem);
+      font-weight: 800;
+      color: var(--color-burgundy);
+      word-break: break-word;
+    }
+
+    /* Form Fields */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    @media (min-width: 640px) {
+      .form-grid.two-col {
+        grid-template-columns: 1fr 1fr;
+      }
+      .col-span-2 { grid-column: span 2; }
+    }
+    @media (max-width: 639px) {
+      .form-grid.two-col {
+        grid-template-columns: 1fr; /* Strictly 1 column on mobile */
+      }
+      .col-span-2 { grid-column: span 1; }
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .form-label {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--color-charcoal);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .form-label .req { color: var(--color-error); }
+    .form-input, .form-textarea, .form-select {
+      width: 100%;
+      max-width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-md);
+      font-family: var(--font-body);
+      font-size: 0.9rem;
+      color: var(--color-charcoal);
+      background: #FAFAFA;
+      transition: all 0.2s;
+      box-sizing: border-box;
+    }
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+      outline: none;
+      border-color: var(--color-burgundy);
+      background: #FFF;
+      box-shadow: 0 0 0 3px rgba(106, 14, 4, 0.1);
+    }
+    .form-textarea { min-height: 80px; resize: vertical; }
+    .field-hint {
+      font-size: 0.75rem;
+      color: #6B7280;
+    }
+    .field-error {
+      font-size: 0.78rem;
+      color: var(--color-error);
+      font-weight: 600;
+      display: none;
+      animation: fadeIn 0.2s ease-out;
+    }
+    .form-group.has-error .form-input,
+    .form-group.has-error .form-textarea,
+    .form-group.has-error .form-select {
+      border-color: var(--color-error);
+      background: #FEF2F2;
+    }
+    .form-group.has-error .field-error { display: block; }
+
+    /* 8. Sticky Action Bar */
+    .action-bar {
+      position: sticky;
+      bottom: 16px;
+      background: #FFF;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-pill);
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: var(--shadow-lg);
+      z-index: 100;
+      flex-wrap: wrap;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    @media (max-width: 640px) {
+      .action-bar {
+        flex-direction: column;
+        align-items: stretch;
+        border-radius: var(--radius-md);
+        padding: 10px 12px;
+        bottom: 8px;
+        gap: 8px;
+      }
+      .autosave-status {
+        justify-content: center;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--color-border-subtle);
+      }
+      .btn-group {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        width: 100%;
+      }
+      .btn-group .btn {
+        width: 100%;
+        justify-content: center;
+        font-size: 0.8rem;
+        padding: 8px 6px;
+        min-height: 40px;
+      }
+    }
+
+    .autosave-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #4B5563;
+    }
+    .autosave-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-success);
+    }
+    .autosave-dot.saving { background: var(--color-amber); animation: pulse 1s infinite; }
+    .autosave-dot.unsaved { background: var(--color-gold); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 9px 16px;
+      border-radius: var(--radius-pill);
+      font-family: var(--font-body);
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+      min-height: 40px;
+      border: 1px solid transparent;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-primary {
+      background: var(--color-burgundy);
+      color: #FFF;
+    }
+    .btn-primary:hover {
+      background: var(--color-burgundy-dark);
+      box-shadow: var(--shadow-sm);
+    }
+    .btn-secondary {
+      background: #FFF;
+      border-color: var(--color-border-subtle);
+      color: #374151;
+    }
+    .btn-secondary:hover {
+      border-color: var(--color-burgundy);
+      color: var(--color-burgundy);
+    }
+    .btn-success {
+      background: var(--color-success);
+      color: #FFF;
+    }
+    .btn-danger {
+      background: #FFF;
+      border-color: #FCA5A5;
+      color: var(--color-error);
+    }
+    .btn-danger:hover {
+      background: #FEE2E2;
+    }
+
+    /* 9. Drafts Table / Cards */
+    .drafts-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .draft-item-card {
+      background: #FFF;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.2s;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .draft-item-card:hover {
+      border-color: var(--color-burgundy);
+      box-shadow: var(--shadow-md);
+    }
+    .draft-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .draft-title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .draft-type-icon { font-size: 1.3rem; flex-shrink: 0; }
+    .draft-title {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--color-burgundy);
+      word-break: break-word;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: var(--radius-pill);
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .status-DRAFT { background: #FEF3C7; color: #92400E; }
+    .status-READY_FOR_REVIEW { background: #DBEAFE; color: #1E40AF; }
+    .status-APPROVED { background: #D1FAE5; color: #065F46; }
+    .status-PUBLISHED { background: #E0E7FF; color: #3730A3; }
+    .status-ARCHIVED { background: #F3F4F6; color: #6B7280; }
+
+    .draft-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      font-size: 0.78rem;
+      color: #6B7280;
+    }
+    .draft-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      border-top: 1px solid var(--color-border-subtle);
+      padding-top: 10px;
+      width: 100%;
+    }
+    .draft-actions .btn {
+      flex: 1 1 auto;
+      justify-content: center;
+    }
+
+    /* 10. Modals (Preview, Publish, Media, Audit) */
+    .preview-modal-backdrop, .modal-backdrop {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      z-index: 2500;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      padding-top: max(12px, env(safe-area-inset-top));
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+      padding-left: max(12px, env(safe-area-inset-left));
+      padding-right: max(12px, env(safe-area-inset-right));
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+    .preview-modal-backdrop.active, .modal-backdrop.active { display: flex; animation: fadeIn 0.2s ease-out; }
+    .preview-dialog, .modal-card {
+      background: var(--color-bg);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 480px;
+      max-height: calc(100vh - 24px);
+      max-height: calc(100dvh - 24px);
+      overflow-y: auto;
+      border: 2px solid var(--color-gold);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+    }
+    .preview-banner {
+      background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+      color: #4A0802;
+      padding: 10px 16px;
+      font-size: 0.8rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .preview-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+    .preview-place-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(106, 14, 4, 0.08);
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--color-burgundy);
+      width: fit-content;
+    }
+    .preview-quest-card {
+      background: #FFF;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: var(--shadow-sm);
+      box-sizing: border-box;
+    }
+    .preview-title {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--color-burgundy);
+      word-break: break-word;
+    }
+    .preview-rewards {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .reward-pill {
+      background: #FEF3C7;
+      color: #92400E;
+      padding: 3px 8px;
+      border-radius: var(--radius-pill);
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .preview-reflection {
+      background: #FFFDF5;
+      border-left: 3px solid var(--color-amber);
+      padding: 10px 12px;
+      font-size: 0.82rem;
+      color: #4B5563;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    }
+    .preview-footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--color-border-subtle);
+      background: #FFF;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .preview-footer .btn {
+      flex: 1 1 calc(50% - 8px);
+      justify-content: center;
+    }
+
+    .modal-card {
+      background: #FFF;
+      border: 1px solid var(--color-border);
+      padding: 20px 16px;
+      gap: 14px;
+    }
+
+    /* Media Gallery Grid */
+    .media-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 10px;
+      max-height: 320px;
+      overflow-y: auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .media-item {
+      border: 2px solid var(--color-border-subtle);
+      border-radius: var(--radius-md);
+      padding: 8px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+      box-sizing: border-box;
+    }
+    .media-item:hover, .media-item.selected {
+      border-color: var(--color-burgundy);
+      background: #FFF5EC;
+    }
+    .media-thumb {
+      width: 100%;
+      height: 60px;
+      object-fit: contain;
+      background: #F3F4F6;
+      border-radius: var(--radius-sm);
+      margin-bottom: 6px;
+    }
+    .media-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #374151;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Audit Log List */
+    .audit-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 360px;
+      overflow-y: auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .audit-entry {
+      background: #F9FAFB;
+      border-left: 3px solid var(--color-gold);
+      padding: 8px 12px;
+      font-size: 0.8rem;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      word-break: break-word;
+    }
+    .audit-action { font-weight: 800; color: var(--color-burgundy); }
+    .audit-actor { color: #4B5563; font-weight: 600; }
+    .audit-time { font-size: 0.7rem; color: #9CA3AF; }
+  </style>
+</head>
+<body>
+
+  <!-- 1. ROLE SIMULATION TOP BAR -->
+  <header class="role-bar">
+    <div class="role-bar-left">
+      <span class="role-bar-icon">🏛️</span>
+      <div class="role-bar-titles">
+        <div class="role-bar-title">KOINONIA STUDIO QA HARNESS</div>
+        <div class="role-bar-sub">Physical Test Mode • Port 18108</div>
+      </div>
+    </div>
+    <div class="role-bar-right">
+      <div class="role-label-row">
+        <span class="role-label">Active Identity:</span>
+      </div>
+      <div class="role-selector-group" role="radiogroup" aria-label="Role Simulation Switcher">
+        <button id="role-btn-member" class="role-pill-btn active" onclick="switchRole('MEMBER')" role="radio" aria-checked="true">
+          <span>👤</span>
+          <span>MEMBER (Alex)</span>
+        </button>
+        <button id="role-btn-admin" class="role-pill-btn" onclick="switchRole('ADMIN')" role="radio" aria-checked="false">
+          <span>🛠️</span>
+          <span>ADMIN (Sarah)</span>
+        </button>
+        <button id="role-btn-superadmin" class="role-pill-btn" onclick="switchRole('SUPERADMIN')" role="radio" aria-checked="false">
+          <span>👑</span>
+          <span>SUPERADMIN (Pastor David)</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 2. MAIN CONTAINER -->
+  <main class="studio-container">
+    <!-- QA Status & Error Bar -->
+    <div id="qa-status-bar" class="qa-status-bar qa-status-info" role="status" aria-live="polite">
+      <span id="qa-status-icon">ℹ️</span>
+      <span id="qa-status-text">Loaded in QA Test Mode as MEMBER (Alex Rivera)</span>
+    </div>
+
+    <!-- ACCESS DENIED VIEW (FOR MEMBER ROLE) -->
+    <section id="view-access-denied" class="studio-view active" aria-live="polite">
+      <div class="access-denied-card">
+        <div class="access-denied-icon">🔒</div>
+        <h2 class="access-denied-title">Studio Admin Restricted</h2>
+        <p class="access-denied-text">
+          Koinonia Studio is reserved for authorized ministry leaders and administrators to curate safe, uplifting community experiences.
+        </p>
+        <div style="font-size: 0.8rem; color: #9CA3AF; margin-bottom: 20px;">
+          Current Role: <strong style="color: var(--color-burgundy);">MEMBER</strong> (Alex Rivera)<br>
+          Ordinary members see zero Studio teasers or disabled buttons in their regular fellowship journey.
+        </div>
+        <button class="btn btn-primary" onclick="switchRole('ADMIN')">
+          <span>Switch to ADMIN Role for QA</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- AUTHORIZED STUDIO VIEW -->
+    <section id="view-authorized-studio" class="studio-view">
+      <!-- 1. Studio Identity / Header -->
+      <div class="studio-header">
+        <div class="studio-logo-badge">
+          <span>🔥</span>
+          <span>FIRE OF GOD MINISTRIES</span>
+        </div>
+        <h1 class="studio-title">KOINONIA STUDIO</h1>
+        <p class="studio-subtitle">
+          Create safe experiences for the Fire of God community. Structured, template-driven, and encouragement-focused.
+        </p>
+      </div>
+
+      <!-- 2. Active Editor / Form & Action Bar (Directly below Studio Header when editing/creating) -->
+      <div id="subview-create" class="studio-subview" style="display: none; margin-bottom: 24px;">
+        <!-- Form Container (Immediate) -->
+        <div class="form-card">
+          <div class="form-header">
+            <div>
+              <span id="current-template-badge" class="studio-logo-badge" style="margin-bottom: 6px;">QUEST TEMPLATE</span>
+              <h2 id="current-form-title" class="form-title">Drafting New Experience</h2>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span id="draft-status-pill" class="status-badge status-DRAFT">DRAFT</span>
+            </div>
+          </div>
+
+          <!-- Dynamic Form Fields -->
+          <form id="studio-active-form" onsubmit="event.preventDefault();">
+            <div class="form-grid two-col" id="form-fields-container">
+              <!-- Dynamically populated based on template -->
+            </div>
+          </form>
+        </div>
+
+        <!-- Sticky Autosave & Action Bar -->
+        <div class="action-bar">
+          <div class="autosave-status">
+            <span class="autosave-dot" id="autosave-dot"></span>
+            <span id="autosave-label">Saved</span>
+            <span style="color: #9CA3AF; font-size: 0.72rem;" id="autosave-time"></span>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-secondary" onclick="triggerManualSave()">
+              <span>💾 Save Draft</span>
+            </button>
+            <button class="btn btn-secondary" onclick="openPreviewModal()">
+              <span>👁️ Preview</span>
+            </button>
+            <button class="btn btn-primary" id="btn-request-review" onclick="triggerRequestReview()">
+              <span>📤 Request Review</span>
+            </button>
+            <button class="btn btn-success" id="btn-publish-direct" onclick="triggerPublishWorkflow()" style="display: none;">
+              <span>🚀 Publish Experience</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Studio Navigation / Tools -->
+      <nav class="studio-nav" role="tablist" aria-label="Studio Main Sections">
+        <button id="nav-btn-home" class="studio-nav-btn active" onclick="showSubView('home')" role="tab" aria-selected="true">
+          <span>🏠</span>
+          <span>STUDIO HOME</span>
+        </button>
+        <button id="nav-btn-create" class="studio-nav-btn" onclick="showSubView('create')" role="tab" aria-selected="false">
+          <span>✨</span>
+          <span>CREATE NEW</span>
+        </button>
+        <button id="nav-btn-drafts" class="studio-nav-btn" onclick="showSubView('drafts')" role="tab" aria-selected="false">
+          <span>📝</span>
+          <span>DRAFTS</span>
+          <span id="nav-draft-count" class="badge-count">0</span>
+        </button>
+        <button id="nav-btn-published" class="studio-nav-btn" onclick="showSubView('published')" role="tab" aria-selected="false">
+          <span>🚀</span>
+          <span>PUBLISHED</span>
+          <span id="nav-published-count" class="badge-count">0</span>
+        </button>
+        <button id="nav-btn-media" class="studio-nav-btn" onclick="openMediaModal()" role="tab" aria-selected="false">
+          <span>🖼️</span>
+          <span>SAFE MEDIA</span>
+        </button>
+        <button id="nav-btn-audit" class="studio-nav-btn" onclick="openAuditModal()" role="tab" aria-selected="false">
+          <span>📜</span>
+          <span>AUDIT LOG</span>
+        </button>
+      </nav>
+
+      <!-- 4. Secondary Studio Content / Template Switcher (Below navigation, visible in create mode) -->
+      <div id="template-selector-section" style="display: none; margin-top: 16px; margin-bottom: 24px;">
+        <label style="font-size: 0.85rem; font-weight: 700; color: #4B5563; margin-bottom: 8px; display: block;">Switch Experience Template:</label>
+        <div class="template-selector-grid" id="template-selector-container">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- SUB-VIEW 1: STUDIO HOME DASHBOARD (Occupies normal position below navigation) -->
+      <div id="subview-home" class="studio-subview">
+        <div class="dashboard-grid" id="dashboard-grid">
+          <button type="button" class="dashboard-card" data-template-action="QUEST" onclick="startNewExperience('QUEST')" aria-label="Create 📜 QUEST">
+            <div>
+              <div class="dash-card-header">
+                <div class="dash-card-icon">📜</div>
+                <div>
+                  <div class="dash-card-title">📜 QUEST</div>
+                  <div class="dash-card-desc">Create a real-world Koinonia quest</div>
+                </div>
+              </div>
+            </div>
+            <div class="dash-card-footer">
+              <span>Create Quest</span>
+              <span>→</span>
+            </div>
+          </button>
+
+          <button type="button" class="dashboard-card" data-template-action="EVENT" onclick="startNewExperience('EVENT')" aria-label="Schedule Event">
+            <div>
+              <div class="dash-card-header">
+                <div class="dash-card-icon">📅</div>
+                <div>
+                  <div class="dash-card-title">EVENT / GATHERING</div>
+                  <div class="dash-card-desc">Youth nights, services, &amp; rallies</div>
+                </div>
+              </div>
+            </div>
+            <div class="dash-card-footer">
+              <span>Schedule Event (Asia/Manila)</span>
+              <span>→</span>
+            </div>
+          </button>
+
+          <button type="button" class="dashboard-card" data-template-action="CAMPAIGN" onclick="startNewExperience('CAMPAIGN')" aria-label="Organize Campaign">
+            <div>
+              <div class="dash-card-header">
+                <div class="dash-card-icon">🏆</div>
+                <div>
+                  <div class="dash-card-title">CAMPAIGN</div>
+                  <div class="dash-card-desc">Thematic spiritual journeys &amp; quests</div>
+                </div>
+              </div>
+            </div>
+            <div class="dash-card-footer">
+              <span>Organize Campaign</span>
+              <span>→</span>
+            </div>
+          </button>
+
+          <button type="button" class="dashboard-card" data-template-action="CAMPFIRE_ACTIVITY" onclick="startNewExperience('CAMPFIRE_ACTIVITY')" aria-label="Campfire Circle Activity">
+            <div>
+              <div class="dash-card-header">
+                <div class="dash-card-icon">🔥</div>
+                <div>
+                  <div class="dash-card-title">CAMPFIRE ACTIVITY</div>
+                  <div class="dash-card-desc">Circle discussions &amp; fellowship</div>
+                </div>
+              </div>
+            </div>
+            <div class="dash-card-footer">
+              <span>Campfire Circle</span>
+              <span>→</span>
+            </div>
+          </button>
+
+          <button type="button" class="dashboard-card" data-template-action="MINISTRY_MISSION" onclick="startNewExperience('MINISTRY_MISSION')" aria-label="Ministry Mission">
+            <div>
+              <div class="dash-card-header">
+                <div class="dash-card-icon">⛪</div>
+                <div>
+                  <div class="dash-card-title">MINISTRY MISSION</div>
+                  <div class="dash-card-desc">Volunteer tasks with leader verification</div>
+                </div>
+              </div>
+            </div>
+            <div class="dash-card-footer">
+              <span>Ministry Task</span>
+              <span>→</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- SUB-VIEW 3: DRAFTS LIST -->
+      <div id="subview-drafts" class="studio-subview" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h2 style="font-family: var(--font-display); font-size: 1.2rem; color: var(--color-burgundy);">Experience Drafts</h2>
+          <button class="btn btn-primary" onclick="startNewExperience('QUEST')">
+            <span>+ Create New</span>
+          </button>
+        </div>
+        <div id="drafts-list-container" class="drafts-list">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- SUB-VIEW 4: PUBLISHED LIST -->
+      <div id="subview-published" class="studio-subview" style="display: none;">
+        <div style="margin-bottom: 16px;">
+          <h2 style="font-family: var(--font-display); font-size: 1.2rem; color: var(--color-burgundy);">Published Experiences (Prototype-Local)</h2>
+          <p style="font-size: 0.85rem; color: #6B7280;">Published content lives in local memory/storage only. Zero changes touch production or Main FOG App.</p>
+        </div>
+        <div id="published-list-container" class="drafts-list">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 3. IN-WORLD PREVIEW MODAL -->
+  <div id="preview-modal" class="preview-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="preview-modal-title">
+    <div class="preview-dialog">
+      <div class="preview-banner">
+        <span>⚠️</span>
+        <span id="preview-modal-title">PREVIEW MODE • NOT PUBLISHED</span>
+      </div>
+      <div class="preview-body">
+        <div class="preview-place-chip" id="preview-place-chip">
+          <span>🏛️</span>
+          <span id="preview-place-name">FOG Community Center</span>
+        </div>
+
+        <div class="preview-quest-card">
+          <div style="font-size: 0.75rem; font-weight: 800; color: var(--color-amber); text-transform: uppercase;" id="preview-category">
+            Faith &amp; Stewardship
+          </div>
+          <h3 class="preview-title" id="preview-card-title">Morning Prayer Walk</h3>
+          <p style="font-size: 0.85rem; color: #4B5563; line-height: 1.4;" id="preview-short-desc">
+            Short summary goes here.
+          </p>
+          <div style="font-size: 0.82rem; color: #374151; white-space: pre-wrap;" id="preview-long-desc">
+            Detailed context goes here.
+          </div>
+
+          <div class="preview-rewards" id="preview-rewards-container">
+            <span class="reward-pill" id="preview-lp-pill">🪙 15 LP</span>
+            <span class="reward-pill" id="preview-xp-pill">⭐ 25 Char XP</span>
+          </div>
+
+          <div class="preview-reflection">
+            <strong style="color: var(--color-burgundy);">Private Reflection Prompt:</strong>
+            <p id="preview-reflection-text" style="margin-top: 4px; font-style: italic;">
+              "Prompt text goes here..."
+            </p>
+            <div style="font-size: 0.7rem; color: #9CA3AF; margin-top: 4px;">
+              🔒 Member reflection responses remain private and are never disclosed to Studio authors.
+            </div>
+          </div>
+        </div>
+
+        <div style="background: #F3F4F6; border-radius: var(--radius-md); padding: 12px; font-size: 0.75rem; color: #4B5563;">
+          🤝 <strong>Koinonia Care Promise:</strong> This is only a preview. No Life Points or XP are awarded, no attendance is recorded, and no notifications are sent.
+        </div>
+      </div>
+      <div class="preview-footer">
+        <button class="btn btn-secondary" onclick="closePreviewModal()">Close Preview</button>
+        <button class="btn btn-primary" onclick="closePreviewModal(); showSubView('create');">Back to Editor</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- 4B. CREATE KOINONIA PLACE MODAL -->
+  <div id="create-place-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="create-place-title">
+    <div class="modal-card">
+      <div style="background: linear-gradient(135deg, var(--color-burgundy) 0%, var(--color-burgundy-dark) 100%); color: #FFF; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--color-gold); flex-shrink: 0;">
+        <div>
+          <span class="studio-logo-badge" style="background: rgba(255,255,255,0.2); color: #FFF; margin-bottom: 4px;">KOINONIA PLACE REGISTRY</span>
+          <h3 id="create-place-title" style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; color: #FFF; margin: 0;">
+            ➕ CREATE KOINONIA PLACE
+          </h3>
+        </div>
+        <button type="button" class="btn btn-secondary" onclick="closeCreatePlaceModal()" style="min-height: 36px; padding: 4px 10px; color: #FFF; border-color: rgba(255,255,255,0.3); background: rgba(0,0,0,0.2);" aria-label="Close modal">✕</button>
+      </div>
+
+      <div style="padding: 18px 20px; overflow-y: auto;">
+        <div id="place-modal-error" class="field-error" style="display: none; margin-bottom: 12px; font-size: 0.82rem; padding: 8px 12px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: var(--radius-sm); color: #991B1B;"></div>
+
+        <div class="form-group" id="group-new-place-name" style="margin-bottom: 14px;">
+          <label class="form-label" for="new-place-name">
+            <span>Place Name <span class="req">*</span></span>
+            <span style="font-size: 0.7rem; color: #9CA3AF;">max 80 chars</span>
+          </label>
+          <input type="text" id="new-place-name" class="form-input" value="" placeholder="e.g. Mary's Garden" maxlength="80" required aria-invalid="false" oninput="onPlaceFieldChange('name', this.value)">
+          <div class="field-error" id="error-new-place-name" style="display: none;"></div>
+        </div>
+
+        <div class="form-group" id="group-new-place-type" style="margin-bottom: 14px;">
+          <label class="form-label" for="new-place-type">
+            <span>Place Type <span class="req">*</span></span>
+          </label>
+          <select id="new-place-type" class="form-select" required aria-invalid="false" onchange="onPlaceFieldChange('type', this.value)">
+            <option value="" disabled selected>Select Place Type...</option>
+            <option value="Home">Home</option>
+            <option value="Church / Community Center">Church / Community Center</option>
+            <option value="School">School</option>
+            <option value="Sports / Recreation">Sports / Recreation</option>
+            <option value="Outreach / Service">Outreach / Service</option>
+            <option value="Ministry Venue">Ministry Venue</option>
+            <option value="Other">Other</option>
+          </select>
+          <div class="field-error" id="error-new-place-type" style="display: none;"></div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label" for="new-place-desc">
+            <span>Short Description</span>
+            <span style="font-size: 0.7rem; color: #9CA3AF;">max 160 chars</span>
+          </label>
+          <textarea id="new-place-desc" class="form-textarea" placeholder="e.g. Outdoor prayer and fellowship area" maxlength="160" rows="2" oninput="onPlaceFieldChange('description', this.value)"></textarea>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label" for="new-place-location">
+            <span>Location / Address</span>
+            <span style="font-size: 0.7rem; color: #9CA3AF;">max 200 chars</span>
+          </label>
+          <input type="text" id="new-place-location" class="form-input" value="" placeholder="e.g. East Courtyard near Prayer Cross" maxlength="200" oninput="onPlaceFieldChange('location', this.value)">
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end; align-items: center; border-top: 1px solid var(--color-border-subtle); padding-top: 14px;">
+          <button type="button" class="btn btn-secondary" onclick="closeCreatePlaceModal()" style="min-height: 42px; min-width: 90px;">
+            CANCEL
+          </button>
+          <button type="button" class="btn btn-primary" id="btn-submit-place" onclick="submitCreatePlace()" style="min-height: 42px; min-width: 140px;">
+            CREATE PLACE
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. PUBLISH WORKFLOW REVIEW MODAL -->
+  <div id="publish-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="publish-modal-title">
+    <div class="modal-card">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.6rem;">🚀</span>
+        <div>
+          <h3 id="publish-modal-title" style="font-family: var(--font-display); font-size: 1.2rem; color: var(--color-burgundy);">Publish Experience Review</h3>
+          <p style="font-size: 0.8rem; color: #6B7280;">Verify experience parameters before publishing.</p>
+        </div>
+      </div>
+
+      <div style="background: #FFFDF7; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;">
+        <div><strong>Title:</strong> <span id="pub-review-title">-</span></div>
+        <div><strong>Type:</strong> <span id="pub-review-type">-</span></div>
+        <div><strong>Place / Venue:</strong> <span id="pub-review-place">-</span></div>
+        <div><strong>Audience:</strong> <span id="pub-review-audience">-</span></div>
+        <div><strong>Rewards:</strong> <span id="pub-review-rewards">-</span></div>
+        <div><strong>Target:</strong> <span id="pub-review-target">KOINONIA</span></div>
+      </div>
+
+      <div style="background: #EFF6FF; border-left: 4px solid var(--color-info); padding: 10px 12px; font-size: 0.78rem; color: #1E40AF; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;">
+        ℹ️ <strong>Prototype Guarantee:</strong> This action publishes strictly into prototype-local memory. Zero modifications are made to Main FOG App, production, or database.
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button class="btn btn-secondary" onclick="closePublishModal()">Cancel</button>
+        <button class="btn btn-success" id="btn-confirm-publish" onclick="executePublish()">
+          <span>PUBLISH EXPERIENCE</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. SAFE MEDIA PICKER MODAL -->
+  <div id="media-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="media-modal-title">
+    <div class="modal-card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="media-modal-title" style="font-family: var(--font-display); font-size: 1.15rem; color: var(--color-burgundy);">Safe Media Library</h3>
+        <button class="btn btn-secondary" onclick="closeMediaModal()" style="min-height: 32px; padding: 4px 10px;">✕</button>
+      </div>
+      <p style="font-size: 0.8rem; color: #6B7280;">
+        Only approved image assets (PNG, JPG, WEBP) are supported. Binary execution, SVG scripts, and raw HTML uploads are strictly blocked.
+      </p>
+      <div class="media-grid" id="media-grid-container">
+        <!-- Dynamically populated -->
+      </div>
+      <div style="display: flex; justify-content: flex-end;">
+        <button class="btn btn-secondary" onclick="closeMediaModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. AUDIT TRAIL MODAL -->
+  <div id="audit-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="audit-modal-title">
+    <div class="modal-card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="audit-modal-title" style="font-family: var(--font-display); font-size: 1.15rem; color: var(--color-burgundy);">Prototype Audit Trail</h3>
+        <button class="btn btn-secondary" onclick="closeAuditModal()" style="min-height: 32px; padding: 4px 10px;">✕</button>
+      </div>
+      <p style="font-size: 0.8rem; color: #6B7280;">
+        Transparent record of Studio actions, author identities, and timestamps.
+      </p>
+      <div class="audit-list" id="audit-list-container">
+        <!-- Dynamically populated -->
+      </div>
+      <div style="display: flex; justify-content: flex-end;">
+        <button class="btn btn-secondary" onclick="closeAuditModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOAD ENGINE SCRIPT -->
+  <script src="data/studio_engine.js"></script>
+
+  <!-- APPLICATION LOGIC -->
+  <script>
+    // HTML entity escaping helper for boundary template rendering
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+    window.escapeHtml = escapeHtml;
+
+    // ============================================================
+    // APPLICATION STATE (STARTS AS MEMBER PER QA REQUIREMENTS)
+    // ============================================================
+    const IDENTITIES = {
+      MEMBER: { id: 'youth_demo_01', name: 'Alex Rivera', role: 'MEMBER' },
+      ADMIN: { id: 'admin_sarah', name: 'Sarah Jenkins', role: 'ADMIN' },
+      SUPERADMIN: { id: 'pastor_david', name: 'Pastor David', role: 'SUPERADMIN' }
+    };
+
+    const AppState = {
+      role: 'MEMBER', // Starts strictly as MEMBER per QA physical acceptance protocol
+      user: IDENTITIES.MEMBER,
+      currentSubView: 'home',
+      currentTemplateType: 'QUEST',
+      activeDraftId: null,
+      activeFormData: {},
+      newPlaceFormData: { name: '', type: '', description: '', location: '' },
+      autosaveTimer: null,
+      isDirty: false
+    };
+
+    // Expose on window for automated verification and debugging
+    window.AppState = AppState;
+    window.IDENTITIES = IDENTITIES;
+
+    // QA Status Helper
+    function showQaStatus(msg, type = 'info') {
+      const bar = document.getElementById('qa-status-bar');
+      const text = document.getElementById('qa-status-text');
+      const icon = document.getElementById('qa-status-icon');
+      if (!bar || !text) return;
+
+      bar.style.display = 'flex';
+      bar.className = `qa-status-bar qa-status-${type}`;
+      text.textContent = msg;
+      icon.textContent = type === 'error' ? '⚠️' : (type === 'success' ? '✅' : 'ℹ️');
+      console.log(`[QA STATUS ${type.toUpperCase()}]: ${msg}`);
+    }
+    window.showQaStatus = showQaStatus;
+    initEventDelegation();
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      try {
+        renderTemplateSelector();
+        renderFormFields(AppState.currentTemplateType);
+        renderDraftsList();
+        renderPublishedList();
+        updateRoleUI();
+        initEventDelegation();
+        showQaStatus('Loaded in QA Test Mode as MEMBER (Alex Rivera)', 'info');
+      } catch (err) {
+        console.error('Initialization error:', err);
+        showQaStatus(`Init error: ${err.message}`, 'error');
+      }
+    });
+
+    // ============================================================
+    // EVENT DELEGATION (TOUCH & CLICK FAIL-SAFE)
+    // ============================================================
+    function initEventDelegation() {
+      document.addEventListener('click', (e) => {
+        const actionBtn = e.target.closest('[data-template-action]');
+        if (actionBtn) {
+          const tmpl = actionBtn.getAttribute('data-template-action');
+          if (tmpl) startNewExperience(tmpl);
+          return;
+        }
+        const selectBtn = e.target.closest('[data-template-select]');
+        if (selectBtn) {
+          const tmpl = selectBtn.getAttribute('data-template-select');
+          if (tmpl) selectTemplate(tmpl);
+          return;
+        }
+      });
+    }
+
+    // ============================================================
+    // ROLE SWITCHING
+    // ============================================================
+    function switchRole(newRole) {
+      try {
+        if (!IDENTITIES[newRole]) {
+          showQaStatus(`Unknown role: ${newRole}`, 'error');
+          return;
+        }
+        AppState.role = newRole;
+        AppState.user = IDENTITIES[newRole];
+        updateRoleUI();
+        showQaStatus(`Switched to ${newRole}: ${AppState.user.name}`, 'info');
+      } catch (err) {
+        console.error('switchRole error:', err);
+        showQaStatus(`Role switch error: ${err.message}`, 'error');
+      }
+    }
+    window.switchRole = switchRole;
+
+    function updateRoleUI() {
+      // Update top bar buttons
+      document.querySelectorAll('.role-pill-btn').forEach(btn => {
+        const isCurrent = btn.id === `role-btn-${AppState.role.toLowerCase()}`;
+        btn.classList.toggle('active', isCurrent);
+        btn.setAttribute('aria-checked', isCurrent ? 'true' : 'false');
+      });
+
+      // Role Gating
+      const isMember = AppState.role === 'MEMBER';
+      const deniedView = document.getElementById('view-access-denied');
+      const authView = document.getElementById('view-authorized-studio');
+      if (deniedView) deniedView.classList.toggle('active', isMember);
+      if (authView) authView.classList.toggle('active', !isMember);
+
+      // Superadmin Publish vs Request Review button visibility
+      const isSuperadmin = AppState.role === 'SUPERADMIN';
+      const btnPublishDirect = document.getElementById('btn-publish-direct');
+      const btnRequestReview = document.getElementById('btn-request-review');
+      if (btnPublishDirect && btnRequestReview) {
+        btnPublishDirect.style.display = isSuperadmin ? 'inline-flex' : 'none';
+        btnRequestReview.style.display = isSuperadmin ? 'none' : 'inline-flex';
+      }
+
+      renderDraftsList();
+      renderPublishedList();
+      renderTemplateSelector();
+    }
+    window.updateRoleUI = updateRoleUI;
+
+    // ============================================================
+    // VIEW NAVIGATION
+    // ============================================================
+    function showSubView(viewName) {
+      if (viewName === 'create' && window.KoinoniaStudio && !window.KoinoniaStudio.store.canPerform(AppState.role, 'CREATE_DRAFT')) {
+        showQaStatus('Only ADMIN or SUPERADMIN can create Studio experiences.', 'error');
+        alert('🔒 Only ADMIN or SUPERADMIN can create Studio experiences. Please select ADMIN or SUPERADMIN role above.');
+        return;
+      }
+      AppState.currentSubView = viewName;
+      document.querySelectorAll('.studio-subview').forEach(el => el.style.display = 'none');
+      const target = document.getElementById(`subview-${viewName}`);
+      if (target) target.style.display = 'block';
+
+      const templateSelectorSec = document.getElementById('template-selector-section');
+      if (templateSelectorSec) {
+        templateSelectorSec.style.display = (viewName === 'create') ? 'block' : 'none';
+      }
+
+      document.querySelectorAll('.studio-nav-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.id === `nav-btn-${viewName}`);
+        btn.setAttribute('aria-selected', btn.id === `nav-btn-${viewName}`);
+      });
+
+      if (viewName === 'create') {
+        renderTemplateSelector();
+        renderFormFields(AppState.currentTemplateType);
+      }
+      if (viewName === 'drafts') renderDraftsList();
+      if (viewName === 'published') renderPublishedList();
+    }
+    window.showSubView = showSubView;
+
+    // ============================================================
+    // TEMPLATE & FORM ENGINE
+    // ============================================================
+    function renderTemplateSelector() {
+      const container = document.getElementById('template-selector-container');
+      if (!container || !window.KoinoniaStudio) return;
+
+      const templates = Object.values(window.KoinoniaStudio.TEMPLATES);
+      container.innerHTML = templates.map(tmpl => `
+        <button type="button" class="template-card ${tmpl.id === AppState.currentTemplateType ? 'selected' : ''}" data-template-select="${tmpl.id}" onclick="selectTemplate('${tmpl.id}')" aria-label="Select ${tmpl.label}">
+          <div class="template-card-header">
+            ${tmpl.icon && !tmpl.label.includes(tmpl.icon) ? `<span class="template-icon">${tmpl.icon}</span>` : ''}
+            <div class="template-name">${tmpl.label}</div>
+          </div>
+          <div class="template-desc">${tmpl.description}</div>
+        </button>
+      `).join('');
+    }
+    window.renderTemplateSelector = renderTemplateSelector;
+
+    function selectTemplate(templateType) {
+      if (AppState.isDirty) {
+        if (!confirm('You have unsaved changes in your current draft. Switch templates and start a new draft?')) {
+          return;
+        }
+      }
+      startNewExperience(templateType);
+    }
+    window.selectTemplate = selectTemplate;
+
+    function startNewExperience(templateType) {
+      try {
+        if (!window.KoinoniaStudio) {
+          showQaStatus('KoinoniaStudio engine not loaded', 'error');
+          return;
+        }
+
+        // Permission check
+        if (!window.KoinoniaStudio.store.canPerform(AppState.role, 'CREATE_DRAFT')) {
+          showQaStatus('Only ADMIN or SUPERADMIN can create Studio experiences.', 'error');
+          alert('🔒 Only ADMIN or SUPERADMIN can create Studio experiences. Please select ADMIN or SUPERADMIN role above.');
+          return;
+        }
+
+        const template = window.KoinoniaStudio.TEMPLATES[templateType];
+        if (!template) {
+          showQaStatus(`Unknown template type: ${templateType}`, 'error');
+          return;
+        }
+
+        AppState.currentTemplateType = templateType;
+        AppState.activeDraftId = null;
+        AppState.activeFormData = {};
+        template.fields.forEach(f => {
+          if (f.default !== undefined) {
+            AppState.activeFormData[f.key] = f.default;
+          }
+        });
+        AppState.isDirty = false;
+
+        renderTemplateSelector();
+        renderFormFields(templateType);
+        showSubView('create');
+
+        document.getElementById('current-template-badge').textContent = `${template.label.toUpperCase()} TEMPLATE`;
+        document.getElementById('current-form-title').textContent = `CREATE ${template.label.toUpperCase()}`;
+        document.getElementById('draft-status-pill').textContent = 'NEW DRAFT';
+        document.getElementById('draft-status-pill').className = 'status-badge status-DRAFT';
+        setAutosaveStatus('saved', 'New draft ready');
+        showQaStatus(`Editing new ${template.label} draft`, 'success');
+
+        // Scroll form into view smoothly on mobile
+        const formCard = document.querySelector('.form-card');
+        if (formCard) {
+          formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      } catch (err) {
+        console.error('startNewExperience error:', err);
+        showQaStatus(`Could not open Quest editor: ${err.message}`, 'error');
+      }
+    }
+    window.startNewExperience = startNewExperience;
+
+    function setStudioFieldValue(key, value, options = {}) {
+      const { triggerAutosave = false, markDirty = true, debounce = false } = options;
+
+      const template = window.KoinoniaStudio && window.KoinoniaStudio.TEMPLATES
+        ? window.KoinoniaStudio.TEMPLATES[AppState.currentTemplateType]
+        : null;
+      const fieldDef = template && template.fields
+        ? template.fields.find(f => f.key === key)
+        : null;
+
+      let normalizedValue = value;
+      if (value === undefined || value === null) {
+        normalizedValue = '';
+      } else if (fieldDef && fieldDef.type === 'toggle') {
+        normalizedValue = Boolean(value);
+      } else if (fieldDef && fieldDef.type === 'number') {
+        normalizedValue = value === '' ? '' : Number(value);
+      } else if (fieldDef && ['select', 'text', 'textarea', 'date', 'time'].includes(fieldDef.type)) {
+        normalizedValue = String(value);
+      }
+
+      // 1. Update in-memory form data
+      AppState.activeFormData[key] = normalizedValue;
+      if (markDirty) {
+        AppState.isDirty = true;
+      }
+
+      // 2. Update matching DOM control if present
+      const control = document.getElementById(`field-${key}`);
+      if (control) {
+        if (fieldDef && fieldDef.type === 'toggle') {
+          control.checked = Boolean(normalizedValue);
+        } else {
+          const strVal = normalizedValue !== undefined && normalizedValue !== null ? String(normalizedValue) : '';
+          if (control.value !== strVal) {
+            control.value = strVal;
+          }
+        }
+      }
+
+      // 3. Clear existing errors and validate field
+      const group = document.getElementById(`group-${key}`);
+      const errEl = document.getElementById(`error-${key}`);
+
+      let fieldError = null;
+      if (fieldDef && window.KoinoniaStudio && window.KoinoniaStudio.validateTemplateData) {
+        const validation = window.KoinoniaStudio.validateTemplateData(
+          AppState.currentTemplateType,
+          AppState.activeFormData
+        );
+        fieldError = validation.errors[key] || null;
+      }
+
+      if (fieldError) {
+        if (group) group.classList.add('has-error');
+        if (control) control.setAttribute('aria-invalid', 'true');
+        if (errEl) {
+          errEl.textContent = fieldError;
+          errEl.style.display = 'block';
+        }
+      } else {
+        if (group) group.classList.remove('has-error');
+        if (control) control.setAttribute('aria-invalid', 'false');
+        if (errEl) {
+          errEl.textContent = '';
+          errEl.style.display = 'none';
+        }
+      }
+
+      // 4. Autosave handling
+      if (triggerAutosave) {
+        if (debounce) {
+          setAutosaveStatus('unsaved', 'Unsaved changes');
+          clearTimeout(AppState.autosaveTimer);
+          AppState.autosaveTimer = setTimeout(() => {
+            autoSaveDraft();
+          }, 1000);
+        } else {
+          autoSaveDraft();
+        }
+      } else if (markDirty) {
+        setAutosaveStatus('unsaved', 'Unsaved changes');
+      }
+
+      return !fieldError;
+    }
+    window.setStudioFieldValue = setStudioFieldValue;
+
+    function renderFormFields(templateType) {
+      const container = document.getElementById('form-fields-container');
+      if (!container || !window.KoinoniaStudio) return;
+
+      const template = window.KoinoniaStudio.TEMPLATES[templateType];
+      if (!template) return;
+
+      container.innerHTML = template.fields.map(f => {
+        const isFullWidth = f.type === 'textarea' || f.key === 'title' || f.key === 'instructions' || f.key === 'longDesc';
+        const colClass = isFullWidth ? 'col-span-2' : '';
+        const hasStoredValue = Object.prototype.hasOwnProperty.call(AppState.activeFormData, f.key);
+        const currentVal = hasStoredValue
+          ? AppState.activeFormData[f.key]
+          : (f.type === 'select' ? '' : (f.default !== undefined ? f.default : ''));
+        const hasCurrentVal = currentVal !== undefined && currentVal !== null && String(currentVal) !== '';
+
+        let inputHtml = '';
+        if (f.type === 'text') {
+          inputHtml = `<input type="text" class="form-input" id="field-${f.key}" value="${escapeHtml(currentVal)}" placeholder="${escapeHtml(f.placeholder || '')}" maxlength="${f.maxLength || 200}" oninput="onFieldChange('${f.key}', this.value)">`;
+        } else if (f.type === 'textarea') {
+          inputHtml = `<textarea class="form-textarea" id="field-${f.key}" placeholder="${escapeHtml(f.placeholder || '')}" maxlength="${f.maxLength || 2000}" oninput="onFieldChange('${f.key}', this.value)">${escapeHtml(currentVal)}</textarea>`;
+        } else if (f.type === 'number') {
+          inputHtml = `<input type="number" class="form-input" id="field-${f.key}" value="${currentVal}" min="${f.min || 0}" max="${f.max || 100}" oninput="onFieldChange('${f.key}', Number(this.value))">`;
+        } else if (f.type === 'select') {
+          let optionsList = f.options || [];
+          if (f.key === 'placeId' && window.KoinoniaStudio && window.KoinoniaStudio.getPlaceOptions) {
+            optionsList = window.KoinoniaStudio.getPlaceOptions();
+          }
+
+          let placeholderHtml = '';
+          if (f.key === 'placeId') {
+            placeholderHtml = `<option value="" disabled ${!hasCurrentVal ? 'selected' : ''}>Select Place...</option>`;
+          } else if (f.required) {
+            const cleanLabel = f.label.replace(/\s*\(.*?\)/g, '').trim();
+            placeholderHtml = `<option value="" disabled ${!hasCurrentVal ? 'selected' : ''}>Select ${cleanLabel}...</option>`;
+          }
+
+          const options = optionsList.map(opt => {
+            const isSelected = hasCurrentVal && String(opt.value) === String(currentVal);
+            return `<option value="${opt.value}" ${opt.disabled ? 'disabled' : ''} ${isSelected ? 'selected' : ''}>${opt.label}</option>`;
+          }).join('');
+
+          inputHtml = `<select class="form-select" id="field-${f.key}" onchange="onFieldChange('${f.key}', this.value)">${placeholderHtml}${options}</select>`;
+        } else if (f.type === 'date') {
+          inputHtml = `<input type="date" class="form-input" id="field-${f.key}" value="${currentVal}" onchange="onFieldChange('${f.key}', this.value)">`;
+        } else if (f.type === 'time') {
+          inputHtml = `<input type="time" class="form-input" id="field-${f.key}" value="${currentVal}" onchange="onFieldChange('${f.key}', this.value)">`;
+        } else if (f.type === 'toggle') {
+          inputHtml = `
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 0;">
+              <input type="checkbox" id="field-${f.key}" ${currentVal ? 'checked' : ''} onchange="onFieldChange('${f.key}', this.checked)" style="width: 18px; height: 18px;">
+              <span style="font-size: 0.85rem; font-weight: 600;">Enabled</span>
+            </label>
+          `;
+        }
+
+        return `
+          <div class="form-group ${colClass}" id="group-${f.key}">
+            <label class="form-label" for="field-${f.key}">
+              <span>${f.label} ${f.required ? '<span class="req">*</span>' : ''}</span>
+              ${f.maxLength ? `<span style="font-size: 0.7rem; color: #9CA3AF;">max ${f.maxLength} chars</span>` : ''}
+            </label>
+            ${inputHtml}
+            <div class="field-error" id="error-${f.key}"></div>
+          </div>
+        `;
+      }).join('');
+
+      // Explicitly synchronize DOM control values with model
+      template.fields.forEach(f => {
+        const ctrl = document.getElementById(`field-${f.key}`);
+        if (ctrl) {
+          const val = AppState.activeFormData[f.key] !== undefined ? AppState.activeFormData[f.key] : (f.default !== undefined ? f.default : '');
+          if (ctrl.type === 'checkbox') {
+            ctrl.checked = Boolean(val);
+          } else {
+            ctrl.value = val !== undefined && val !== null ? String(val) : '';
+          }
+        }
+      });
+    }
+    window.renderFormFields = renderFormFields;
+
+    function onFieldChange(key, value) {
+      if (key === 'placeId' && value === 'CREATE_NEW_PLACE') {
+        openCreatePlaceModal();
+        const sel = document.getElementById('field-placeId');
+        if (sel) {
+          sel.value = AppState.activeFormData.placeId || '';
+        }
+        return;
+      }
+      setStudioFieldValue(key, value, { triggerAutosave: true, markDirty: true, debounce: true });
+    }
+    window.onFieldChange = onFieldChange;
+
+    function onPlaceFieldChange(field, val) {
+      const normalizedValue = val === undefined || val === null ? '' : String(val);
+      AppState.newPlaceFormData[field] = normalizedValue;
+
+      const gName = document.getElementById('group-new-place-name');
+      const gType = document.getElementById('group-new-place-type');
+      const errName = document.getElementById('error-new-place-name');
+      const errType = document.getElementById('error-new-place-type');
+      const nameIn = document.getElementById('new-place-name');
+      const typeIn = document.getElementById('new-place-type');
+      const errEl = document.getElementById('place-modal-error');
+
+      if (field === 'type') {
+        if (normalizedValue.trim() !== '') {
+          if (gType) gType.classList.remove('has-error');
+          if (typeIn) typeIn.setAttribute('aria-invalid', 'false');
+          if (errType) { errType.style.display = 'none'; errType.textContent = ''; }
+          if (errEl && errEl.textContent === 'Please select a Place Type.') {
+            errEl.style.display = 'none';
+            errEl.textContent = '';
+          }
+        }
+      } else if (field === 'name') {
+        if (normalizedValue.trim() !== '') {
+          if (gName) gName.classList.remove('has-error');
+          if (nameIn) nameIn.setAttribute('aria-invalid', 'false');
+          if (errName) { errName.style.display = 'none'; errName.textContent = ''; }
+          if (errEl && errEl.textContent === 'Place Name is required.') {
+            errEl.style.display = 'none';
+            errEl.textContent = '';
+          }
+        }
+      }
+    }
+    window.onPlaceFieldChange = onPlaceFieldChange;
+
+    // ============================================================
+    // PLACE CREATION MODAL & DROPDOWN SYNC
+    // ============================================================
+    function openCreatePlaceModal() {
+      if (!window.KoinoniaStudio || !window.KoinoniaStudio.store.canPerform(AppState.role, 'CREATE_PLACE')) {
+        showQaStatus('Only ADMIN or SUPERADMIN can create Koinonia places.', 'error');
+        alert('🔒 Only ADMIN or SUPERADMIN can create Koinonia places. Please switch role above.');
+        return;
+      }
+
+      const errEl = document.getElementById('place-modal-error');
+      if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+      AppState.newPlaceFormData = { name: '', type: '', description: '', location: '' };
+      const nameIn = document.getElementById('new-place-name');
+      const typeIn = document.getElementById('new-place-type');
+      const descIn = document.getElementById('new-place-desc');
+      const locIn = document.getElementById('new-place-location');
+      if (nameIn) { nameIn.value = ''; nameIn.setAttribute('aria-invalid', 'false'); }
+      if (typeIn) { typeIn.value = ''; typeIn.setAttribute('aria-invalid', 'false'); }
+      if (descIn) descIn.value = '';
+      if (locIn) locIn.value = '';
+
+      const gName = document.getElementById('group-new-place-name');
+      const gType = document.getElementById('group-new-place-type');
+      const errName = document.getElementById('error-new-place-name');
+      const errType = document.getElementById('error-new-place-type');
+      if (gName) gName.classList.remove('has-error');
+      if (gType) gType.classList.remove('has-error');
+      if (errName) { errName.style.display = 'none'; errName.textContent = ''; }
+      if (errType) { errType.style.display = 'none'; errType.textContent = ''; }
+
+      const modal = document.getElementById('create-place-modal');
+      if (modal) modal.classList.add('active');
+    }
+    window.openCreatePlaceModal = openCreatePlaceModal;
+
+    function closeCreatePlaceModal() {
+      const modal = document.getElementById('create-place-modal');
+      if (modal) modal.classList.remove('active');
+    }
+    window.closeCreatePlaceModal = closeCreatePlaceModal;
+
+    function refreshPlaceDropdowns() {
+      const placeSelect = document.getElementById('field-placeId');
+      if (!placeSelect || !window.KoinoniaStudio) return;
+
+      const options = window.KoinoniaStudio.getPlaceOptions();
+      const currentVal = AppState.activeFormData.placeId || '';
+      const hasCurrentVal = currentVal !== undefined && currentVal !== null && String(currentVal) !== '';
+
+      const placeholder = `<option value="" disabled ${!hasCurrentVal ? 'selected' : ''}>Select Place...</option>`;
+      const optsHtml = options.map(opt => `
+        <option value="${escapeHtml(opt.value)}" ${opt.disabled ? 'disabled' : ''} ${hasCurrentVal && String(opt.value) === String(currentVal) ? 'selected' : ''}>
+          ${escapeHtml(opt.label)}
+        </option>
+      `).join('');
+
+      placeSelect.innerHTML = placeholder + optsHtml;
+
+      if (hasCurrentVal) {
+        placeSelect.value = currentVal;
+      } else {
+        placeSelect.value = '';
+      }
+    }
+    window.refreshPlaceDropdowns = refreshPlaceDropdowns;
+
+    function submitCreatePlace() {
+      try {
+        AppState.newPlaceFormData = {
+          name: document.getElementById('new-place-name')?.value || '',
+          type: document.getElementById('new-place-type')?.value || '',
+          description: document.getElementById('new-place-desc')?.value || '',
+          location: document.getElementById('new-place-location')?.value || ''
+        };
+        const name = AppState.newPlaceFormData.name.trim();
+        const type = AppState.newPlaceFormData.type.trim();
+        const description = AppState.newPlaceFormData.description.trim();
+        const location = AppState.newPlaceFormData.location.trim();
+
+        const errEl = document.getElementById('place-modal-error');
+        const gName = document.getElementById('group-new-place-name');
+        const gType = document.getElementById('group-new-place-type');
+        const errName = document.getElementById('error-new-place-name');
+        const errType = document.getElementById('error-new-place-type');
+        const nameIn = document.getElementById('new-place-name');
+        const typeIn = document.getElementById('new-place-type');
+
+        if (gName) gName.classList.remove('has-error');
+        if (gType) gType.classList.remove('has-error');
+        if (errName) { errName.style.display = 'none'; errName.textContent = ''; }
+        if (errType) { errType.style.display = 'none'; errType.textContent = ''; }
+        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+        if (!name) {
+          if (gName) gName.classList.add('has-error');
+          if (nameIn) nameIn.setAttribute('aria-invalid', 'true');
+          if (errName) { errName.style.display = 'block'; errName.textContent = 'Place Name is required.'; }
+          if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Place Name is required.'; }
+          if (nameIn && typeof nameIn.focus === 'function') nameIn.focus();
+          return;
+        }
+
+        if (!type) {
+          if (gType) gType.classList.add('has-error');
+          if (typeIn) typeIn.setAttribute('aria-invalid', 'true');
+          if (errType) { errType.style.display = 'block'; errType.textContent = 'Please select a Place Type.'; }
+          if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Please select a Place Type.'; }
+          if (typeIn && typeof typeIn.focus === 'function') typeIn.focus();
+          return;
+        }
+
+        if (!window.KoinoniaStudio || !window.KoinoniaStudio.placeStore) {
+          throw new Error('PlaceStore is not initialized.');
+        }
+
+        const newPlace = window.KoinoniaStudio.placeStore.createPlace({
+          name,
+          type,
+          description,
+          location
+        }, AppState.user);
+
+        closeCreatePlaceModal();
+
+        // 1. Refresh the option registry before assigning the new value.
+        refreshPlaceDropdowns();
+
+        // 2. Set field value through single source of truth updater:
+        // Updates activeFormData.placeId, updates DOM select, validates, clears error states, triggers autosave
+        setStudioFieldValue('placeId', newPlace.id, { triggerAutosave: true, markDirty: true, debounce: false });
+
+        showQaStatus(`Place created: ${newPlace.name}`, 'success');
+
+      } catch (err) {
+        const errEl = document.getElementById('place-modal-error');
+        if (errEl) {
+          errEl.style.display = 'block';
+          errEl.textContent = err.message;
+        } else {
+          alert('⚠️ ' + err.message);
+        }
+        showQaStatus(err.message, 'error');
+      }
+    }
+    window.submitCreatePlace = submitCreatePlace;
+
+    // ============================================================
+    // AUTOSAVE & DRAFT OPERATIONS
+    // ============================================================
+    function setAutosaveStatus(state, label) {
+      const dot = document.getElementById('autosave-dot');
+      const lbl = document.getElementById('autosave-label');
+      const time = document.getElementById('autosave-time');
+      if (dot) dot.className = `autosave-dot ${state}`;
+      if (lbl) lbl.textContent = label;
+      if (time && state === 'saved') {
+        time.textContent = `at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+      }
+    }
+    window.setAutosaveStatus = setAutosaveStatus;
+
+    function autoSaveDraft() {
+      if (!window.KoinoniaStudio) return;
+      setAutosaveStatus('saving', 'Saving...');
+
+      try {
+        if (!AppState.activeDraftId) {
+          // Create initial draft
+          const draft = window.KoinoniaStudio.store.createDraft(AppState.currentTemplateType, AppState.activeFormData, AppState.user);
+          AppState.activeDraftId = draft.id;
+        } else {
+          // Update existing draft
+          window.KoinoniaStudio.store.updateDraft(AppState.activeDraftId, AppState.activeFormData, AppState.user);
+        }
+        AppState.isDirty = false;
+        setAutosaveStatus('saved', 'Saved');
+        updateDraftCountBadges();
+      } catch (err) {
+        console.warn('Autosave error:', err);
+        setAutosaveStatus('unsaved', 'Autosave paused');
+      }
+    }
+    window.autoSaveDraft = autoSaveDraft;
+
+    function triggerManualSave() {
+      autoSaveDraft();
+      alert('✅ Draft saved successfully!');
+    }
+    window.triggerManualSave = triggerManualSave;
+
+    function renderDraftsList() {
+      const container = document.getElementById('drafts-list-container');
+      if (!container || !window.KoinoniaStudio) return;
+
+      const drafts = window.KoinoniaStudio.store.listDrafts();
+      updateDraftCountBadges();
+
+      if (drafts.length === 0) {
+        container.innerHTML = `
+          <div style="background: #FFF; border: 1px dashed var(--color-border); border-radius: var(--radius-lg); padding: 32px; text-align: center; color: #6B7280;">
+            <div style="font-size: 2rem; margin-bottom: 8px;">📝</div>
+            <div style="font-weight: 700; color: var(--color-burgundy); margin-bottom: 4px;">No drafts yet</div>
+            <div style="font-size: 0.85rem;">Click "+ Create New" above to draft your first community experience.</div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = drafts.map(d => {
+        const tmpl = window.KoinoniaStudio.TEMPLATES[d.templateType] || { icon: '📄', label: d.templateType };
+        const updatedDate = new Date(d.updatedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+        const canApprove = AppState.role === 'SUPERADMIN';
+
+        return `
+          <div class="draft-item-card" id="draft-card-${escapeHtml(d.id)}">
+            <div class="draft-header">
+              <div class="draft-title-group">
+                <span class="draft-type-icon">${tmpl.icon}</span>
+                <div>
+                  <div class="draft-title">${escapeHtml(d.title || 'Untitled Experience')}</div>
+                  <div style="font-size: 0.75rem; color: #6B7280;">${escapeHtml(tmpl.label)} • Created by ${escapeHtml(d.createdBy.name)}</div>
+                </div>
+              </div>
+              <span class="status-badge status-${escapeHtml(d.status)}">${escapeHtml(d.status.replace(/_/g, ' '))}</span>
+            </div>
+
+            <div class="draft-meta">
+              <span>📅 Updated: ${escapeHtml(updatedDate)}</span>
+              ${d.data.placeId ? `<span>🏛️ ${escapeHtml(d.data.placeId)}</span>` : ''}
+              ${d.data.lifePoints ? `<span>🪙 ${escapeHtml(d.data.lifePoints)} LP</span>` : ''}
+              ${d.data.characterXp ? `<span>⭐ ${escapeHtml(d.data.characterXp)} XP</span>` : ''}
+            </div>
+
+            <div class="draft-actions">
+              <button class="btn btn-secondary" onclick="editDraft('${escapeHtml(d.id)}')" style="min-height: 32px; padding: 5px 12px; font-size: 0.78rem;">✏️ Edit</button>
+              <button class="btn btn-secondary" onclick="previewDraft('${escapeHtml(d.id)}')" style="min-height: 32px; padding: 5px 12px; font-size: 0.78rem;">👁️ Preview</button>
+              <button class="btn btn-secondary" onclick="duplicateDraft('${escapeHtml(d.id)}')" style="min-height: 32px; padding: 5px 12px; font-size: 0.78rem;">📋 Duplicate</button>
+              <button class="btn btn-secondary" onclick="archiveDraft('${escapeHtml(d.id)}')" style="min-height: 32px; padding: 5px 12px; font-size: 0.78rem;">📦 Archive</button>
+              ${canApprove && (d.status === 'READY_FOR_REVIEW' || d.status === 'DRAFT') ? `
+                <button class="btn btn-success" onclick="approveDraft('${escapeHtml(d.id)}')" style="min-height: 32px; padding: 5px 12px; font-size: 0.78rem;">✅ Approve</button>
+              ` : ''}
+              ${canApprove && d.status === 'APPROVED' ? `
+                <button class="btn btn-success" onclick="promptPublishDraft('${escapeHtml(d.id)}')" style="min-height: 32px; padding: 5px 12px; font-size: 0.78rem;">🚀 Publish</button>
+              ` : ''}
+              <button class="btn btn-danger" onclick="deleteDraft('${escapeHtml(d.id)}')" style="min-height: 32px; padding: 5px 12px; font-size: 0.78rem;">🗑️ Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    window.renderDraftsList = renderDraftsList;
+
+    function editDraft(draftId) {
+      const draft = window.KoinoniaStudio.store.getDraft(draftId);
+      if (!draft) return;
+
+      AppState.activeDraftId = draft.id;
+      AppState.currentTemplateType = draft.templateType;
+      AppState.activeFormData = { ...draft.data };
+      AppState.isDirty = false;
+
+      renderTemplateSelector();
+      renderFormFields(draft.templateType);
+      showSubView('create');
+
+      const tmpl = window.KoinoniaStudio.TEMPLATES[draft.templateType];
+      document.getElementById('current-template-badge').textContent = `${tmpl.label.toUpperCase()} TEMPLATE`;
+      document.getElementById('current-form-title').textContent = `Editing: ${draft.title}`;
+      document.getElementById('draft-status-pill').textContent = draft.status.replace(/_/g, ' ');
+      document.getElementById('draft-status-pill').className = `status-badge status-${draft.status}`;
+      setAutosaveStatus('saved', 'Draft loaded');
+      showQaStatus(`Loaded draft "${draft.title}"`, 'info');
+
+      // Scroll form into view smoothly
+      const formCard = document.querySelector('.form-card');
+      if (formCard && typeof formCard.scrollIntoView === 'function') {
+        formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+    window.editDraft = editDraft;
+
+    function duplicateDraft(draftId) {
+      try {
+        const copy = window.KoinoniaStudio.store.duplicateDraft(draftId, AppState.user);
+        renderDraftsList();
+        showQaStatus(`Duplicated as "${copy.title}"`, 'success');
+        alert(`✅ Duplicated as "${copy.title}"`);
+      } catch (err) {
+        showQaStatus(`Duplicate error: ${err.message}`, 'error');
+        alert(`⚠️ ${err.message}`);
+      }
+    }
+    window.duplicateDraft = duplicateDraft;
+
+    function archiveDraft(draftId) {
+      try {
+        window.KoinoniaStudio.store.archiveDraft(draftId, AppState.user);
+        renderDraftsList();
+        showQaStatus('Draft archived', 'info');
+        alert(`⚠️ Draft archived`);
+      } catch (err) {
+        showQaStatus(`Archive error: ${err.message}`, 'error');
+        alert(`⚠️ ${err.message}`);
+      }
+    }
+    window.archiveDraft = archiveDraft;
+
+    function deleteDraft(draftId) {
+      if (!confirm('Are you sure you want to permanently delete this draft? This action cannot be undone.')) {
+        return;
+      }
+      try {
+        window.KoinoniaStudio.store.deleteDraft(draftId, AppState.user, true);
+        renderDraftsList();
+        showQaStatus('Draft deleted', 'info');
+        alert(`🗑️ Draft deleted`);
+      } catch (err) {
+        showQaStatus(`Delete error: ${err.message}`, 'error');
+        alert(`⚠️ ${err.message}`);
+      }
+    }
+    window.deleteDraft = deleteDraft;
+
+    function updateDraftCountBadges() {
+      const drafts = window.KoinoniaStudio ? window.KoinoniaStudio.store.listDrafts() : [];
+      const published = window.KoinoniaStudio ? window.KoinoniaStudio.store.listPublished() : [];
+      const dEl = document.getElementById('nav-draft-count');
+      const pEl = document.getElementById('nav-published-count');
+      if (dEl) dEl.textContent = drafts.length;
+      if (pEl) pEl.textContent = published.length;
+    }
+
+    // ============================================================
+    // WORKFLOW TRANSITIONS: REVIEW, APPROVE, PUBLISH
+    // ============================================================
+    function triggerRequestReview() {
+      autoSaveDraft();
+      if (!AppState.activeDraftId) return;
+
+      const validation = window.KoinoniaStudio.validateTemplateData(AppState.currentTemplateType, AppState.activeFormData);
+      if (!validation.valid) {
+        displayFormValidationErrors(validation.errors);
+        showQaStatus('Validation failed', 'error');
+        alert('⚠️ Please fix the highlighted validation errors before requesting review.');
+        return;
+      }
+
+      try {
+        const updated = window.KoinoniaStudio.store.requestReview(AppState.activeDraftId, AppState.user);
+        document.getElementById('draft-status-pill').textContent = 'READY FOR REVIEW';
+        document.getElementById('draft-status-pill').className = 'status-badge status-READY_FOR_REVIEW';
+        showQaStatus('Draft submitted for review', 'success');
+        alert('📤 Draft submitted for review! A SUPERADMIN leader can now review and approve it.');
+      } catch (err) {
+        showQaStatus(`Review error: ${err.message}`, 'error');
+        alert(`⚠️ ${err.message}`);
+      }
+    }
+    window.triggerRequestReview = triggerRequestReview;
+
+    function approveDraft(draftId) {
+      try {
+        window.KoinoniaStudio.store.approveDraft(draftId, AppState.user);
+        renderDraftsList();
+        showQaStatus('Draft approved', 'success');
+        alert('✅ Draft APPROVED! It can now be published.');
+      } catch (err) {
+        showQaStatus(`Approve error: ${err.message}`, 'error');
+        alert(`⚠️ ${err.message}`);
+      }
+    }
+    window.approveDraft = approveDraft;
+
+    function triggerPublishWorkflow() {
+      autoSaveDraft();
+      if (!AppState.activeDraftId) return;
+      promptPublishDraft(AppState.activeDraftId);
+    }
+    window.triggerPublishWorkflow = triggerPublishWorkflow;
+
+    let pendingPublishDraftId = null;
+
+    function promptPublishDraft(draftId) {
+      const draft = window.KoinoniaStudio.store.getDraft(draftId);
+      if (!draft) return;
+
+      if (AppState.role === 'SUPERADMIN' && draft.status !== 'APPROVED') {
+        const validation = window.KoinoniaStudio.validateTemplateData(draft.templateType, draft.data);
+        if (!validation.valid) {
+          showQaStatus('Validation failed for approval', 'error');
+          alert('⚠️ Draft has validation errors and cannot be approved/published.');
+          return;
+        }
+        window.KoinoniaStudio.store.approveDraft(draftId, AppState.user);
+      }
+
+      pendingPublishDraftId = draftId;
+      document.getElementById('pub-review-title').textContent = draft.title;
+      document.getElementById('pub-review-type').textContent = draft.templateType;
+      document.getElementById('pub-review-place').textContent = draft.data.placeId || draft.data.realWorldVenue || 'Community';
+      document.getElementById('pub-review-audience').textContent = draft.data.audience || 'All';
+      document.getElementById('pub-review-rewards').textContent = `${draft.data.lifePoints || 0} LP, ${draft.data.characterXp || 0} XP`;
+      document.getElementById('pub-review-target').textContent = draft.data.presentationTarget || 'KOINONIA';
+
+      document.getElementById('publish-modal').classList.add('active');
+    }
+    window.promptPublishDraft = promptPublishDraft;
+
+    function closePublishModal() {
+      document.getElementById('publish-modal').classList.remove('active');
+      pendingPublishDraftId = null;
+    }
+    window.closePublishModal = closePublishModal;
+
+    function executePublish() {
+      if (!pendingPublishDraftId) return;
+      try {
+        const res = window.KoinoniaStudio.store.publishDraft(pendingPublishDraftId, AppState.user);
+        closePublishModal();
+        renderDraftsList();
+        renderPublishedList();
+        showQaStatus('Experience published prototype-local', 'success');
+        alert(`🚀 EXPERIENCE PUBLISHED PROTOTYPE-LOCAL!\n\n${res.safetyNotice}`);
+        showSubView('published');
+      } catch (err) {
+        showQaStatus(`Publish error: ${err.message}`, 'error');
+        alert(`⚠️ Publish failed: ${err.message}`);
+      }
+    }
+    window.executePublish = executePublish;
+
+    function renderPublishedList() {
+      const container = document.getElementById('published-list-container');
+      if (!container || !window.KoinoniaStudio) return;
+
+      const published = window.KoinoniaStudio.store.listPublished();
+      updateDraftCountBadges();
+
+      if (published.length === 0) {
+        container.innerHTML = `
+          <div style="background: #FFF; border: 1px dashed var(--color-border); border-radius: var(--radius-lg); padding: 32px; text-align: center; color: #6B7280;">
+            <div style="font-size: 2rem; margin-bottom: 8px;">🚀</div>
+            <div style="font-weight: 700; color: var(--color-burgundy); margin-bottom: 4px;">No published experiences yet</div>
+            <div style="font-size: 0.85rem;">Draft and approve an experience to publish it in prototype space.</div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = published.map(p => `
+        <div class="draft-item-card">
+          <div class="draft-header">
+            <div class="draft-title-group">
+              <span class="draft-type-icon">✨</span>
+              <div>
+                <div class="draft-title">${escapeHtml(p.title)}</div>
+                <div style="font-size: 0.75rem; color: #059669;">Published by ${escapeHtml(p.publishedBy.name)} • Target: ${escapeHtml(p.presentationTarget)}</div>
+              </div>
+            </div>
+            <span class="status-badge status-PUBLISHED">PUBLISHED</span>
+          </div>
+          <div class="draft-meta">
+            <span>📅 Published: ${new Date(p.publishedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+            <span>🔒 Zero DB / Main App Writes</span>
+          </div>
+        </div>
+      `).join('');
+    }
+    window.renderPublishedList = renderPublishedList;
+
+    // ============================================================
+    // VALIDATION UI
+    // ============================================================
+    function displayFormValidationErrors(errors) {
+      const template = window.KoinoniaStudio.TEMPLATES[AppState.currentTemplateType];
+      (template?.fields || []).forEach(field => {
+        const group = document.getElementById(`group-${field.key}`);
+        const input = document.getElementById(`field-${field.key}`);
+        const errEl = document.getElementById(`error-${field.key}`);
+        if (group) group.classList.remove('has-error');
+        if (input) input.setAttribute('aria-invalid', 'false');
+        if (errEl) {
+          errEl.textContent = '';
+          errEl.style.display = 'none';
+        }
+      });
+      for (const [key, msg] of Object.entries(errors)) {
+        const group = document.getElementById(`group-${key}`);
+        const errEl = document.getElementById(`error-${key}`);
+        const input = document.getElementById(`field-${key}`);
+        if (group && errEl) {
+          group.classList.add('has-error');
+          if (input) input.setAttribute('aria-invalid', 'true');
+          errEl.textContent = msg;
+          errEl.style.display = 'block';
+        }
+      }
+    }
+    window.displayFormValidationErrors = displayFormValidationErrors;
+
+    // ============================================================
+    // PREVIEW RENDERING
+    // ============================================================
+    function openPreviewModal() {
+      autoSaveDraft();
+      populatePreview(AppState.currentTemplateType, AppState.activeFormData);
+      document.getElementById('preview-modal').classList.add('active');
+    }
+    window.openPreviewModal = openPreviewModal;
+
+    function previewDraft(draftId) {
+      const draft = window.KoinoniaStudio.store.getDraft(draftId);
+      if (!draft) return;
+      populatePreview(draft.templateType, draft.data);
+      document.getElementById('preview-modal').classList.add('active');
+    }
+    window.previewDraft = previewDraft;
+
+    function populatePreview(templateType, data) {
+      const preview = window.KoinoniaStudio.generatePreviewModel(templateType, data);
+      document.getElementById('preview-place-name').textContent = preview.place.name;
+      document.getElementById('preview-card-title').textContent = preview.title;
+      document.getElementById('preview-category').textContent = preview.data.category || templateType;
+      document.getElementById('preview-short-desc').textContent = preview.data.shortDesc || preview.data.description || 'No description provided.';
+      document.getElementById('preview-long-desc').textContent = preview.data.longDesc || preview.data.realWorldAction || preview.data.instructions || '';
+      document.getElementById('preview-lp-pill').textContent = `🪙 ${preview.data.lifePoints || 0} LP`;
+      document.getElementById('preview-xp-pill').textContent = `⭐ ${preview.data.characterXp || 0} XP`;
+      document.getElementById('preview-reflection-text').textContent = preview.data.reflectionPrompt || "Take a quiet moment to consider God's grace in your daily walk.";
+    }
+
+    function closePreviewModal() {
+      document.getElementById('preview-modal').classList.remove('active');
+    }
+    window.closePreviewModal = closePreviewModal;
+
+    // ============================================================
+    // MEDIA & AUDIT MODALS
+    // ============================================================
+    function openMediaModal() {
+      const container = document.getElementById('media-grid-container');
+      if (!container || !window.KoinoniaStudio) return;
+
+      container.innerHTML = window.KoinoniaStudio.DEMO_MEDIA_LIBRARY.map(m => `
+        <div class="media-item" onclick="alert('Selected media: ${m.title} (${m.filename})')">
+          <img class="media-thumb" src="${m.url}" alt="${m.title}">
+          <div class="media-title">${m.title}</div>
+          <div style="font-size: 0.68rem; color: #9CA3AF;">${m.mimeType}</div>
+        </div>
+      `).join('');
+
+      document.getElementById('media-modal').classList.add('active');
+    }
+    window.openMediaModal = openMediaModal;
+
+    function closeMediaModal() {
+      document.getElementById('media-modal').classList.remove('active');
+    }
+    window.closeMediaModal = closeMediaModal;
+
+    function openAuditModal() {
+      const container = document.getElementById('audit-list-container');
+      if (!container || !window.KoinoniaStudio) return;
+
+      const logs = window.KoinoniaStudio.store.getAuditLogs();
+      if (logs.length === 0) {
+        container.innerHTML = `<div style="text-align: center; color: #9CA3AF; padding: 20px;">No audit events recorded yet.</div>`;
+      } else {
+        container.innerHTML = logs.map(l => `
+          <div class="audit-entry">
+            <div style="display: flex; justify-content: space-between;">
+              <span class="audit-action">${escapeHtml(l.action)}</span>
+              <span class="audit-time">${new Date(l.timestamp).toLocaleTimeString()}</span>
+            </div>
+            <div><strong>${escapeHtml(l.title)}</strong></div>
+            <div class="audit-actor">by ${escapeHtml(l.actor.name)} (${escapeHtml(l.actor.role)})</div>
+          </div>
+        `).join('');
+      }
+
+      document.getElementById('audit-modal').classList.add('active');
+    }
+    window.openAuditModal = openAuditModal;
+
+    function closeAuditModal() {
+      document.getElementById('audit-modal').classList.remove('active');
+    }
+    window.closeAuditModal = closeAuditModal;
+  </script>
+</body>
+</html>

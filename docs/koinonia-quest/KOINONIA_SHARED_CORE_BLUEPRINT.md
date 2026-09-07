@@ -571,10 +571,27 @@ interface ISharedCoreProvider {
 
 ---
 
-### 22.2 Approved Next Phase: Koinonia Studio
+#### 22.2 Phase 0.21 Specification & Implementation: Koinonia Studio (Safe No-Code Content Creation)
 
-> **UPCOMING PHASE**:
-> Following physical Product Owner acceptance of Phase 0.20.2, the next milestone on the roadmap is **Koinonia Studio** (Admin configurator and content creation tool). Studio development will begin only upon explicit authorization.
+> **IMPLEMENTATION STATUS (Phase 0.21)**:
+> Koinonia Studio is **FULLY IMPLEMENTED** in prototype space (`prototype/koinonia-phase21/`) running on port `18108` with dedicated physical test harness at `http://192.168.2.163:18108/studio_test.html`.
+>
+> - **Product Purpose**: Safe, template-driven, no-code creation environment for authorized Fire of God Ministries leaders and administrators. Allows trusted leaders to create, preview, manage, and publish structured experiences (Quests, Events, Campaigns, Campfire Circles, Ministry Missions) without writing code.
+> - **Strict Access Control**:
+>   - Gated to `ADMIN` and `SUPERADMIN` roles only.
+>   - Ordinary `MEMBER` users see ZERO Studio teasers, ZERO disabled buttons, and are runtime-rejected on any direct call.
+> - **Predefined Safe Templates**:
+>   1. `QUEST`: Stewardship & discipleship quests with bounded rewards (LP 0–50, Char XP 0–100, Skill XP 0–100).
+>   2. `EVENT`: Services, youth nights, and rallies with canonical `Asia/Manila` local timezone and QR check-in toggle.
+>   3. `CAMPAIGN`: Thematic spiritual journeys coordinating quests/events. Anti-exploit policy: zero direct LP on view/join.
+>   4. `CAMPFIRE_ACTIVITY`: Circle discussions attached to canonical Campfires. Zero second group/roster systems.
+>   5. `MINISTRY_MISSION`: Volunteer tasks with mandatory leader verification for service awards.
+> - **Security Sanitization**: Strictly rejects `<script>`, `<iframe>`, arbitrary `<style>`, inline event handlers (`onclick=`, etc.), `javascript:` protocols, and `eval()`.
+> - **Multi-Step Publishing Workflow**: `DRAFT` -> `READY_FOR_REVIEW` (Admin) -> `APPROVED` (Superadmin) -> `PUBLISHED` (Superadmin).
+> - **Prototype-Local Isolation**: Publishing is strictly local to memory/storage. Zero writes to production/staging database or Main FOG App.
+> - **Reflection Privacy**: Member reflection answers remain private by default; authors cannot inspect member responses.
+> - **Safe Media Library**: Metadata references only (PNG, JPG, WEBP). Zero executable or binary storage in SQLite.
+> - **Shared Core Boundary**: Studio is strictly an authoring layer. Never becomes a second source of truth for members, LP balances, attendance, or Campfires.
 
 ---
 

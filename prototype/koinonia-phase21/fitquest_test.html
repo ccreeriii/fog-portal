@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>KOINONIA Phase 0.18 — Sports &amp; Fit Quest Test Lab</title>
+  <link rel="stylesheet" href="styles.css?v=20260906-p18b">
+  <style>
+    :root {
+      --brand-burgundy: #4A0E16;
+      --brand-fire-orange: #E65100;
+      --brand-amber-gold: #F59E0B;
+      --tint-gold: #FEF3C7;
+      --bg-warm: #FAF6F0;
+      --brand-charcoal: #2D3748;
+      --accent-green: #2E7D32;
+    }
+    html, body {
+      width: 100% !important;
+      height: auto !important;
+      min-height: 100% !important;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      display: block !important;
+      -webkit-overflow-scrolling: touch !important;
+      background: var(--bg-warm);
+      color: var(--brand-charcoal);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 16px;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    .test-container {
+      max-width: 680px;
+      margin: 0 auto;
+      background: #FFFFFF;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(74, 14, 22, 0.08);
+      border: 1px solid rgba(74, 14, 22, 0.1);
+    }
+    .header-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: var(--tint-gold);
+      color: var(--brand-burgundy);
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-family: Georgia, serif;
+      color: var(--brand-burgundy);
+      font-size: 1.4rem;
+      margin: 0 0 6px 0;
+    }
+    p {
+      font-size: 0.88rem;
+      line-height: 1.45;
+      color: #555;
+      margin: 0 0 14px 0;
+    }
+    .status-card {
+      background: #FDF9F3;
+      border: 1px solid #EADBCC;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 0.82rem;
+      border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+    .status-row:last-child {
+      border-bottom: none;
+    }
+    .badge-pass {
+      background: #E6F4EA;
+      color: #137333;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+    .badge-warn {
+      background: #FEF7E0;
+      color: #B06000;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+    .btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    @media (max-width: 500px) {
+      .btn-group {
+        grid-template-columns: 1fr;
+      }
+    }
+    .btn-test {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 13px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      text-decoration: none;
+      text-align: center;
+      transition: transform 0.1s ease;
+    }
+    .btn-test:active {
+      transform: scale(0.98);
+    }
+    .btn-primary-test {
+      background: var(--brand-burgundy);
+      color: #FFFFFF;
+    }
+    .btn-accent-test {
+      background: var(--brand-fire-orange);
+      color: #FFFFFF;
+    }
+    .btn-green-test {
+      background: var(--accent-green);
+      color: #FFFFFF;
+    }
+    .btn-secondary-test {
+      background: #F1EAE2;
+      color: var(--brand-burgundy);
+    }
+    .btn-danger-test {
+      background: #FDEDED;
+      color: #C5221F;
+      border: 1px solid #F5C6CB;
+    }
+    .json-preview {
+      background: #202124;
+      color: #8AB4F8;
+      padding: 10px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.72rem;
+      overflow-x: auto;
+      max-height: 180px;
+      margin-top: 10px;
+      white-space: pre-wrap;
+    }
+    .instructions {
+      background: #E8F0FE;
+      border-left: 4px solid #1A73E8;
+      padding: 10px 12px;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.8rem;
+      color: #174EA6;
+      margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="test-container">
+    <span class="header-badge">PHASE 0.18 FIT QUEST TEST LAB</span>
+    <h1>Sports, Mini-Games &amp; Fit Quests</h1>
+    <p>Deterministic QA State Seeding, Personal Best Engine, Leaderboard &amp; Real-World Integrity Verifier.<br><span style="color:#DC2626; font-weight:700; font-size:0.75rem;">⚠️ NOTICE: Demo leaderboards and sample records are local prototypes for QA verification only.</span></p>
+
+    <!-- Visible QA Lab Status Banner -->
+    <div id="qa-lab-status-card" class="status-card" style="margin-bottom: 14px; background: #EEF2FF; border: 1px solid #C7D2FE; padding: 12px 14px;">
+      <div style="font-size: 0.70rem; font-weight: 800; color: #3730A3; text-transform: uppercase; letter-spacing: 0.04em;">
+        QA LAB STATUS
+      </div>
+      <div id="qa-lab-status-title" style="font-size: 1.05rem; font-weight: 800; color: #1E1B4B; margin-top: 3px;">
+        QA LAB READY
+      </div>
+      <div id="qa-lab-status-detail" style="font-size: 0.76rem; color: #4338CA; margin-top: 2px;">
+        Ready to seed or reset Phase 0.18 state.
+      </div>
+    </div>
+
+    <div class="instructions">
+      <strong>Fit Quest Test Lab Quick Guide:</strong>
+      <ul style="margin: 6px 0 0 16px; padding: 0; font-size: 0.78rem;">
+        <li>Click <b>SEED FIT-QUEST-READY STATE</b> to unlock Level 2 Explorer with Sports Hub directly accessible.</li>
+        <li>Use <b>SEED BASKETBALL PB</b> or <b>SEED RUNNING PB</b> to populate Personal Bests &amp; history.</li>
+        <li>Launch the Prototype to test in-world courts, Coach Daniel, mini-games, and Web Share!</li>
+      </ul>
+    </div>
+
+    <!-- Status & Telemetry Card -->
+    <div class="status-card">
+      <div style="font-weight: 800; font-size: 0.88rem; color: var(--brand-burgundy); margin-bottom: 8px;">
+        Live Telemetry (<code>koinonia.phase18.save</code>)
+      </div>
+
+      <div class="status-row">
+        <span>Active Place:</span>
+        <span id="stat-active-place" style="font-weight: 700; color: var(--brand-burgundy);">-</span>
+      </div>
+      <div class="status-row">
+        <span>Character Level &amp; LP:</span>
+        <span id="stat-char-level-lp" style="font-weight: 700;">-</span>
+      </div>
+      <div class="status-row">
+        <span>Personal Bests Count:</span>
+        <span id="stat-pb-count" class="badge-pass">0</span>
+      </div>
+      <div class="status-row">
+        <span>Fit Quests Completed:</span>
+        <span id="stat-quests-completed" style="font-weight: 700;">0</span>
+      </div>
+      <div class="status-row">
+        <span>Total Attempts Logged:</span>
+        <span id="stat-total-attempts">0</span>
+      </div>
+      <div class="status-row">
+        <span>Sports Explored:</span>
+        <span id="stat-sports-explored" style="font-weight: 600;">None</span>
+      </div>
+      <div class="status-row">
+        <span>Milestones Unlocked:</span>
+        <span id="stat-milestones" style="font-weight: 700; color: var(--brand-burgundy);">-</span>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="btn-group">
+      <button class="btn-test btn-primary-test" onclick="window.seedFitQuestReady()">
+        🌱 SEED FIT-QUEST-READY STATE
+      </button>
+      <button class="btn-test btn-accent-test" onclick="window.seedBasketballPb()">
+        🏀 SEED BASKETBALL PB (8/10)
+      </button>
+      <button class="btn-test btn-accent-test" onclick="window.seedRunningPb()">
+        ⚡ SEED RUNNING PB (240 ms)
+      </button>
+      <button class="btn-test btn-green-test" onclick="window.seedMultiSportHistory()">
+        🏸 SEED MULTI-SPORT HISTORY
+      </button>
+      <button class="btn-test btn-danger-test" onclick="window.resetPhase18()">
+        🗑️ RESET PHASE 0.18 SAVE
+      </button>
+      <button id="btn-launch-prototype" class="btn-test btn-secondary-test" onclick="window.launchPrototype()">
+        🚀 LAUNCH PROTOTYPE
+      </button>
+    </div>
+
+    <!-- QA Direct Mini-Game & Hub Shortcuts (Requires QA Seed) -->
+    <div style="margin-top: 14px; padding: 14px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 12px;">
+      <div style="font-size: 0.72rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;">
+        ⚡ QA DIRECT MINI-GAME &amp; HUB SHORTCUTS (Gated by QA Seed)
+      </div>
+      <div style="font-size: 0.74rem; color: #64748B; margin-bottom: 10px;">
+        Direct entry points for mobile QA verification to isolate in-world navigation vs mini-game execution.
+      </div>
+      <div class="btn-group" style="margin-top: 0;">
+        <button id="btn-qa-sports-hub" class="btn-test btn-secondary-test" onclick="window.qaLaunch('sports_hub')">
+          🏟️ OPEN SPORTS HUB
+        </button>
+        <button id="btn-qa-fitquest-hub" class="btn-test btn-secondary-test" onclick="window.qaLaunch('fitquest_hub')">
+          📋 OPEN FIT QUEST HUB
+        </button>
+        <button id="btn-qa-free-throw" class="btn-test btn-accent-test" onclick="window.qaLaunch('FQ-V001')">
+          🏀 TEST FREE THROW FOCUS
+        </button>
+        <button id="btn-qa-reaction-sprint" class="btn-test btn-accent-test" onclick="window.qaLaunch('FQ-V002')">
+          ⚡ TEST REACTION SPRINT
+        </button>
+        <button id="btn-qa-rally-focus" class="btn-test btn-green-test" onclick="window.qaLaunch('FQ-V003')">
+          🏸 TEST RALLY FOCUS
+        </button>
+      </div>
+    </div>
+
+    <!-- Test Suite Quick Run -->
+    <div style="margin-top: 18px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <span style="font-weight: 700; font-size: 0.85rem; color: var(--brand-burgundy);">In-Browser Diagnostic Suite</span>
+        <button class="quick-date-btn" style="padding: 6px 10px; font-size: 0.75rem; border-radius: 6px; border: 1px solid #D5C2AF; background: #FFF; cursor: pointer; font-weight: 600;" onclick="window.runInBrowserTests()">Run All Checks</button>
+      </div>
+      <div id="test-results" class="json-preview">// Click 'Run All Checks' to execute live browser assertions...</div>
+    </div>
+
+  </div>
+
+  <script src="data/places.js?v=20260906-p18b"></script>
+  <script src="data/quests.js?v=20260906-p18b"></script>
+  <script src="data/progression.js?v=20260906-p18b"></script>
+  <script src="data/campaigns.js?v=20260906-p18b"></script>
+  <script src="data/events.js?v=20260906-p18b"></script>
+  <script src="data/memories.js?v=20260906-p18b"></script>
+  <script src="data/sports.js?v=20260906-p18b"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      var SAVE_KEY = 'koinonia.phase18.save';
+
+      function setQaStatus(title, detail, isError, isSuccess) {
+        var card = document.getElementById('qa-lab-status-card');
+        var titleEl = document.getElementById('qa-lab-status-title');
+        var detailEl = document.getElementById('qa-lab-status-detail');
+        if (!card || !titleEl || !detailEl) return;
+
+        titleEl.textContent = title;
+        detailEl.textContent = detail || '';
+
+        if (isError) {
+          card.style.background = '#FEF2F2';
+          card.style.borderColor = '#FCA5A5';
+          titleEl.style.color = '#991B1B';
+          detailEl.style.color = '#B91C1C';
+        } else if (isSuccess) {
+          card.style.background = '#F0FDF4';
+          card.style.borderColor = '#86EFAC';
+          titleEl.style.color = '#166534';
+          detailEl.style.color = '#15803D';
+        } else {
+          card.style.background = '#EEF2FF';
+          card.style.borderColor = '#C7D2FE';
+          titleEl.style.color = '#1E1B4B';
+          detailEl.style.color = '#4338CA';
+        }
+      }
+
+      function getSave() {
+        try {
+          var raw = localStorage.getItem(SAVE_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function writeSave(saveObj) {
+        try {
+          localStorage.setItem(SAVE_KEY, JSON.stringify(saveObj));
+          updateTelemetry();
+        } catch (e) {
+          console.error('Save error', e);
+        }
+      }
+
+      function checkModuleHealth() {
+        if (!window.KOINONIA_DATA) {
+          setQaStatus('QA LAB ERROR', 'KOINONIA_DATA did not initialize. Check data scripts.', true, false);
+          return false;
+        }
+        if (!window.KOINONIA_DATA.SPORTS || !window.KOINONIA_DATA.createFitQuestReadyQaState) {
+          setQaStatus('QA LAB ERROR', 'sports.js did not initialize properly.', true, false);
+          return false;
+        }
+        setQaStatus('QA LAB READY', 'Data modules loaded. Ready to seed or reset Phase 0.18 state.', false, false);
+        return true;
+      }
+
+      function resetPhase18() {
+        try {
+          var doReset = confirm('Reset koinonia.phase18.save? This will clear Phase 0.18 state only.');
+          if (!doReset) return;
+
+          try {
+            localStorage.removeItem(SAVE_KEY);
+          } catch (e) {
+            console.warn('localStorage.removeItem error:', e);
+          }
+
+          updateTelemetry();
+          setQaStatus('SAVE CLEARED', 'Phase 0.18 save removed from localStorage. Telemetry reset to fresh initial.', false, true);
+
+          try {
+            alert('Phase 0.18 save cleared.');
+          } catch (e) {}
+        } catch (err) {
+          setQaStatus('SCRIPT ERROR', 'Reset failed: ' + err.message, true, false);
+        }
+      }
+
+      function seedFitQuestReady() {
+        try {
+          if (!window.KOINONIA_DATA || typeof window.KOINONIA_DATA.createFitQuestReadyQaState !== 'function') {
+            setQaStatus('SEED FAILED', 'KOINONIA_DATA.createFitQuestReadyQaState is not loaded.', true, false);
+            alert('Error: KOINONIA_DATA.createFitQuestReadyQaState not loaded.');
+            return;
+          }
+
+          // A. Call canonical QA generator
+          var state = window.KOINONIA_DATA.createFitQuestReadyQaState();
+
+          // B. Verify before writing
+          if (state.lp !== 135) {
+            setQaStatus('SEED FAILED', 'Validation failed: expected 135 LP, got ' + state.lp, true, false);
+            alert('Seed validation failed: LP is not 135.');
+            return;
+          }
+          if (state.charXp !== 15) {
+            setQaStatus('SEED FAILED', 'Validation failed: expected 15 XP, got ' + state.charXp, true, false);
+            alert('Seed validation failed: charXp is not 15.');
+            return;
+          }
+          if (state.charLevel !== 2) {
+            setQaStatus('SEED FAILED', 'Validation failed: expected Level 2, got ' + state.charLevel, true, false);
+            alert('Seed validation failed: charLevel is not 2.');
+            return;
+          }
+          if (state.activePlaceId !== 'sports_hub') {
+            setQaStatus('SEED FAILED', 'Validation failed: expected sports_hub, got ' + state.activePlaceId, true, false);
+            alert('Seed validation failed: activePlaceId is not sports_hub.');
+            return;
+          }
+          if (!Array.isArray(state.sportsExplored) || state.sportsExplored.length !== 0) {
+            setQaStatus('SEED FAILED', 'Validation failed: sportsExplored must be empty array.', true, false);
+            alert('Seed validation failed: sportsExplored is not empty.');
+            return;
+          }
+          if (!state.fitQuestMetrics || state.fitQuestMetrics.totalAttemptsCount !== 0) {
+            setQaStatus('SEED FAILED', 'Validation failed: totalAttemptsCount must be 0.', true, false);
+            alert('Seed validation failed: totalAttemptsCount is not 0.');
+            return;
+          }
+
+          // C. Write exactly to localStorage
+          var serialized = JSON.stringify(state);
+          localStorage.setItem(SAVE_KEY, serialized);
+
+          // D. Immediately read back
+          var readBackRaw = localStorage.getItem(SAVE_KEY);
+          if (!readBackRaw) {
+            setQaStatus('SEED FAILED', 'Read-back failed: localStorage returned null.', true, false);
+            alert('Seed validation failed: could not read back save.');
+            return;
+          }
+
+          // E. Verify stored state again
+          var readBack = JSON.parse(readBackRaw);
+          if (readBack.lp !== 135 || readBack.charLevel !== 2 || readBack.activePlaceId !== 'sports_hub' || (readBack.sportsExplored && readBack.sportsExplored.length !== 0)) {
+            setQaStatus('SEED FAILED', 'Read-back verification failed: data mismatch.', true, false);
+            alert('Seed validation failed: read-back verification failed.');
+            return;
+          }
+
+          // F. Update telemetry from stored object
+          updateTelemetry();
+
+          // G. Show visible success state
+          setQaStatus('SEED SUCCESSFUL', 'Level 2 • 135 LP • 15 XP • sports_hub', false, true);
+
+          try {
+            alert('Seeded Fit-Quest-Ready State (Level 2 Active Explorer at Sports Hub, 135 LP, 15 XP).');
+          } catch (e) {}
+        } catch (err) {
+          setQaStatus('SEED FAILED', 'Exception: ' + err.message, true, false);
+          alert('Seed error: ' + err.message);
+        }
+      }
+
+      function seedBasketballPb() {
+        try {
+          var save = getSave() || (window.KOINONIA_DATA && window.KOINONIA_DATA.createFitQuestReadyQaState ? window.KOINONIA_DATA.createFitQuestReadyQaState() : {});
+          if (!save.personalBests) save.personalBests = {};
+          if (!save.fitQuestHistory) save.fitQuestHistory = [];
+          if (!save.fitQuestMetrics) save.fitQuestMetrics = { completedCount: 0, personalBestsCount: 0, totalAttemptsCount: 0, sportsTriedCount: 0 };
+          if (!save.sportsExplored) save.sportsExplored = [];
+
+          save.personalBests['FQ-V001'] = {
+            challengeId: 'FQ-V001',
+            sportId: 'basketball',
+            actualSportId: 'basketball',
+            score: 8,
+            scoreDisplay: '8 / 10 shots',
+            scoringMode: 'HIGH_SCORE',
+            timestamp: new Date().toISOString(),
+            isPersonalBest: true
+          };
+
+          save.fitQuestHistory.unshift({
+            id: 'fq_attempt_' + Date.now(),
+            challengeId: 'FQ-V001',
+            sportId: 'basketball',
+            actualSportId: 'basketball',
+            score: 8,
+            scoreDisplay: '8 / 10 shots',
+            isPersonalBest: true,
+            timestamp: new Date().toISOString()
+          });
+
+          if (!save.sportsExplored.includes('basketball')) {
+            save.sportsExplored.push('basketball');
+          }
+
+          save.fitQuestMetrics.personalBestsCount = Object.keys(save.personalBests).length;
+          save.fitQuestMetrics.totalAttemptsCount = save.fitQuestHistory.length;
+          save.fitQuestMetrics.sportsTriedCount = save.sportsExplored.length;
+
+          writeSave(save);
+          updateTelemetry();
+          setQaStatus('SEED SUCCESSFUL', 'Seeded Basketball PB: 8 / 10 shots on FQ-V001.', false, true);
+
+          try {
+            alert('Seeded Basketball PB: 8 / 10 shots on FQ-V001.');
+          } catch (e) {}
+        } catch (err) {
+          setQaStatus('SEED FAILED', 'Basketball PB seed error: ' + err.message, true, false);
+        }
+      }
+
+      function seedRunningPb() {
+        try {
+          var save = getSave() || (window.KOINONIA_DATA && window.KOINONIA_DATA.createFitQuestReadyQaState ? window.KOINONIA_DATA.createFitQuestReadyQaState() : {});
+          if (!save.personalBests) save.personalBests = {};
+          if (!save.fitQuestHistory) save.fitQuestHistory = [];
+          if (!save.fitQuestMetrics) save.fitQuestMetrics = { completedCount: 0, personalBestsCount: 0, totalAttemptsCount: 0, sportsTriedCount: 0 };
+          if (!save.sportsExplored) save.sportsExplored = [];
+
+          save.personalBests['FQ-V002'] = {
+            challengeId: 'FQ-V002',
+            sportId: 'running',
+            actualSportId: 'running',
+            score: 240,
+            scoreDisplay: '240 ms',
+            scoringMode: 'LOW_TIME',
+            timestamp: new Date().toISOString(),
+            isPersonalBest: true
+          };
+
+          save.fitQuestHistory.unshift({
+            id: 'fq_attempt_' + Date.now(),
+            challengeId: 'FQ-V002',
+            sportId: 'running',
+            actualSportId: 'running',
+            score: 240,
+            scoreDisplay: '240 ms',
+            isPersonalBest: true,
+            timestamp: new Date().toISOString()
+          });
+
+          if (!save.sportsExplored.includes('running')) {
+            save.sportsExplored.push('running');
+          }
+
+          save.fitQuestMetrics.personalBestsCount = Object.keys(save.personalBests).length;
+          save.fitQuestMetrics.totalAttemptsCount = save.fitQuestHistory.length;
+          save.fitQuestMetrics.sportsTriedCount = save.sportsExplored.length;
+
+          writeSave(save);
+          updateTelemetry();
+          setQaStatus('SEED SUCCESSFUL', 'Seeded Running PB: 240 ms on FQ-V002.', false, true);
+
+          try {
+            alert('Seeded Running PB: 240 ms on FQ-V002.');
+          } catch (e) {}
+        } catch (err) {
+          setQaStatus('SEED FAILED', 'Running PB seed error: ' + err.message, true, false);
+        }
+      }
+
+      function seedMultiSportHistory() {
+        try {
+          var save = getSave() || (window.KOINONIA_DATA && window.KOINONIA_DATA.createFitQuestReadyQaState ? window.KOINONIA_DATA.createFitQuestReadyQaState() : {});
+          if (!save.personalBests) save.personalBests = {};
+          if (!save.fitQuestHistory) save.fitQuestHistory = [];
+          if (!save.sportsExplored) save.sportsExplored = [];
+          if (!save.unlockedMilestones) save.unlockedMilestones = [];
+
+          var sports = ['basketball', 'running', 'badminton', 'pickleball', 'fitness'];
+          sports.forEach(function (s) {
+            if (!save.sportsExplored.includes(s)) save.sportsExplored.push(s);
+          });
+
+          save.personalBests['FQ-V001'] = { challengeId: 'FQ-V001', sportId: 'basketball', actualSportId: 'basketball', score: 7, scoreDisplay: '7 / 10 shots', timestamp: new Date().toISOString(), isPersonalBest: true };
+          save.personalBests['FQ-V002'] = { challengeId: 'FQ-V002', sportId: 'running', actualSportId: 'running', score: 255, scoreDisplay: '255 ms', timestamp: new Date().toISOString(), isPersonalBest: true };
+          save.personalBests['FQ-V003'] = { challengeId: 'FQ-V003', sportId: 'badminton', actualSportId: 'badminton', score: 14, scoreDisplay: '14 rallies', timestamp: new Date().toISOString(), isPersonalBest: true };
+
+          for (var i = 1; i <= 10; i++) {
+            var cid = i % 3 === 0 ? 'FQ-V003' : (i % 2 === 0 ? 'FQ-V002' : 'FQ-V001');
+            var sid = i % 3 === 0 ? 'badminton' : (i % 2 === 0 ? 'running' : 'basketball');
+            save.fitQuestHistory.push({
+              id: 'fq_attempt_multi_' + i,
+              challengeId: cid,
+              sportId: sid,
+              actualSportId: sid,
+              score: 5 + (i % 5),
+              scoreDisplay: 'Sample ' + i,
+              timestamp: new Date().toISOString()
+            });
+          }
+
+          save.fitQuestMetrics = {
+            completedCount: 3,
+            personalBestsCount: Object.keys(save.personalBests).length,
+            totalAttemptsCount: save.fitQuestHistory.length,
+            sportsTriedCount: save.sportsExplored.length
+          };
+
+          if (!save.unlockedMilestones.includes('m_three_sports_tried')) save.unlockedMilestones.push('m_three_sports_tried');
+          if (!save.unlockedMilestones.includes('m_ten_challenge_attempts')) save.unlockedMilestones.push('m_ten_challenge_attempts');
+
+          writeSave(save);
+          updateTelemetry();
+          setQaStatus('SEED SUCCESSFUL', 'Seeded Multi-Sport History across 5 sports (10 attempts).', false, true);
+
+          try {
+            alert('Seeded Multi-Sport History across Basketball, Running, Badminton, Pickleball & Fitness (10 attempts logged).');
+          } catch (e) {}
+        } catch (err) {
+          setQaStatus('SEED FAILED', 'Multi-sport seed error: ' + err.message, true, false);
+        }
+      }
+
+      function qaLaunch(target) {
+        try {
+          var raw = localStorage.getItem(SAVE_KEY);
+          if (!raw) {
+            setQaStatus('QA SHORTCUT BLOCKED', 'QA state not seeded. Tap SEED FIT-QUEST-READY STATE first.', true, false);
+            alert('⚠️ Cannot launch: QA state has not been seeded yet. Tap "SEED FIT-QUEST-READY STATE" first.');
+            return;
+          }
+
+          var save = JSON.parse(raw);
+          if (!save || !save.version || (save.lp !== 135 && save.lp !== 140) || save.activePlaceId !== 'sports_hub') {
+            setQaStatus('QA SHORTCUT BLOCKED', 'QA save validation failed. Tap SEED FIT-QUEST-READY STATE.', true, false);
+            alert('⚠️ Cannot launch: QA save in localStorage is not a valid Sports Hub seed. Tap "SEED FIT-QUEST-READY STATE" first.');
+            return;
+          }
+
+          var url = 'index.html?v=20260906-p18b';
+          if (target === 'fitquest_hub') {
+            url = 'index.html?open=fitquest&v=20260906-p18b';
+          } else if (target === 'FQ-V001' || target === 'FQ-V002' || target === 'FQ-V003') {
+            url = 'index.html?play=' + target + '&v=20260906-p18b';
+          }
+          window.location.href = url;
+        } catch (err) {
+          setQaStatus('QA SHORTCUT BLOCKED', 'Validation error: ' + err.message, true, false);
+          alert('Error checking QA save: ' + err.message);
+        }
+      }
+
+      function launchPrototype() {
+        try {
+          var raw = localStorage.getItem(SAVE_KEY);
+          if (!raw) {
+            setQaStatus('LAUNCH BLOCKED', 'QA state has not been seeded. Tap SEED FIT-QUEST-READY STATE first.', true, false);
+            alert('QA state has not been seeded. Tap SEED FIT-QUEST-READY STATE first.');
+            return;
+          }
+
+          var save = JSON.parse(raw);
+          if (!save || !save.version || (save.lp !== 135 && save.lp !== 140) || save.activePlaceId !== 'sports_hub') {
+            setQaStatus('LAUNCH BLOCKED', 'QA seed validation failed. Expected Level 2 (135 LP) at sports_hub.', true, false);
+            alert('QA seed validation failed.');
+            return;
+          }
+
+          window.location.href = 'index.html';
+        } catch (err) {
+          setQaStatus('LAUNCH BLOCKED', 'Validation error: ' + err.message, true, false);
+          alert('Error checking QA save: ' + err.message);
+        }
+      }
+
+      function updateTelemetry() {
+        var save = getSave();
+        var activePlaceEl = document.getElementById('stat-active-place');
+        var charLevelLpEl = document.getElementById('stat-char-level-lp');
+        var pbCountEl = document.getElementById('stat-pb-count');
+        var questsCompletedEl = document.getElementById('stat-quests-completed');
+        var totalAttemptsEl = document.getElementById('stat-total-attempts');
+        var sportsExploredEl = document.getElementById('stat-sports-explored');
+        var milestonesEl = document.getElementById('stat-milestones');
+
+        if (!save) {
+          if (activePlaceEl) activePlaceEl.innerText = 'No Save (Fresh Initial)';
+          if (charLevelLpEl) charLevelLpEl.innerText = '-';
+          if (pbCountEl) pbCountEl.innerText = '0';
+          if (questsCompletedEl) questsCompletedEl.innerText = '0';
+          if (totalAttemptsEl) totalAttemptsEl.innerText = '0';
+          if (sportsExploredEl) sportsExploredEl.innerText = 'None';
+          if (milestonesEl) milestonesEl.innerText = 'None';
+          return;
+        }
+
+        if (activePlaceEl) activePlaceEl.innerText = save.activePlaceId || '-';
+        if (charLevelLpEl) charLevelLpEl.innerText = 'Level ' + (save.charLevel || 1) + ' • ' + (save.lp || 0) + ' LP • ' + (save.charXp || 0) + ' XP';
+
+        var pbCount = save.personalBests ? Object.keys(save.personalBests).length : 0;
+        if (pbCountEl) pbCountEl.innerText = pbCount;
+
+        var completedCount = (save.fitQuestMetrics && save.fitQuestMetrics.completedCount !== undefined)
+          ? save.fitQuestMetrics.completedCount
+          : (save.fitQuestRewardClaims ? Object.keys(save.fitQuestRewardClaims).length : 0);
+        if (questsCompletedEl) questsCompletedEl.innerText = completedCount;
+
+        var totalAttempts = (save.fitQuestHistory && save.fitQuestHistory.length) || 0;
+        if (totalAttemptsEl) totalAttemptsEl.innerText = totalAttempts;
+
+        var sports = save.sportsExplored || [];
+        if (sportsExploredEl) sportsExploredEl.innerText = sports.length > 0 ? sports.join(', ') : 'None';
+
+        var msCount = (save.unlockedMilestones && save.unlockedMilestones.length) || 0;
+        if (milestonesEl) milestonesEl.innerText = msCount > 0 ? (msCount + ' unlocked') : 'None';
+      }
+
+      function runInBrowserTests() {
+        var log = [];
+        function assert(name, condition) {
+          if (condition) {
+            log.push('[PASS] ' + name);
+          } else {
+            log.push('[FAIL] ' + name);
+          }
+        }
+
+        try {
+          assert('KOINONIA_DATA exists', !!window.KOINONIA_DATA);
+          assert('SPORTS catalog has 5 sports', window.KOINONIA_DATA && window.KOINONIA_DATA.SPORTS && Object.keys(window.KOINONIA_DATA.SPORTS).length === 5);
+          assert('Basketball sport exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.SPORTS && window.KOINONIA_DATA.SPORTS.basketball));
+          assert('Badminton sport exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.SPORTS && window.KOINONIA_DATA.SPORTS.badminton));
+          assert('Pickleball sport exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.SPORTS && window.KOINONIA_DATA.SPORTS.pickleball));
+          assert('Running sport exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.SPORTS && window.KOINONIA_DATA.SPORTS.running));
+          assert('Fitness sport exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.SPORTS && window.KOINONIA_DATA.SPORTS.fitness));
+
+          assert('CHALLENGES has 7 entries', window.KOINONIA_DATA && window.KOINONIA_DATA.CHALLENGES && Object.keys(window.KOINONIA_DATA.CHALLENGES).length === 7);
+          assert('Basketball Free Throw challenge FQ-V001 exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.CHALLENGES && window.KOINONIA_DATA.CHALLENGES['FQ-V001']));
+          assert('Reaction Sprint challenge FQ-V002 exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.CHALLENGES && window.KOINONIA_DATA.CHALLENGES['FQ-V002']));
+          assert('Rally Focus challenge FQ-V003 exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.CHALLENGES && window.KOINONIA_DATA.CHALLENGES['FQ-V003']));
+          assert('Real-World FQ-R001 exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.CHALLENGES && window.KOINONIA_DATA.CHALLENGES['FQ-R001']));
+          assert('Real-World FQ-R002 exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.CHALLENGES && window.KOINONIA_DATA.CHALLENGES['FQ-R002']));
+          assert('Real-World FQ-R003 exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.CHALLENGES && window.KOINONIA_DATA.CHALLENGES['FQ-R003']));
+          assert('Real-World FQ-R004 exists', !!(window.KOINONIA_DATA && window.KOINONIA_DATA.CHALLENGES && window.KOINONIA_DATA.CHALLENGES['FQ-R004']));
+
+          var isBetter = window.KOINONIA_DATA ? window.KOINONIA_DATA.isBetterResult : null;
+          if (isBetter) {
+            assert('HIGH_SCORE: 8 beats 6', isBetter('HIGH_SCORE', 8, 6));
+            assert('HIGH_SCORE: 6 does not beat 8', !isBetter('HIGH_SCORE', 6, 8));
+            assert('LOW_TIME: 240ms beats 290ms', isBetter('LOW_TIME', 240, 290));
+            assert('LOW_TIME: 290ms does not beat 240ms', !isBetter('LOW_TIME', 290, 240));
+          }
+
+          var qaState = (window.KOINONIA_DATA && window.KOINONIA_DATA.createFitQuestReadyQaState) ? window.KOINONIA_DATA.createFitQuestReadyQaState() : null;
+          if (qaState) {
+            assert('createFitQuestReadyQaState returns LP 135', qaState.lp === 135);
+            assert('createFitQuestReadyQaState returns Level 2', qaState.charLevel === 2);
+            assert('createFitQuestReadyQaState active place is sports_hub', qaState.activePlaceId === 'sports_hub');
+            assert('createFitQuestReadyQaState save key is koinonia.phase18.save', qaState.saveStorageKey === 'koinonia.phase18.save');
+          }
+
+          var lb = (window.KOINONIA_DATA && window.KOINONIA_DATA.getPrototypeLeaderboard && qaState) ? window.KOINONIA_DATA.getPrototypeLeaderboard(qaState, 'FQ-V001') : [];
+          assert('Prototype leaderboard for FQ-V001 returns non-empty array', Array.isArray(lb) && lb.length > 0);
+
+        } catch (err) {
+          log.push('[ERROR] Exception: ' + err.message);
+        }
+
+        var resultsEl = document.getElementById('test-results');
+        if (resultsEl) {
+          resultsEl.innerText = log.join('\n');
+        }
+      }
+
+      // Deliberately bind handlers to window for reliable inline onclick execution
+      window.resetPhase18 = resetPhase18;
+      window.seedFitQuestReady = seedFitQuestReady;
+      window.seedBasketballPb = seedBasketballPb;
+      window.seedRunningPb = seedRunningPb;
+      window.seedMultiSportHistory = seedMultiSportHistory;
+      window.runInBrowserTests = runInBrowserTests;
+      window.launchPrototype = launchPrototype;
+      window.qaLaunch = qaLaunch;
+      window.updateTelemetry = updateTelemetry;
+      window.setQaStatus = setQaStatus;
+
+      // Initialize on load
+      function initQaLab() {
+        checkModuleHealth();
+        updateTelemetry();
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initQaLab);
+      } else {
+        initQaLab();
+      }
+    })();
+  </script>
+</body>
+</html>
