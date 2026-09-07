@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const webpush = require('web-push');
 const cron = require('node-cron');
+const { createSqliteBackupManager } = require('./lib/sqlite-backup');
 const app = express();
 
 const BOOTSTRAP_STRONG_ADMIN_USERNAME = 'celsocreeriii@gmail.com';
@@ -1428,8 +1429,10 @@ const getManilaTime = () => {
     return `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
 };
 
+const databasePath = path.join(__dirname, 'fog_community.db');
 const backupDir = path.join(__dirname, 'backups');
 if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir);
+const backupManager = createSqliteBackupManager({ applicationRoot: __dirname, sqlite3 });
 const imgDir = path.join(__dirname, 'public', 'img');
 if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
 
@@ -1450,19 +1453,36 @@ function resolveBackupRestorePath(filename) {
     return path.dirname(resolvedTargetFile) === resolvedBackupDir ? resolvedTargetFile : null;
 }
 
-function runDatabaseBackup() {
-    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+function getManilaBackupClock() {
+    const now = new Date();
+    const d = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
     const pad = (n) => String(n).padStart(2, '0');
-    const dateStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-    const backupFile = path.join(backupDir, `fog_community_${dateStr}.db`);
-    if (!fs.existsSync(backupFile) && fs.existsSync('./fog_community.db')) {
-        try { fs.copyFileSync('./fog_community.db', backupFile); console.log(`[BACKUP] Auto-backup completed: ${backupFile}`); } catch (e) { console.error('[BACKUP ERROR]', e); }
+    return {
+        dateKey: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,
+        timeKey: `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}${String(now.getMilliseconds()).padStart(3, '0')}`,
+        restoreKey: `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+    };
+}
+
+let verifiedDailyBackupDate = null;
+
+async function runDatabaseBackup() {
+    const clock = getManilaBackupClock();
+    if (verifiedDailyBackupDate === clock.dateKey) return;
+    try {
+        await backupManager.ensureDailyBackup(clock);
+        verifiedDailyBackupDate = clock.dateKey;
+    } catch (err) {
+        const code = err && typeof err.code === 'string' && /^[A-Z0-9_]+$/.test(err.code)
+            ? err.code
+            : 'BACKUP_FAILURE';
+        console.error(`[BACKUP ERROR] Daily verified backup failed code=${code}`);
     }
 }
-runDatabaseBackup();
-setInterval(runDatabaseBackup, 1000 * 60 * 60);
+void runDatabaseBackup();
+setInterval(() => { void runDatabaseBackup(); }, 1000 * 60 * 60);
 
-const db = new sqlite3.Database('./fog_community.db', (err) => {
+const db = new sqlite3.Database(databasePath, (err) => {
     if (err) console.error('Database connection error:', err.message);
     else console.log('Connected to local SQLite database: fog_community.db');
     db.run('PRAGMA journal_mode = WAL;');
@@ -2045,7 +2065,7 @@ app.get('/api/backups', requireStrongAdmin, (req, res) => {
     res.json(files);
 });
 
-app.post('/api/backups/restore', requireStrongAdmin, (req, res) => {
+app.post('/api/backups/restore', requireStrongAdmin, async (req, res) => {
     const { filename } = req.body;
     const actor = getCanonicalAuditActor(req);
     const targetFile = resolveBackupRestorePath(filename);
@@ -2058,14 +2078,19 @@ app.post('/api/backups/restore', requireStrongAdmin, (req, res) => {
         if (!targetStats.isFile() || targetStats.isSymbolicLink() || path.dirname(realTargetFile) !== realBackupDir) {
             return res.status(400).json({ error: 'Invalid backup file' });
         }
-        const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-        const pad = (n) => String(n).padStart(2, '0');
-        const timeStr = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-        const autoBackup = path.join(backupDir, `fog_community_pre_restore_${timeStr}.db`);
-        fs.copyFileSync('./fog_community.db', autoBackup);
-        logActivity(actor, 'RESTORE_DB', `Restored from ${filename}. Pre-restore saved to ${path.basename(autoBackup)}`);
+        let safetyBackup;
+        try {
+            safetyBackup = await backupManager.createPreRestoreBackup(getManilaBackupClock().restoreKey);
+        } catch (err) {
+            const code = err && typeof err.code === 'string' && /^[A-Z0-9_]+$/.test(err.code)
+                ? err.code
+                : 'BACKUP_FAILURE';
+            console.error(`[BACKUP ERROR] Pre-restore verified backup failed code=${code}`);
+            return res.status(500).json({ error: 'Failed to create a verified pre-restore backup' });
+        }
+        logActivity(actor, 'RESTORE_DB', `Restored from ${filename}. Pre-restore saved to ${safetyBackup.filename}`);
         db.close((err) => {
-            fs.copyFileSync(realTargetFile, './fog_community.db');
+            fs.copyFileSync(realTargetFile, databasePath);
             res.json({ success: true });
             setTimeout(() => { process.exit(0); }, 1000);
         });
