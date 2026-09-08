@@ -21,6 +21,7 @@ let qrScanner = null;
 let currentAnalyticsData = null;
 let checkedInYouthIds = new Set();
 let currentPreregEventId = null;
+let currentPreregEventDetail = null;
 let currentRosterFilter = 'all';
 let currentPreRegYouthIds = new Set();
 let currentMinistryId = null;
@@ -2744,6 +2745,7 @@ window.openPublicPreregFromSettings = async function() {
 
 window.launchPublicPrereg = async function(eventId) {
     currentPreregEventId = eventId;
+    currentPreregEventDetail = null;
     document.getElementById('mainContainer').style.display = 'block';
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('event') !== String(eventId)) window.history.pushState(null, '', '?event=' + eventId);
@@ -2754,19 +2756,26 @@ window.launchPublicPrereg = async function(eventId) {
         currentPreRegYouthIds = new Set(prData);
     } catch(e) { currentPreRegYouthIds = new Set(); }
 
-    if(eventsData.length === 0) { const res = await fetch('/api/events'); eventsData = await res.json(); }
-    const e = eventsData.find(ev => ev.id == eventId);
-    if (e) {
-        document.getElementById('preregPublicTitle').innerText = e.prereg_title || e.name;
-        document.getElementById('preregPublicInfo').innerText = e.prereg_info || `Date: ${e.event_date} | Venue: ${e.venue || 'TBA'}`;
+    try {
+        const eventRes = await fetch(`/api/events/${eventId}`);
+        if (!eventRes.ok) throw new Error(`HTTP ${eventRes.status}`);
+        currentPreregEventDetail = await eventRes.json();
+    } catch (error) {
+        console.error('Failed to load event details.', error);
+    }
+
+    const event = currentPreregEventDetail;
+    if (event) {
+        document.getElementById('preregPublicTitle').innerText = event.prereg_title || event.name;
+        document.getElementById('preregPublicInfo').innerText = event.prereg_info || `Date: ${event.event_date} | Venue: ${event.venue || 'TBA'}`;
 
         const banner = document.getElementById('preregPublicBanner');
-        if (e.prereg_banner) { banner.src = e.prereg_banner; banner.style.display = 'block'; }
-        else if (e.poster) { banner.src = e.poster; banner.style.display = 'block'; }
+        if (event.prereg_banner_url) { banner.src = event.prereg_banner_url; banner.style.display = 'block'; }
+        else if (event.poster_url) { banner.src = event.poster_url; banner.style.display = 'block'; }
         else { banner.style.display = 'none'; }
 
         const bottomBanner = document.getElementById('preregPublicBottomBanner');
-        if (e.prereg_bottom_banner) { bottomBanner.src = e.prereg_bottom_banner; bottomBanner.style.display = 'block'; }
+        if (event.prereg_bottom_banner_url) { bottomBanner.src = event.prereg_bottom_banner_url; bottomBanner.style.display = 'block'; }
         else { bottomBanner.style.display = 'none'; }
     }
 
@@ -2776,6 +2785,7 @@ window.launchPublicPrereg = async function(eventId) {
 
 window.closePublicPrereg = function() {
     currentPreregEventId = null;
+    currentPreregEventDetail = null;
     document.getElementById('mainHeader').style.display = 'block';
     window.history.pushState(null, '', window.location.pathname);
     window.location.reload();
@@ -2857,34 +2867,21 @@ window.submitNewPrereg = async function(e) {
     } catch(err) { alert("Network error."); }
 };
 
-window.dataURItoFile = function(dataURI, fileName) {
-    const arr = dataURI.split(',');
-    const mime = arr[0].match(/:(.*?);/)[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while(n--) { u8arr[n] = bstr.charCodeAt(n); }
-    return new File([u8arr], fileName, { type: mime });
-};
-
 window.sharePreRegLink = async function() {
     const shareTitle = document.getElementById('preregPublicTitle').innerText || 'Community Event';
     const shareText = `Join me at ${shareTitle}, click the link to pre-register.`;
     const shareUrl = window.location.href;
     const shareData = { title: shareTitle, text: shareText, url: shareUrl };
 
-    let targetBase64Image = null;
-    if (currentPreregEventId && eventsData && eventsData.length > 0) {
-        const e = eventsData.find(ev => ev.id == currentPreregEventId);
-        if (e && e.poster && e.poster.startsWith('data:image')) targetBase64Image = e.poster;
-    }
-    if (!targetBase64Image) {
-        const bannerImg = document.getElementById('preregPublicBanner');
-        if (bannerImg && bannerImg.src && bannerImg.src.startsWith('data:image')) targetBase64Image = bannerImg.src;
-    }
-    if (targetBase64Image) {
+    const imageUrl = currentPreregEventDetail
+        ? (currentPreregEventDetail.poster_url || currentPreregEventDetail.prereg_banner_url)
+        : null;
+    if (imageUrl) {
         try {
-            const posterFile = window.dataURItoFile(targetBase64Image, 'event-poster.jpg');
+            const imageResponse = await fetch(imageUrl);
+            if (!imageResponse.ok) throw new Error(`HTTP ${imageResponse.status}`);
+            const imageBlob = await imageResponse.blob();
+            const posterFile = new File([imageBlob], 'event-poster.jpg', { type: imageBlob.type || 'image/jpeg' });
             if (navigator.canShare && navigator.canShare({ files: [posterFile] })) shareData.files = [posterFile];
         } catch (err) { console.error('Image attachment failed:', err); }
     }
@@ -2995,7 +2992,7 @@ window.setEventViewMode = function(mode) {
             if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
             return `
             <div class="event-card">
-                ${e.poster ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` : `<div class="event-card-img" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`}
+                ${e.poster_url ? `<img src="${e.poster_url}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster" loading="lazy">` : `<div class="event-card-img" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`}
                 <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
                         <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${safeName}</h3>
@@ -3298,7 +3295,7 @@ window.openAnalyticsModal = async function(eventId) {
 
         const posterContainer = document.getElementById('analyticsModalPoster');
         if (posterContainer) {
-            if (data.event.poster) posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
+            if (data.event.poster_url) posterContainer.innerHTML = `<img src="${data.event.poster_url}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)" loading="lazy">`;
             else posterContainer.innerHTML = `<span style="font-size: 0.75rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
         }
 
@@ -6802,28 +6799,33 @@ window.setCorePriority = async function(mappingId) {
 // ==========================================
 
 // --- 1. EVENT FORM BUTTON FIX (Safe Null Checks) ---
-window.openPreregSettings = function(eventId) {
-    const e = eventsData.find(ev => ev.id == eventId);
-    if (!e) return;
-    
-    const idInput = document.getElementById('preregSetEventId');
-    if (idInput) idInput.value = e.id;
-    
-    const titleInput = document.getElementById('preregSetTitle');
-    if (titleInput) titleInput.value = e.prereg_title || e.name || '';
-    
-    const infoInput = document.getElementById('preregSetInfo');
-    if (infoInput) infoInput.value = e.prereg_info || '';
-    
-    const bannerInput = document.getElementById('preregSetBanner');
-    if (bannerInput) bannerInput.value = '';
-    
-    // The silent crash happened here. This safe check prevents it.
-    const bottomBannerInput = document.getElementById('preregSetBottomBanner');
-    if (bottomBannerInput) bottomBannerInput.value = ''; 
-    
-    const modal = document.getElementById('preregSettingsModal');
-    if (modal) modal.classList.add('active');
+window.openPreregSettings = async function(eventId) {
+    try {
+        const response = await fetch(`/api/events/${eventId}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const event = await response.json();
+
+        const idInput = document.getElementById('preregSetEventId');
+        if (idInput) idInput.value = event.id;
+
+        const titleInput = document.getElementById('preregSetTitle');
+        if (titleInput) titleInput.value = event.prereg_title || event.name || '';
+
+        const infoInput = document.getElementById('preregSetInfo');
+        if (infoInput) infoInput.value = event.prereg_info || '';
+
+        const bannerInput = document.getElementById('preregSetBanner');
+        if (bannerInput) bannerInput.value = '';
+
+        const bottomBannerInput = document.getElementById('preregSetBottomBanner');
+        if (bottomBannerInput) bottomBannerInput.value = '';
+
+        const modal = document.getElementById('preregSettingsModal');
+        if (modal) modal.classList.add('active');
+    } catch (error) {
+        console.error('Failed to load pre-registration settings.', error);
+        alert('Unable to load event settings. Please try again.');
+    }
 };
 
 // --- 2. EVENT ROLES TAB FIX (Direct Display Manipulation) ---
@@ -7630,10 +7632,11 @@ window.buildNav = function() {
 };
 
 // 3. Bulletproof Event Editor & Submitter
-window.openEditEventModal = function(eventId) {
+window.openEditEventModal = async function(eventId) {
     try {
-        const e = eventsData.find(ev => ev.id == eventId);
-        if (!e) return alert("Event data could not be found locally. Please refresh.");
+        const response = await fetch(`/api/events/${eventId}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const e = await response.json();
 
         const safeSet = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
         safeSet('editEvtId', e.id);
@@ -7651,7 +7654,7 @@ window.openEditEventModal = function(eventId) {
         if (modal) modal.classList.add('active');
     } catch (err) {
         console.error("Edit Event Error:", err);
-        alert("An error occurred opening the Event Editor.");
+        alert("Unable to load the Event Editor. Please try again.");
     }
 };
 
@@ -7869,7 +7872,7 @@ window.updateActiveEventBanner = async function() {
 
 
 // ==========================================
-// V57: ROGUE DOM KILLER & LOCALSTORAGE CACHING
+// V57: ROGUE DOM KILLER
 // ==========================================
 
 // 1. OBLITERATE CSS CONFLICTS FOR ADMIN TABS
@@ -7903,73 +7906,28 @@ window.switchTab = async function(tabId, subTabId) {
     }
 };
 
-// 2. ZERO-LATENCY EVENT LOADING VIA LOCALSTORAGE
-window.loadEvents = async function() {
-    // A. INSTANT RENDER FROM CACHE (Zero Delay)
-    const cachedEvents = localStorage.getItem('fog_events_cache');
-    if (cachedEvents) {
-        try {
-            eventsData = JSON.parse(cachedEvents);
-            const dropdown = document.getElementById('activeEventDropdown');
-            if (dropdown && eventsData.length > 0) {
-                const currentVal = dropdown.value;
-                dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name || 'Event'} (${e.event_date || ''})</option>`).join('');
-                if (currentVal && eventsData.find(e => e.id == currentVal)) dropdown.value = currentVal;
-            }
-            if (document.getElementById('eventsTab') && document.getElementById('eventsTab').classList.contains('active')) {
-                if (typeof window.setEventViewMode === 'function') window.setEventViewMode(eventViewMode);
-            }
-        } catch(e) {}
-    }
-
-    // B. BACKGROUND SYNC (Silently updates with fresh DB data)
-    try {
-        const res = await fetch('/api/events');
-        const freshData = await res.json();
-        
-        // Only re-render if data actually changed to prevent UI flashing
-        if (JSON.stringify(freshData) !== JSON.stringify(eventsData)) {
-            eventsData = freshData;
-            localStorage.setItem('fog_events_cache', JSON.stringify(eventsData));
-            
-            const dropdown = document.getElementById('activeEventDropdown');
-            if (dropdown && eventsData.length > 0) {
-                const currentVal = dropdown.value;
-                dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name || 'Event'} (${e.event_date || ''})</option>`).join('');
-                if (currentVal && eventsData.find(e => e.id == currentVal)) dropdown.value = currentVal;
-            }
-            if (document.getElementById('eventsTab') && document.getElementById('eventsTab').classList.contains('active')) {
-                if (typeof window.setEventViewMode === 'function') window.setEventViewMode(eventViewMode);
-            }
-            const checkinTab = document.getElementById('checkinTab');
-            if (checkinTab && checkinTab.classList.contains('active')) {
-                if (typeof window.updateActiveEventBanner === 'function') window.updateActiveEventBanner();
-            }
-        }
-    } catch(e) {
-        console.error("Network sync failed for events.", e);
-    }
-};
-
-
 // ==========================================
 // V58: BULLETPROOF EVENT DATA LOADER
 // ==========================================
-window.loadEvents = async function() {
-    try {
+let eventsRequestInFlight = null;
+window.loadEvents = function() {
+    if (eventsRequestInFlight) return eventsRequestInFlight;
+
+    eventsRequestInFlight = (async () => {
         // 1. Force a fresh fetch directly from the source of truth
         const res = await fetch('/api/events');
         if (!res.ok) throw new Error("HTTP " + res.status);
-        
+
         eventsData = await res.json();
+        removeLocalStorageItem('fog_events_cache');
 
         if (window.KoinoniaOfflineData && Array.isArray(eventsData)) {
             const summary = eventsData.slice(0, 8).map(e => ({
                 id: e.id,
                 name: e.name,
                 event_date: e.event_date,
-                event_time: e.event_time,
-                location: e.location
+                time_start: e.time_start,
+                venue: e.venue
             }));
             window.KoinoniaOfflineData.savePublicContent('events_list', summary);
             if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
@@ -8007,10 +7965,16 @@ window.loadEvents = async function() {
                 window.updateActiveEventBanner();
             }
         }
-        
-    } catch(e) {
+
+        return eventsData;
+    })().catch(e => {
         console.error("CRITICAL: Failed to load events data from database.", e);
-    }
+        return null;
+    }).finally(() => {
+        eventsRequestInFlight = null;
+    });
+
+    return eventsRequestInFlight;
 };
 
 // ==========================================

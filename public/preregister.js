@@ -8,9 +8,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('public-title').innerText = event.name;
             document.getElementById('public-info').innerText = event.additional_info || '';
             
-            if (event.poster) {
+            if (event.poster_url) {
                 const banner = document.getElementById('public-banner');
-                banner.src = event.poster;
+                banner.src = event.poster_url;
                 banner.classList.remove('hidden');
             }
         } else {

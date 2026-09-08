@@ -532,11 +532,23 @@ const DIRECTORY_MEMBER_RESPONSE_FIELDS = Object.freeze([
 
 const PUBLIC_MEMBER_RESPONSE_FIELDS = Object.freeze(['id', 'name']);
 
-const PUBLIC_EVENT_RESPONSE_FIELDS = Object.freeze([
-    'id', 'name', 'event_date', 'time_start', 'venue', 'poster', 'photos_url',
-    'materials_url', 'gallery', 'prereg_banner', 'prereg_info', 'additional_info',
-    'prereg_title', 'prereg_bottom_banner', 'event_points'
+const EVENT_LIST_RESPONSE_FIELDS = Object.freeze([
+    'id', 'name', 'event_date', 'time_start', 'venue', 'photos_url',
+    'materials_url', 'event_points', 'has_poster', 'poster_url'
 ]);
+
+const PUBLIC_EVENT_RESPONSE_FIELDS = Object.freeze([
+    ...EVENT_LIST_RESPONSE_FIELDS,
+    'gallery', 'prereg_info', 'additional_info', 'prereg_title',
+    'has_prereg_banner', 'prereg_banner_url',
+    'has_prereg_bottom_banner', 'prereg_bottom_banner_url'
+]);
+
+const EVENT_MEDIA_COLUMNS = Object.freeze({
+    poster: 'poster',
+    prereg_banner: 'prereg_banner',
+    prereg_bottom_banner: 'prereg_bottom_banner'
+});
 
 const PUBLIC_MINISTRY_RESPONSE_FIELDS = Object.freeze([
     'id', 'name', 'description', 'logo', 'member_count'
@@ -575,6 +587,47 @@ function sanitizeEventForStaff(event) {
         ...sanitizeEventForPublic(event),
         roles_restricted_notes: event.roles_restricted_notes
     };
+}
+
+function isValidPositiveInteger(value) {
+    return /^[1-9]\d*$/.test(String(value || ''));
+}
+
+function addEventMediaReferences(event) {
+    if (!event) return null;
+    const eventId = event.id;
+    return {
+        ...event,
+        has_poster: Boolean(event.has_poster),
+        poster_url: event.has_poster ? `/api/events/${eventId}/media/poster` : null,
+        has_prereg_banner: Boolean(event.has_prereg_banner),
+        prereg_banner_url: event.has_prereg_banner ? `/api/events/${eventId}/media/prereg_banner` : null,
+        has_prereg_bottom_banner: Boolean(event.has_prereg_bottom_banner),
+        prereg_bottom_banner_url: event.has_prereg_bottom_banner
+            ? `/api/events/${eventId}/media/prereg_bottom_banner`
+            : null
+    };
+}
+
+function decodeEventMediaDataUrl(value) {
+    if (typeof value !== 'string') return null;
+    const match = /^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+    if (!match || match[2].length % 4 === 1) return null;
+    const unpadded = match[2].replace(/=+$/, '');
+    const padded = unpadded.padEnd(Math.ceil(unpadded.length / 4) * 4, '=');
+    const buffer = Buffer.from(padded, 'base64');
+    if (!buffer.length || buffer.toString('base64').replace(/=+$/, '') !== unpadded) return null;
+    return { contentType: match[1], buffer };
+}
+
+function sendEventMedia(res, storedValue) {
+    const media = decodeEventMediaDataUrl(storedValue);
+    if (!media) return res.status(404).send('Media not found');
+    res.setHeader('Content-Type', media.contentType);
+    res.setHeader('Content-Length', media.buffer.length);
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.send(media.buffer);
 }
 
 function sanitizeMinistryForPublic(ministry) {
@@ -2425,36 +2478,88 @@ app.put('/api/attendance/:id', (req, res) => { db.run(`UPDATE attendance SET che
 app.delete('/api/attendance/:id', requireAllPermissions(['access_attendance', 'delete_entries']), (req, res) => { db.run(`DELETE FROM attendance WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
 
 app.get('/api/events', async (req, res) => {
+    db.all(
+        `SELECT id, name, event_date, time_start, venue, photos_url, materials_url,
+                event_points,
+                CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster
+         FROM events
+         ORDER BY event_date DESC`,
+        [],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Unable to load events.' });
+            return res.json((rows || []).map(row => projectResponseFields(
+                addEventMediaReferences(row),
+                EVENT_LIST_RESPONSE_FIELDS
+            )));
+        }
+    );
+});
+app.get('/api/events/:id', async (req, res) => {
+    if (!isValidPositiveInteger(req.params.id)) return res.status(404).json({ error: 'Event not found' });
     const auth = await loadOptionalAuthorizationContext(req);
     const canViewRestrictedNotes = authorizationHasPermission(auth, 'edit_entries');
-    const sql = canViewRestrictedNotes
-        ? `SELECT id, name, event_date, time_start, venue, poster, photos_url, materials_url, gallery, prereg_banner, prereg_info, additional_info, prereg_title, prereg_bottom_banner, roles_restricted_notes, event_points FROM events ORDER BY event_date DESC`
-        : `SELECT id, name, event_date, time_start, venue, poster, photos_url, materials_url, gallery, prereg_banner, prereg_info, additional_info, prereg_title, prereg_bottom_banner, event_points FROM events ORDER BY event_date DESC`;
-    db.all(sql, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Unable to load events.' });
-        const sanitizeEvent = canViewRestrictedNotes ? sanitizeEventForStaff : sanitizeEventForPublic;
-        res.json((rows || []).map(sanitizeEvent));
+    const sql = `SELECT id, name, event_date, time_start, venue, photos_url, materials_url,
+                        gallery, prereg_info, additional_info, prereg_title, event_points,
+                        CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster,
+                        CASE WHEN prereg_banner IS NOT NULL AND prereg_banner <> '' THEN 1 ELSE 0 END AS has_prereg_banner,
+                        CASE WHEN prereg_bottom_banner IS NOT NULL AND prereg_bottom_banner <> '' THEN 1 ELSE 0 END AS has_prereg_bottom_banner
+                        ${canViewRestrictedNotes ? ', roles_restricted_notes' : ''}
+                 FROM events WHERE id = ?`;
+    db.get(sql, [req.params.id], (err, event) => {
+        if (err) return res.status(500).json({ error: 'Unable to load event.' });
+        if (!event) return res.status(404).json({ error: 'Event not found' });
+        const eventWithMedia = addEventMediaReferences(event);
+        return res.json(canViewRestrictedNotes
+            ? sanitizeEventForStaff(eventWithMedia)
+            : sanitizeEventForPublic(eventWithMedia));
     });
 });
 app.get('/api/events/:id/analytics', requireAnyPermission(['access_events', 'access_attendance', 'access_checkin']), (req, res) => {
     const eventId = req.params.id;
-    db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
-        if (!event) return res.status(404).json({ error: 'Event not found' });
-        db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
-            const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
-            db.all(`SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`, [eventId], (err3, roster) => {
-                db.all(`SELECT p.youth_id, p.created_at, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM pre_registrations p JOIN youth y ON p.youth_id = y.id WHERE p.event_id = ? ORDER BY p.created_at DESC`, [eventId], (err4, preRegList) => {
-                    const totalTurnout = roster?.length || 0; const walkins = roster.filter(r => r.is_walkin === 1)?.length || 0; const checkedInPreRegs = totalTurnout - walkins; const totalPreRegistered = preRegList?.length || 0;
-                    const eventResponse = authorizationHasPermission(req.auth, 'edit_entries')
-                        ? sanitizeEventForStaff(event)
-                        : sanitizeEventForPublic(event);
-                    res.json({ event: eventResponse, totalDirectory, totalTurnout, turnoutPercentage: totalPreRegistered > 0 ? ((checkedInPreRegs / totalPreRegistered) * 100).toFixed(1) : '0.0', walkins, preReg: checkedInPreRegs, totalPreRegistered, roster, preRegList });
+    db.get(
+        `SELECT id, name, event_date, time_start, venue, photos_url, materials_url,
+                gallery, prereg_info, additional_info, prereg_title, event_points,
+                roles_restricted_notes,
+                CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster,
+                CASE WHEN prereg_banner IS NOT NULL AND prereg_banner <> '' THEN 1 ELSE 0 END AS has_prereg_banner,
+                CASE WHEN prereg_bottom_banner IS NOT NULL AND prereg_bottom_banner <> '' THEN 1 ELSE 0 END AS has_prereg_bottom_banner
+        FROM events WHERE id = ?`,
+        [eventId],
+        (err, event) => {
+            if (err) return res.status(500).json({ error: 'Unable to load event analytics.' });
+            if (!event) return res.status(404).json({ error: 'Event not found' });
+            const eventWithMedia = addEventMediaReferences(event);
+            db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
+                const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
+                db.all(`SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`, [eventId], (err3, roster) => {
+                    db.all(`SELECT p.youth_id, p.created_at, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM pre_registrations p JOIN youth y ON p.youth_id = y.id WHERE p.event_id = ? ORDER BY p.created_at DESC`, [eventId], (err4, preRegList) => {
+                        const totalTurnout = roster?.length || 0; const walkins = roster.filter(r => r.is_walkin === 1)?.length || 0; const checkedInPreRegs = totalTurnout - walkins; const totalPreRegistered = preRegList?.length || 0;
+                        const eventResponse = authorizationHasPermission(req.auth, 'edit_entries')
+                            ? sanitizeEventForStaff(eventWithMedia)
+                            : sanitizeEventForPublic(eventWithMedia);
+                        res.json({ event: eventResponse, totalDirectory, totalTurnout, turnoutPercentage: totalPreRegistered > 0 ? ((checkedInPreRegs / totalPreRegistered) * 100).toFixed(1) : '0.0', walkins, preReg: checkedInPreRegs, totalPreRegistered, roster, preRegList });
+                    });
                 });
             });
-        });
+        }
+    );
+});
+app.get('/api/events/:id/media/:type', (req, res) => {
+    if (!isValidPositiveInteger(req.params.id)) return res.status(404).send('Media not found');
+    const column = EVENT_MEDIA_COLUMNS[req.params.type];
+    if (!column) return res.status(404).send('Media not found');
+    db.get(`SELECT ${column} AS media FROM events WHERE id = ?`, [req.params.id], (err, event) => {
+        if (err || !event) return res.status(404).send('Media not found');
+        return sendEventMedia(res, event.media);
     });
 });
-app.get('/api/events/:id/poster.jpg', (req, res) => { db.get(`SELECT poster, prereg_banner FROM events WHERE id = ?`, [req.params.id], (err, event) => { if (!event) return res.status(404).send('Not found'); const b64 = event.poster || event.prereg_banner; if (b64 && b64.startsWith('data:image')) { const parts = b64.split(';'); res.writeHead(200, { 'Content-Type': parts[0].split(':')[1] }); res.end(Buffer.from(parts[1].split(',')[1], 'base64')); } else res.status(404).send('No image'); }); });
+app.get('/api/events/:id/poster.jpg', (req, res) => {
+    if (!isValidPositiveInteger(req.params.id)) return res.status(404).send('Media not found');
+    db.get(`SELECT poster, prereg_banner FROM events WHERE id = ?`, [req.params.id], (err, event) => {
+        if (err || !event) return res.status(404).send('Media not found');
+        return sendEventMedia(res, event.poster || event.prereg_banner);
+    });
+});
 app.post('/api/events', requireAllPermissions(['access_events', 'add_entries']), (req, res) => { db.run(`INSERT INTO events (name, event_date, time_start, venue, poster, photos_url, materials_url, event_points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, getManilaTime()], function (err) { res.json({ id: this.lastID }); }); });
 app.put('/api/events/:id', requireAllPermissions(['access_events', 'edit_entries']), (req, res) => { if (req.body.poster !== undefined && req.body.poster !== null) { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, poster=?, photos_url=?, materials_url=?, event_points=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, req.params.id], function(err) { res.json({ updated: this.changes }); }); } else { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, photos_url=?, materials_url=?, event_points=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, req.params.id], function(err) { res.json({ updated: this.changes }); }); } });
 app.delete('/api/events/:id', requireAllPermissions(['access_events', 'delete_entries']), (req, res) => { db.run(`DELETE FROM events WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
