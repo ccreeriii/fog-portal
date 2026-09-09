@@ -5,6 +5,7 @@ const googleClient = new OAuth2Client('100122228838-c3f4kfv31pakgc0o6vstrrngo8h3
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const sharp = require('sharp');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
@@ -534,7 +535,8 @@ const PUBLIC_MEMBER_RESPONSE_FIELDS = Object.freeze(['id', 'name']);
 
 const EVENT_LIST_RESPONSE_FIELDS = Object.freeze([
     'id', 'name', 'event_date', 'time_start', 'venue', 'photos_url',
-    'materials_url', 'event_points', 'has_poster', 'poster_url'
+    'materials_url', 'event_points', 'has_poster', 'poster_url',
+    'preregistration_available'
 ]);
 
 const PUBLIC_EVENT_RESPONSE_FIELDS = Object.freeze([
@@ -600,6 +602,7 @@ function addEventMediaReferences(event) {
         ...event,
         has_poster: Boolean(event.has_poster),
         poster_url: event.has_poster ? `/api/events/${eventId}/media/poster` : null,
+        preregistration_available: Boolean(event.preregistration_available),
         has_prereg_banner: Boolean(event.has_prereg_banner),
         prereg_banner_url: event.has_prereg_banner ? `/api/events/${eventId}/media/prereg_banner` : null,
         has_prereg_bottom_banner: Boolean(event.has_prereg_bottom_banner),
@@ -628,6 +631,134 @@ function sendEventMedia(res, storedValue) {
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     return res.send(media.buffer);
+}
+
+const SOCIAL_PREVIEW_WIDTH = 1200;
+const SOCIAL_PREVIEW_HEIGHT = 630;
+const SOCIAL_PREVIEW_MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+const SOCIAL_PREVIEW_MAX_INPUT_PIXELS = 40 * 1000 * 1000;
+const SOCIAL_PREVIEW_CACHE_LIMIT = 24;
+const SOCIAL_PREVIEW_MAX_CONCURRENT_RENDERS = 2;
+const socialPreviewCache = new Map();
+const socialPreviewRenders = new Map();
+let activeSocialPreviewRenders = 0;
+let genericSocialPreviewPromise = null;
+
+function cacheSocialPreview(key, image) {
+    if (socialPreviewCache.has(key)) socialPreviewCache.delete(key);
+    socialPreviewCache.set(key, image);
+    while (socialPreviewCache.size > SOCIAL_PREVIEW_CACHE_LIMIT) {
+        socialPreviewCache.delete(socialPreviewCache.keys().next().value);
+    }
+    return image;
+}
+
+async function composeContainedSocialPreview(sourceBuffer) {
+    if (!Buffer.isBuffer(sourceBuffer) || !sourceBuffer.length || sourceBuffer.length > SOCIAL_PREVIEW_MAX_SOURCE_BYTES) {
+        throw new Error('Unsupported social preview source');
+    }
+
+    const source = sharp(sourceBuffer, {
+        failOn: 'error',
+        limitInputPixels: SOCIAL_PREVIEW_MAX_INPUT_PIXELS
+    }).rotate();
+    const metadata = await source.metadata();
+    if (!metadata.width || !metadata.height) throw new Error('Unsupported social preview source');
+
+    const [background, containedPoster] = await Promise.all([
+        source.clone()
+            .resize(SOCIAL_PREVIEW_WIDTH, SOCIAL_PREVIEW_HEIGHT, { fit: 'cover' })
+            .blur(28)
+            .modulate({ brightness: 0.42, saturation: 0.75 })
+            .png()
+            .toBuffer(),
+        source.clone()
+            .resize(SOCIAL_PREVIEW_WIDTH - 40, SOCIAL_PREVIEW_HEIGHT - 40, {
+                fit: 'inside',
+                withoutEnlargement: false
+            })
+            .png()
+            .toBuffer()
+    ]);
+
+    return sharp(background, { limitInputPixels: SOCIAL_PREVIEW_MAX_INPUT_PIXELS })
+        .composite([{ input: containedPoster, gravity: 'centre' }])
+        .png({ compressionLevel: 9, adaptiveFiltering: true })
+        .toBuffer();
+}
+
+function getGenericSocialPreview() {
+    if (!genericSocialPreviewPromise) {
+        genericSocialPreviewPromise = (async () => {
+            const background = {
+                create: {
+                    width: SOCIAL_PREVIEW_WIDTH,
+                    height: SOCIAL_PREVIEW_HEIGHT,
+                    channels: 4,
+                    background: { r: 25, g: 35, b: 61, alpha: 1 }
+                }
+            };
+            try {
+                const logo = await fs.promises.readFile(path.join(__dirname, 'public', 'img', 'logo.png'));
+                const resizedLogo = await sharp(logo, {
+                    failOn: 'error',
+                    limitInputPixels: SOCIAL_PREVIEW_MAX_INPUT_PIXELS
+                }).resize(320, 320, { fit: 'inside', withoutEnlargement: false }).png().toBuffer();
+                return sharp(background)
+                    .composite([{ input: resizedLogo, gravity: 'centre' }])
+                    .png({ compressionLevel: 9, adaptiveFiltering: true })
+                    .toBuffer();
+            } catch (err) {
+                return sharp(background).png({ compressionLevel: 9 }).toBuffer();
+            }
+        })().catch(err => {
+            genericSocialPreviewPromise = null;
+            throw err;
+        });
+    }
+    return genericSocialPreviewPromise;
+}
+
+async function getEventSocialPreview(storedPoster) {
+    const media = decodeEventMediaDataUrl(storedPoster);
+    if (!media || media.buffer.length > SOCIAL_PREVIEW_MAX_SOURCE_BYTES) {
+        return getGenericSocialPreview();
+    }
+
+    const cacheKey = crypto.createHash('sha256').update(media.buffer).digest('hex');
+    const cached = socialPreviewCache.get(cacheKey);
+    if (cached) {
+        socialPreviewCache.delete(cacheKey);
+        socialPreviewCache.set(cacheKey, cached);
+        return cached;
+    }
+    if (socialPreviewRenders.has(cacheKey)) return socialPreviewRenders.get(cacheKey);
+    if (activeSocialPreviewRenders >= SOCIAL_PREVIEW_MAX_CONCURRENT_RENDERS) {
+        const error = new Error('Social preview rendering is busy');
+        error.code = 'SOCIAL_PREVIEW_BUSY';
+        throw error;
+    }
+
+    activeSocialPreviewRenders += 1;
+    const render = composeContainedSocialPreview(media.buffer)
+        .catch(() => getGenericSocialPreview())
+        .then(image => cacheSocialPreview(cacheKey, image))
+        .finally(() => {
+            activeSocialPreviewRenders -= 1;
+            socialPreviewRenders.delete(cacheKey);
+        });
+    socialPreviewRenders.set(cacheKey, render);
+    return render;
+}
+
+function sendSocialPreview(res, image) {
+    const etag = `\"${crypto.createHash('sha256').update(image).digest('base64url')}\"`;
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Length', image.length);
+    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+    res.setHeader('ETag', etag);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.send(image);
 }
 
 function sanitizeMinistryForPublic(ministry) {
@@ -2053,27 +2184,72 @@ app.get('/api/growth-games/funnel', (req, res) => {
         });
     }
 });
-app.use(express.static(path.join(__dirname, 'public')));
+function escapeSocialMeta(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getPublicPortalOrigin() {
+    const configuredOrigin = typeof process.env.KOINONIA_PUBLIC_ORIGIN === 'string'
+        ? process.env.KOINONIA_PUBLIC_ORIGIN.trim()
+        : '';
+    if (configuredOrigin) {
+        try {
+            const parsed = new URL(configuredOrigin);
+            if ((parsed.protocol === 'https:' || parsed.protocol === 'http:') && !parsed.username && !parsed.password) {
+                return parsed.origin;
+            }
+        } catch (err) {
+            // Fall through to the environment-specific, non-secret canonical URL.
+        }
+    }
+    return __dirname.includes('staging') ? 'https://staging.fogmin.site' : 'https://fogmin.site';
+}
 
 app.get('/', (req, res, next) => {
-    
     const eventId = req.query.event;
-    if (!eventId) return next();
-    db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
-        if (err || !event) return next();
+    if (!isValidPositiveInteger(eventId)) return next();
+
+    const socialQuery = `SELECT id, name, prereg_title, prereg_info FROM events WHERE id = ?`;
+    db.get(socialQuery, [eventId], (eventError, event) => {
+        if (eventError || !event) return next();
         const filePath = path.join(__dirname, 'public', 'index.html');
-        fs.readFile(filePath, 'utf8', (err, data) => {
-            if (err) return next();
-            const title = (event.prereg_title || event.name || 'Community Event').replace(/"/g, '&quot;');
-            const description = (event.prereg_info || `Join me at ${title}!`).replace(/"/g, '&quot;');
-            const host = req.get('host');
-            const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-            const imageUrl = `${protocol}://${host}/api/events/${eventId}/poster.jpg`;
-            const metaTags = `<meta property="og:title" content="${title}" /> <meta property="og:description" content="${description}" /> <meta property="og:image" content="${imageUrl}" /> <meta property="og:url" content="${protocol}://${host}/?event=${eventId}" /> <meta property="og:type" content="website" />`;
-            res.send(data.replace('</head>', `${metaTags}\n</head>`));
+        fs.readFile(filePath, 'utf8', (fileError, html) => {
+            if (fileError) return next();
+
+            const origin = getPublicPortalOrigin();
+            const titleText = event.prereg_title || event.name || 'Community Event';
+            const descriptionText = event.prereg_info || `Join me at ${event.name || 'this community event'}!`;
+            const canonicalUrl = `${origin}/?event=${event.id}`;
+            const imageUrl = `${origin}/api/events/${event.id}/social-preview.png`;
+            const title = escapeSocialMeta(titleText);
+            const description = escapeSocialMeta(descriptionText);
+            const metaTags = [
+                `<meta property="og:title" content="${title}">`,
+                `<meta property="og:description" content="${description}">`,
+                `<meta property="og:url" content="${escapeSocialMeta(canonicalUrl)}">`,
+                '<meta property="og:type" content="website">',
+                '<meta name="twitter:card" content="summary_large_image">',
+                `<meta name="twitter:title" content="${title}">`,
+                `<meta name="twitter:description" content="${description}">`
+            ];
+            const escapedImageUrl = escapeSocialMeta(imageUrl);
+            metaTags.push(`<meta property="og:image" content="${escapedImageUrl}">`);
+            metaTags.push(`<meta property="og:image:width" content="${SOCIAL_PREVIEW_WIDTH}">`);
+            metaTags.push(`<meta property="og:image:height" content="${SOCIAL_PREVIEW_HEIGHT}">`);
+            metaTags.push('<meta property="og:image:type" content="image/png">');
+            metaTags.push(`<meta name="twitter:image" content="${escapedImageUrl}">`);
+            res.setHeader('Cache-Control', 'no-store');
+            res.type('html').send(html.replace('</head>', `${metaTags.join('\n')}\n</head>`));
         });
     });
 });
+
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/manifest.json', (req, res) => {
     const isStaging = __dirname.includes('staging');
@@ -2481,7 +2657,8 @@ app.get('/api/events', async (req, res) => {
     db.all(
         `SELECT id, name, event_date, time_start, venue, photos_url, materials_url,
                 event_points,
-                CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster
+                CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster,
+                1 AS preregistration_available
          FROM events
          ORDER BY event_date DESC`,
         [],
@@ -2501,6 +2678,7 @@ app.get('/api/events/:id', async (req, res) => {
     const sql = `SELECT id, name, event_date, time_start, venue, photos_url, materials_url,
                         gallery, prereg_info, additional_info, prereg_title, event_points,
                         CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster,
+                        1 AS preregistration_available,
                         CASE WHEN prereg_banner IS NOT NULL AND prereg_banner <> '' THEN 1 ELSE 0 END AS has_prereg_banner,
                         CASE WHEN prereg_bottom_banner IS NOT NULL AND prereg_bottom_banner <> '' THEN 1 ELSE 0 END AS has_prereg_bottom_banner
                         ${canViewRestrictedNotes ? ', roles_restricted_notes' : ''}
@@ -2553,6 +2731,23 @@ app.get('/api/events/:id/media/:type', (req, res) => {
         return sendEventMedia(res, event.media);
     });
 });
+app.get('/api/events/:id/social-preview.png', (req, res) => {
+    if (!isValidPositiveInteger(req.params.id)) return res.status(404).send('Preview not found');
+    db.get('SELECT poster FROM events WHERE id = ?', [req.params.id], async (err, event) => {
+        if (err) return res.status(500).send('Preview unavailable');
+        if (!event) return res.status(404).send('Preview not found');
+        try {
+            const image = await getEventSocialPreview(event.poster);
+            return sendSocialPreview(res, image);
+        } catch (previewError) {
+            if (previewError && previewError.code === 'SOCIAL_PREVIEW_BUSY') {
+                res.setHeader('Retry-After', '1');
+                return res.status(503).send('Preview temporarily unavailable');
+            }
+            return res.status(500).send('Preview unavailable');
+        }
+    });
+});
 app.get('/api/events/:id/poster.jpg', (req, res) => {
     if (!isValidPositiveInteger(req.params.id)) return res.status(404).send('Media not found');
     db.get(`SELECT poster, prereg_banner FROM events WHERE id = ?`, [req.params.id], (err, event) => {
@@ -2563,7 +2758,24 @@ app.get('/api/events/:id/poster.jpg', (req, res) => {
 app.post('/api/events', requireAllPermissions(['access_events', 'add_entries']), (req, res) => { db.run(`INSERT INTO events (name, event_date, time_start, venue, poster, photos_url, materials_url, event_points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, getManilaTime()], function (err) { res.json({ id: this.lastID }); }); });
 app.put('/api/events/:id', requireAllPermissions(['access_events', 'edit_entries']), (req, res) => { if (req.body.poster !== undefined && req.body.poster !== null) { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, poster=?, photos_url=?, materials_url=?, event_points=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, req.params.id], function(err) { res.json({ updated: this.changes }); }); } else { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, photos_url=?, materials_url=?, event_points=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, req.params.id], function(err) { res.json({ updated: this.changes }); }); } });
 app.delete('/api/events/:id', requireAllPermissions(['access_events', 'delete_entries']), (req, res) => { db.run(`DELETE FROM events WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
-app.post('/api/events/:id/prereg-settings', requireAllPermissions(['access_events', 'edit_entries']), (req, res) => { db.run(`UPDATE events SET prereg_banner = ?, prereg_bottom_banner = ?, prereg_title = ?, prereg_info = ? WHERE id = ?`, [req.body.banner, req.body.bottom_banner, req.body.title, req.body.info, req.params.id], function(err) { res.json({ success: true }); }); });
+app.post('/api/events/:id/prereg-settings', requireAllPermissions(['access_events', 'edit_entries']), (req, res) => {
+    const hasBanner = Object.prototype.hasOwnProperty.call(req.body, 'banner');
+    const hasBottomBanner = Object.prototype.hasOwnProperty.call(req.body, 'bottom_banner');
+    db.run(
+        `UPDATE events
+         SET prereg_banner = CASE WHEN ? = 1 THEN ? ELSE prereg_banner END,
+             prereg_bottom_banner = CASE WHEN ? = 1 THEN ? ELSE prereg_bottom_banner END,
+             prereg_title = ?, prereg_info = ?
+         WHERE id = ?`,
+        [hasBanner ? 1 : 0, req.body.banner, hasBottomBanner ? 1 : 0, req.body.bottom_banner,
+            req.body.title, req.body.info, req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: 'Unable to save pre-registration settings.' });
+            if (this.changes !== 1) return res.status(404).json({ error: 'Event not found.' });
+            return res.json({ success: true, updated: this.changes });
+        }
+    );
+});
 app.get('/api/events/:id/preregs', (req, res) => { db.all(`SELECT youth_id FROM pre_registrations WHERE event_id = ?`, [req.params.id], (err, rows) => { res.json(rows.map(r => r.youth_id)); }); });
 app.post('/api/preregister', (req, res) => { db.run(`INSERT OR IGNORE INTO pre_registrations (event_id, youth_id, created_at) VALUES (?, ?, ?)`, [req.body.event_id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
 app.delete('/api/events/:event_id/preregs/:youth_id', requireAllPermissions(['access_events', 'delete_entries']), (req, res) => { db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`, [req.params.event_id, req.params.youth_id], function(err) { res.json({ success: true, deleted: this.changes }); }); });

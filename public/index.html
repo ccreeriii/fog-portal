@@ -204,10 +204,12 @@
 
     <div id="preregPublicTab" class="tab-content">
         <div class="card" style="max-width: 600px; margin: 0 auto; overflow: hidden; padding: 0;">
-            <img id="preregPublicBanner" src="" style="width: 100%; max-height: 250px; object-fit: cover; display: none;">
+            <img id="preregPublicBanner" src="" alt="Event poster" loading="eager" fetchpriority="high" decoding="async" style="width: 100%; max-height: 250px; object-fit: cover; display: none;">
+            <p id="preregPublicMediaStatus" role="status" style="display: none; margin: 16px 24px 0; color: var(--text-muted); text-align: center;"></p>
             <div style="padding: 24px; text-align: center;">
                 <h2 id="preregPublicTitle" style="color: var(--primary); border:none;">Event Pre-Registration</h2>
                 <p id="preregPublicInfo" style="color: var(--text-muted); margin-bottom: 20px;"></p>
+                <button id="preregShareInviteButton" type="button" class="btn btn-outline" style="width: 100%; margin-bottom: 20px; border-color: var(--primary); color: var(--primary);" onclick="sharePreRegLink()">🔗 Share Invite</button>
 
                 <div id="preregStep1">
                     <h3 style="margin-bottom: 15px;">Have you attended our activities before?</h3>
@@ -255,15 +257,6 @@
                         <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 15px; margin-top: 5px;">For mobile device, long press on the QR code and save it to your photos or photo gallery/album.</p>
                         <a id="preregSuccessQrDownload" class="btn btn-primary" download="Event-QR-Pass.png" style="width: 100%;">📥 Save to Photo Gallery</a>
                         <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 10px;">Please click the button above to download and keep a copy of your pass.</p>
-                        <button class="btn btn-outline" style="width: 100%; margin-top: 15px; border-color: var(--primary); color: var(--primary);" onclick="sharePreRegLink()">🔗 Share/invite a friend or someone</button>
-                    </div>
-                    <button class="btn btn-outline" style="width: 100%; margin-top: 5px;" onclick="closePublicPrereg()">Close</button>
-                </div>
-                <img id="preregPublicBottomBanner" src="" style="width: 100%; object-fit: contain; margin-top: 30px; border-top: 1px solid var(--border-color); padding-top: 20px; display: none;">
-                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 15px; margin-top: 5px;">For mobile device, long press on the QR code and save it to your photos or photo gallery/album.</p>
-                        <a id="preregSuccessQrDownload" class="btn btn-primary" download="Event-QR-Pass.png" style="width: 100%;">📥 Save to Photo Gallery</a>
-                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 10px;">Please click the button above to download and keep a copy of your pass.</p>
-                        <button class="btn btn-outline" style="width: 100%; margin-top: 15px; border-color: var(--primary); color: var(--primary);" onclick="sharePreRegLink()">🔗 Share/invite a friend or someone</button>
                     </div>
                     <button class="btn btn-outline" style="width: 100%; margin-top: 5px;" onclick="closePublicPrereg()">Close</button>
                 </div>
@@ -970,7 +963,7 @@
         <div id="subTabEventList" class="event-sub-tab active">
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h2>Events</h2>
+                    <h2 id="eventListTitle">Events</h2>
                     <div style="display: flex; gap: 8px;"><button id="viewBtnList" class="btn btn-outline btn-sm active" onclick="setEventViewMode('list')">☰</button><button id="viewBtnGrid" class="btn btn-outline btn-sm" onclick="setEventViewMode('grid')">▦</button><button id="viewBtnCal" class="btn btn-outline btn-sm" onclick="setEventViewMode('calendar')">📅</button></div>
                 </div>
                 <div id="calendarControls" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 20px;"><button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(-1)">◀</button><h3 id="calendarMonthTitle" style="font-size: 1.2rem; color: var(--primary);"></h3><button class="btn btn-outline btn-sm" onclick="changeCalendarMonth(1)">▶</button></div>
@@ -1175,9 +1168,21 @@
         <h2>Pre-Registration Setup</h2>
         <form id="preregSettingsForm" onsubmit="savePreregSettings(event)">
             <input type="hidden" id="preregSetEventId">
-            <div class="form-group"><label>Top Banner</label><input type="file" id="preregSetBanner" class="form-control" accept="image/*"></div>
+            <div class="form-group">
+                <label>Top Banner</label>
+                <input type="file" id="preregSetBanner" class="form-control" accept="image/*" onchange="previewPreregSettingsImage(this, 'preregSetBannerPreview', 'preregSetBannerStatus')">
+                <img id="preregSetBannerPreview" alt="Top Banner preview" style="display:none; width:100%; max-height:180px; object-fit:contain; margin-top:10px; border-radius:8px;">
+                <small id="preregSetBannerStatus" style="display:block; color:var(--text-muted); margin-top:6px;"></small>
+            </div>
             <div class="form-group"><label>Title</label><input type="text" id="preregSetTitle" class="form-control"></div>
             <div class="form-group"><label>Info</label><textarea id="preregSetInfo" class="form-control" rows="3"></textarea></div>
+            <div class="form-group">
+                <label>Bottom Banner / Bottom Image (Optional)</label>
+                <input type="file" id="preregSetBottomBanner" class="form-control" accept="image/*" onchange="previewPreregSettingsImage(this, 'preregSetBottomBannerPreview', 'preregSetBottomBannerStatus')">
+                <img id="preregSetBottomBannerPreview" alt="Bottom Banner preview" style="display:none; width:100%; max-height:180px; object-fit:contain; margin-top:10px; border-radius:8px;">
+                <small id="preregSetBottomBannerStatus" style="display:block; color:var(--text-muted); margin-top:6px;"></small>
+            </div>
+            <p id="preregSettingsFeedback" role="status" aria-live="polite" style="display:none; margin:10px 0;"></p>
             <button type="submit" class="btn btn-primary" style="width: 100%;">Save Settings</button>
             <button type="button" class="btn btn-secondary" style="width: 100%; margin-top: 10px;" onclick="openPublicPreregFromSettings()">👁️ View Form</button>
         </form>
@@ -1327,7 +1332,7 @@
 </script>
 
 <script src="/js/offline-data.js?v=12.2"></script>
-<script src="/js/app.js?v=12.4"></script>
+<script src="/js/app.js?v=12.6"></script>
 <script src="/js/v2-discipleship.js?v=12.2"></script>
 <script src="/js/v3-worship.js?v=12.2"></script>
 <script src="/js/v4-communications.js?v=12.3"></script>
@@ -1339,7 +1344,7 @@
 <script src="/js/v8-peters-leap.js?v=12.2"></script>
 <script src="/js/v8-jonahs-dive.js?v=12.2"></script>
 <script src="/js/v9-growth-games.js?v=12.2"></script>
-<script src="/js/v10-expansion.js?v=12.2"></script>
+<script src="/js/v10-expansion.js?v=12.3"></script>
 
 
 

@@ -2704,14 +2704,79 @@ window.removeMinistryRole = function(mappingId, name) {
     });
 };
 
+window.setPreregSettingsFeedback = function(message, isError = false) {
+    const feedback = document.getElementById('preregSettingsFeedback');
+    if (!feedback) return;
+    feedback.innerText = message || '';
+    feedback.style.display = message ? 'block' : 'none';
+    feedback.style.color = isError ? 'var(--danger)' : 'var(--success)';
+};
+
+window.setPreregSettingsPreview = function(previewId, statusId, source, emptyMessage) {
+    const preview = document.getElementById(previewId);
+    const status = document.getElementById(statusId);
+    if (!preview) return;
+    preview.onload = null;
+    preview.onerror = null;
+    if (!source) {
+        preview.removeAttribute('src');
+        preview.style.display = 'none';
+        if (status) status.innerText = emptyMessage;
+        return;
+    }
+    preview.src = source;
+    preview.style.display = 'block';
+    if (status) status.innerText = 'Saved image currently in use.';
+    preview.onerror = () => {
+        preview.removeAttribute('src');
+        preview.style.display = 'none';
+        if (status) status.innerText = 'The saved image could not be previewed.';
+    };
+};
+
+window.previewPreregSettingsImage = function(input, previewId, statusId) {
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = event => {
+        window.setPreregSettingsPreview(previewId, statusId, event.target.result, '');
+        const status = document.getElementById(statusId);
+        if (status) status.innerText = 'Selected image ready to save.';
+    };
+    reader.onerror = () => window.setPreregSettingsFeedback('Unable to preview the selected image.', true);
+    reader.readAsDataURL(file);
+};
+
+window.populatePreregSettingsEditor = function(event) {
+    const idInput = document.getElementById('preregSetEventId');
+    if (idInput) idInput.value = event.id;
+    const titleInput = document.getElementById('preregSetTitle');
+    if (titleInput) titleInput.value = event.prereg_title || event.name || '';
+    const infoInput = document.getElementById('preregSetInfo');
+    if (infoInput) infoInput.value = event.prereg_info || '';
+    const bannerInput = document.getElementById('preregSetBanner');
+    if (bannerInput) bannerInput.value = '';
+    const bottomBannerInput = document.getElementById('preregSetBottomBanner');
+    if (bottomBannerInput) bottomBannerInput.value = '';
+    window.setPreregSettingsPreview(
+        'preregSetBannerPreview',
+        'preregSetBannerStatus',
+        event.prereg_banner_url,
+        'No custom Top Banner saved. The Event Poster will be used as fallback.'
+    );
+    window.setPreregSettingsPreview(
+        'preregSetBottomBannerPreview',
+        'preregSetBottomBannerStatus',
+        event.prereg_bottom_banner_url,
+        'No Bottom Banner saved.'
+    );
+    window.setPreregSettingsFeedback('');
+};
+
 window.openPreregSettings = function(eventId) {
-    const e = eventsData.find(ev => ev.id == eventId);
-    if (!e) return;
-    document.getElementById('preregSetEventId').value = e.id;
-    document.getElementById('preregSetTitle').value = e.prereg_title || e.name || '';
-    document.getElementById('preregSetInfo').value = e.prereg_info || '';
-    document.getElementById('preregSetBanner').value = '';
-    document.getElementById('preregSetBottomBanner').value = '';
+    const event = eventsData.find(candidate => candidate.id == eventId);
+    if (!event) return;
+    window.populatePreregSettingsEditor(event);
     document.getElementById('preregSettingsModal').classList.add('active');
 };
 window.closePreregSettingsModal = function() { document.getElementById('preregSettingsModal').classList.remove('active'); };
@@ -2723,24 +2788,97 @@ window.savePreregSettings = async function(e) {
     const info = document.getElementById('preregSetInfo').value;
     const fileInput = document.getElementById('preregSetBanner');
     const fileInputBottom = document.getElementById('preregSetBottomBanner');
-    let bannerBase64 = null;
-    if (fileInput.files.length > 0) bannerBase64 = await window.getBase64(fileInput.files[0], 1200);
+    if (!fileInput || !fileInputBottom) {
+        window.setPreregSettingsFeedback('The banner controls are unavailable. Please reload and try again.', true);
+        alert('Unable to save settings. Please reload and try again.');
+        return;
+    }
 
-    let bottomBannerBase64 = null;
-    if (fileInputBottom.files.length > 0) bottomBannerBase64 = await window.getBase64(fileInputBottom.files[0], 1200);
+    const payload = { title, info, actor: currentUser };
+    try {
+        if (fileInput.files.length > 0) payload.banner = await window.getBase64(fileInput.files[0], 1200);
+        if (fileInputBottom.files.length > 0) payload.bottom_banner = await window.getBase64(fileInputBottom.files[0], 1200);
+    } catch (error) {
+        console.error('Unable to read pre-registration banner.', error);
+        window.setPreregSettingsFeedback('Unable to read the selected image. Please choose it again.', true);
+        alert('Unable to read the selected image. Please choose it again.');
+        return;
+    }
 
     window.triggerActionConfirmation('Save Pre-Registration Page Settings?', async () => {
-        const res = await fetch(`/api/events/${id}/prereg-settings`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ banner: bannerBase64, bottom_banner: bottomBannerBase64, title, info, actor: currentUser })
-        });
-        if(res.ok) { alert('Settings saved successfully!'); window.closePreregSettingsModal(); window.loadEvents(); }
+        window.setPreregSettingsFeedback('Saving settings…');
+        try {
+            const res = await fetch(`/api/events/${id}/prereg-settings`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            let response = null;
+            try { response = await res.json(); } catch (error) {}
+            if (!res.ok || !response || response.success !== true) {
+                throw new Error(response && response.error ? response.error : `HTTP ${res.status}`);
+            }
+            window.setPreregSettingsFeedback('Settings saved successfully.');
+            alert('Settings saved successfully!');
+            window.closePreregSettingsModal();
+            await window.loadEvents();
+            return true;
+        } catch (error) {
+            console.error('Failed to save pre-registration settings.', error);
+            window.setPreregSettingsFeedback('Unable to save settings. Please try again.', true);
+            alert('Unable to save settings. Please try again.');
+            return false;
+        }
     });
 };
 
 window.openPublicPreregFromSettings = async function() {
     const id = document.getElementById('preregSetEventId').value;
     window.closePreregSettingsModal(); window.launchPublicPrereg(id);
+};
+
+window.loadPreregHeroMedia = function(event) {
+    const banner = document.getElementById('preregPublicBanner');
+    const status = document.getElementById('preregPublicMediaStatus');
+    if (!banner) return;
+
+    const sources = [event && event.prereg_banner_url, event && event.poster_url]
+        .filter((source, index, all) => source && all.indexOf(source) === index);
+    banner.loading = 'eager';
+    banner.fetchPriority = 'high';
+    banner.decoding = 'async';
+    banner.onload = null;
+    banner.onerror = null;
+
+    if (sources.length === 0) {
+        banner.removeAttribute('src');
+        banner.style.display = 'none';
+        if (status) status.style.display = 'none';
+        return;
+    }
+
+    let sourceIndex = 0;
+    if (status) {
+        status.innerText = 'Loading event image…';
+        status.style.display = 'block';
+    }
+    banner.style.display = 'block';
+    banner.onload = () => {
+        if (status) status.style.display = 'none';
+    };
+    banner.onerror = () => {
+        sourceIndex += 1;
+        if (sourceIndex < sources.length) {
+            banner.src = sources[sourceIndex];
+            return;
+        }
+        banner.removeAttribute('src');
+        banner.style.display = 'none';
+        if (status) {
+            status.innerText = 'Event image is unavailable. Registration is still open.';
+            status.style.display = 'block';
+        }
+    };
+    banner.src = sources[sourceIndex];
 };
 
 window.launchPublicPrereg = async function(eventId) {
@@ -2750,11 +2888,12 @@ window.launchPublicPrereg = async function(eventId) {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('event') !== String(eventId)) window.history.pushState(null, '', '?event=' + eventId);
 
-    try {
+    const preregIdsPromise = (async () => {
         const prRes = await fetch(`/api/events/${eventId}/preregs`);
+        if (!prRes.ok) throw new Error(`HTTP ${prRes.status}`);
         const prData = await prRes.json();
-        currentPreRegYouthIds = new Set(prData);
-    } catch(e) { currentPreRegYouthIds = new Set(); }
+        return new Set(prData);
+    })().catch(() => new Set());
 
     try {
         const eventRes = await fetch(`/api/events/${eventId}`);
@@ -2769,16 +2908,27 @@ window.launchPublicPrereg = async function(eventId) {
         document.getElementById('preregPublicTitle').innerText = event.prereg_title || event.name;
         document.getElementById('preregPublicInfo').innerText = event.prereg_info || `Date: ${event.event_date} | Venue: ${event.venue || 'TBA'}`;
 
-        const banner = document.getElementById('preregPublicBanner');
-        if (event.prereg_banner_url) { banner.src = event.prereg_banner_url; banner.style.display = 'block'; }
-        else if (event.poster_url) { banner.src = event.poster_url; banner.style.display = 'block'; }
-        else { banner.style.display = 'none'; }
+        window.loadPreregHeroMedia(event);
 
         const bottomBanner = document.getElementById('preregPublicBottomBanner');
-        if (event.prereg_bottom_banner_url) { bottomBanner.src = event.prereg_bottom_banner_url; bottomBanner.style.display = 'block'; }
-        else { bottomBanner.style.display = 'none'; }
+        bottomBanner.onload = null;
+        bottomBanner.onerror = null;
+        if (event.prereg_bottom_banner_url) {
+            bottomBanner.loading = 'lazy';
+            bottomBanner.src = event.prereg_bottom_banner_url;
+            bottomBanner.style.display = 'block';
+            bottomBanner.onerror = () => {
+                bottomBanner.removeAttribute('src');
+                bottomBanner.style.display = 'none';
+            };
+        }
+        else {
+            bottomBanner.removeAttribute('src');
+            bottomBanner.style.display = 'none';
+        }
     }
 
+    currentPreRegYouthIds = await preregIdsPromise;
     if(youthData.length === 0) { const yRes = await fetch('/api/youth'); youthData = await yRes.json(); }
     window.switchTab('preregPublicTab'); window.showPreregStep(1);
 };
@@ -2867,30 +3017,44 @@ window.submitNewPrereg = async function(e) {
     } catch(err) { alert("Network error."); }
 };
 
-window.sharePreRegLink = async function() {
+window.copyPreRegInvite = function(shareText, shareUrl) {
+    const invite = `${shareText} ${shareUrl}`;
+    const showManualCopy = () => {
+        if (typeof window.prompt === 'function') window.prompt('Copy this event invitation:', invite);
+        return false;
+    };
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+        return Promise.resolve(showManualCopy());
+    }
+    return navigator.clipboard.writeText(invite)
+        .then(() => {
+            alert('Event invitation copied to clipboard.');
+            return true;
+        })
+        .catch(showManualCopy);
+};
+
+window.sharePreRegLink = function() {
     const shareTitle = document.getElementById('preregPublicTitle').innerText || 'Community Event';
     const shareText = `Join me at ${shareTitle}, click the link to pre-register.`;
-    const shareUrl = window.location.href;
+    const shareUrl = currentPreregEventId
+        ? `${window.location.origin}/?event=${encodeURIComponent(currentPreregEventId)}`
+        : window.location.href;
     const shareData = { title: shareTitle, text: shareText, url: shareUrl };
 
-    const imageUrl = currentPreregEventDetail
-        ? (currentPreregEventDetail.poster_url || currentPreregEventDetail.prereg_banner_url)
-        : null;
-    if (imageUrl) {
+    if (typeof navigator.share === 'function') {
         try {
-            const imageResponse = await fetch(imageUrl);
-            if (!imageResponse.ok) throw new Error(`HTTP ${imageResponse.status}`);
-            const imageBlob = await imageResponse.blob();
-            const posterFile = new File([imageBlob], 'event-poster.jpg', { type: imageBlob.type || 'image/jpeg' });
-            if (navigator.canShare && navigator.canShare({ files: [posterFile] })) shareData.files = [posterFile];
-        } catch (err) { console.error('Image attachment failed:', err); }
+            // Keep this call synchronous with the click so Safari retains user activation.
+            const nativeShare = navigator.share(shareData);
+            return Promise.resolve(nativeShare).catch(error => {
+                if (error && error.name === 'AbortError') return false;
+                return window.copyPreRegInvite(shareText, shareUrl);
+            });
+        } catch (error) {
+            return window.copyPreRegInvite(shareText, shareUrl);
+        }
     }
-
-    if (navigator.share) {
-        try { await navigator.share(shareData); } catch (error) { console.log('Error sharing', error); }
-    } else {
-        navigator.clipboard.writeText(`${shareText} ${shareUrl}`).then(() => alert(`Link copied to clipboard!\n\n${shareText}`));
-    }
+    return window.copyPreRegInvite(shareText, shareUrl);
 };
 
 window.openEditEventModal = function(eventId) {
@@ -2942,6 +3106,73 @@ window.submitEditEvent = async function() {
     });
 };
 
+// === P9 PHASE C EVENT EXPERIENCE HELPERS ===
+window.getManilaDateKey = function(referenceDate = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(referenceDate);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+};
+
+window.getUpcomingEvents = function(sourceEvents, referenceDate = new Date()) {
+    const today = window.getManilaDateKey(referenceDate);
+    return (Array.isArray(sourceEvents) ? sourceEvents : [])
+        .filter(event => /^\d{4}-\d{2}-\d{2}$/.test(event.event_date || '') && event.event_date >= today)
+        .slice()
+        .sort((left, right) => {
+            const dateOrder = left.event_date.localeCompare(right.event_date);
+            if (dateOrder !== 0) return dateOrder;
+            const timeOrder = (left.time_start || '').localeCompare(right.time_start || '');
+            if (timeOrder !== 0) return timeOrder;
+            return Number(left.id || 0) - Number(right.id || 0);
+        });
+};
+
+window.getEventViewerCapabilities = function() {
+    const permitted = permission => typeof window.hasPerm === 'function' && window.hasPerm(permission);
+    const hasEventAccess = permitted('access_events');
+    return {
+        isEventPlanner: hasEventAccess,
+        canViewDetails: hasEventAccess || permitted('access_attendance') || permitted('access_checkin'),
+        canCreate: hasEventAccess && permitted('add_entries'),
+        canEdit: hasEventAccess && permitted('edit_entries'),
+        canDelete: hasEventAccess && permitted('delete_entries')
+    };
+};
+
+window.getVisibleEventsForCurrentUser = function(sourceEvents, referenceDate = new Date()) {
+    const capabilities = window.getEventViewerCapabilities();
+    return capabilities.isEventPlanner
+        ? (Array.isArray(sourceEvents) ? sourceEvents.slice() : [])
+        : window.getUpcomingEvents(sourceEvents, referenceDate);
+};
+
+window.renderEventActionButtons = function(event, capabilities) {
+    const eventId = Number(event.id);
+    if (!Number.isSafeInteger(eventId) || eventId <= 0) return '';
+    const buttons = [];
+    if (capabilities.canViewDetails) {
+        buttons.push(`<button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${eventId})">Details</button>`);
+    }
+    if (!capabilities.isEventPlanner && event.preregistration_available) {
+        buttons.push(`<a href="/?event=${eventId}" class="btn btn-primary btn-sm" onclick="event.preventDefault(); window.launchPublicPrereg(${eventId})">Pre-register</a>`);
+    }
+    if (capabilities.canEdit) {
+        buttons.push(`<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${eventId})">Form</button>`);
+        buttons.push(`<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${eventId})">Edit</button>`);
+    }
+    if (capabilities.canDelete) {
+        const safeName = String(event.name || 'Event').replace(/'/g, "\\'");
+        buttons.push(`<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${eventId}, '${safeName}')">Del</button>`);
+    }
+    return buttons.join('');
+};
+// === END P9 PHASE C EVENT EXPERIENCE HELPERS ===
+
 window.setEventViewMode = function(mode) {
     eventViewMode = mode;
     const btnList = document.getElementById('viewBtnList');
@@ -2956,58 +3187,63 @@ window.setEventViewMode = function(mode) {
 
     const container = document.getElementById('eventsListContainer');
     if (!container) return;
+    const capabilities = window.getEventViewerCapabilities();
+    const visibleEvents = window.getVisibleEventsForCurrentUser(eventsData);
+    const title = document.getElementById('eventListTitle');
+    if (title) title.innerText = capabilities.isEventPlanner ? 'Events' : 'Upcoming Events';
 
-    if (eventsData.length === 0) {
-        container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding: 20px;">No events published yet.</p>';
+    if (visibleEvents.length === 0) {
+        const emptyMessage = capabilities.isEventPlanner ? 'No events published yet.' : 'No upcoming events are published yet.';
+        container.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding: 20px;">${emptyMessage}</p>`;
         return;
     }
 
     if (eventViewMode === 'list') {
         container.className = 'events-list-view';
-        container.innerHTML = eventsData.map(e => {
+        container.innerHTML = visibleEvents.map(e => {
             const safeName = e.name || 'Event';
+            const eventId = Number(e.id);
+            const titleAction = capabilities.canViewDetails ? ` onclick="openAnalyticsModal(${eventId})"` : '';
             let linkBadges = '';
             if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
             if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
             return `
             <div style="border-bottom: 1px solid var(--border-color); padding: 15px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div>
-                    <strong style="cursor: pointer; color: var(--primary); font-size: 1.1rem;" onclick="openAnalyticsModal(${e.id})">${safeName}</strong><br>
+                    <strong style="color: var(--primary); font-size: 1.1rem;"${titleAction}>${safeName}</strong><br>
                     <small style="color: var(--text-muted); font-size: 0.85rem;">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
                     ${linkBadges ? `<div style="margin-top: 8px;">${linkBadges}</div>` : ''}
                 </div>
                 <div style="display: flex; gap: 6px;">
-                    <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
-                    ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
-                    ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
-                    ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
+                    ${window.renderEventActionButtons(e, capabilities)}
                 </div>
             </div>`}).join('');
     } else if (eventViewMode === 'grid') {
         container.className = 'events-grid-view';
-        container.innerHTML = eventsData.map(e => {
+        container.innerHTML = visibleEvents.map(e => {
             const safeName = e.name || 'Event';
+            const eventId = Number(e.id);
+            const mediaAction = capabilities.canViewDetails
+                ? ` onclick="openAnalyticsModal(${eventId})"`
+                : (e.preregistration_available ? ` onclick="window.launchPublicPrereg(${eventId})"` : '');
             let linkBadges = '';
             if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
             if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
             return `
             <div class="event-card">
-                ${e.poster_url ? `<img src="${e.poster_url}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster" loading="lazy">` : `<div class="event-card-img" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`}
+                ${e.poster_url ? `<img src="${e.poster_url}" class="event-card-img"${mediaAction} alt="Poster" loading="lazy">` : `<div class="event-card-img" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;"${mediaAction}>Blank Thumbnail</div>`}
                 <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
-                        <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${safeName}</h3>
+                        <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main);"${mediaAction}>${safeName}</h3>
                         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>📍 ${e.venue || 'No Location'}</p>
                         ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
                     </div>
                     <div style="display: flex; gap: 6px; margin-top: 10px;">
-                        <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
-                        ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
-                        ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
-                        ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
+                        ${window.renderEventActionButtons(e, capabilities)}
                     </div>
                 </div>
             </div>`}).join('');
-    } else if (eventViewMode === 'calendar') window.renderCalendarView(container);
+    } else if (eventViewMode === 'calendar') window.renderCalendarView(container, visibleEvents);
 };
 
 window.loadEvents = async function() {
@@ -3047,7 +3283,8 @@ window.handleCreateEvent = function(e) {
     });
 };
 
-window.renderCalendarView = function(container) {
+window.renderCalendarView = function(container, sourceEvents = eventsData) {
+    const capabilities = window.getEventViewerCapabilities();
     const year = calCurrentDate.getFullYear();
     const month = calCurrentDate.getMonth();
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -3061,9 +3298,17 @@ window.renderCalendarView = function(container) {
     for (let i = 0; i < firstDay; i++) html += `<div class="calendar-day-cell other-month"></div>`;
     for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const dayEvents = eventsData.filter(e => e.event_date === dateStr);
+        const dayEvents = sourceEvents.filter(e => e.event_date === dateStr);
         html += `<div class="calendar-day-cell"><strong style="color:var(--text-main);">${day}</strong>`;
-        dayEvents.forEach(e => html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${(e.name || '').replace(/"/g, '&quot;')}">${e.name || 'Event'}</div>`);
+        dayEvents.forEach(e => {
+            const eventId = Number(e.id);
+            const action = capabilities.canViewDetails
+                ? ` onclick="openAnalyticsModal(${eventId})" title="View event details"`
+                : (e.preregistration_available
+                    ? ` onclick="window.launchPublicPrereg(${eventId})" title="Pre-register for this event"`
+                    : '');
+            html += `<div class="calendar-event-tag"${action}>${e.name || 'Event'}</div>`;
+        });
         html += `</div>`;
     }
     html += `</div>`;
@@ -6804,22 +7049,7 @@ window.openPreregSettings = async function(eventId) {
         const response = await fetch(`/api/events/${eventId}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const event = await response.json();
-
-        const idInput = document.getElementById('preregSetEventId');
-        if (idInput) idInput.value = event.id;
-
-        const titleInput = document.getElementById('preregSetTitle');
-        if (titleInput) titleInput.value = event.prereg_title || event.name || '';
-
-        const infoInput = document.getElementById('preregSetInfo');
-        if (infoInput) infoInput.value = event.prereg_info || '';
-
-        const bannerInput = document.getElementById('preregSetBanner');
-        if (bannerInput) bannerInput.value = '';
-
-        const bottomBannerInput = document.getElementById('preregSetBottomBanner');
-        if (bottomBannerInput) bottomBannerInput.value = '';
-
+        window.populatePreregSettingsEditor(event);
         const modal = document.getElementById('preregSettingsModal');
         if (modal) modal.classList.add('active');
     } catch (error) {
@@ -7767,13 +7997,15 @@ window.switchTab = async function(tabId, subTabId) {
 setInterval(() => {
     if (typeof currentUser === 'undefined' || !currentUser) return;
     const canAdd = (typeof window.hasPerm === 'function' && window.hasPerm('add_entries')) || currentUser === 'celsocreeriii@gmail.com';
+    const canCreateEvent = (typeof window.hasPerm === 'function' && window.hasPerm('access_events') && window.hasPerm('add_entries')) || currentUser === 'celsocreeriii@gmail.com';
     
     const idsToUnlock = ['btnSubEventCreate', 'btnSubMinistryCreate', 'btnCheckinWalkin', 'addEntryAnalyticsBtn', 'btnDirectoryAddMember'];
     
     idsToUnlock.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            if (canAdd) {
+            const shouldShow = id === 'btnSubEventCreate' ? canCreateEvent : canAdd;
+            if (shouldShow) {
                 if (el.style.display === 'none' || el.style.display === '') {
                     el.style.setProperty('display', 'inline-flex', 'important');
                 }
@@ -7878,6 +8110,7 @@ window.updateActiveEventBanner = async function() {
 // 1. OBLITERATE CSS CONFLICTS FOR ADMIN TABS
 window.applyGranularPermissions = function() {
     const canAdd = (typeof window.hasPerm === 'function' && window.hasPerm('add_entries')) || currentUser === 'celsocreeriii@gmail.com';
+    const canCreateEvent = (typeof window.hasPerm === 'function' && window.hasPerm('access_events') && window.hasPerm('add_entries')) || currentUser === 'celsocreeriii@gmail.com';
     
     // Explicitly un-hide the parent container that the rogue script was previously destroying
     const eventsSubNav = document.querySelector('#eventsTab .sub-nav');
@@ -7887,7 +8120,8 @@ window.applyGranularPermissions = function() {
     targets.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            if (canAdd) {
+            const shouldShow = id === 'btnSubEventCreate' ? canCreateEvent : canAdd;
+            if (shouldShow) {
                 el.style.setProperty('display', 'inline-flex', 'important');
             } else {
                 el.style.setProperty('display', 'none', 'important');
@@ -7922,7 +8156,7 @@ window.loadEvents = function() {
         removeLocalStorageItem('fog_events_cache');
 
         if (window.KoinoniaOfflineData && Array.isArray(eventsData)) {
-            const summary = eventsData.slice(0, 8).map(e => ({
+            const summary = window.getUpcomingEvents(eventsData).slice(0, 8).map(e => ({
                 id: e.id,
                 name: e.name,
                 event_date: e.event_date,

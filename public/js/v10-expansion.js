@@ -602,7 +602,17 @@ window.V8Arcade = Object.assign(window.V8Arcade || {}, {
         if (ldrBtn) ldrBtn.classList.toggle('active', tab === 'leaderboard');
 
         const area = document.getElementById('arcadeActiveGameArea');
-        if(area) area.style.display = 'none';
+        if(area) {
+            area.style.display = 'none';
+            if (tab === 'games') area.innerHTML = '';
+        }
+
+        if (tab === 'games') {
+            const grid = document.getElementById('arcadeGridItems');
+            if (grid) grid.style.display = 'grid';
+            const featured = document.getElementById('featuredArcadeGameContainer');
+            if (featured) featured.style.display = 'block';
+        }
 
         if (tab === 'leaderboard') this.loadLeaderboard();
     },

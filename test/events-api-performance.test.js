@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 const { performance } = require('node:perf_hooks');
+const sharp = require('sharp');
 
 const fsp = fs.promises;
 const repositoryRoot = path.resolve(__dirname, '..');
@@ -27,7 +28,7 @@ function closeDatabase(database) {
     });
 }
 
-function request(app, pathname, { method = 'GET', cookie } = {}) {
+function request(app, pathname, { method = 'GET', cookie, body = {} } = {}) {
     const parsedPath = new URL(pathname, 'http://isolated.test');
     const router = app.router || app._router;
     let routeMatch;
@@ -43,7 +44,7 @@ function request(app, pathname, { method = 'GET', cookie } = {}) {
         let handlerIndex = 0;
         const responseHeaders = Object.create(null);
         const req = {
-            body: {},
+            body,
             params: { ...routeMatch.params },
             query: Object.fromEntries(parsedPath.searchParams),
             headers: cookie ? { cookie } : {},
@@ -107,6 +108,21 @@ async function createStaffIdentity(database) {
     return { userId: user.lastID, youthId: youth.lastID, username: 'P9-PERFORMANCE-STAFF' };
 }
 
+async function createOrdinaryIdentity(database) {
+    const youth = await run(
+        database,
+        `INSERT INTO youth (name, email, qr_code, password, created_at)
+         VALUES ('P9 Performance Member', 'p9-performance-member@invalid.test', 'P9-PERFORMANCE-MEMBER', 'disposable', datetime('now'))`
+    );
+    const user = await run(
+        database,
+        `INSERT INTO users (username, password, permissions, youth_id, created_at)
+         VALUES ('P9-PERFORMANCE-MEMBER', 'disposable', '[]', ?, datetime('now'))`,
+        [youth.lastID]
+    );
+    return { userId: user.lastID, youthId: youth.lastID, username: 'P9-PERFORMANCE-MEMBER' };
+}
+
 test('events API uses lightweight list, selected detail, and allowlisted media', { concurrency: false }, async (t) => {
     const temporaryRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'koinonia-events-performance-'));
     let database;
@@ -144,7 +160,10 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
         path.join(temporaryRoot, 'lib', 'sqlite-backup.js')
     );
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
-    await fsp.writeFile(path.join(temporaryRoot, 'public', 'index.html'), '<!doctype html><title>Isolated test</title>');
+    await fsp.writeFile(
+        path.join(temporaryRoot, 'public', 'index.html'),
+        '<!doctype html><html><head><title>Isolated test</title></head><body>Isolated test</body></html>'
+    );
 
     const isolatedApplication = require(path.join(temporaryRoot, 'server.js'));
     await isolatedApplication.ready;
@@ -153,6 +172,19 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
     await run(database, 'ALTER TABLE events ADD COLUMN additional_info TEXT');
 
     const largeJpeg = `data:image/jpeg;base64,${Buffer.alloc(180_000, 65).toString('base64')}`;
+    const portraitPixels = Buffer.alloc(400 * 800 * 3);
+    for (let y = 0; y < 800; y += 1) {
+        const color = y < 80 ? [230, 35, 35] : y >= 720 ? [35, 70, 230] : [245, 245, 245];
+        for (let x = 0; x < 400; x += 1) {
+            const offset = (y * 400 + x) * 3;
+            portraitPixels[offset] = color[0];
+            portraitPixels[offset + 1] = color[1];
+            portraitPixels[offset + 2] = color[2];
+        }
+    }
+    const portraitPoster = `data:image/jpeg;base64,${(await sharp(portraitPixels, {
+        raw: { width: 400, height: 800, channels: 3 }
+    }).jpeg({ quality: 95 }).toBuffer()).toString('base64')}`;
     const png = `data:image/png;base64,${Buffer.from('png-fixture').toString('base64')}`;
     const webp = `data:image/webp;base64,${Buffer.from('webp-fixture').toString('base64')}`;
     let selectedEventId;
@@ -167,7 +199,7 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
             [
                 `P9 Event ${index + 1}`,
                 `2099-01-${String(index + 1).padStart(2, '0')}`,
-                largeJpeg,
+                index === 0 ? portraitPoster : largeJpeg,
                 `https://example.invalid/photos/${index + 1}`,
                 `https://example.invalid/materials/${index + 1}`,
                 index === 0 ? png : largeJpeg,
@@ -186,16 +218,22 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
         server.once('error', reject);
     });
     const isolatedOrigin = `http://127.0.0.1:${httpServer.address().port}`;
+    const staff = await createStaffIdentity(database);
+    const staffCookie = createSession(isolatedApplication.sessionStore, staff);
+    const ordinary = await createOrdinaryIdentity(database);
+    const ordinaryCookie = createSession(isolatedApplication.sessionStore, ordinary);
     const listResponse = await request(app, '/api/events');
     assert.equal(listResponse.status, 200);
     assert.equal(listResponse.json.length, 14);
     const selectedListEvent = listResponse.json.find(event => event.id === selectedEventId);
     assert.deepEqual(Object.keys(selectedListEvent), [
         'id', 'name', 'event_date', 'time_start', 'venue', 'photos_url',
-        'materials_url', 'event_points', 'has_poster', 'poster_url'
+        'materials_url', 'event_points', 'has_poster', 'poster_url',
+        'preregistration_available'
     ]);
     assert.equal(selectedListEvent.poster_url, `/api/events/${selectedEventId}/media/poster`);
     assert.equal(selectedListEvent.has_poster, true);
+    assert.equal(selectedListEvent.preregistration_available, true);
     for (const event of listResponse.json) {
         assert.equal('poster' in event, false);
         assert.equal('prereg_banner' in event, false);
@@ -238,14 +276,13 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
         assert.equal('poster' in publicDetail, false);
         assert.equal('roles_restricted_notes' in publicDetail, false);
 
-        const staff = await createStaffIdentity(database);
         const staffDetail = await request(app, `/api/events/${selectedEventId}`, {
-            cookie: createSession(isolatedApplication.sessionStore, staff)
+            cookie: staffCookie
         });
         assert.equal(staffDetail.status, 200);
         assert.equal(staffDetail.json.roles_restricted_notes, 'Restricted note 1');
         const analytics = await request(app, `/api/events/${selectedEventId}/analytics`, {
-            cookie: createSession(isolatedApplication.sessionStore, staff)
+            cookie: staffCookie
         });
         assert.equal(analytics.status, 200);
         assert.equal(analytics.json.event.poster_url, `/api/events/${selectedEventId}/media/poster`);
@@ -253,6 +290,65 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
         assert.equal('poster' in analytics.json.event, false);
         assert.equal((await request(app, '/api/events/not-a-number')).status, 404);
         assert.equal((await request(app, '/api/events/999999')).status, 404);
+    });
+
+    await t.test('preregistration settings persist both banners and preserve omitted media', async () => {
+        const original = await new Promise((resolve, reject) => database.get(
+            'SELECT prereg_banner, prereg_bottom_banner FROM events WHERE id = ?',
+            [selectedEventId],
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        const unauthorized = await request(app, `/api/events/${selectedEventId}/prereg-settings`, {
+            method: 'POST', cookie: ordinaryCookie,
+            body: { banner: null, bottom_banner: null, title: 'Denied', info: 'Denied' }
+        });
+        assert.equal(unauthorized.status, 403);
+        const afterDenied = await new Promise((resolve, reject) => database.get(
+            'SELECT prereg_banner, prereg_bottom_banner FROM events WHERE id = ?',
+            [selectedEventId],
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.deepEqual(afterDenied, original);
+
+        const updatedTop = `data:image/png;base64,${Buffer.from('updated-top-banner').toString('base64')}`;
+        const updatedBottom = `data:image/webp;base64,${Buffer.from('updated-bottom-banner').toString('base64')}`;
+        const saved = await request(app, `/api/events/${selectedEventId}/prereg-settings`, {
+            method: 'POST', cookie: staffCookie,
+            body: {
+                banner: updatedTop,
+                bottom_banner: updatedBottom,
+                title: 'Selected prereg title 1',
+                info: 'Selected prereg information 1'
+            }
+        });
+        assert.equal(saved.status, 200);
+        assert.deepEqual(saved.json, { success: true, updated: 1 });
+        const persisted = await new Promise((resolve, reject) => database.get(
+            'SELECT prereg_banner, prereg_bottom_banner FROM events WHERE id = ?',
+            [selectedEventId],
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.deepEqual(persisted, { prereg_banner: updatedTop, prereg_bottom_banner: updatedBottom });
+
+        const reopened = await fetch(`${isolatedOrigin}/api/events/${selectedEventId}`).then(response => response.json());
+        assert.equal(reopened.prereg_banner_url, `/api/events/${selectedEventId}/media/prereg_banner`);
+        assert.equal(reopened.prereg_bottom_banner_url, `/api/events/${selectedEventId}/media/prereg_bottom_banner`);
+        const topMedia = await fetch(`${isolatedOrigin}${reopened.prereg_banner_url}`);
+        const bottomMedia = await fetch(`${isolatedOrigin}${reopened.prereg_bottom_banner_url}`);
+        assert.equal(Buffer.from(await topMedia.arrayBuffer()).toString(), 'updated-top-banner');
+        assert.equal(Buffer.from(await bottomMedia.arrayBuffer()).toString(), 'updated-bottom-banner');
+
+        const textOnlySave = await request(app, `/api/events/${selectedEventId}/prereg-settings`, {
+            method: 'POST', cookie: staffCookie,
+            body: { title: 'Selected prereg title 1', info: 'Selected prereg information 1' }
+        });
+        assert.equal(textOnlySave.status, 200);
+        const preserved = await new Promise((resolve, reject) => database.get(
+            'SELECT prereg_banner, prereg_bottom_banner FROM events WHERE id = ?',
+            [selectedEventId],
+            (error, row) => error ? reject(error) : resolve(row)
+        ));
+        assert.deepEqual(preserved, persisted);
     });
 
     await t.test('media is binary, cacheable, and limited to three fixed types', async () => {
@@ -287,6 +383,76 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
         assert.equal((await fetch(`${isolatedOrigin}/api/events/${emptyEvent.lastID}/media/poster`)).status, 404);
         assert.equal((await fetch(`${isolatedOrigin}/api/events/${malformedEvent.lastID}/media/poster`)).status, 404);
     });
+
+    await t.test('event share URL renders crawler-visible, event-specific metadata', async () => {
+        const response = await fetch(`${isolatedOrigin}/?event=${selectedEventId}`, {
+            headers: { 'User-Agent': 'facebookexternalhit/1.1' }
+        });
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get('cache-control'), 'no-store');
+        const html = await response.text();
+        const canonical = `https://fogmin.site/?event=${selectedEventId}`;
+        const socialPreview = `https://fogmin.site/api/events/${selectedEventId}/social-preview.png`;
+        assert.match(html, /property="og:title" content="Selected prereg title 1"/);
+        assert.match(html, /property="og:description" content="Selected prereg information 1"/);
+        assert.ok(html.includes(`property="og:url" content="${canonical}"`));
+        assert.ok(html.includes(`property="og:image" content="${socialPreview}"`));
+        assert.match(html, /property="og:image:width" content="1200"/);
+        assert.match(html, /property="og:image:height" content="630"/);
+        assert.match(html, /property="og:image:type" content="image\/png"/);
+        assert.match(html, /name="twitter:card" content="summary_large_image"/);
+        assert.ok(html.includes(`name="twitter:image" content="${socialPreview}"`));
+        assert.equal(html.includes('Restricted note 1'), false);
+
+        const previewResponse = await fetch(`${isolatedOrigin}/api/events/${selectedEventId}/social-preview.png`);
+        assert.equal(previewResponse.status, 200);
+        assert.equal(previewResponse.headers.get('content-type'), 'image/png');
+        assert.match(previewResponse.headers.get('cache-control'), /public, max-age=300/);
+        assert.equal(previewResponse.headers.get('x-content-type-options'), 'nosniff');
+        const preview = Buffer.from(await previewResponse.arrayBuffer());
+        const previewMetadata = await sharp(preview).metadata();
+        assert.equal(previewMetadata.width, 1200);
+        assert.equal(previewMetadata.height, 630);
+        assert.equal(previewMetadata.format, 'png');
+
+        const { data: previewPixels, info } = await sharp(preview)
+            .removeAlpha()
+            .raw()
+            .toBuffer({ resolveWithObject: true });
+        const pixelAt = (x, y) => {
+            const offset = (y * info.width + x) * info.channels;
+            return Array.from(previewPixels.subarray(offset, offset + 3));
+        };
+        const containedTop = pixelAt(600, 30);
+        const containedMiddle = pixelAt(600, 315);
+        const containedBottom = pixelAt(600, 600);
+        assert.ok(containedTop[0] > containedTop[1] * 3 && containedTop[0] > containedTop[2] * 3,
+            'the source poster top remains visible');
+        assert.ok(containedMiddle.every(channel => channel > 220), 'the source poster center remains visible');
+        assert.ok(containedBottom[2] > containedBottom[0] * 3 && containedBottom[2] > containedBottom[1] * 2,
+            'the source poster bottom remains visible');
+
+        const noPoster = await run(
+            database,
+            `INSERT INTO events (name, event_date, prereg_info, event_points, created_at)
+             VALUES ('No Poster', '2099-03-01', 'Public fallback description', 10, datetime('now'))`
+        );
+        const invalidPoster = await run(
+            database,
+            `INSERT INTO events (name, event_date, poster, event_points, created_at)
+             VALUES ('Invalid Poster', '2099-03-02', 'data:image/png;base64,aW52YWxpZA==', 10, datetime('now'))`
+        );
+        for (const eventId of [noPoster.lastID, invalidPoster.lastID]) {
+            const fallbackResponse = await fetch(`${isolatedOrigin}/api/events/${eventId}/social-preview.png`);
+            assert.equal(fallbackResponse.status, 200);
+            assert.equal(fallbackResponse.headers.get('content-type'), 'image/png');
+            const fallbackMetadata = await sharp(Buffer.from(await fallbackResponse.arrayBuffer())).metadata();
+            assert.equal(fallbackMetadata.width, 1200);
+            assert.equal(fallbackMetadata.height, 630);
+        }
+        assert.equal((await fetch(`${isolatedOrigin}/api/events/not-a-number/social-preview.png`)).status, 404);
+        assert.equal((await fetch(`${isolatedOrigin}/api/events/999999/social-preview.png`)).status, 404);
+    });
 });
 
 test('event frontend consumes list references, selected detail, and deduplicates list loads', async () => {
@@ -297,16 +463,17 @@ test('event frontend consumes list references, selected detail, and deduplicates
     assert.ok(/e\.poster_url \? `<img[^`]+loading="lazy"/.test(appSource), 'grid lazy-loads poster_url');
     assert.ok(/fetch\(`\/api\/events\/\$\{eventId\}`\)/.test(appSource), 'selected detail is fetched');
     assert.ok(appSource.includes('event.prereg_banner_url'), 'prereg banner uses its media URL');
-    assert.ok(appSource.includes('currentPreregEventDetail.poster_url'), 'sharing uses the selected poster URL');
     assert.ok(appSource.includes('event.prereg_bottom_banner_url'), 'bottom banner uses its media URL');
-    assert.ok(appSource.includes('const imageResponse = await fetch(imageUrl)'), 'sharing fetches only selected media');
+    assert.equal(appSource.includes('const imageResponse = await fetch(imageUrl)'), false, 'sharing does not delay native share for media');
     assert.ok(preregisterSource.includes('event.poster_url'), 'standalone prereg page uses poster_url');
     assert.equal(/event\.poster\b/.test(preregisterSource), false, 'standalone prereg page does not use embedded media');
-    assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'fog-portal-v8';"), 'new app asset has a fresh shell cache');
+    assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'fog-portal-v10';"), 'new app asset has a fresh shell cache');
     assert.ok(serviceWorkerSource.includes("if (request.method !== 'GET') return;"), 'service worker still bypasses mutations');
     assert.ok(serviceWorkerSource.includes("url.pathname.startsWith('/api/')"), 'service worker still bypasses API reads');
-    assert.ok(serviceWorkerSource.includes("'/js/app.js?v=12.4'"), 'service worker caches the coordinated app version');
-    assert.ok(indexSource.includes('<script src="/js/app.js?v=12.4"></script>'), 'index serves the coordinated app version');
+    assert.ok(serviceWorkerSource.includes("'/js/app.js?v=12.6'"), 'service worker caches the coordinated app version');
+    assert.ok(serviceWorkerSource.includes("'/js/v10-expansion.js?v=12.3'"), 'service worker caches the Arcade fix');
+    assert.ok(indexSource.includes('<script src="/js/app.js?v=12.6"></script>'), 'index serves the coordinated app version');
+    assert.ok(indexSource.includes('<script src="/js/v10-expansion.js?v=12.3"></script>'), 'index serves the coordinated Arcade version');
     assert.equal(appSource.includes("localStorage.setItem('fog_events_cache'"), false, 'legacy full-event cache is retired');
 
     const loaderStart = appSource.indexOf('let eventsRequestInFlight = null;');
@@ -336,6 +503,7 @@ test('event frontend consumes list references, selected detail, and deduplicates
             });
         },
         window: {
+            getUpcomingEvents(events) { return events; },
             KoinoniaOfflineData: {
                 savePublicContent(key, value) { offlineSnapshots.push({ key, value }); },
                 saveDashboardSnapshot() {}
