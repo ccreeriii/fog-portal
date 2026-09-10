@@ -84,6 +84,7 @@ self.addEventListener('fetch', (event) => {
 
     const url = new URL(request.url);
     if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+    if (url.pathname === '/reset-password' || url.pathname.startsWith('/reset-password/')) return;
 
     if (request.mode === 'navigate') {
         event.respondWith(networkFirstNavigation(request));

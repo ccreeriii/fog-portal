@@ -12,14 +12,18 @@ const fsp = fs.promises;
 const repositoryRoot = path.resolve(__dirname, '..');
 const {
     normalizeEmail,
+    validatePublicOrigin,
     validateVerifiedGooglePayload,
     findGoogleYouthIdentity,
+    findPasswordRecoveryIdentity,
+    createRecoveryRateLimiter,
     initializeEmailRecoverySchema,
     createAuthTokenStore,
     parseOutboxEncryptionKey,
     encryptOutboxPayload,
     decryptOutboxPayload,
     createEmailOutbox,
+    createBoundedOutboxWorker,
     invalidateSessionsForYouth
 } = require('../lib/email-security');
 const {
@@ -102,6 +106,21 @@ test('canonical email normalization and verified Google payload validation fail 
     }), null);
 });
 
+test('password recovery origin validation requires an exact credential-free HTTPS origin', () => {
+    assert.equal(validatePublicOrigin('https://staging.fogmin.site'), 'https://staging.fogmin.site');
+    assert.equal(validatePublicOrigin(' https://fogmin.site/ '), 'https://fogmin.site');
+    for (const invalid of [
+        undefined,
+        '',
+        'http://staging.fogmin.site',
+        'https://user:secret@fogmin.site',
+        'https://fogmin.site/reset',
+        'https://fogmin.site/?next=reset',
+        'https://fogmin.site/#reset',
+        'https://localhost'
+    ]) assert.equal(validatePublicOrigin(invalid), null);
+});
+
 test('Google identity lookup prefers google_id and rejects ambiguous normalized email', async () => {
     await withTemporaryDatabase(async database => {
         await run(database, 'CREATE TABLE youth (id INTEGER PRIMARY KEY, email TEXT, google_id TEXT)');
@@ -121,6 +140,42 @@ test('Google identity lookup prefers google_id and rejects ambiguous normalized 
         const missing = await findGoogleYouthIdentity(database, 'unknown-subject', 'missing@example.com');
         assert.equal(missing.status, 'none');
     });
+});
+
+test('password recovery eligibility requires one normalized youth and an existing local credential', async () => {
+    await withTemporaryDatabase(async database => {
+        await run(database, 'CREATE TABLE youth (id INTEGER PRIMARY KEY, email TEXT, password TEXT, google_id TEXT)');
+        await run(database, 'CREATE TABLE users (id INTEGER PRIMARY KEY, youth_id INTEGER, password TEXT)');
+        await run(database, "INSERT INTO youth VALUES (1, ' Local@Example.com ', NULL, 'google-1')");
+        await run(database, "INSERT INTO users VALUES (1, 1, 'local-hash')");
+        await run(database, "INSERT INTO youth VALUES (2, 'google-only@example.com', NULL, 'google-2')");
+        await run(database, "INSERT INTO youth VALUES (3, 'duplicate@example.com', 'hash', NULL)");
+        await run(database, "INSERT INTO youth VALUES (4, ' DUPLICATE@EXAMPLE.COM ', 'hash', NULL)");
+
+        assert.deepEqual(await findPasswordRecoveryIdentity(database, 'local@example.com'), {
+            status: 'eligible', identity: { youthId: 1, normalizedEmail: 'local@example.com' }
+        });
+        assert.equal((await findPasswordRecoveryIdentity(database, 'google-only@example.com')).status, 'no_local_credential');
+        assert.equal((await findPasswordRecoveryIdentity(database, 'duplicate@example.com')).status, 'ambiguous');
+        assert.equal((await findPasswordRecoveryIdentity(database, 'unknown@example.com')).status, 'unknown');
+        assert.equal((await findPasswordRecoveryIdentity(database, 'INVALID')).status, 'invalid');
+    });
+});
+
+test('recovery limiter hashes and independently enforces client and subject limits', () => {
+    let clock = 1_700_000_000_000;
+    const limiter = createRecoveryRateLimiter({
+        namespace: 'test-recovery', windowMs: 1_000, ipLimit: 3, subjectLimit: 2, now: () => clock
+    });
+    assert.equal(limiter.check({ ip: 'client-a', subject: 'one@example.com' }), true);
+    assert.equal(limiter.check({ ip: 'client-a', subject: 'one@example.com' }), true);
+    assert.equal(limiter.check({ ip: 'client-a', subject: 'one@example.com' }), false);
+    assert.equal(limiter.check({ ip: 'client-b', subject: 'two@example.com' }), true);
+    assert.equal(limiter.check({ ip: 'client-b', subject: 'three@example.com' }), true);
+    assert.equal(limiter.check({ ip: 'client-b', subject: 'four@example.com' }), true);
+    assert.equal(limiter.check({ ip: 'client-b', subject: 'five@example.com' }), false);
+    clock += 1_001;
+    assert.equal(limiter.check({ ip: 'client-a', subject: 'one@example.com' }), true);
 });
 
 test('email recovery migration creates only the dedicated tables and required indexes', async () => {
@@ -313,6 +368,38 @@ test('outbox encryption is authenticated and never persists a plaintext reset to
             dedupeKey: 'member-42-password-reset'
         });
         assert.deepEqual(duplicate, { enqueued: false, id: queued.id, reason: 'DUPLICATE_ACTIVE' });
+        assert.equal(await outbox.hasActiveDedupeKey('member-42-password-reset'), true);
+        assert.equal(await outbox.hasActiveDedupeKey('different-logical-message'), false);
+    });
+});
+
+test('stale security email fails without transport delivery', async () => {
+    await withTemporaryDatabase(async database => {
+        const encryptionKey = crypto.randomBytes(32).toString('base64url');
+        let clock = 1_700_000_000_000;
+        let sendCount = 0;
+        const outbox = createEmailOutbox({
+            database,
+            encryptionKey,
+            now: () => clock,
+            transport: { async send() { sendCount += 1; return { providerMessageId: 'must-not-send' }; } }
+        });
+        const job = await outbox.enqueue({
+            recipient: 'member@example.com',
+            messageType: 'password_reset',
+            payload: {
+                subject: 'Reset',
+                text: 'Encrypted reset URL',
+                deliveryNotAfter: clock + 60 * 60 * 1000,
+                minimumRemainingValidityMs: 15 * 60 * 1000
+            }
+        });
+        clock += 46 * 60 * 1000;
+        const result = await outbox.processNext();
+        assert.equal(result.status, 'failed');
+        assert.equal(sendCount, 0);
+        const row = await get(database, 'SELECT status, last_error_code FROM email_outbox WHERE id = ?', [job.id]);
+        assert.deepEqual(row, { status: 'failed', last_error_code: 'EMAIL_DELIVERY_WINDOW_EXPIRED' });
     });
 });
 
@@ -404,6 +491,31 @@ test('email outbox prevents concurrent duplicate worker execution', async () => 
         assert.equal((await firstWorker).status, 'sent');
         assert.equal((await all(database, "SELECT id FROM email_outbox WHERE status = 'sent'")).length, 1);
     });
+});
+
+test('bounded outbox worker prevents overlap and respects its batch limit', async () => {
+    let calls = 0;
+    let releaseFirst;
+    let firstStarted;
+    const started = new Promise(resolve => { firstStarted = resolve; });
+    const outbox = {
+        async processNext() {
+            calls += 1;
+            if (calls === 1) {
+                firstStarted();
+                await new Promise(resolve => { releaseFirst = resolve; });
+            }
+            return { processed: true, id: calls, status: 'sent' };
+        }
+    };
+    const worker = createBoundedOutboxWorker({ outbox, batchSize: 2 });
+    const firstRun = worker.runOnce();
+    await started;
+    assert.deepEqual(await worker.runOnce(), { processed: 0, reason: 'WORKER_BUSY' });
+    releaseFirst();
+    const result = await firstRun;
+    assert.equal(result.processed, 2);
+    assert.equal(calls, 2);
 });
 
 test('Resend transport uses HTTPS, timeout, and safe retry classification without live network', async () => {

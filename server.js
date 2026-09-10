@@ -10,9 +10,17 @@ const webpush = require('web-push');
 const cron = require('node-cron');
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
 const {
+    normalizeEmail,
+    validatePublicOrigin,
     validateVerifiedGooglePayload,
     findGoogleYouthIdentity,
-    initializeEmailRecoverySchema
+    findPasswordRecoveryIdentity,
+    initializeEmailRecoverySchema,
+    createAuthTokenStore,
+    createEmailOutbox,
+    createBoundedOutboxWorker,
+    createRecoveryRateLimiter,
+    invalidateSessionsForYouth
 } = require('./lib/email-security');
 const app = express();
 
@@ -133,6 +141,35 @@ const PASSWORD_LOGIN_ACCOUNT_KEY_LIMIT = 4096;
 const PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const passwordLoginIpAttempts = new Map();
 const passwordLoginAccountFailures = new Map();
+const PASSWORD_RECOVERY_TOKEN_TTL_MS = 60 * 60 * 1000;
+const PASSWORD_RECOVERY_MINIMUM_DELIVERY_VALIDITY_MS = 15 * 60 * 1000;
+const PASSWORD_RECOVERY_MINIMUM_RESPONSE_MS = 250;
+const PASSWORD_RECOVERY_WORKER_INTERVAL_MS = 30 * 1000;
+const PASSWORD_RECOVERY_WORKER_BATCH_SIZE = 5;
+const PASSWORD_RECOVERY_NEUTRAL_MESSAGE = 'If an eligible account matches that email, password reset instructions will be sent shortly.';
+const PASSWORD_RESET_INVALID_MESSAGE = 'This password reset link is invalid or expired. Request a new one.';
+const passwordRecoveryInFlight = new Set();
+const forgotPasswordLimiter = createRecoveryRateLimiter({
+    namespace: 'forgot-password',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 10,
+    subjectLimit: 3
+});
+const resetPasswordLimiter = createRecoveryRateLimiter({
+    namespace: 'reset-password',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
+});
+
+function getRecoveryClientAddress(req) {
+    // Express trust proxy remains disabled; never trust forwarding headers here.
+    if (req && typeof req.ip === 'string' && req.ip) return req.ip;
+    if (req && req.socket && typeof req.socket.remoteAddress === 'string' && req.socket.remoteAddress) {
+        return req.socket.remoteAddress;
+    }
+    return '<unknown>';
+}
 
 function deriveScryptKey(password, salt, params = PASSWORD_SCRYPT_PARAMS) {
     return new Promise((resolve, reject) => {
@@ -410,6 +447,8 @@ const passwordLoginLimiterCleanupTimer = setInterval(() => {
     const now = Date.now();
     cleanupExpiredPasswordLoginLimiterEntries(passwordLoginIpAttempts, now);
     cleanupExpiredPasswordLoginLimiterEntries(passwordLoginAccountFailures, now);
+    forgotPasswordLimiter.cleanupExpired();
+    resetPasswordLimiter.cleanupExpired();
 }, PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS);
 passwordLoginLimiterCleanupTimer.unref();
 
@@ -1678,6 +1717,65 @@ const db = new sqlite3.Database(databasePath, (err) => {
     console.log('[SCALABILITY] WAL Mode Activated for High Concurrency.');
 });
 
+const authTokenStore = createAuthTokenStore({ database: db });
+let emailRecoveryPublicOrigin = null;
+let emailRecoveryOutbox = null;
+let emailRecoveryWorker = null;
+let emailRecoveryWorkerTimer = null;
+let emailRecoveryRuntimeInitialized = false;
+
+function getSafeEmailRecoveryErrorCode(error, fallback = 'EMAIL_RECOVERY_UNAVAILABLE') {
+    return error && typeof error.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(error.code)
+        ? error.code
+        : fallback;
+}
+
+async function runEmailRecoveryWorkerTick() {
+    if (!emailRecoveryWorker) return;
+    try {
+        await emailRecoveryWorker.runOnce();
+    } catch (error) {
+        console.warn(`[EMAIL] Worker tick failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_WORKER_FAILED')}`);
+    }
+}
+
+async function initializeEmailRecoveryRuntime() {
+    if (emailRecoveryRuntimeInitialized) return;
+    emailRecoveryRuntimeInitialized = true;
+    try {
+        const publicOrigin = validatePublicOrigin(process.env.KOINONIA_PUBLIC_ORIGIN);
+        if (!publicOrigin) {
+            throw Object.assign(new Error('Password recovery public origin is unavailable'), {
+                code: 'EMAIL_PUBLIC_ORIGIN_INVALID'
+            });
+        }
+        const { createEmailTransportFromEnv } = require('./lib/email-transport');
+        const transport = createEmailTransportFromEnv(process.env);
+        const outbox = createEmailOutbox({
+            database: db,
+            encryptionKey: process.env.EMAIL_OUTBOX_ENCRYPTION_KEY,
+            transport,
+            logger: console
+        });
+        await outbox.recoverStaleSending();
+
+        emailRecoveryPublicOrigin = publicOrigin;
+        emailRecoveryOutbox = outbox;
+        emailRecoveryWorker = createBoundedOutboxWorker({
+            outbox,
+            batchSize: PASSWORD_RECOVERY_WORKER_BATCH_SIZE
+        });
+        emailRecoveryWorkerTimer = setInterval(
+            () => { void runEmailRecoveryWorkerTick(); },
+            PASSWORD_RECOVERY_WORKER_INTERVAL_MS
+        );
+        emailRecoveryWorkerTimer.unref();
+        console.log('[EMAIL] Secure recovery outbox enabled.');
+    } catch (error) {
+        console.warn(`[EMAIL] Secure recovery email disabled code=${getSafeEmailRecoveryErrorCode(error)}`);
+    }
+}
+
 db.serialize(() => {
 
     // AUTO-HEAL SUPERADMIN CONFLICT
@@ -2058,6 +2156,7 @@ async function applyDeterministicRuntimeMigration() {
     }
 
     await initializeEmailRecoverySchema(db);
+    await initializeEmailRecoveryRuntime();
     await assertRuntimeSchema();
 }
 
@@ -2263,6 +2362,13 @@ app.get('/', (req, res, next) => {
             res.type('html').send(html.replace('</head>', `${metaTags.join('\n')}\n</head>`));
         });
     });
+});
+
+app.get('/reset-password', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    return res.sendFile(path.join(__dirname, 'public', 'reset-password.html'));
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -2535,6 +2641,229 @@ app.post('/api/auth/google', async (req, res) => {
         console.error('Google authentication database operation failed');
         return res.status(500).json({ success: false, error: 'Unable to complete Google sign-in' });
     }
+});
+
+function sendNoStoreJson(res, status, body) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    return res.status(status).json(body);
+}
+
+async function waitForRecoveryMinimumResponse(startedAt) {
+    const remaining = PASSWORD_RECOVERY_MINIMUM_RESPONSE_MS - (Date.now() - startedAt);
+    if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining));
+}
+
+function buildPasswordResetMessage(resetUrl, expiresAt) {
+    return {
+        subject: 'Reset your Fire Of God Ministries Community Portal password',
+        text: [
+            'A password reset was requested for your Fire Of God Ministries Community Portal account.',
+            '',
+            `Reset your password: ${resetUrl}`,
+            '',
+            'This link expires in 60 minutes. If you did not request this, you can ignore this email.'
+        ].join('\n'),
+        html: [
+            '<p>A password reset was requested for your Fire Of God Ministries Community Portal account.</p>',
+            `<p><a href="${resetUrl}">Reset your password</a></p>`,
+            '<p>This link expires in 60 minutes. If you did not request this, you can ignore this email.</p>'
+        ].join(''),
+        deliveryNotAfter: expiresAt,
+        minimumRemainingValidityMs: PASSWORD_RECOVERY_MINIMUM_DELIVERY_VALIDITY_MS
+    };
+}
+
+function buildPasswordChangedMessage() {
+    return {
+        subject: 'Your Fire Of God Ministries Community Portal password was changed',
+        text: [
+            'Your Community Portal password was changed successfully.',
+            '',
+            'If you did not make this change, contact support@fogmin.site immediately.'
+        ].join('\n'),
+        html: [
+            '<p>Your Community Portal password was changed successfully.</p>',
+            '<p>If you did not make this change, contact <a href="mailto:support@fogmin.site">support@fogmin.site</a> immediately.</p>'
+        ].join('')
+    };
+}
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+    const startedAt = Date.now();
+    const submittedEmail = req.body && typeof req.body.email === 'string' && req.body.email.length <= 320
+        ? req.body.email
+        : null;
+    const normalizedEmail = normalizeEmail(submittedEmail);
+    const allowed = forgotPasswordLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: normalizedEmail
+    });
+
+    if (allowed && normalizedEmail && emailRecoveryPublicOrigin && emailRecoveryOutbox) {
+        let lockKey = null;
+        let ownsLock = false;
+        let issuedTokenId = null;
+        try {
+            const resolution = await findPasswordRecoveryIdentity(db, normalizedEmail);
+            if (resolution.status === 'ambiguous') {
+                logActivity('System', 'PASSWORD_RESET_REQUEST_AMBIGUOUS', 'Recovery request rejected because identity resolution was ambiguous');
+            } else if (resolution.status === 'eligible') {
+                const { youthId } = resolution.identity;
+                lockKey = String(youthId);
+                const dedupeKey = `password-reset:${youthId}`;
+                if (!passwordRecoveryInFlight.has(lockKey)) {
+                    passwordRecoveryInFlight.add(lockKey);
+                    ownsLock = true;
+                    if (!await emailRecoveryOutbox.hasActiveDedupeKey(dedupeKey)) {
+                        const issued = await authTokenStore.issue({
+                            purpose: 'password_reset',
+                            youthId,
+                            email: normalizedEmail,
+                            ttlMs: PASSWORD_RECOVERY_TOKEN_TTL_MS
+                        });
+                        issuedTokenId = issued.id;
+                        const resetUrl = `${emailRecoveryPublicOrigin}/reset-password#${issued.rawToken}`;
+                        await emailRecoveryOutbox.enqueue({
+                            recipient: normalizedEmail,
+                            messageType: 'password_reset',
+                            payload: buildPasswordResetMessage(resetUrl, issued.expiresAt),
+                            dedupeKey
+                        });
+                        issuedTokenId = null;
+                        logActivity(`Member ${youthId}`, 'PASSWORD_RESET_REQUEST_QUEUED', 'Encrypted password reset email queued');
+                    }
+                }
+            }
+        } catch (error) {
+            if (issuedTokenId !== null) {
+                try {
+                    await googleAuthDatabaseRun(
+                        `UPDATE auth_one_time_tokens SET revoked_at = ?
+                         WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL`,
+                        [Date.now(), issuedTokenId]
+                    );
+                } catch (revocationError) {
+                    console.warn(`[EMAIL] Unqueued reset token revocation failed code=${getSafeEmailRecoveryErrorCode(revocationError)}`);
+                }
+            }
+            console.warn(`[EMAIL] Password reset request failed code=${getSafeEmailRecoveryErrorCode(error, 'PASSWORD_RESET_REQUEST_FAILED')}`);
+        } finally {
+            if (ownsLock) passwordRecoveryInFlight.delete(lockKey);
+        }
+    }
+
+    await waitForRecoveryMinimumResponse(startedAt);
+    return sendNoStoreJson(res, 200, {
+        success: true,
+        message: PASSWORD_RECOVERY_NEUTRAL_MESSAGE
+    });
+});
+
+function rejectInvalidPasswordReset(res) {
+    return sendNoStoreJson(res, 400, { success: false, message: PASSWORD_RESET_INVALID_MESSAGE });
+}
+
+function rejectPasswordResetMutation(code = 'PASSWORD_RESET_REJECTED') {
+    throw Object.assign(new Error('Password reset rejected'), { code });
+}
+
+app.post('/api/auth/reset-password', async (req, res) => {
+    const token = req.body && typeof req.body.token === 'string' ? req.body.token : '';
+    const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+    const tokenIsValid = /^[A-Za-z0-9_-]{43}$/.test(token);
+    const passwordIsValid = password.length >= 8 && password.length <= 128 && /\S/.test(password);
+    const allowed = resetPasswordLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: tokenIsValid ? token : null
+    });
+    if (!allowed) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Too many password reset attempts. Please try again later.'
+        });
+    }
+    if (!tokenIsValid) return rejectInvalidPasswordReset(res);
+    if (!passwordIsValid) {
+        return sendNoStoreJson(res, 400, {
+            success: false,
+            message: 'Password must be 8 to 128 characters and contain meaningful content.'
+        });
+    }
+
+    let consumed;
+    try {
+        consumed = await authTokenStore.consumeWithMutation(
+            { rawToken: token, purpose: 'password_reset' },
+            async (tokenRecord, transaction) => {
+                if (!Number.isInteger(tokenRecord.youthId) || tokenRecord.youthId <= 0) {
+                    rejectPasswordResetMutation();
+                }
+                const member = await transaction.get(
+                    'SELECT id, email, password FROM youth WHERE id = ?',
+                    [tokenRecord.youthId]
+                );
+                const currentEmail = member ? normalizeEmail(member.email) : null;
+                if (!member || !currentEmail || currentEmail !== tokenRecord.targetEmail) {
+                    rejectPasswordResetMutation('PASSWORD_RESET_EMAIL_CHANGED');
+                }
+                const linkedUsers = await transaction.all(
+                    'SELECT id, password FROM users WHERE youth_id = ? ORDER BY id ASC',
+                    [member.id]
+                );
+                const hasLocalCredential = (
+                    typeof member.password === 'string' && member.password.length > 0
+                ) || linkedUsers.some(user => typeof user.password === 'string' && user.password.length > 0);
+                if (!hasLocalCredential) rejectPasswordResetMutation('PASSWORD_RESET_NO_LOCAL_CREDENTIAL');
+
+                const encodedPassword = await hashPassword(password);
+                const memberUpdate = await transaction.run(
+                    'UPDATE youth SET password = ? WHERE id = ?',
+                    [encodedPassword, member.id]
+                );
+                if (memberUpdate.changes !== 1) rejectPasswordResetMutation();
+                await transaction.run(
+                    'UPDATE users SET password = ? WHERE youth_id = ?',
+                    [encodedPassword, member.id]
+                );
+                return { youthId: member.id, normalizedEmail: currentEmail };
+            }
+        );
+    } catch (error) {
+        if (error && typeof error.code === 'string' && error.code.startsWith('PASSWORD_RESET_')) {
+            return rejectInvalidPasswordReset(res);
+        }
+        console.warn(`[EMAIL] Password reset transaction failed code=${getSafeEmailRecoveryErrorCode(error, 'PASSWORD_RESET_TRANSACTION_FAILED')}`);
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            message: 'Unable to reset the password safely. Please try again.'
+        });
+    }
+    if (!consumed) return rejectInvalidPasswordReset(res);
+
+    const { youthId, normalizedEmail } = consumed.mutationResult;
+    invalidateSessionsForYouth(sessionStore, youthId);
+    logActivity(`Member ${youthId}`, 'PASSWORD_RESET_COMPLETED', 'Password reset completed and active member sessions invalidated');
+
+    if (emailRecoveryOutbox) {
+        try {
+            await emailRecoveryOutbox.enqueue({
+                recipient: normalizedEmail,
+                messageType: 'password_changed',
+                payload: buildPasswordChangedMessage(),
+                dedupeKey: `password-changed:${youthId}:${consumed.usedAt}`
+            });
+        } catch (error) {
+            console.warn(`[EMAIL] Password change notice enqueue failed code=${getSafeEmailRecoveryErrorCode(error, 'PASSWORD_NOTICE_QUEUE_FAILED')}`);
+        }
+    } else {
+        console.warn('[EMAIL] Password change notice not queued code=EMAIL_RECOVERY_UNAVAILABLE');
+    }
+
+    return sendNoStoreJson(res, 200, {
+        success: true,
+        message: 'Password changed successfully. Sign in with your new password.'
+    });
 });
 
 app.get('/api/auth/me', (req, res) => {

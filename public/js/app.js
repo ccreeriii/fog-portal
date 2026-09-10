@@ -1700,6 +1700,54 @@ window.handleLogin = async function(e) {
     } else alert('Invalid credentials!');
 };
 
+window.openForgotPassword = function() {
+    const result = document.getElementById('forgotPasswordResult');
+    const form = document.getElementById('forgotPasswordForm');
+    if (result) {
+        result.style.display = 'none';
+        result.textContent = '';
+    }
+    if (form) form.style.display = 'block';
+    showTabWithoutOnlineHooks('forgotPasswordTab');
+};
+
+window.returnToLoginFromRecovery = function() {
+    const email = document.getElementById('forgotPasswordEmail');
+    if (email) email.value = '';
+    showTabWithoutOnlineHooks('loginTab');
+};
+
+window.handleForgotPassword = async function(event) {
+    event.preventDefault();
+    const email = document.getElementById('forgotPasswordEmail');
+    const form = document.getElementById('forgotPasswordForm');
+    const result = document.getElementById('forgotPasswordResult');
+    const submitButton = form && form.querySelector('button[type="submit"]');
+    if (!email || !form || !result || !submitButton) return;
+
+    submitButton.disabled = true;
+    try {
+        const response = await fetch('/api/auth/forgot-password', {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email.value })
+        });
+        if (!response.ok) throw new Error('Recovery request unavailable');
+        const body = await response.json();
+        result.textContent = body.message || 'If an eligible account matches that email, password reset instructions will be sent shortly.';
+        form.style.display = 'none';
+        email.value = '';
+        result.style.display = 'block';
+    } catch (error) {
+        result.textContent = 'The request could not be completed right now. Check your connection and try again.';
+        result.style.display = 'block';
+    } finally {
+        submitButton.disabled = false;
+    }
+};
+
 window.handleLogout = async function() {
     return window.performSecureLogout();
 };

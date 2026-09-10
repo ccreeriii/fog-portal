@@ -278,6 +278,7 @@
                     <input type="password" id="loginPass" class="form-control" placeholder="••••••••" required>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Secure Login</button>
+                <button type="button" class="btn btn-outline" style="width: 100%; margin-top: 10px;" onclick="openForgotPassword()">Forgot password?</button>
 
             <div style="margin-top: 25px; text-align: center;">
                 <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
@@ -306,6 +307,22 @@
                 </div>
             </div>
             </form>
+        </div>
+    </div>
+
+    <div id="forgotPasswordTab" class="tab-content">
+        <div class="card" style="max-width: 400px; margin: 40px auto;">
+            <h2>Reset your password</h2>
+            <p style="color: var(--text-muted); line-height: 1.5;">Enter the email connected to your Community Portal account.</p>
+            <form id="forgotPasswordForm" onsubmit="handleForgotPassword(event)">
+                <div class="form-group">
+                    <label for="forgotPasswordEmail">Email</label>
+                    <input type="email" id="forgotPasswordEmail" class="form-control" maxlength="254" autocomplete="email" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Send reset instructions</button>
+            </form>
+            <div id="forgotPasswordResult" role="status" aria-live="polite" style="display: none; margin-top: 18px; padding: 14px; background: #ECFDF5; color: #065F46; border-radius: 10px; line-height: 1.5;"></div>
+            <button type="button" class="btn btn-outline" style="width: 100%; margin-top: 12px;" onclick="returnToLoginFromRecovery()">Back to Sign In</button>
         </div>
     </div>
 
