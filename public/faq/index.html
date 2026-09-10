@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/><meta content="noindex,nofollow" name="robots"/>
+<title>Help &amp; FAQ — Fire Of God Ministries Community Portal</title>
+<style>
+:root {
+ --ink:#45404b;--muted:#78717c;--white:#fff;--paper:#fffdfa;--line:#ebdfd8;
+ --cream:#fff7ec;--peach:#ffe9dd;--rose:#ffe9ed;--sun:#fff3c9;
+ --mint:#eaf8f0;--sky:#eaf5ff;--lav:#f1edff;--fire:#e76b45;--gold:#f1b74c;
+ --shadow:0 13px 34px rgba(111,81,64,.09);
+}
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+body{margin:0;background:linear-gradient(180deg,#fffaf5,#fff 24%,#fffdfa);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+button,input,select{font:inherit} a{color:#9b4f3d}
+.wrap{width:min(1040px,calc(100% - 30px));margin:auto}
+header{padding:46px 0 20px}
+.brand{font-size:.76rem;letter-spacing:.12em;text-transform:uppercase;color:#825044;font-weight:800}
+.brand:before{content:"🔥 ";}
+.review-badge{display:inline-block;margin-top:10px;padding:5px 10px;border-radius:999px;background:#fff0d1;color:#8a6328;font-size:.72rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border:1px solid #efd8bb}
+h1{font-size:clamp(2rem,6vw,3.55rem);line-height:1.07;margin:.5rem 0 .7rem;color:#60443e}
+.lead{max-width:790px;color:var(--muted);font-size:1.03rem}
+.controls{display:grid;grid-template-columns:1fr;gap:12px;align-items:end;position:sticky;top:8px;z-index:20;margin:20px 0 12px}
+.search{width:100%;padding:15px 18px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.97);box-shadow:var(--shadow);outline:none;color:var(--ink)}
+.search:focus{border-color:var(--gold);box-shadow:0 0 0 4px rgba(241,183,76,.15),var(--shadow)}
+
+
+
+
+.quick{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 26px}
+.chip{padding:7px 11px;border:1px solid var(--line);border-radius:999px;background:#fff;text-decoration:none;color:#6f5d59;font-size:.83rem}
+.chip:hover{background:var(--cream)}
+.faq-section{margin:28px 0;padding:20px;border:1px solid var(--line);border-radius:24px;background:#fff;box-shadow:var(--shadow)}
+.faq-section:nth-of-type(6n+1){background:linear-gradient(180deg,#fff,var(--cream))}
+.faq-section:nth-of-type(6n+2){background:linear-gradient(180deg,#fff,var(--sky))}
+.faq-section:nth-of-type(6n+3){background:linear-gradient(180deg,#fff,var(--mint))}
+.faq-section:nth-of-type(6n+4){background:linear-gradient(180deg,#fff,var(--lav))}
+.faq-section:nth-of-type(6n+5){background:linear-gradient(180deg,#fff,var(--rose))}
+.faq-section:nth-of-type(6n){background:linear-gradient(180deg,#fff,var(--sun))}
+.section-heading{display:flex;gap:12px;align-items:center;margin-bottom:14px}
+.section-icon{width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:1.25rem}
+.title-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap} h2{margin:0;color:#5d4742;font-size:1.24rem}
+.access-badge{font-size:.68rem;padding:4px 8px;border-radius:999px;font-weight:750}
+.access-public{background:#eaf8f0;color:#40785a} .access-member{background:#eaf5ff;color:#466b87}
+.access-leader{background:#fff0d1;color:#8a6328} .access-admin{background:#f1edff;color:#66558e}
+.faq-item{margin:9px 0;border:1px solid rgba(222,209,201,.92);border-radius:14px;background:rgba(255,255,255,.84);overflow:hidden}
+.faq-question{width:100%;display:flex;justify-content:space-between;gap:18px;align-items:center;padding:15px 16px;border:0;background:transparent;text-align:left;color:var(--ink);font-weight:720;cursor:pointer}
+.faq-question:hover{background:rgba(255,247,236,.72)} .chev{font-size:1.4rem;color:#ab8072;transition:transform .18s}
+.faq-question[aria-expanded=true] .chev{transform:rotate(180deg)} .faq-answer{padding:0 16px 15px;color:var(--muted)} .faq-answer p{margin:0}
+.empty{display:none;text-align:center;padding:45px;color:var(--muted)}
+.support{margin:44px 0 70px;padding:24px;border:1px solid #efd8bb;border-radius:24px;background:linear-gradient(135deg,var(--peach),var(--sun))}
+.support h2{margin-top:0} footer{text-align:center;color:#998e91;padding-bottom:35px;font-size:.84rem}
+@media(max-width:720px){.controls{grid-template-columns:1fr;position:static}header{padding-top:34px}.faq-section{padding:15px}}
+</style>
+</head>
+<body>
+<header class="wrap">
+<div class="brand">Fire Of God Ministries Community Portal</div>
+<h1>Help &amp; FAQ</h1>
+<p class="lead">A simple guide for our community family. Find quick answers and learn how each part of the Community Portal works.</p>
+</header>
+<main class="wrap">
+<div class="controls">
+<input aria-label="Search Help and FAQ" class="search" id="search" placeholder="What do you need help with?" type="search"/>
+
+</div>
+
+<nav aria-label="Help sections" class="quick" id="chips"></nav>
+<div id="faqRoot">
+<section class="faq-section" data-access="public" id="getting-started">
+<div class="section-heading">
+<span class="section-icon">👋</span>
+<div class="title-wrap">
+<h2>Getting Started</h2>
+<span class="access-badge access-public">Everyone</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="getting started what is the fire of god ministries community portal? the community portal is our shared online space for the fire of god ministries family. it brings together events, member information, ministries, prayer, growth activities, games, reminders, and other helpful community features in one place.">
+<button aria-controls="getting-started-answer-0" aria-expanded="false" class="faq-question">
+<span>What is the Fire Of God Ministries Community Portal?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="getting-started-answer-0"><p>The Community Portal is our shared online space for the Fire Of God Ministries family. It brings together events, member information, ministries, prayer, growth activities, games, reminders, and other helpful community features in one place.</p></div>
+</article>
+<article class="faq-item" data-search="getting started do i need an account? some parts can be viewed without signing in. an account is needed for things that belong to you personally, such as your profile, growth journey, attendance, schedule, scores, messages, and other saved activities.">
+<button aria-controls="getting-started-answer-1" aria-expanded="false" class="faq-question">
+<span>Do I need an account?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="getting-started-answer-1"><p>Some parts can be viewed without signing in. An account is needed for things that belong to you personally, such as your profile, growth journey, attendance, schedule, scores, messages, and other saved activities.</p></div>
+</article>
+<article class="faq-item" data-search="getting started can i add the community portal to my phone? yes. you can add the community portal to your phone’s home screen so it is easier to open and feels more like an app.">
+<button aria-controls="getting-started-answer-2" aria-expanded="false" class="faq-question">
+<span>Can I add the Community Portal to my phone?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="getting-started-answer-2"><p>Yes. You can add the Community Portal to your phone’s Home Screen so it is easier to open and feels more like an app.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="public" id="account-sign-in">
+<div class="section-heading">
+<span class="section-icon">👤</span>
+<div class="title-wrap">
+<h2>Account &amp; Sign In</h2>
+<span class="access-badge access-public">Everyone</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="account &amp; sign in how do i sign in? open the sign in page and choose the option that matches your account. you may use your community portal account or google sign-in when it is available for you.">
+<button aria-controls="account-sign-in-answer-0" aria-expanded="false" class="faq-question">
+<span>How do I sign in?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="account-sign-in-answer-0"><p>Open the Sign In page and choose the option that matches your account. You may use your Community Portal account or Google Sign-In when it is available for you.</p></div>
+</article>
+<article class="faq-item" data-search="account &amp; sign in what if i forget my password? tap “forgot password?” on the sign in page. enter your email and follow the instructions that are sent to you if your account can use password recovery.">
+<button aria-controls="account-sign-in-answer-1" aria-expanded="false" class="faq-question">
+<span>What if I forget my password?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="account-sign-in-answer-1"><p>Tap “Forgot password?” on the Sign In page. Enter your email and follow the instructions that are sent to you if your account can use password recovery.</p></div>
+</article>
+<article class="faq-item" data-search="account &amp; sign in why doesn’t the portal tell me if an email is registered? this helps protect everyone’s privacy. the portal gives the same message whether or not an email is connected to an account.">
+<button aria-controls="account-sign-in-answer-2" aria-expanded="false" class="faq-question">
+<span>Why doesn’t the Portal tell me if an email is registered?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="account-sign-in-answer-2"><p>This helps protect everyone’s privacy. The Portal gives the same message whether or not an email is connected to an account.</p></div>
+</article>
+<article class="faq-item" data-search="account &amp; sign in can i use google sign-in? yes, when it is available for your account. google sign-in lets you use your verified google account to enter the community portal.">
+<button aria-controls="account-sign-in-answer-3" aria-expanded="false" class="faq-question">
+<span>Can I use Google Sign-In?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="account-sign-in-answer-3"><p>Yes, when it is available for your account. Google Sign-In lets you use your verified Google account to enter the Community Portal.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="home-dashboard">
+<div class="section-heading">
+<span class="section-icon">🏠</span>
+<div class="title-wrap">
+<h2>Home Dashboard</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="home dashboard what is the home dashboard? the home dashboard is your starting place after you sign in. it brings together the things that may matter to you today, such as your growth journey, upcoming events, schedule, prayer, community activities, and helpful shortcuts.">
+<button aria-controls="home-dashboard-answer-0" aria-expanded="false" class="faq-question">
+<span>What is the Home Dashboard?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="home-dashboard-answer-0"><p>The Home Dashboard is your starting place after you sign in. It brings together the things that may matter to you today, such as your growth journey, upcoming events, schedule, prayer, community activities, and helpful shortcuts.</p></div>
+</article>
+<article class="faq-item" data-search="home dashboard why do different members see different things? some cards and choices appear only when they are useful for your account, ministry, role, or permissions. this helps keep the home page simple and relevant.">
+<button aria-controls="home-dashboard-answer-1" aria-expanded="false" class="faq-question">
+<span>Why do different members see different things?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="home-dashboard-answer-1"><p>Some cards and choices appear only when they are useful for your account, ministry, role, or permissions. This helps keep the Home page simple and relevant.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="growth-planner">
+<div class="section-heading">
+<span class="section-icon">🌱</span>
+<div class="title-wrap">
+<h2>Growth &amp; Planner</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="growth &amp; planner what is growth &amp; planner? growth &amp; planner helps you see your personal next steps and keep track of the activities that support your journey in faith, community, formation, and service.">
+<button aria-controls="growth-planner-answer-0" aria-expanded="false" class="faq-question">
+<span>What is Growth &amp; Planner?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="growth-planner-answer-0"><p>Growth &amp; Planner helps you see your personal next steps and keep track of the activities that support your journey in faith, community, formation, and service.</p></div>
+</article>
+<article class="faq-item" data-search="growth &amp; planner what is the purpose of the planner? the planner helps you remember what is coming up and what you may want to do next. it can bring together personal activities, responsibilities, and growth-related reminders.">
+<button aria-controls="growth-planner-answer-1" aria-expanded="false" class="faq-question">
+<span>What is the purpose of the Planner?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="growth-planner-answer-1"><p>The Planner helps you remember what is coming up and what you may want to do next. It can bring together personal activities, responsibilities, and growth-related reminders.</p></div>
+</article>
+<article class="faq-item" data-search="growth &amp; planner can everyone see my personal growth information? no. personal information is shown only where it is meant to be shared. some parts are for you, while other parts may be visible only to the right leaders when needed.">
+<button aria-controls="growth-planner-answer-2" aria-expanded="false" class="faq-question">
+<span>Can everyone see my personal growth information?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="growth-planner-answer-2"><p>No. Personal information is shown only where it is meant to be shared. Some parts are for you, while other parts may be visible only to the right leaders when needed.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="my-journey-seven-milestones">
+<div class="section-heading">
+<span class="section-icon">🛤️</span>
+<div class="title-wrap">
+<h2>My Journey &amp; Seven Milestones</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="my journey &amp; seven milestones what is my journey? my journey helps you see where you are in your life with the community and what your next step may be. it is meant to encourage growth, belonging, service, and mission.">
+<button aria-controls="my-journey-seven-milestones-answer-0" aria-expanded="false" class="faq-question">
+<span>What is My Journey?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="my-journey-seven-milestones-answer-0"><p>My Journey helps you see where you are in your life with the community and what your next step may be. It is meant to encourage growth, belonging, service, and mission.</p></div>
+</article>
+<article class="faq-item" data-search="my journey &amp; seven milestones what are the seven milestones? the seven milestones are: encounter (come &amp; see), connect &amp; belong, step in (pledge), discover your gifts, equip &amp; form, serve with joy, and commissioned (be sent).">
+<button aria-controls="my-journey-seven-milestones-answer-1" aria-expanded="false" class="faq-question">
+<span>What are the seven milestones?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="my-journey-seven-milestones-answer-1"><p>The seven milestones are: Encounter (Come &amp; See), Connect &amp; Belong, Step In (Pledge), Discover Your Gifts, Equip &amp; Form, Serve with Joy, and Commissioned (Be Sent).</p></div>
+</article>
+<article class="faq-item" data-search="my journey &amp; seven milestones do milestones measure how holy or valuable i am? no. milestones are simply encouragement and guidance. they do not measure your holiness, your value, or god’s favor.">
+<button aria-controls="my-journey-seven-milestones-answer-2" aria-expanded="false" class="faq-question">
+<span>Do milestones measure how holy or valuable I am?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="my-journey-seven-milestones-answer-2"><p>No. Milestones are simply encouragement and guidance. They do not measure your holiness, your value, or God’s favor.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="daily-gospel-daily-manna">
+<div class="section-heading">
+<span class="section-icon">📖</span>
+<div class="title-wrap">
+<h2>Daily Gospel &amp; Daily Manna</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="daily gospel &amp; daily manna what are daily gospel and daily manna? these areas help you return to scripture and reflection during ordinary days, not only during gatherings. they are there to support a regular habit of listening to god’s word.">
+<button aria-controls="daily-gospel-daily-manna-answer-0" aria-expanded="false" class="faq-question">
+<span>What are Daily Gospel and Daily Manna?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="daily-gospel-daily-manna-answer-0"><p>These areas help you return to Scripture and reflection during ordinary days, not only during gatherings. They are there to support a regular habit of listening to God’s Word.</p></div>
+</article>
+<article class="faq-item" data-search="daily gospel &amp; daily manna how do i use them? open the daily reading or reflection, read at your own pace, and return whenever you want to spend time with scripture.">
+<button aria-controls="daily-gospel-daily-manna-answer-1" aria-expanded="false" class="faq-question">
+<span>How do I use them?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="daily-gospel-daily-manna-answer-1"><p>Open the daily reading or reflection, read at your own pace, and return whenever you want to spend time with Scripture.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="prayer-center-prayer-covenant-prayer-pal">
+<div class="section-heading">
+<span class="section-icon">🙏</span>
+<div class="title-wrap">
+<h2>Prayer Center, Prayer Covenant &amp; Prayer Pal</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="prayer center, prayer covenant &amp; prayer pal what is the prayer center? the prayer center brings together prayer-related activities available to you in the community portal.">
+<button aria-controls="prayer-center-prayer-covenant-prayer-pal-answer-0" aria-expanded="false" class="faq-question">
+<span>What is the Prayer Center?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="prayer-center-prayer-covenant-prayer-pal-answer-0"><p>The Prayer Center brings together prayer-related activities available to you in the Community Portal.</p></div>
+</article>
+<article class="faq-item" data-search="prayer center, prayer covenant &amp; prayer pal what is the prayer covenant? the prayer covenant is a simple way to take part in the community’s shared rhythm of prayer and remember the people or intentions you have committed to pray for.">
+<button aria-controls="prayer-center-prayer-covenant-prayer-pal-answer-1" aria-expanded="false" class="faq-question">
+<span>What is the Prayer Covenant?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="prayer-center-prayer-covenant-prayer-pal-answer-1"><p>The Prayer Covenant is a simple way to take part in the community’s shared rhythm of prayer and remember the people or intentions you have committed to pray for.</p></div>
+</article>
+<article class="faq-item" data-search="prayer center, prayer covenant &amp; prayer pal what is prayer pal? prayer pal helps members remember and pray for another person in the community when that activity is available.">
+<button aria-controls="prayer-center-prayer-covenant-prayer-pal-answer-2" aria-expanded="false" class="faq-question">
+<span>What is Prayer Pal?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="prayer-center-prayer-covenant-prayer-pal-answer-2"><p>Prayer Pal helps members remember and pray for another person in the community when that activity is available.</p></div>
+</article>
+<article class="faq-item" data-search="prayer center, prayer covenant &amp; prayer pal can other people see my private prayer information? prayer information should only be shared with the people it is meant for. avoid putting very sensitive information in a place meant for wider sharing.">
+<button aria-controls="prayer-center-prayer-covenant-prayer-pal-answer-3" aria-expanded="false" class="faq-question">
+<span>Can other people see my private prayer information?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="prayer-center-prayer-covenant-prayer-pal-answer-3"><p>Prayer information should only be shared with the people it is meant for. Avoid putting very sensitive information in a place meant for wider sharing.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="spiritual-journal">
+<div class="section-heading">
+<span class="section-icon">✍️</span>
+<div class="title-wrap">
+<h2>Spiritual Journal</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="spiritual journal what is the spiritual journal? the spiritual journal is a personal place for gratitude, reflections, prayer notes, and thoughts about your journey with god.">
+<button aria-controls="spiritual-journal-answer-0" aria-expanded="false" class="faq-question">
+<span>What is the Spiritual Journal?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="spiritual-journal-answer-0"><p>The Spiritual Journal is a personal place for gratitude, reflections, prayer notes, and thoughts about your journey with God.</p></div>
+</article>
+<article class="faq-item" data-search="spiritual journal is my journal public? no. it is meant to be a personal space. you should still avoid sharing anything there that you would not want stored in your account.">
+<button aria-controls="spiritual-journal-answer-1" aria-expanded="false" class="faq-question">
+<span>Is my Journal public?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="spiritual-journal-answer-1"><p>No. It is meant to be a personal space. You should still avoid sharing anything there that you would not want stored in your account.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="life-points-growth-xp">
+<div class="section-heading">
+<span class="section-icon">✨</span>
+<div class="title-wrap">
+<h2>Life Points &amp; Growth XP</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="life points &amp; growth xp what are life points and growth xp? they are encouragement tools that can help make participation and growth activities more engaging.">
+<button aria-controls="life-points-growth-xp-answer-0" aria-expanded="false" class="faq-question">
+<span>What are Life Points and Growth XP?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="life-points-growth-xp-answer-0"><p>They are encouragement tools that can help make participation and growth activities more engaging.</p></div>
+</article>
+<article class="faq-item" data-search="life points &amp; growth xp do points or rankings show who is more spiritual? no. points, ranks, milestones, and participation records are never a measure of holiness, personal worth, or god’s favor.">
+<button aria-controls="life-points-growth-xp-answer-1" aria-expanded="false" class="faq-question">
+<span>Do points or rankings show who is more spiritual?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="life-points-growth-xp-answer-1"><p>No. Points, ranks, milestones, and participation records are never a measure of holiness, personal worth, or God’s favor.</p></div>
+</article>
+<article class="faq-item" data-search="life points &amp; growth xp where can i see my points or progress? when available, you can see them in the parts of the portal connected to your growth, activities, or rankings.">
+<button aria-controls="life-points-growth-xp-answer-2" aria-expanded="false" class="faq-question">
+<span>Where can I see my points or progress?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="life-points-growth-xp-answer-2"><p>When available, you can see them in the parts of the Portal connected to your growth, activities, or rankings.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="silas-ai-assistant">
+<div class="section-heading">
+<span class="section-icon">💬</span>
+<div class="title-wrap">
+<h2>Silas AI Assistant</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="silas ai assistant who is silas? silas is the community portal’s ai helper. silas is designed to make it easier to find help, understand portal features, and support ministry-related questions inside the app.">
+<button aria-controls="silas-ai-assistant-answer-0" aria-expanded="false" class="faq-question">
+<span>Who is Silas?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="silas-ai-assistant-answer-0"><p>Silas is the Community Portal’s AI helper. Silas is designed to make it easier to find help, understand Portal features, and support ministry-related questions inside the app.</p></div>
+</article>
+<article class="faq-item" data-search="silas ai assistant is silas a replacement for a leader, shepherd, priest, or real conversation? no. silas is a helpful tool, but it does not replace prayer, pastoral care, spiritual guidance, community relationships, or conversations with the right people.">
+<button aria-controls="silas-ai-assistant-answer-1" aria-expanded="false" class="faq-question">
+<span>Is Silas a replacement for a leader, shepherd, priest, or real conversation?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="silas-ai-assistant-answer-1"><p>No. Silas is a helpful tool, but it does not replace prayer, pastoral care, spiritual guidance, community relationships, or conversations with the right people.</p></div>
+</article>
+<article class="faq-item" data-search="silas ai assistant should i share very private information with silas? use good judgment with personal information. for sensitive pastoral, family, health, or private matters, it is better to speak directly with the appropriate person.">
+<button aria-controls="silas-ai-assistant-answer-2" aria-expanded="false" class="faq-question">
+<span>Should I share very private information with Silas?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="silas-ai-assistant-answer-2"><p>Use good judgment with personal information. For sensitive pastoral, family, health, or private matters, it is better to speak directly with the appropriate person.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="public" id="events-registration">
+<div class="section-heading">
+<span class="section-icon">📅</span>
+<div class="title-wrap">
+<h2>Events &amp; Registration</h2>
+<span class="access-badge access-public">Everyone</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="events &amp; registration where can i see upcoming events? open events to see what is coming up, including the date, time, place, poster, and other event details.">
+<button aria-controls="events-registration-answer-0" aria-expanded="false" class="faq-question">
+<span>Where can I see upcoming events?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="events-registration-answer-0"><p>Open Events to see what is coming up, including the date, time, place, poster, and other event details.</p></div>
+</article>
+<article class="faq-item" data-search="events &amp; registration how do i register for an event? open the event and tap the registration button when it is available. fill in the requested details and submit the form.">
+<button aria-controls="events-registration-answer-1" aria-expanded="false" class="faq-question">
+<span>How do I register for an event?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="events-registration-answer-1"><p>Open the event and tap the registration button when it is available. Fill in the requested details and submit the form.</p></div>
+</article>
+<article class="faq-item" data-search="events &amp; registration can i invite or share an event with someone? yes. when an event has a share invite button, you can send it to family, friends, or other community members.">
+<button aria-controls="events-registration-answer-2" aria-expanded="false" class="faq-question">
+<span>Can I invite or share an event with someone?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="events-registration-answer-2"><p>Yes. When an event has a Share Invite button, you can send it to family, friends, or other community members.</p></div>
+</article>
+<article class="faq-item" data-search="events &amp; registration why does a shared event show a picture and title? the portal prepares an event preview so the person receiving your link can quickly see what the event is about.">
+<button aria-controls="events-registration-answer-3" aria-expanded="false" class="faq-question">
+<span>Why does a shared event show a picture and title?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="events-registration-answer-3"><p>The Portal prepares an event preview so the person receiving your link can quickly see what the event is about.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="qr-check-in-my-schedule">
+<div class="section-heading">
+<span class="section-icon">▦</span>
+<div class="title-wrap">
+<h2>QR Check-In &amp; My Schedule</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="qr check-in &amp; my schedule what is my member qr code for? your member qr code helps make attendance and check-in easier during supported community events and activities.">
+<button aria-controls="qr-check-in-my-schedule-answer-0" aria-expanded="false" class="faq-question">
+<span>What is my member QR code for?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="qr-check-in-my-schedule-answer-0"><p>Your member QR code helps make attendance and check-in easier during supported community events and activities.</p></div>
+</article>
+<article class="faq-item" data-search="qr check-in &amp; my schedule is my member qr code a password? no. your qr code helps identify your member record during check-in. your account password should still be kept private.">
+<button aria-controls="qr-check-in-my-schedule-answer-1" aria-expanded="false" class="faq-question">
+<span>Is my member QR code a password?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="qr-check-in-my-schedule-answer-1"><p>No. Your QR code helps identify your member record during check-in. Your account password should still be kept private.</p></div>
+</article>
+<article class="faq-item" data-search="qr check-in &amp; my schedule what is my schedule? my schedule shows event responsibilities or activities assigned to you when that information is available for your account.">
+<button aria-controls="qr-check-in-my-schedule-answer-2" aria-expanded="false" class="faq-question">
+<span>What is My Schedule?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="qr-check-in-my-schedule-answer-2"><p>My Schedule shows event responsibilities or activities assigned to you when that information is available for your account.</p></div>
+</article>
+<article class="faq-item" data-search="qr check-in &amp; my schedule can i see my attendance history? where this feature is available, you can view your recorded attendance in your member area.">
+<button aria-controls="qr-check-in-my-schedule-answer-3" aria-expanded="false" class="faq-question">
+<span>Can I see my attendance history?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="qr-check-in-my-schedule-answer-3"><p>Where this feature is available, you can view your recorded attendance in your member area.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="ministries-serving">
+<div class="section-heading">
+<span class="section-icon">🤝</span>
+<div class="title-wrap">
+<h2>Ministries &amp; Serving</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="ministries &amp; serving what can i find in ministries &amp; serving? you can discover ministries, see where you may be involved, express interest in serving, and view ministry information available to your account.">
+<button aria-controls="ministries-serving-answer-0" aria-expanded="false" class="faq-question">
+<span>What can I find in Ministries &amp; Serving?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="ministries-serving-answer-0"><p>You can discover ministries, see where you may be involved, express interest in serving, and view ministry information available to your account.</p></div>
+</article>
+<article class="faq-item" data-search="ministries &amp; serving does having a portal account automatically mean i joined a ministry? no. your portal account and ministry membership are separate. ministry membership still follows the community’s normal guidance and leadership.">
+<button aria-controls="ministries-serving-answer-1" aria-expanded="false" class="faq-question">
+<span>Does having a Portal account automatically mean I joined a ministry?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="ministries-serving-answer-1"><p>No. Your Portal account and ministry membership are separate. Ministry membership still follows the community’s normal guidance and leadership.</p></div>
+</article>
+<article class="faq-item" data-search="ministries &amp; serving can i see my ministry role or availability? yes, when that information is part of your account and has been made available to you.">
+<button aria-controls="ministries-serving-answer-2" aria-expanded="false" class="faq-question">
+<span>Can I see my ministry role or availability?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="ministries-serving-answer-2"><p>Yes, when that information is part of your account and has been made available to you.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="campfires-small-groups">
+<div class="section-heading">
+<span class="section-icon">🔥</span>
+<div class="title-wrap">
+<h2>Campfires &amp; Small Groups</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="campfires &amp; small groups what are campfires? campfires are smaller community spaces for fellowship, prayer, discussion, shared memories, and journeying together.">
+<button aria-controls="campfires-small-groups-answer-0" aria-expanded="false" class="faq-question">
+<span>What are Campfires?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="campfires-small-groups-answer-0"><p>Campfires are smaller community spaces for fellowship, prayer, discussion, shared memories, and journeying together.</p></div>
+</article>
+<article class="faq-item" data-search="campfires &amp; small groups will everyone see the same campfire? not always. what you see may depend on the group or community space that you belong to.">
+<button aria-controls="campfires-small-groups-answer-1" aria-expanded="false" class="faq-question">
+<span>Will everyone see the same Campfire?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="campfires-small-groups-answer-1"><p>Not always. What you see may depend on the group or community space that you belong to.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="inbox-announcements-notifications">
+<div class="section-heading">
+<span class="section-icon">🔔</span>
+<div class="title-wrap">
+<h2>Inbox, Announcements &amp; Notifications</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="inbox, announcements &amp; notifications what is the inbox for? the inbox is where you may receive messages or updates meant for you inside the community portal.">
+<button aria-controls="inbox-announcements-notifications-answer-0" aria-expanded="false" class="faq-question">
+<span>What is the Inbox for?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="inbox-announcements-notifications-answer-0"><p>The Inbox is where you may receive messages or updates meant for you inside the Community Portal.</p></div>
+</article>
+<article class="faq-item" data-search="inbox, announcements &amp; notifications what are announcements? announcements are community updates shared with the people who need to receive them.">
+<button aria-controls="inbox-announcements-notifications-answer-1" aria-expanded="false" class="faq-question">
+<span>What are announcements?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="inbox-announcements-notifications-answer-1"><p>Announcements are community updates shared with the people who need to receive them.</p></div>
+</article>
+<article class="faq-item" data-search="inbox, announcements &amp; notifications why should i turn on notifications? notifications can help you remember events, receive important updates, and stay connected with community activities.">
+<button aria-controls="inbox-announcements-notifications-answer-2" aria-expanded="false" class="faq-question">
+<span>Why should I turn on notifications?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="inbox-announcements-notifications-answer-2"><p>Notifications can help you remember events, receive important updates, and stay connected with community activities.</p></div>
+</article>
+<article class="faq-item" data-search="inbox, announcements &amp; notifications why am i not receiving notifications? check that notifications are allowed for the community portal on your phone or browser. if you changed devices or settings, you may need to allow them again.">
+<button aria-controls="inbox-announcements-notifications-answer-3" aria-expanded="false" class="faq-question">
+<span>Why am I not receiving notifications?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="inbox-announcements-notifications-answer-3"><p>Check that notifications are allowed for the Community Portal on your phone or browser. If you changed devices or settings, you may need to allow them again.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="worship-hub">
+<div class="section-heading">
+<span class="section-icon">🎵</span>
+<div class="title-wrap">
+<h2>Worship Hub</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="worship hub what is the worship hub? the worship hub brings together worship resources that are available to your account, such as songs, setlists, keys, tempo information, media, and chord resources.">
+<button aria-controls="worship-hub-answer-0" aria-expanded="false" class="faq-question">
+<span>What is the Worship Hub?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="worship-hub-answer-0"><p>The Worship Hub brings together worship resources that are available to your account, such as songs, setlists, keys, tempo information, media, and chord resources.</p></div>
+</article>
+<article class="faq-item" data-search="worship hub why can’t i see every worship hub feature? some worship resources may be shown only to members who need them for their ministry or role.">
+<button aria-controls="worship-hub-answer-1" aria-expanded="false" class="faq-question">
+<span>Why can’t I see every Worship Hub feature?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="worship-hub-answer-1"><p>Some worship resources may be shown only to members who need them for their ministry or role.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="faith-quest-challenge">
+<div class="section-heading">
+<span class="section-icon">✝</span>
+<div class="title-wrap">
+<h2>Faith Quest Challenge</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="faith quest challenge what is faith quest challenge? faith quest challenge is our faith-learning game area. it is for bible, scripture, catechism, theology, and other christian learning activities.">
+<button aria-controls="faith-quest-challenge-answer-0" aria-expanded="false" class="faq-question">
+<span>What is Faith Quest Challenge?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="faith-quest-challenge-answer-0"><p>Faith Quest Challenge is our faith-learning game area. It is for Bible, Scripture, Catechism, theology, and other Christian learning activities.</p></div>
+</article>
+<article class="faq-item" data-search="faith quest challenge what kind of activities will i find here? you may find quizzes, memory challenges, bible questions, catechism topics, and other fun ways to learn more about the christian faith.">
+<button aria-controls="faith-quest-challenge-answer-1" aria-expanded="false" class="faq-question">
+<span>What kind of activities will I find here?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="faith-quest-challenge-answer-1"><p>You may find quizzes, memory challenges, Bible questions, Catechism topics, and other fun ways to learn more about the Christian faith.</p></div>
+</article>
+<article class="faq-item" data-search="faith quest challenge can faith quest challenge have scores or rankings? yes. some challenges may give scores, points, or rankings so members can enjoy learning together in a fun and friendly way.">
+<button aria-controls="faith-quest-challenge-answer-2" aria-expanded="false" class="faq-question">
+<span>Can Faith Quest Challenge have scores or rankings?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="faith-quest-challenge-answer-2"><p>Yes. Some challenges may give scores, points, or rankings so members can enjoy learning together in a fun and friendly way.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="sports-fitness">
+<div class="section-heading">
+<span class="section-icon">🏃</span>
+<div class="title-wrap">
+<h2>Sports &amp; Fitness</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="sports &amp; fitness what is sports &amp; fitness? sports &amp; fitness is for movement, exercise, wellness, and sports-related activities.">
+<button aria-controls="sports-fitness-answer-0" aria-expanded="false" class="faq-question">
+<span>What is Sports &amp; Fitness?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="sports-fitness-answer-0"><p>Sports &amp; Fitness is for movement, exercise, wellness, and sports-related activities.</p></div>
+</article>
+<article class="faq-item" data-search="sports &amp; fitness can sports &amp; fitness activities have points or scores? yes, when a particular activity includes scoring, progress, or a friendly ranking.">
+<button aria-controls="sports-fitness-answer-1" aria-expanded="false" class="faq-question">
+<span>Can Sports &amp; Fitness activities have points or scores?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="sports-fitness-answer-1"><p>Yes, when a particular activity includes scoring, progress, or a friendly ranking.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="fog-arcade">
+<div class="section-heading">
+<span class="section-icon">🎮</span>
+<div class="title-wrap">
+<h2>FOG Arcade</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="fog arcade what is fog arcade? fog arcade is the community portal’s digital game area for fun games and esports-style activities.">
+<button aria-controls="fog-arcade-answer-0" aria-expanded="false" class="faq-question">
+<span>What is FOG Arcade?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="fog-arcade-answer-0"><p>FOG Arcade is the Community Portal’s digital game area for fun games and eSports-style activities.</p></div>
+</article>
+<article class="faq-item" data-search="fog arcade can i play an arcade game again? yes, when replay is available. after a game, you may see options to play again, return to the arcade, save a score, or share your result.">
+<button aria-controls="fog-arcade-answer-1" aria-expanded="false" class="faq-question">
+<span>Can I play an Arcade game again?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="fog-arcade-answer-1"><p>Yes, when replay is available. After a game, you may see options to play again, return to the Arcade, save a score, or share your result.</p></div>
+</article>
+<article class="faq-item" data-search="fog arcade do all arcade games have a leaderboard? no. only games that are connected to scoring or rankings will appear on a leaderboard.">
+<button aria-controls="fog-arcade-answer-2" aria-expanded="false" class="faq-question">
+<span>Do all Arcade games have a leaderboard?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="fog-arcade-answer-2"><p>No. Only games that are connected to scoring or rankings will appear on a leaderboard.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="member" id="profile-member-directory">
+<div class="section-heading">
+<span class="section-icon">🪪</span>
+<div class="title-wrap">
+<h2>Profile &amp; Member Directory</h2>
+<span class="access-badge access-member">Signed-in Members</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="profile &amp; member directory what is my profile? your profile is your personal member area. it may contain your basic information, photo, member details, and settings that are available for you to manage.">
+<button aria-controls="profile-member-directory-answer-0" aria-expanded="false" class="faq-question">
+<span>What is my Profile?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="profile-member-directory-answer-0"><p>Your Profile is your personal member area. It may contain your basic information, photo, member details, and settings that are available for you to manage.</p></div>
+</article>
+<article class="faq-item" data-search="profile &amp; member directory what is the member directory? the member directory helps people in the community find member information that has been approved for sharing.">
+<button aria-controls="profile-member-directory-answer-1" aria-expanded="false" class="faq-question">
+<span>What is the Member Directory?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="profile-member-directory-answer-1"><p>The Member Directory helps people in the community find member information that has been approved for sharing.</p></div>
+</article>
+<article class="faq-item" data-search="profile &amp; member directory can everyone see all my information? no. the portal should only show information that is appropriate for the person viewing it.">
+<button aria-controls="profile-member-directory-answer-2" aria-expanded="false" class="faq-question">
+<span>Can everyone see all my information?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="profile-member-directory-answer-2"><p>No. The Portal should only show information that is appropriate for the person viewing it.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="public" id="sharing">
+<div class="section-heading">
+<span class="section-icon">↗</span>
+<div class="title-wrap">
+<h2>Sharing</h2>
+<span class="access-badge access-public">Everyone</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="sharing how do i share an event or game result? tap the share button when you see it. your phone may open its normal sharing choices, or the portal may let you copy a link.">
+<button aria-controls="sharing-answer-0" aria-expanded="false" class="faq-question">
+<span>How do I share an event or game result?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="sharing-answer-0"><p>Tap the Share button when you see it. Your phone may open its normal sharing choices, or the Portal may let you copy a link.</p></div>
+</article>
+<article class="faq-item" data-search="sharing does sharing a link give someone access to my account? no. a normal shared link should not include your password or private sign-in information.">
+<button aria-controls="sharing-answer-1" aria-expanded="false" class="faq-question">
+<span>Does sharing a link give someone access to my account?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="sharing-answer-1"><p>No. A normal shared link should not include your password or private sign-in information.</p></div>
+</article>
+</section>
+<section class="faq-section" data-access="public" id="install-on-phone-offline-use">
+<div class="section-heading">
+<span class="section-icon">📱</span>
+<div class="title-wrap">
+<h2>Install on Phone &amp; Offline Use</h2>
+<span class="access-badge access-public">Everyone</span>
+</div>
+</div>
+
+<article class="faq-item" data-search="install on phone &amp; offline use how do i add the community portal to my phone? open the portal in your phone’s browser and use the browser’s option to add it to your home screen.">
+<button aria-controls="install-on-phone-offline-use-answer-0" aria-expanded="false" class="faq-question">
+<span>How do I add the Community Portal to my phone?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="install-on-phone-offline-use-answer-0"><p>Open the Portal in your phone’s browser and use the browser’s option to add it to your Home Screen.</p></div>
+</article>
+<article class="faq-item" data-search="install on phone &amp; offline use can i use the portal without internet? some parts may still be available when your connection drops, but anything that needs fresh information or saves a new change may need internet access.">
+<button aria-controls="install-on-phone-offline-use-answer-1" aria-expanded="false" class="faq-question">
+<span>Can I use the Portal without internet?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="install-on-phone-offline-use-answer-1"><p>Some parts may still be available when your connection drops, but anything that needs fresh information or saves a new change may need internet access.</p></div>
+</article>
+<article class="faq-item" data-search="install on phone &amp; offline use what should i do after reconnecting? open the portal again and allow it to reconnect normally. if something still looks outdated, refresh the page.">
+<button aria-controls="install-on-phone-offline-use-answer-2" aria-expanded="false" class="faq-question">
+<span>What should I do after reconnecting?</span><span class="chev">⌄</span>
+</button>
+<div class="faq-answer" hidden="" id="install-on-phone-offline-use-answer-2"><p>Open the Portal again and allow it to reconnect normally. If something still looks outdated, refresh the page.</p></div>
+</article>
+</section>
+
+
+
+
+
+
+</div>
+<div class="empty" id="empty">We couldn’t find a matching help topic.</div>
+<section class="support">
+<h2>Still need help?</h2>
+<p>Our community support team is here to help. Contact <a href="mailto:support@fogmin.site">support@fogmin.site</a>.</p>
+</section>
+</main>
+<footer class="wrap">Fire Of God Ministries Community Portal — Help &amp; FAQ</footer>
+<script>
+(()=>{
+ const search=document.getElementById('search');
+ const chips=document.getElementById('chips');
+ const empty=document.getElementById('empty');
+
+ document.querySelectorAll('.faq-question').forEach(btn=>btn.addEventListener('click',()=>{
+   const open=btn.getAttribute('aria-expanded')==='true';
+   btn.setAttribute('aria-expanded',String(!open));
+   document.getElementById(btn.getAttribute('aria-controls')).hidden=open;
+ }));
+
+ function refresh(){
+   const level=rank[access.value];
+   const term=search.value.trim().toLowerCase();
+   let visibleSections=0;
+   chips.innerHTML='';
+
+   document.querySelectorAll('.faq-section').forEach(sec=>{
+     const allowed=rank[sec.dataset.access] <= level;
+     let matches=0;
+     sec.querySelectorAll('.faq-item').forEach(item=>{
+       const show=allowed && (!term || item.dataset.search.includes(term));
+       item.style.display=show?'':'none';
+       if(show) matches++;
+     });
+     const showSection=allowed && matches>0;
+     sec.style.display=showSection?'':'none';
+     if(showSection){
+       visibleSections++;
+       const a=document.createElement('a');
+       a.className='chip'; a.href='#'+sec.id;
+       a.textContent=sec.querySelector('h2').textContent;
+       chips.appendChild(a);
+     }
+   });
+   empty.style.display=visibleSections?'none':'block';
+ }
+ search.addEventListener('input',refresh);
+ access.addEventListener('change',refresh);
+ refresh();
+})();
+</script>
+</body></html>
