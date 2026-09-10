@@ -22,6 +22,10 @@ const {
     createRecoveryRateLimiter,
     invalidateSessionsForYouth
 } = require('./lib/email-security');
+const {
+    initializeAccountClaimSchema,
+    createAccountClaimStore
+} = require('./lib/account-claim-security');
 const app = express();
 
 const BOOTSTRAP_STRONG_ADMIN_USERNAME = 'celsocreeriii@gmail.com';
@@ -183,6 +187,18 @@ const emailRegistrationLimiter = createRecoveryRateLimiter({
     windowMs: 15 * 60 * 1000,
     ipLimit: 10,
     subjectLimit: 2
+});
+const accountClaimPreviewLimiter = createRecoveryRateLimiter({
+    namespace: 'account-claim-preview',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 1
+});
+const accountClaimPreviewAuditLimiter = createRecoveryRateLimiter({
+    namespace: 'account-claim-preview-audit',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 3,
+    subjectLimit: 1
 });
 
 function getRecoveryClientAddress(req) {
@@ -475,6 +491,8 @@ const passwordLoginLimiterCleanupTimer = setInterval(() => {
     emailVerificationRequestLimiter.cleanupExpired();
     emailVerificationConfirmLimiter.cleanupExpired();
     emailRegistrationLimiter.cleanupExpired();
+    accountClaimPreviewLimiter.cleanupExpired();
+    accountClaimPreviewAuditLimiter.cleanupExpired();
 }, PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS);
 passwordLoginLimiterCleanupTimer.unref();
 
@@ -1749,6 +1767,7 @@ const db = new sqlite3.Database(databasePath, (err) => {
 });
 
 const authTokenStore = createAuthTokenStore({ database: db });
+const accountClaimStore = createAccountClaimStore({ database: db });
 let emailRecoveryPublicOrigin = null;
 let emailRecoveryOutbox = null;
 let emailRecoveryWorker = null;
@@ -2073,7 +2092,10 @@ const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
         'commitment_date', 'commitment_accepted_at', 'commitment_accepted_by', 'address',
         'email_verified', 'email_verified_at', 'pending_email', 'pending_email_requested_at'
     ]),
-    users: Object.freeze(['id', 'username', 'password', 'permissions', 'youth_id']),
+    users: Object.freeze([
+        'id', 'username', 'password', 'permissions', 'youth_id',
+        'account_claimed_at', 'account_claim_method', 'account_claim_token_id'
+    ]),
     events: Object.freeze(['id', 'name', 'event_date', 'event_points', 'roles_restricted_notes']),
     attendance: Object.freeze(['id', 'youth_id', 'event_id', 'checked_in_at']),
     pre_registrations: Object.freeze(['id', 'youth_id', 'event_id']),
@@ -2099,6 +2121,11 @@ const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
         'payload_tag', 'encryption_version', 'status', 'retry_count',
         'next_attempt_at', 'created_at', 'updated_at', 'locked_at', 'sent_at',
         'provider_message_id', 'last_error_code', 'dedupe_key'
+    ]),
+    account_claim_tokens: Object.freeze([
+        'id', 'youth_id', 'token_hash', 'created_at', 'expires_at',
+        'created_by_user_id', 'revoked_at', 'revoked_by_user_id', 'used_at',
+        'consumed_by_user_id'
     ])
 });
 
@@ -2172,6 +2199,9 @@ async function applyDeterministicRuntimeMigration() {
     await ensureRuntimeColumn('youth', 'email_verified_at', 'email_verified_at INTEGER');
     await ensureRuntimeColumn('youth', 'pending_email', 'pending_email TEXT');
     await ensureRuntimeColumn('youth', 'pending_email_requested_at', 'pending_email_requested_at INTEGER');
+    await ensureRuntimeColumn('users', 'account_claimed_at', 'account_claimed_at INTEGER');
+    await ensureRuntimeColumn('users', 'account_claim_method', 'account_claim_method TEXT');
+    await ensureRuntimeColumn('users', 'account_claim_token_id', 'account_claim_token_id INTEGER');
 
     const eventRoleStatusAdded = await ensureRuntimeColumn(
         'event_roles',
@@ -2192,6 +2222,7 @@ async function applyDeterministicRuntimeMigration() {
     }
 
     await initializeEmailRecoverySchema(db);
+    await initializeAccountClaimSchema(db);
     await initializeEmailRecoveryRuntime();
     await assertRuntimeSchema();
 }
@@ -2719,6 +2750,152 @@ function sendNoStoreJson(res, status, body) {
     res.setHeader('Pragma', 'no-cache');
     return res.status(status).json(body);
 }
+
+function auditRejectedAccountClaimPreview(req) {
+    const clientAddress = getRecoveryClientAddress(req);
+    if (accountClaimPreviewAuditLimiter.check({ ip: clientAddress, subject: null })) {
+        logActivity('Anonymous', 'ACCOUNT_CLAIM_PREVIEW_REJECTED', 'Invalid or inactive account claim preview');
+    }
+}
+
+app.post('/api/admin/account-claims', requirePermission('access_permissions'), async (req, res) => {
+    const youthId = normalizeCanonicalId(req.body && req.body.youth_id);
+    const actorUserId = normalizeCanonicalId(req.auth && req.auth.userId);
+    if (!youthId) {
+        return sendNoStoreJson(res, 400, { success: false, error: 'A valid member ID is required.' });
+    }
+    if (!actorUserId) return sendForbidden(res);
+
+    const publicOrigin = validatePublicOrigin(process.env.KOINONIA_PUBLIC_ORIGIN);
+    if (!publicOrigin) {
+        return sendNoStoreJson(res, 503, { success: false, error: 'Account claim issuance is unavailable.' });
+    }
+
+    try {
+        const member = await googleAuthDatabaseGet('SELECT id FROM youth WHERE id = ?', [youthId]);
+        if (!member) {
+            return sendNoStoreJson(res, 404, { success: false, error: 'Member not found.' });
+        }
+        const issued = await accountClaimStore.issue({
+            youthId,
+            createdByUserId: actorUserId
+        });
+        logActivity(
+            `User ${actorUserId}`,
+            issued.replaced ? 'ACCOUNT_CLAIM_REPLACED' : 'ACCOUNT_CLAIM_ISSUED',
+            `${issued.replaced ? 'Replaced' : 'Issued'} account claim for Member ID ${youthId}`
+        );
+        return sendNoStoreJson(res, 201, {
+            success: true,
+            youth_id: youthId,
+            expires_at: issued.expiresAt,
+            claim_url: `${publicOrigin}/claim#${issued.rawToken}`
+        });
+    } catch (error) {
+        console.error('Account claim issuance failed');
+        return sendNoStoreJson(res, 500, { success: false, error: 'Unable to issue account claim.' });
+    }
+});
+
+app.get('/api/admin/account-claims/:youth_id', requirePermission('access_permissions'), async (req, res) => {
+    const youthId = normalizeCanonicalId(req.params.youth_id);
+    if (!youthId) {
+        return sendNoStoreJson(res, 400, { success: false, error: 'A valid member ID is required.' });
+    }
+    try {
+        const member = await googleAuthDatabaseGet('SELECT id FROM youth WHERE id = ?', [youthId]);
+        if (!member) {
+            return sendNoStoreJson(res, 404, { success: false, error: 'Member not found.' });
+        }
+        const claim = await accountClaimStore.getStatus(youthId);
+        return sendNoStoreJson(res, 200, {
+            success: true,
+            youth_id: youthId,
+            claim: claim ? {
+                id: claim.id,
+                status: claim.status,
+                created_at: claim.created_at,
+                expires_at: claim.expires_at,
+                created_by_user_id: claim.created_by_user_id,
+                revoked_at: claim.revoked_at,
+                revoked_by_user_id: claim.revoked_by_user_id,
+                used_at: claim.used_at,
+                consumed_by_user_id: claim.consumed_by_user_id
+            } : null
+        });
+    } catch (error) {
+        console.error('Account claim status lookup failed');
+        return sendNoStoreJson(res, 500, { success: false, error: 'Unable to load account claim status.' });
+    }
+});
+
+app.delete('/api/admin/account-claims/:youth_id', requirePermission('access_permissions'), async (req, res) => {
+    const youthId = normalizeCanonicalId(req.params.youth_id);
+    const actorUserId = normalizeCanonicalId(req.auth && req.auth.userId);
+    if (!youthId) {
+        return sendNoStoreJson(res, 400, { success: false, error: 'A valid member ID is required.' });
+    }
+    if (!actorUserId) return sendForbidden(res);
+
+    try {
+        const member = await googleAuthDatabaseGet('SELECT id FROM youth WHERE id = ?', [youthId]);
+        if (!member) {
+            return sendNoStoreJson(res, 404, { success: false, error: 'Member not found.' });
+        }
+        const result = await accountClaimStore.revoke({
+            youthId,
+            revokedByUserId: actorUserId
+        });
+        if (result.revoked) {
+            logActivity(
+                `User ${actorUserId}`,
+                'ACCOUNT_CLAIM_REVOKED',
+                `Revoked account claim for Member ID ${youthId}`
+            );
+        }
+        return sendNoStoreJson(res, 200, { success: true, revoked: result.revoked });
+    } catch (error) {
+        console.error('Account claim revocation failed');
+        return sendNoStoreJson(res, 500, { success: false, error: 'Unable to revoke account claim.' });
+    }
+});
+
+app.post('/api/account-claim/preview', async (req, res) => {
+    const clientAddress = getRecoveryClientAddress(req);
+    if (!accountClaimPreviewLimiter.check({ ip: clientAddress, subject: null })) {
+        res.setHeader('Retry-After', String(15 * 60));
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            error: 'Too many account claim attempts. Please try again later.'
+        });
+    }
+
+    try {
+        const claim = await accountClaimStore.getUsable(req.body && req.body.token);
+        if (!claim) {
+            auditRejectedAccountClaimPreview(req);
+            return sendNoStoreJson(res, 404, {
+                success: false,
+                error: 'This account claim is invalid or no longer active.'
+            });
+        }
+        const member = await googleAuthDatabaseGet('SELECT id, name FROM youth WHERE id = ?', [claim.youthId]);
+        if (!member) {
+            auditRejectedAccountClaimPreview(req);
+            return sendNoStoreJson(res, 404, {
+                success: false,
+                error: 'This account claim is invalid or no longer active.'
+            });
+        }
+        return sendNoStoreJson(res, 200, {
+            success: true,
+            member: sanitizeMemberForPublic(member)
+        });
+    } catch (error) {
+        console.error('Account claim preview failed');
+        return sendNoStoreJson(res, 500, { success: false, error: 'Unable to preview account claim.' });
+    }
+});
 
 async function waitForRecoveryMinimumResponse(startedAt) {
     const remaining = PASSWORD_RECOVERY_MINIMUM_RESPONSE_MS - (Date.now() - startedAt);

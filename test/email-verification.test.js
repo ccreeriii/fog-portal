@@ -195,7 +195,7 @@ test('verified email and pending email changes fail closed across application fl
         );
     assert.notEqual(isolatedSource, source);
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedSource);
-    for (const filename of ['sqlite-backup.js', 'email-security.js']) {
+    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
     }
     await fsp.writeFile(

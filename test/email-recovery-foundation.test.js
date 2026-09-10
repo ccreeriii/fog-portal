@@ -629,7 +629,7 @@ test('real Google route refuses unverified and ambiguous email while preserving 
     assert.notEqual(isolatedSource, source);
     assert.ok(isolatedSource.includes(fakeVerifier));
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedSource);
-    for (const filename of ['sqlite-backup.js', 'email-security.js']) {
+    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
     }
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
