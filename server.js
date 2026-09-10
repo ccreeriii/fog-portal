@@ -2446,6 +2446,46 @@ app.get('/verify-email', (req, res) => {
     return res.sendFile(path.join(__dirname, 'public', 'verify-email.html'));
 });
 
+app.get('/api/help/faq', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Vary', 'Cookie');
+    const auth = await loadOptionalAuthorizationContext(req);
+    const canPreview = Boolean(auth && authorizationHasPermission(auth, 'access_permissions'));
+    const hasPreviewRequest = Object.prototype.hasOwnProperty.call(req.query, 'preview');
+    const requestedPreview = typeof req.query.preview === 'string'
+        ? req.query.preview.trim()
+        : null;
+
+    if (hasPreviewRequest && !canPreview) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    try {
+        // Keep the FAQ model server-only so filtered-out help text never reaches the browser.
+        const { FAQ_PREVIEW_PROFILES, getFaqSectionsForAccess } = require('./lib/help-faq');
+        if (hasPreviewRequest && (!requestedPreview || !FAQ_PREVIEW_PROFILES.has(requestedPreview))) {
+            return res.status(400).json({ success: false, error: 'Unknown preview profile' });
+        }
+
+        const sections = getFaqSectionsForAccess({
+            authenticated: Boolean(auth),
+            hasPermission: permission => authorizationHasPermission(auth, permission),
+            isAdministrator: isStrongAdmin(auth),
+            preview: requestedPreview
+        });
+
+        return res.json({
+            success: true,
+            canPreview,
+            preview: requestedPreview || 'actual',
+            sections
+        });
+    } catch (error) {
+        console.error('FAQ delivery failed');
+        return res.status(500).json({ success: false, error: 'Help is temporarily unavailable.' });
+    }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/manifest.json', (req, res) => {
