@@ -20,7 +20,8 @@ const {
     createEmailOutbox,
     createBoundedOutboxWorker,
     createRecoveryRateLimiter,
-    invalidateSessionsForYouth
+    invalidateSessionsForYouth,
+    invalidateSessionsForUser
 } = require('./lib/email-security');
 const {
     initializeAccountClaimSchema,
@@ -2895,6 +2896,113 @@ app.post('/api/account-claim/preview', async (req, res) => {
         console.error('Account claim preview failed');
         return sendNoStoreJson(res, 500, { success: false, error: 'Unable to preview account claim.' });
     }
+});
+
+function createAccountClaimCompletionConflict() {
+    return Object.assign(new Error('Account claim completion rejected'), {
+        code: 'ACCOUNT_CLAIM_IDENTITY_CONFLICT'
+    });
+}
+
+app.post('/api/account-claim/complete', requireAuth, async (req, res) => {
+    const authenticatedUserId = normalizeCanonicalId(req.auth && req.auth.userId);
+    if (!authenticatedUserId) return sendForbidden(res);
+
+    let completed;
+    try {
+        completed = await accountClaimStore.consumeWithMutation(
+            {
+                rawToken: req.body && req.body.token,
+                consumedByUserId: authenticatedUserId
+            },
+            async (claim, transaction) => {
+                const member = await transaction.get('SELECT id FROM youth WHERE id = ?', [claim.youthId]);
+                const account = await transaction.get(
+                    `SELECT id, youth_id, account_claimed_at, account_claim_method,
+                            account_claim_token_id
+                     FROM users WHERE id = ?`,
+                    [authenticatedUserId]
+                );
+                const targetAccounts = await transaction.all(
+                    `SELECT id FROM users WHERE youth_id = ? ORDER BY id ASC LIMIT 2`,
+                    [claim.youthId]
+                );
+                if (!member || !account || targetAccounts.length > 1) {
+                    throw createAccountClaimCompletionConflict();
+                }
+
+                const accountYouthId = normalizeCanonicalId(account.youth_id);
+                if (account.youth_id !== null && accountYouthId === null) {
+                    throw createAccountClaimCompletionConflict();
+                }
+                if (accountYouthId !== null && accountYouthId !== claim.youthId) {
+                    throw createAccountClaimCompletionConflict();
+                }
+                if (targetAccounts.length === 1 && targetAccounts[0].id !== authenticatedUserId) {
+                    throw createAccountClaimCompletionConflict();
+                }
+                if (
+                    account.account_claimed_at !== null ||
+                    account.account_claim_method !== null ||
+                    account.account_claim_token_id !== null
+                ) {
+                    throw createAccountClaimCompletionConflict();
+                }
+
+                const claimedAt = Date.now();
+                const linked = await transaction.run(
+                    `UPDATE users
+                     SET youth_id = ?, account_claimed_at = ?,
+                         account_claim_method = 'claim_token', account_claim_token_id = ?
+                     WHERE id = ?
+                       AND (youth_id IS NULL OR youth_id = ?)
+                       AND account_claimed_at IS NULL
+                       AND account_claim_method IS NULL
+                       AND account_claim_token_id IS NULL`,
+                    [claim.youthId, claimedAt, claim.id, authenticatedUserId, claim.youthId]
+                );
+                if (linked.changes !== 1) throw createAccountClaimCompletionConflict();
+                return Object.freeze({
+                    userId: authenticatedUserId,
+                    youthId: claim.youthId,
+                    claimTokenId: claim.id
+                });
+            }
+        );
+    } catch (error) {
+        if (error && error.code === 'ACCOUNT_CLAIM_IDENTITY_CONFLICT') {
+            return sendNoStoreJson(res, 400, {
+                success: false,
+                error: 'This account claim is invalid or cannot be completed.'
+            });
+        }
+        console.error('Account claim completion failed');
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            error: 'Unable to complete account claim.'
+        });
+    }
+
+    if (!completed) {
+        return sendNoStoreJson(res, 400, {
+            success: false,
+            error: 'This account claim is invalid or cannot be completed.'
+        });
+    }
+
+    const completion = completed.mutationResult;
+    invalidateSessionsForYouth(sessionStore, completion.youthId);
+    invalidateSessionsForUser(sessionStore, completion.userId);
+    invalidateAuthorizationSession(req, res);
+    logActivity(
+        `User ${completion.userId}`,
+        'ACCOUNT_CLAIM_COMPLETED',
+        `Secure account claim completed for Member ID ${completion.youthId}`
+    );
+    return sendNoStoreJson(res, 200, {
+        success: true,
+        reauthentication_required: true
+    });
 });
 
 async function waitForRecoveryMinimumResponse(startedAt) {
