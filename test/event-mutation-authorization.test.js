@@ -159,6 +159,10 @@ test('event-management mutations enforce canonical permissions and ownership', {
         path.join(repositoryRoot, 'lib', 'sqlite-backup.js'),
         path.join(temporaryRoot, 'lib', 'sqlite-backup.js')
     );
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'email-security.js'),
+        path.join(temporaryRoot, 'lib', 'email-security.js')
+    );
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
     await fsp.writeFile(path.join(temporaryRoot, 'public', 'index.html'), '<!doctype html><title>Isolated test</title>');
 

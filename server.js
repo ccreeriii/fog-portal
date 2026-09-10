@@ -9,6 +9,11 @@ const sharp = require('sharp');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
+const {
+    validateVerifiedGooglePayload,
+    findGoogleYouthIdentity,
+    initializeEmailRecoverySchema
+} = require('./lib/email-security');
 const app = express();
 
 const BOOTSTRAP_STRONG_ADMIN_USERNAME = 'celsocreeriii@gmail.com';
@@ -1954,7 +1959,17 @@ const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
     member_milestones: Object.freeze(['id', 'youth_id', 'pathway_id', 'status']),
     gamification_points: Object.freeze(['id', 'youth_id', 'points', 'arcade_xp', 'growth_xp', 'event_xp']),
     point_transactions: Object.freeze(['id', 'youth_id', 'type', 'amount']),
-    secret_prayer_pals: Object.freeze(['id', 'youth_id', 'pal_youth_id', 'week_start'])
+    secret_prayer_pals: Object.freeze(['id', 'youth_id', 'pal_youth_id', 'week_start']),
+    auth_one_time_tokens: Object.freeze([
+        'id', 'token_hash', 'purpose', 'youth_id', 'target_email', 'created_at',
+        'expires_at', 'used_at', 'revoked_at'
+    ]),
+    email_outbox: Object.freeze([
+        'id', 'recipient', 'message_type', 'payload_ciphertext', 'payload_iv',
+        'payload_tag', 'encryption_version', 'status', 'retry_count',
+        'next_attempt_at', 'created_at', 'updated_at', 'locked_at', 'sent_at',
+        'provider_message_id', 'last_error_code', 'dedupe_key'
+    ])
 });
 
 function quoteMigrationIdentifier(value) {
@@ -2042,6 +2057,7 @@ async function applyDeterministicRuntimeMigration() {
         await runMigrationStatement('UPDATE youth SET account_tier = NULL');
     }
 
+    await initializeEmailRecoverySchema(db);
     await assertRuntimeSchema();
 }
 
@@ -2360,69 +2376,164 @@ app.post('/api/settings/growth-habits', requirePermission('edit_entries'), (req,
 });
 
 
+function googleAuthDatabaseGet(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => err ? reject(err) : resolve(row || null));
+    });
+}
+
+function googleAuthDatabaseAll(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows || []));
+    });
+}
+
+function googleAuthDatabaseRun(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function(err) {
+            if (err) return reject(err);
+            resolve({ lastID: this.lastID, changes: this.changes });
+        });
+    });
+}
+
+function rejectGoogleAuthentication(res) {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(401).json({ success: false, error: 'Invalid Google Token' });
+}
+
+async function associateVerifiedGoogleIdentity(member, identity) {
+    if (!member || !identity) return null;
+    if (member.google_id) return member.google_id === identity.googleId ? member : null;
+
+    const associated = await googleAuthDatabaseRun(
+        `UPDATE youth SET google_id = ?, profile_picture = ?
+         WHERE id = ? AND (google_id IS NULL OR google_id = '')`,
+        [identity.googleId, identity.picture, member.id]
+    );
+    if (associated.changes === 1) {
+        return { ...member, google_id: identity.googleId, profile_picture: identity.picture };
+    }
+
+    const currentMember = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [member.id]);
+    return currentMember && currentMember.google_id === identity.googleId ? currentMember : null;
+}
+
+async function sendExistingGoogleMemberLogin(req, res, identity, member, matchedUser = null) {
+    const linkedUser = matchedUser || await googleAuthDatabaseGet(
+        'SELECT id, username, permissions, youth_id FROM users WHERE youth_id = ? ORDER BY id ASC LIMIT 1',
+        [member.id]
+    );
+    const permissions = parseStoredPermissions(linkedUser && linkedUser.permissions);
+    const emailUsername = linkedUser && linkedUser.username &&
+        linkedUser.username.trim().toLowerCase() === identity.normalizedEmail;
+    const username = emailUsername ? linkedUser.username : (member.qr_code || identity.normalizedEmail);
+    logActivity(member.name || identity.name, 'OAUTH_LOGIN', 'Logged in via Google');
+    return sendAuthenticatedLogin(
+        req,
+        res,
+        { userId: linkedUser ? linkedUser.id : null, youthId: member.id, username },
+        {
+            success: true,
+            username,
+            permissions,
+            member: sanitizeMemberForClient(member),
+            is_admin: permissions.length > 0
+        }
+    );
+}
+
 app.post('/api/auth/google', async (req, res) => {
-    const { token } = req.body;
+    const token = req.body && req.body.token;
+    let identity;
     try {
         const ticket = await googleClient.verifyIdToken({
             idToken: token,
             audience: '100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com',
         });
-        const payload = ticket.getPayload();
-        const { sub: google_id, email, name, picture } = payload;
-
-        // 1. Check if email exists in Admin/Users table first
-        db.get(`SELECT * FROM users WHERE username = ?`, [email], (err, adminUser) => {
-            if (adminUser) {
-                if (adminUser.youth_id) {
-                    db.run(`UPDATE youth SET google_id = ?, profile_picture = ? WHERE id = ?`, [google_id, picture, adminUser.youth_id]);
-                    db.get(`SELECT * FROM youth WHERE id = ?`, [adminUser.youth_id], (err, member) => {
-                        logActivity(name, 'OAUTH_LOGIN', 'Superadmin logged in via Google');
-                        return sendAuthenticatedLogin(req, res, { userId: adminUser.id, youthId: adminUser.youth_id, username: adminUser.username }, { success: true, username: adminUser.username, permissions: JSON.parse(adminUser.permissions || '[]'), member, is_admin: true });
-                    });
-                } else {
-                    db.run(`INSERT INTO youth (name, email, profile_picture, google_id, account_tier, created_at) VALUES (?, ?, ?, ?, 'Leader', ?)`, [name, email, picture, google_id, getManilaTime()], function(err) {
-                        const newYouthId = this.lastID;
-                        db.run(`UPDATE users SET youth_id = ? WHERE id = ?`, [newYouthId, adminUser.id]);
-                        db.get(`SELECT * FROM youth WHERE id = ?`, [newYouthId], (err, newMember) => {
-                            logActivity(name, 'OAUTH_LOGIN', 'Superadmin auto-linked via Google');
-                            return sendAuthenticatedLogin(req, res, { userId: adminUser.id, youthId: newYouthId, username: adminUser.username }, { success: true, username: adminUser.username, permissions: JSON.parse(adminUser.permissions || '[]'), member: newMember, is_admin: true });
-                        });
-                    });
-                }
-                return;
-            }
-
-            // 2. Standard Member Flow
-            db.get(`SELECT * FROM youth WHERE google_id = ? OR email = ?`, [google_id, email], (err, member) => {
-                if (member) {
-                    if (!member.google_id) {
-                        db.run(`UPDATE youth SET google_id = ?, profile_picture = ? WHERE id = ?`, [google_id, picture, member.id]);
-                    }
-                    db.get(`SELECT id, username, permissions, youth_id FROM users WHERE youth_id = ?`, [member.id], (err, u) => {
-                        const perms = u && u.permissions ? JSON.parse(u.permissions) : [];
-                        logActivity(member.name, 'OAUTH_LOGIN', 'Logged in via Google');
-                        return sendAuthenticatedLogin(req, res, { userId: u ? u.id : null, youthId: member.id, username: member.qr_code }, { success: true, username: member.qr_code, permissions: perms, member, is_admin: perms?.length || 0 > 0 });
-                    });
-                } else {
-                    // 3. Auto-provision New Member
-                    db.get(`SELECT MAX(id) as maxId FROM youth`, [], (err, row) => {
-                        const nextId = (row && row.maxId ? row.maxId : 0) + 1;
-                        const qrCode = `FOG-PASS-${String(nextId).padStart(3, '0')}`;
-                        db.run(`INSERT INTO youth (name, email, profile_picture, google_id, account_tier, qr_code, created_at) VALUES (?, ?, ?, ?, 'New Member', ?, ?)`,
-                            [name, email, picture, google_id, qrCode, getManilaTime()], function(err) {
-                            const newId = this.lastID;
-                            db.run(`INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at) VALUES (?, '[]', ?, ?)`, [qrCode, newId, getManilaTime()]);
-                            logActivity('System', 'NEW_MEMBER_CREATED', `Auto-provisioned New Member '${name}' via Google`);
-                            db.get(`SELECT * FROM youth WHERE id = ?`, [newId], (err, newMember) => {
-                                return sendAuthenticatedLogin(req, res, { userId: null, youthId: newId, username: newMember.qr_code }, { success: true, username: newMember.qr_code, permissions: [], member: newMember, is_admin: false, is_new: true });
-                            });
-                        });
-                    });
-                }
-            });
-        });
+        identity = validateVerifiedGooglePayload(ticket.getPayload());
     } catch (error) {
-        res.status(401).json({ success: false, error: 'Invalid Google Token' });
+        return rejectGoogleAuthentication(res);
+    }
+    if (!identity) return rejectGoogleAuthentication(res);
+
+    try {
+        const resolvedYouth = await findGoogleYouthIdentity(
+            db,
+            identity.googleId,
+            identity.normalizedEmail
+        );
+        if (resolvedYouth.status === 'ambiguous') return rejectGoogleAuthentication(res);
+
+        if (resolvedYouth.status === 'matched') {
+            let member = resolvedYouth.member;
+            if (resolvedYouth.matchedBy === 'email') {
+                member = await associateVerifiedGoogleIdentity(member, identity);
+                if (!member) return rejectGoogleAuthentication(res);
+            }
+            return sendExistingGoogleMemberLogin(req, res, identity, member);
+        }
+
+        const matchingUsers = await googleAuthDatabaseAll(
+            `SELECT * FROM users WHERE LOWER(TRIM(username)) = ? ORDER BY id ASC LIMIT 2`,
+            [identity.normalizedEmail]
+        );
+        if (matchingUsers.length > 1) return rejectGoogleAuthentication(res);
+
+        if (matchingUsers.length === 1) {
+            const adminUser = matchingUsers[0];
+            let member = adminUser.youth_id
+                ? await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [adminUser.youth_id])
+                : null;
+            if (member) {
+                member = await associateVerifiedGoogleIdentity(member, identity);
+                if (!member) return rejectGoogleAuthentication(res);
+            } else {
+                const inserted = await googleAuthDatabaseRun(
+                    `INSERT INTO youth (name, email, profile_picture, google_id, account_tier, created_at)
+                     VALUES (?, ?, ?, ?, 'Leader', ?)`,
+                    [identity.name, identity.normalizedEmail, identity.picture, identity.googleId, getManilaTime()]
+                );
+                await googleAuthDatabaseRun('UPDATE users SET youth_id = ? WHERE id = ?', [inserted.lastID, adminUser.id]);
+                member = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [inserted.lastID]);
+            }
+            if (!member) throw new Error('Google-linked member unavailable');
+            return sendExistingGoogleMemberLogin(req, res, identity, member, adminUser);
+        }
+
+        const maxRow = await googleAuthDatabaseGet('SELECT MAX(id) AS maxId FROM youth');
+        const nextId = (maxRow && maxRow.maxId ? maxRow.maxId : 0) + 1;
+        const qrCode = `FOG-PASS-${String(nextId).padStart(3, '0')}`;
+        const inserted = await googleAuthDatabaseRun(
+            `INSERT INTO youth
+                (name, email, profile_picture, google_id, account_tier, qr_code, created_at)
+             VALUES (?, ?, ?, ?, 'New Member', ?, ?)`,
+            [identity.name, identity.normalizedEmail, identity.picture, identity.googleId, qrCode, getManilaTime()]
+        );
+        await googleAuthDatabaseRun(
+            `INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at)
+             VALUES (?, '[]', ?, ?)`,
+            [qrCode, inserted.lastID, getManilaTime()]
+        );
+        const newMember = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [inserted.lastID]);
+        if (!newMember) throw new Error('Provisioned member unavailable');
+        logActivity('System', 'NEW_MEMBER_CREATED', 'Auto-provisioned a new member via Google');
+        return sendAuthenticatedLogin(
+            req,
+            res,
+            { userId: null, youthId: newMember.id, username: newMember.qr_code },
+            {
+                success: true,
+                username: newMember.qr_code,
+                permissions: [],
+                member: sanitizeMemberForClient(newMember),
+                is_admin: false,
+                is_new: true
+            }
+        );
+    } catch (error) {
+        console.error('Google authentication database operation failed');
+        return res.status(500).json({ success: false, error: 'Unable to complete Google sign-in' });
     }
 });
 
