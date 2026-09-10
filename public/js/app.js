@@ -1104,7 +1104,21 @@ const OfflineManager = {
         window.fetch = async function(resource, options) {
             const method = getOfflineRequestMethod(resource, options);
             const requestPath = getSameOriginRequestPath(resource);
-            if (window.koinoniaReadOnlyLock && requestPath && requestPath.startsWith('/api/')) {
+            const publicReadDuringAuthLock = new Set([
+                '/api/readings/snippet',
+                '/api/liturgical/today'
+            ]);
+            const isAllowedPublicRead =
+                method === 'GET' &&
+                requestPath &&
+                publicReadDuringAuthLock.has(requestPath);
+
+            if (
+                window.koinoniaReadOnlyLock &&
+                requestPath &&
+                requestPath.startsWith('/api/') &&
+                !isAllowedPublicRead
+            ) {
                 return createOfflineUnavailableResponse();
             }
             if ((!navigator.onLine || window.koinoniaReadOnlyLock || hasPendingLogout()) && !OFFLINE_SAFE_METHODS.has(method)) {
@@ -7519,7 +7533,7 @@ window.switchTab = async function(tabId) {
                 .then(res => res.json())
                 .then(data => {
                     const mannaText = document.getElementById('pulseDailyGospelText');
-                    if (mannaText) mannaText.innerText = data.gospel || "The Lord is my shepherd; I shall not want. (Psalm 23)";
+                    if (mannaText) mannaText.innerText = data.daily_gospel || data.gospel || "The Lord is my shepherd; I shall not want. (Psalm 23)";
                 }).catch(e => {
                     const mannaText = document.getElementById('pulseDailyGospelText');
                     if (mannaText) mannaText.innerText = "The Lord is my shepherd; I shall not want. (Psalm 23)";
