@@ -466,7 +466,15 @@
                 <div class="profile-edit-grid">
                     <div class="form-group"><label>Update Profile Picture</label><input type="file" id="myEditProfilePic" class="form-control" accept="image/*"></div>
                     <div class="form-group"><label>Full Name</label><input type="text" id="myEditName" class="form-control" required></div>
-                    <div class="form-group"><label>Email Address</label><input type="email" id="myEditEmail" class="form-control"></div>
+                    <div class="form-group">
+                        <label>Email Address</label>
+                        <input type="email" id="myEditEmail" class="form-control">
+                        <div id="myEmailVerificationStatus" style="margin-top:8px; font-size:0.82rem; color:var(--text-muted);"></div>
+                        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+                            <button id="verifyMyEmailBtn" type="button" class="btn btn-outline btn-sm" style="display:none;" onclick="requestMyEmailVerification()">Verify my email</button>
+                            <button id="cancelMyEmailChangeBtn" type="button" class="btn btn-outline btn-sm" style="display:none;" onclick="cancelMyEmailChange()">Cancel email change</button>
+                        </div>
+                    </div>
                     <div class="form-group"><label>Age</label><input type="number" id="myEditAge" class="form-control"></div>
                     <div class="form-group"><label>Birthday</label><input type="date" id="myEditBirthday" class="form-control"></div>
                     <div class="form-group"><label>Social Media Handle</label><input type="text" id="myEditSocial" class="form-control"></div>
@@ -1349,7 +1357,7 @@
 </script>
 
 <script src="/js/offline-data.js?v=12.2"></script>
-<script src="/js/app.js?v=12.6"></script>
+<script src="/js/app.js?v=12.7"></script>
 <script src="/js/v2-discipleship.js?v=12.2"></script>
 <script src="/js/v3-worship.js?v=12.2"></script>
 <script src="/js/v4-communications.js?v=12.3"></script>

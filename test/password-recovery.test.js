@@ -69,9 +69,9 @@ async function createRecoveryMember(database, suffix, {
     const qrCode = `P10-B2-${suffix}`;
     const youth = await run(
         database,
-        `INSERT INTO youth (name, email, qr_code, password, created_at)
-         VALUES (?, ?, ?, ?, datetime('now'))`,
-        [`P10 B2 ${suffix}`, email, qrCode, youthPassword]
+        `INSERT INTO youth (name, email, qr_code, password, email_verified, email_verified_at, created_at)
+         VALUES (?, ?, ?, ?, 1, ?, datetime('now'))`,
+        [`P10 B2 ${suffix}`, email, qrCode, youthPassword, Date.now()]
     );
     const userIds = [];
     for (let index = 0; index < linkedPasswords.length; index += 1) {

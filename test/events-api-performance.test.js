@@ -471,12 +471,12 @@ test('event frontend consumes list references, selected detail, and deduplicates
     assert.equal(appSource.includes('const imageResponse = await fetch(imageUrl)'), false, 'sharing does not delay native share for media');
     assert.ok(preregisterSource.includes('event.poster_url'), 'standalone prereg page uses poster_url');
     assert.equal(/event\.poster\b/.test(preregisterSource), false, 'standalone prereg page does not use embedded media');
-    assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'fog-portal-v10';"), 'new app asset has a fresh shell cache');
+    assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'fog-portal-v11';"), 'new app asset has a fresh shell cache');
     assert.ok(serviceWorkerSource.includes("if (request.method !== 'GET') return;"), 'service worker still bypasses mutations');
     assert.ok(serviceWorkerSource.includes("url.pathname.startsWith('/api/')"), 'service worker still bypasses API reads');
-    assert.ok(serviceWorkerSource.includes("'/js/app.js?v=12.6'"), 'service worker caches the coordinated app version');
+    assert.ok(serviceWorkerSource.includes("'/js/app.js?v=12.7'"), 'service worker caches the coordinated app version');
     assert.ok(serviceWorkerSource.includes("'/js/v10-expansion.js?v=12.3'"), 'service worker caches the Arcade fix');
-    assert.ok(indexSource.includes('<script src="/js/app.js?v=12.6"></script>'), 'index serves the coordinated app version');
+    assert.ok(indexSource.includes('<script src="/js/app.js?v=12.7"></script>'), 'index serves the coordinated app version');
     assert.ok(indexSource.includes('<script src="/js/v10-expansion.js?v=12.3"></script>'), 'index serves the coordinated Arcade version');
     assert.equal(appSource.includes("localStorage.setItem('fog_events_cache'"), false, 'legacy full-event cache is retired');
 

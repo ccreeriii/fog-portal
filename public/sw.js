@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v10';
+const CACHE_NAME = 'fog-portal-v11';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -7,7 +7,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/css/v3-styles.css?v=12.2',
     '/css/v4-styles.css?v=12.2',
     '/js/offline-data.js?v=12.2',
-    '/js/app.js?v=12.6',
+    '/js/app.js?v=12.7',
     '/js/v2-discipleship.js?v=12.2',
     '/js/v3-worship.js?v=12.2',
     '/js/v4-communications.js?v=12.3',
@@ -85,6 +85,7 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(request.url);
     if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
     if (url.pathname === '/reset-password' || url.pathname.startsWith('/reset-password/')) return;
+    if (url.pathname === '/verify-email' || url.pathname.startsWith('/verify-email/')) return;
 
     if (request.mode === 'navigate') {
         event.respondWith(networkFirstNavigation(request));

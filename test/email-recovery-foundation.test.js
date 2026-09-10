@@ -144,19 +144,21 @@ test('Google identity lookup prefers google_id and rejects ambiguous normalized 
 
 test('password recovery eligibility requires one normalized youth and an existing local credential', async () => {
     await withTemporaryDatabase(async database => {
-        await run(database, 'CREATE TABLE youth (id INTEGER PRIMARY KEY, email TEXT, password TEXT, google_id TEXT)');
+        await run(database, 'CREATE TABLE youth (id INTEGER PRIMARY KEY, email TEXT, password TEXT, google_id TEXT, email_verified INTEGER NOT NULL DEFAULT 0)');
         await run(database, 'CREATE TABLE users (id INTEGER PRIMARY KEY, youth_id INTEGER, password TEXT)');
-        await run(database, "INSERT INTO youth VALUES (1, ' Local@Example.com ', NULL, 'google-1')");
+        await run(database, "INSERT INTO youth VALUES (1, ' Local@Example.com ', NULL, 'google-1', 1)");
         await run(database, "INSERT INTO users VALUES (1, 1, 'local-hash')");
-        await run(database, "INSERT INTO youth VALUES (2, 'google-only@example.com', NULL, 'google-2')");
-        await run(database, "INSERT INTO youth VALUES (3, 'duplicate@example.com', 'hash', NULL)");
-        await run(database, "INSERT INTO youth VALUES (4, ' DUPLICATE@EXAMPLE.COM ', 'hash', NULL)");
+        await run(database, "INSERT INTO youth VALUES (2, 'google-only@example.com', NULL, 'google-2', 1)");
+        await run(database, "INSERT INTO youth VALUES (3, 'duplicate@example.com', 'hash', NULL, 1)");
+        await run(database, "INSERT INTO youth VALUES (4, ' DUPLICATE@EXAMPLE.COM ', 'hash', NULL, 1)");
+        await run(database, "INSERT INTO youth VALUES (5, 'unverified@example.com', 'hash', NULL, 0)");
 
         assert.deepEqual(await findPasswordRecoveryIdentity(database, 'local@example.com'), {
             status: 'eligible', identity: { youthId: 1, normalizedEmail: 'local@example.com' }
         });
         assert.equal((await findPasswordRecoveryIdentity(database, 'google-only@example.com')).status, 'no_local_credential');
         assert.equal((await findPasswordRecoveryIdentity(database, 'duplicate@example.com')).status, 'ambiguous');
+        assert.equal((await findPasswordRecoveryIdentity(database, 'unverified@example.com')).status, 'unverified');
         assert.equal((await findPasswordRecoveryIdentity(database, 'unknown@example.com')).status, 'unknown');
         assert.equal((await findPasswordRecoveryIdentity(database, 'INVALID')).status, 'invalid');
     });
@@ -650,12 +652,12 @@ test('real Google route refuses unverified and ambiguous email while preserving 
         const originalRun = database.run;
         let intercepted = false;
         database.run = function(sql, params, callback) {
-            if (!intercepted && /UPDATE youth SET google_id = \?, profile_picture = \?/.test(sql)) {
+            if (!intercepted && /UPDATE youth\s+SET google_id = \?, profile_picture = \?/.test(sql)) {
                 intercepted = true;
                 originalRun.call(
                     database,
                     'UPDATE youth SET google_id = ? WHERE id = ?',
-                    [winningGoogleId, params[2]],
+                    [winningGoogleId, params[params.length - 1]],
                     err => {
                         if (err) return callback(err);
                         return originalRun.call(database, sql, params, callback);
@@ -732,6 +734,7 @@ test('real Google route refuses unverified and ambiguous email while preserving 
     assert.equal('password' in uniqueBody.member, false);
     assert.equal('google_id' in uniqueBody.member, false);
     assert.equal((await get(database, 'SELECT google_id FROM youth WHERE id = ?', [unique.lastID])).google_id, 'unique-subject');
+    assert.equal((await get(database, 'SELECT email_verified FROM youth WHERE id = ?', [unique.lastID])).email_verified, 1);
 
     await run(
         database,
@@ -751,6 +754,10 @@ test('real Google route refuses unverified and ambiguous email while preserving 
         (await get(database, 'SELECT google_id FROM youth WHERE id = ?', [linkedAdmin.youth_id])).google_id,
         'admin-subject'
     );
+    assert.equal(
+        (await get(database, 'SELECT email_verified FROM youth WHERE id = ?', [linkedAdmin.youth_id])).email_verified,
+        1
+    );
 
     const newResponse = await googleRequest({
         sub: 'new-subject', email: ' Brand.New@Example.com ', email_verified: true, name: 'Brand New'
@@ -759,4 +766,5 @@ test('real Google route refuses unverified and ambiguous email while preserving 
     const newBody = await newResponse.json();
     assert.equal(newBody.is_new, true);
     assert.equal((await get(database, 'SELECT email FROM youth WHERE id = ?', [newBody.member.id])).email, 'brand.new@example.com');
+    assert.equal((await get(database, 'SELECT email_verified FROM youth WHERE id = ?', [newBody.member.id])).email_verified, 1);
 });

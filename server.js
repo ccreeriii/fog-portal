@@ -146,9 +146,14 @@ const PASSWORD_RECOVERY_MINIMUM_DELIVERY_VALIDITY_MS = 15 * 60 * 1000;
 const PASSWORD_RECOVERY_MINIMUM_RESPONSE_MS = 250;
 const PASSWORD_RECOVERY_WORKER_INTERVAL_MS = 30 * 1000;
 const PASSWORD_RECOVERY_WORKER_BATCH_SIZE = 5;
+const EMAIL_VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const EMAIL_VERIFICATION_MINIMUM_DELIVERY_VALIDITY_MS = 30 * 60 * 1000;
 const PASSWORD_RECOVERY_NEUTRAL_MESSAGE = 'If an eligible account matches that email, password reset instructions will be sent shortly.';
 const PASSWORD_RESET_INVALID_MESSAGE = 'This password reset link is invalid or expired. Request a new one.';
+const EMAIL_VERIFICATION_REQUEST_MESSAGE = 'If your email needs confirmation, we’ll send you a verification link.';
+const EMAIL_VERIFICATION_INVALID_MESSAGE = 'This email verification link is invalid or expired. Request a new one.';
 const passwordRecoveryInFlight = new Set();
+const emailVerificationInFlight = new Set();
 const forgotPasswordLimiter = createRecoveryRateLimiter({
     namespace: 'forgot-password',
     windowMs: 15 * 60 * 1000,
@@ -160,6 +165,24 @@ const resetPasswordLimiter = createRecoveryRateLimiter({
     windowMs: 15 * 60 * 1000,
     ipLimit: 20,
     subjectLimit: 6
+});
+const emailVerificationRequestLimiter = createRecoveryRateLimiter({
+    namespace: 'email-verification-request',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 10,
+    subjectLimit: 3
+});
+const emailVerificationConfirmLimiter = createRecoveryRateLimiter({
+    namespace: 'email-verification-confirm',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
+});
+const emailRegistrationLimiter = createRecoveryRateLimiter({
+    namespace: 'email-registration',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 10,
+    subjectLimit: 2
 });
 
 function getRecoveryClientAddress(req) {
@@ -449,6 +472,9 @@ const passwordLoginLimiterCleanupTimer = setInterval(() => {
     cleanupExpiredPasswordLoginLimiterEntries(passwordLoginAccountFailures, now);
     forgotPasswordLimiter.cleanupExpired();
     resetPasswordLimiter.cleanupExpired();
+    emailVerificationRequestLimiter.cleanupExpired();
+    emailVerificationConfirmLimiter.cleanupExpired();
+    emailRegistrationLimiter.cleanupExpired();
 }, PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS);
 passwordLoginLimiterCleanupTimer.unref();
 
@@ -564,10 +590,15 @@ function parseStoredPermissions(value) {
     }
 }
 
-const AUTHENTICATED_MEMBER_RESPONSE_FIELDS = Object.freeze([
+const MEMBER_RESPONSE_FIELDS = Object.freeze([
     'id', 'name', 'age', 'email', 'mobile', 'social_media', 'birthday',
     'parents_name', 'qr_code', 'profile_picture', 'gender', 'account_tier',
     'address'
+]);
+
+const AUTHENTICATED_MEMBER_RESPONSE_FIELDS = Object.freeze([
+    ...MEMBER_RESPONSE_FIELDS,
+    'email_verified', 'email_verified_at', 'pending_email', 'pending_email_requested_at'
 ]);
 
 const DIRECTORY_MEMBER_RESPONSE_FIELDS = Object.freeze([
@@ -609,11 +640,11 @@ function projectResponseFields(record, fields) {
 }
 
 function sanitizeMemberForClient(member) {
-    return projectResponseFields(member, AUTHENTICATED_MEMBER_RESPONSE_FIELDS);
+    return projectResponseFields(member, MEMBER_RESPONSE_FIELDS);
 }
 
 function sanitizeMemberForAuth(member) {
-    return sanitizeMemberForClient(member);
+    return projectResponseFields(member, AUTHENTICATED_MEMBER_RESPONSE_FIELDS);
 }
 
 function sanitizeMemberForDirectory(member) {
@@ -1171,7 +1202,7 @@ function sendAuthenticatedLogin(req, res, identity, responseBody) {
     createAuthenticatedSession(req, res, identity);
     const clientResponse = { ...responseBody };
     if (Object.prototype.hasOwnProperty.call(clientResponse, 'member')) {
-        clientResponse.member = sanitizeMemberForClient(clientResponse.member);
+        clientResponse.member = sanitizeMemberForAuth(clientResponse.member);
     }
     return res.json(clientResponse);
 }
@@ -2039,7 +2070,8 @@ const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
     youth: Object.freeze([
         'id', 'name', 'email', 'qr_code', 'password', 'profile_picture', 'gender',
         'commitment_intent', 'google_id', 'facebook_id', 'account_tier',
-        'commitment_date', 'commitment_accepted_at', 'commitment_accepted_by', 'address'
+        'commitment_date', 'commitment_accepted_at', 'commitment_accepted_by', 'address',
+        'email_verified', 'email_verified_at', 'pending_email', 'pending_email_requested_at'
     ]),
     users: Object.freeze(['id', 'username', 'password', 'permissions', 'youth_id']),
     events: Object.freeze(['id', 'name', 'event_date', 'event_points', 'roles_restricted_notes']),
@@ -2136,6 +2168,10 @@ async function applyDeterministicRuntimeMigration() {
     await ensureRuntimeColumn('youth', 'commitment_date', 'commitment_date TEXT');
     await ensureRuntimeColumn('youth', 'commitment_accepted_at', 'commitment_accepted_at TEXT');
     await ensureRuntimeColumn('youth', 'commitment_accepted_by', 'commitment_accepted_by TEXT');
+    await ensureRuntimeColumn('youth', 'email_verified', 'email_verified INTEGER NOT NULL DEFAULT 0');
+    await ensureRuntimeColumn('youth', 'email_verified_at', 'email_verified_at INTEGER');
+    await ensureRuntimeColumn('youth', 'pending_email', 'pending_email TEXT');
+    await ensureRuntimeColumn('youth', 'pending_email_requested_at', 'pending_email_requested_at INTEGER');
 
     const eventRoleStatusAdded = await ensureRuntimeColumn(
         'event_roles',
@@ -2371,6 +2407,13 @@ app.get('/reset-password', (req, res) => {
     return res.sendFile(path.join(__dirname, 'public', 'reset-password.html'));
 });
 
+app.get('/verify-email', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    return res.sendFile(path.join(__dirname, 'public', 'verify-email.html'));
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/manifest.json', (req, res) => {
@@ -2510,19 +2553,45 @@ function rejectGoogleAuthentication(res) {
 
 async function associateVerifiedGoogleIdentity(member, identity) {
     if (!member || !identity) return null;
-    if (member.google_id) return member.google_id === identity.googleId ? member : null;
+    if (member.google_id && member.google_id !== identity.googleId) return null;
+
+    const verificationTimestamp = Date.now();
+    const markExactEmailVerified = async currentMember => {
+        if (normalizeEmail(currentMember && currentMember.email) !== identity.normalizedEmail) {
+            return currentMember;
+        }
+        await googleAuthDatabaseRun(
+            `UPDATE youth
+             SET email_verified = 1,
+                 email_verified_at = COALESCE(email_verified_at, ?)
+             WHERE id = ? AND google_id = ? AND LOWER(TRIM(email)) = ?`,
+            [verificationTimestamp, currentMember.id, identity.googleId, identity.normalizedEmail]
+        );
+        return googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [currentMember.id]);
+    };
+
+    if (member.google_id === identity.googleId) return markExactEmailVerified(member);
 
     const associated = await googleAuthDatabaseRun(
-        `UPDATE youth SET google_id = ?, profile_picture = ?
+        `UPDATE youth
+         SET google_id = ?, profile_picture = ?,
+             email_verified = CASE WHEN LOWER(TRIM(email)) = ? THEN 1 ELSE email_verified END,
+             email_verified_at = CASE
+                 WHEN LOWER(TRIM(email)) = ? THEN COALESCE(email_verified_at, ?)
+                 ELSE email_verified_at
+             END
          WHERE id = ? AND (google_id IS NULL OR google_id = '')`,
-        [identity.googleId, identity.picture, member.id]
+        [identity.googleId, identity.picture, identity.normalizedEmail,
+            identity.normalizedEmail, verificationTimestamp, member.id]
     );
     if (associated.changes === 1) {
-        return { ...member, google_id: identity.googleId, profile_picture: identity.picture };
+        return googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [member.id]);
     }
 
     const currentMember = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [member.id]);
-    return currentMember && currentMember.google_id === identity.googleId ? currentMember : null;
+    return currentMember && currentMember.google_id === identity.googleId
+        ? markExactEmailVerified(currentMember)
+        : null;
 }
 
 async function sendExistingGoogleMemberLogin(req, res, identity, member, matchedUser = null) {
@@ -2534,7 +2603,7 @@ async function sendExistingGoogleMemberLogin(req, res, identity, member, matched
     const emailUsername = linkedUser && linkedUser.username &&
         linkedUser.username.trim().toLowerCase() === identity.normalizedEmail;
     const username = emailUsername ? linkedUser.username : (member.qr_code || identity.normalizedEmail);
-    logActivity(member.name || identity.name, 'OAUTH_LOGIN', 'Logged in via Google');
+    logActivity(`Member ${member.id}`, 'OAUTH_LOGIN', 'Logged in via Google');
     return sendAuthenticatedLogin(
         req,
         res,
@@ -2543,7 +2612,7 @@ async function sendExistingGoogleMemberLogin(req, res, identity, member, matched
             success: true,
             username,
             permissions,
-            member: sanitizeMemberForClient(member),
+            member: sanitizeMemberForAuth(member),
             is_admin: permissions.length > 0
         }
     );
@@ -2572,11 +2641,8 @@ app.post('/api/auth/google', async (req, res) => {
         if (resolvedYouth.status === 'ambiguous') return rejectGoogleAuthentication(res);
 
         if (resolvedYouth.status === 'matched') {
-            let member = resolvedYouth.member;
-            if (resolvedYouth.matchedBy === 'email') {
-                member = await associateVerifiedGoogleIdentity(member, identity);
-                if (!member) return rejectGoogleAuthentication(res);
-            }
+            const member = await associateVerifiedGoogleIdentity(resolvedYouth.member, identity);
+            if (!member) return rejectGoogleAuthentication(res);
             return sendExistingGoogleMemberLogin(req, res, identity, member);
         }
 
@@ -2596,9 +2662,12 @@ app.post('/api/auth/google', async (req, res) => {
                 if (!member) return rejectGoogleAuthentication(res);
             } else {
                 const inserted = await googleAuthDatabaseRun(
-                    `INSERT INTO youth (name, email, profile_picture, google_id, account_tier, created_at)
-                     VALUES (?, ?, ?, ?, 'Leader', ?)`,
-                    [identity.name, identity.normalizedEmail, identity.picture, identity.googleId, getManilaTime()]
+                    `INSERT INTO youth
+                        (name, email, profile_picture, google_id, account_tier,
+                         email_verified, email_verified_at, created_at)
+                     VALUES (?, ?, ?, ?, 'Leader', 1, ?, ?)`,
+                    [identity.name, identity.normalizedEmail, identity.picture, identity.googleId,
+                        Date.now(), getManilaTime()]
                 );
                 await googleAuthDatabaseRun('UPDATE users SET youth_id = ? WHERE id = ?', [inserted.lastID, adminUser.id]);
                 member = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [inserted.lastID]);
@@ -2612,9 +2681,11 @@ app.post('/api/auth/google', async (req, res) => {
         const qrCode = `FOG-PASS-${String(nextId).padStart(3, '0')}`;
         const inserted = await googleAuthDatabaseRun(
             `INSERT INTO youth
-                (name, email, profile_picture, google_id, account_tier, qr_code, created_at)
-             VALUES (?, ?, ?, ?, 'New Member', ?, ?)`,
-            [identity.name, identity.normalizedEmail, identity.picture, identity.googleId, qrCode, getManilaTime()]
+                (name, email, profile_picture, google_id, account_tier, qr_code,
+                 email_verified, email_verified_at, created_at)
+             VALUES (?, ?, ?, ?, 'New Member', ?, 1, ?, ?)`,
+            [identity.name, identity.normalizedEmail, identity.picture, identity.googleId,
+                qrCode, Date.now(), getManilaTime()]
         );
         await googleAuthDatabaseRun(
             `INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at)
@@ -2632,7 +2703,7 @@ app.post('/api/auth/google', async (req, res) => {
                 success: true,
                 username: newMember.qr_code,
                 permissions: [],
-                member: sanitizeMemberForClient(newMember),
+                member: sanitizeMemberForAuth(newMember),
                 is_admin: false,
                 is_new: true
             }
@@ -2687,6 +2758,133 @@ function buildPasswordChangedMessage() {
             '<p>If you did not make this change, contact <a href="mailto:support@fogmin.site">support@fogmin.site</a> immediately.</p>'
         ].join('')
     };
+}
+
+function getEmailVerificationDedupeKey(youthId, targetEmail) {
+    const targetDigest = crypto.createHash('sha256')
+        .update('koinonia-email-verification-target-v1\0')
+        .update(targetEmail)
+        .digest('base64url');
+    return `email-verification:${youthId}:${targetDigest}`;
+}
+
+function buildEmailVerificationMessage(verificationUrl, expiresAt) {
+    return {
+        subject: 'Verify your Fire Of God Ministries Community Portal email',
+        text: [
+            'Please confirm the email connected to your Community Portal account.',
+            '',
+            `Verify my email: ${verificationUrl}`,
+            '',
+            'This link expires in 24 hours. If you did not request this, you may ignore it.',
+            'For help, contact support@fogmin.site.'
+        ].join('\n'),
+        html: [
+            '<p>Please confirm the email connected to your Community Portal account.</p>',
+            `<p><a href="${verificationUrl}">Verify my email</a></p>`,
+            '<p>This link expires in 24 hours. If you did not request this, you may ignore it.</p>',
+            '<p>For help, contact <a href="mailto:support@fogmin.site">support@fogmin.site</a>.</p>'
+        ].join(''),
+        deliveryNotAfter: expiresAt,
+        minimumRemainingValidityMs: EMAIL_VERIFICATION_MINIMUM_DELIVERY_VALIDITY_MS
+    };
+}
+
+function buildEmailChangedMessage() {
+    return {
+        subject: 'Your Community Portal email was changed',
+        text: [
+            'The email connected to your Community Portal account was changed.',
+            '',
+            'If you made this change, no action is needed.',
+            'If you did not make this change, contact support@fogmin.site.'
+        ].join('\n'),
+        html: [
+            '<p>The email connected to your Community Portal account was changed.</p>',
+            '<p>If you made this change, no action is needed.</p>',
+            '<p>If you did not make this change, contact <a href="mailto:support@fogmin.site">support@fogmin.site</a>.</p>'
+        ].join('')
+    };
+}
+
+async function revokeUnqueuedAuthToken(tokenId) {
+    if (!Number.isInteger(tokenId) || tokenId <= 0) return;
+    await googleAuthDatabaseRun(
+        `UPDATE auth_one_time_tokens SET revoked_at = ?
+         WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL`,
+        [Date.now(), tokenId]
+    );
+}
+
+async function queueEmailVerification({ youthId, targetEmail }) {
+    const normalizedYouthId = normalizeCanonicalId(youthId);
+    const normalizedTarget = normalizeEmail(targetEmail);
+    if (!normalizedYouthId || !normalizedTarget) {
+        throw Object.assign(new Error('Email verification target is invalid'), {
+            code: 'EMAIL_VERIFICATION_TARGET_INVALID'
+        });
+    }
+    if (!emailRecoveryPublicOrigin || !emailRecoveryOutbox) {
+        throw Object.assign(new Error('Email verification delivery is unavailable'), {
+            code: 'EMAIL_RECOVERY_UNAVAILABLE'
+        });
+    }
+
+    const lockKey = String(normalizedYouthId);
+    if (emailVerificationInFlight.has(lockKey)) return { queued: false, reason: 'REQUEST_IN_PROGRESS' };
+    emailVerificationInFlight.add(lockKey);
+    let issuedTokenId = null;
+    try {
+        const dedupeKey = getEmailVerificationDedupeKey(normalizedYouthId, normalizedTarget);
+        const activeToken = await googleAuthDatabaseGet(
+            `SELECT id FROM auth_one_time_tokens
+             WHERE purpose = 'email_verification' AND youth_id = ? AND target_email = ?
+               AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?
+             ORDER BY id DESC LIMIT 1`,
+            [normalizedYouthId, normalizedTarget, Date.now()]
+        );
+        const activeOutbox = await emailRecoveryOutbox.hasActiveDedupeKey(dedupeKey);
+        if (activeToken && activeOutbox) return { queued: false, reason: 'DUPLICATE_ACTIVE' };
+        if (activeOutbox) {
+            await emailRecoveryOutbox.cancelActiveDedupeKey(dedupeKey, 'EMAIL_SUPERSEDED');
+        }
+
+        const issued = await authTokenStore.issue({
+            purpose: 'email_verification',
+            youthId: normalizedYouthId,
+            email: normalizedTarget,
+            ttlMs: EMAIL_VERIFICATION_TOKEN_TTL_MS
+        });
+        issuedTokenId = issued.id;
+        const verificationUrl = `${emailRecoveryPublicOrigin}/verify-email#${issued.rawToken}`;
+        const queued = await emailRecoveryOutbox.enqueue({
+            recipient: normalizedTarget,
+            messageType: 'email_verification',
+            payload: buildEmailVerificationMessage(verificationUrl, issued.expiresAt),
+            dedupeKey
+        });
+        issuedTokenId = null;
+        return { queued: queued.enqueued, reason: queued.reason || null };
+    } catch (error) {
+        if (issuedTokenId !== null) {
+            try { await revokeUnqueuedAuthToken(issuedTokenId); }
+            catch (revocationError) {
+                console.warn(`[EMAIL] Unqueued verification token revocation failed code=${getSafeEmailRecoveryErrorCode(revocationError)}`);
+            }
+        }
+        throw error;
+    } finally {
+        emailVerificationInFlight.delete(lockKey);
+    }
+}
+
+async function cancelVerificationDelivery(youthId, targetEmail) {
+    const normalizedTarget = normalizeEmail(targetEmail);
+    if (!emailRecoveryOutbox || !normalizeCanonicalId(youthId) || !normalizedTarget) return;
+    await emailRecoveryOutbox.cancelActiveDedupeKey(
+        getEmailVerificationDedupeKey(Number(youthId), normalizedTarget),
+        'EMAIL_SUPERSEDED'
+    );
 }
 
 app.post('/api/auth/forgot-password', async (req, res) => {
@@ -2866,6 +3064,199 @@ app.post('/api/auth/reset-password', async (req, res) => {
     });
 });
 
+app.post('/api/auth/email-verification/request', requireAuth, async (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (youthId === null) return sendForbidden(res);
+    const allowed = emailVerificationRequestLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: String(youthId)
+    });
+    if (!allowed) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Please wait before requesting another verification email.'
+        });
+    }
+
+    try {
+        const member = await googleAuthDatabaseGet(
+            `SELECT id, email, email_verified, pending_email FROM youth WHERE id = ?`,
+            [youthId]
+        );
+        if (!member) return sendAuthenticationRequired(res);
+        const pendingEmail = normalizeEmail(member.pending_email);
+        const currentEmail = normalizeEmail(member.email);
+        const targetEmail = pendingEmail || currentEmail;
+        if (!targetEmail) {
+            return sendNoStoreJson(res, 400, {
+                success: false,
+                message: 'Add a valid email to your profile before requesting verification.'
+            });
+        }
+        if (member.email_verified === 1 && !pendingEmail) {
+            return sendNoStoreJson(res, 200, {
+                success: true,
+                message: EMAIL_VERIFICATION_REQUEST_MESSAGE
+            });
+        }
+        await queueEmailVerification({ youthId, targetEmail });
+        logActivity(`Member ${youthId}`, 'EMAIL_VERIFICATION_REQUESTED', 'Email verification message queued');
+        return sendNoStoreJson(res, 200, {
+            success: true,
+            message: EMAIL_VERIFICATION_REQUEST_MESSAGE
+        });
+    } catch (error) {
+        console.warn(`[EMAIL] Verification request failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_REQUEST_FAILED')}`);
+        return sendNoStoreJson(res, 503, {
+            success: false,
+            message: 'We could not send the verification email right now. Please try again later.'
+        });
+    }
+});
+
+app.post('/api/auth/email-verification/cancel', requireAuth, async (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (youthId === null) return sendForbidden(res);
+    try {
+        const member = await googleAuthDatabaseGet('SELECT pending_email FROM youth WHERE id = ?', [youthId]);
+        if (!member) return sendAuthenticationRequired(res);
+        await authTokenStore.revoke({ youthId, purpose: 'email_verification' });
+        await cancelVerificationDelivery(youthId, member.pending_email);
+        await googleAuthDatabaseRun(
+            `UPDATE youth SET pending_email = NULL, pending_email_requested_at = NULL WHERE id = ?`,
+            [youthId]
+        );
+        logActivity(`Member ${youthId}`, 'EMAIL_CHANGE_CANCELLED', 'Pending email change cancelled');
+        return sendNoStoreJson(res, 200, {
+            success: true,
+            message: 'Your pending email change was cancelled.'
+        });
+    } catch (error) {
+        console.warn(`[EMAIL] Verification cancellation failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_CANCEL_FAILED')}`);
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            message: 'The email change could not be cancelled right now.'
+        });
+    }
+});
+
+function rejectInvalidEmailVerification(res) {
+    return sendNoStoreJson(res, 400, {
+        success: false,
+        message: EMAIL_VERIFICATION_INVALID_MESSAGE
+    });
+}
+
+function rejectEmailVerificationMutation(code = 'EMAIL_VERIFICATION_REJECTED') {
+    throw Object.assign(new Error('Email verification rejected'), { code });
+}
+
+app.post('/api/auth/email-verification/confirm', async (req, res) => {
+    const token = req.body && typeof req.body.token === 'string' ? req.body.token : '';
+    const tokenIsValid = /^[A-Za-z0-9_-]{43}$/.test(token);
+    const allowed = emailVerificationConfirmLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: tokenIsValid ? token : null
+    });
+    if (!allowed) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Too many verification attempts. Please try again later.'
+        });
+    }
+    if (!tokenIsValid) return rejectInvalidEmailVerification(res);
+
+    let consumed;
+    try {
+        consumed = await authTokenStore.consumeWithMutation(
+            { rawToken: token, purpose: 'email_verification' },
+            async (tokenRecord, transaction) => {
+                if (!Number.isInteger(tokenRecord.youthId) || tokenRecord.youthId <= 0) {
+                    rejectEmailVerificationMutation();
+                }
+                const member = await transaction.get(
+                    `SELECT id, email, email_verified, pending_email
+                     FROM youth WHERE id = ?`,
+                    [tokenRecord.youthId]
+                );
+                if (!member) rejectEmailVerificationMutation();
+                const currentEmail = normalizeEmail(member.email);
+                const pendingEmail = normalizeEmail(member.pending_email);
+                const verifiedAt = Date.now();
+
+                if (pendingEmail && tokenRecord.targetEmail === pendingEmail) {
+                    const update = await transaction.run(
+                        `UPDATE youth
+                         SET email = ?, email_verified = 1, email_verified_at = ?,
+                             pending_email = NULL, pending_email_requested_at = NULL
+                         WHERE id = ? AND pending_email = ?`,
+                        [pendingEmail, verifiedAt, member.id, member.pending_email]
+                    );
+                    if (update.changes !== 1) rejectEmailVerificationMutation();
+                    await transaction.run(
+                        `UPDATE auth_one_time_tokens SET revoked_at = ?
+                         WHERE youth_id = ? AND purpose = 'password_reset'
+                           AND used_at IS NULL AND revoked_at IS NULL`,
+                        [verifiedAt, member.id]
+                    );
+                    return {
+                        youthId: member.id,
+                        changedEmail: true,
+                        oldVerifiedEmail: member.email_verified === 1 ? currentEmail : null
+                    };
+                }
+
+                if (!pendingEmail && currentEmail && tokenRecord.targetEmail === currentEmail) {
+                    const update = await transaction.run(
+                        `UPDATE youth SET email_verified = 1, email_verified_at = ? WHERE id = ?`,
+                        [verifiedAt, member.id]
+                    );
+                    if (update.changes !== 1) rejectEmailVerificationMutation();
+                    return { youthId: member.id, changedEmail: false, oldVerifiedEmail: null };
+                }
+
+                rejectEmailVerificationMutation('EMAIL_VERIFICATION_TARGET_MISMATCH');
+            }
+        );
+    } catch (error) {
+        if (error && typeof error.code === 'string' && error.code.startsWith('EMAIL_VERIFICATION_')) {
+            return rejectInvalidEmailVerification(res);
+        }
+        console.warn(`[EMAIL] Verification transaction failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_TRANSACTION_FAILED')}`);
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            message: 'Unable to verify the email safely. Please try again.'
+        });
+    }
+    if (!consumed) return rejectInvalidEmailVerification(res);
+
+    const result = consumed.mutationResult;
+    logActivity(
+        `Member ${result.youthId}`,
+        result.changedEmail ? 'EMAIL_CHANGE_CONFIRMED' : 'EMAIL_VERIFIED',
+        result.changedEmail ? 'Pending email confirmed' : 'Current email confirmed'
+    );
+    if (result.oldVerifiedEmail && emailRecoveryOutbox) {
+        try {
+            await emailRecoveryOutbox.enqueue({
+                recipient: result.oldVerifiedEmail,
+                messageType: 'email_changed',
+                payload: buildEmailChangedMessage(),
+                dedupeKey: `email-changed:${result.youthId}:${consumed.usedAt}`
+            });
+        } catch (error) {
+            console.warn(`[EMAIL] Email change notice enqueue failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_CHANGE_NOTICE_QUEUE_FAILED')}`);
+        }
+    }
+
+    return sendNoStoreJson(res, 200, {
+        success: true,
+        message: result.changedEmail
+            ? 'Your new email is confirmed and connected to your account.'
+            : 'Your email is now verified.'
+    });
+});
+
 app.get('/api/auth/me', (req, res) => {
     const activeSession = getValidSession(req);
     if (!activeSession) {
@@ -2977,28 +3368,142 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-app.put('/api/youth/profile/:id', requireSelfOr('edit_entries', req => req.params.id), async (req, res) => {
+async function updateYouthProfileWithEmailPolicy(req, res, fields) {
+    const targetId = normalizeCanonicalId(req.params.id);
+    if (targetId === null) return res.status(400).json({ success: false, error: 'Invalid member.' });
+    const existing = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [targetId]);
+    if (!existing) return res.status(404).json({ success: false, error: 'Member not found.' });
+
+    const selfUpdate = isCanonicalSelf(req.auth, targetId);
+    const emailProvided = Object.prototype.hasOwnProperty.call(req.body, 'email');
+    const requestedEmailValue = emailProvided && typeof req.body.email === 'string'
+        ? req.body.email.trim()
+        : emailProvided
+            ? null
+            : existing.email;
+    if (emailProvided && requestedEmailValue === null) {
+        return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+    }
+    const requestedEmail = requestedEmailValue ? normalizeEmail(requestedEmailValue) : null;
+    if (requestedEmailValue && !requestedEmail) {
+        return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+    }
+    const currentEmail = normalizeEmail(existing.email);
+    const emailChanged = requestedEmail !== currentEmail;
+    const previousPendingEmail = normalizeEmail(existing.pending_email);
+
+    if (selfUpdate && emailChanged && !emailVerificationRequestLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: String(targetId)
+    })) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Please wait before requesting another email change.'
+        });
+    }
+
+    const assignments = [];
+    const values = [];
+    for (const [column, value] of Object.entries(fields)) {
+        assignments.push(`${column} = ?`);
+        values.push(value);
+    }
+
+    let pendingEmailChange = false;
+    if (selfUpdate && emailChanged) {
+        if (!requestedEmail) {
+            return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+        }
+        assignments.push('email = ?', 'pending_email = ?', 'pending_email_requested_at = ?');
+        values.push(existing.email, requestedEmail, Date.now());
+        pendingEmailChange = true;
+    } else if (!selfUpdate && emailChanged) {
+        assignments.push(
+            'email = ?',
+            'email_verified = 0',
+            'email_verified_at = NULL',
+            'pending_email = NULL',
+            'pending_email_requested_at = NULL'
+        );
+        values.push(requestedEmail);
+    } else {
+        assignments.push('email = ?');
+        values.push(existing.email);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'profile_picture') && req.body.profile_picture !== undefined) {
+        assignments.push('profile_picture = ?');
+        values.push(req.body.profile_picture);
+    }
     const passwordChange = await getAuthorizedProfilePasswordChange(req, res);
     if (!passwordChange) return;
+    if (passwordChange.requested) {
+        assignments.push('password = ?');
+        values.push(passwordChange.encodedPassword);
+    }
+    values.push(targetId);
 
-    const { name, age, birthday, social_media, parents_name, email, profile_picture, gender } = req.body;
-    let sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, email=?, gender=?`;
-    const params = [name, age, birthday, social_media, parents_name, email, gender];
-    if (profile_picture !== undefined) { sql += `, profile_picture=?`; params.push(profile_picture); }
-    if (passwordChange.requested) { sql += `, password=?`; params.push(passwordChange.encodedPassword); }
-    sql += ` WHERE id=?`;
-    params.push(req.params.id);
-    db.run(sql, params, function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        const finish = () => {
-            logActivity(getCanonicalAuditActor(req), 'UPDATE_PROFILE', `Updated profile details for ID ${req.params.id}`);
-            db.get(`SELECT * FROM youth WHERE id = ?`, [req.params.id], (e, member) => { res.json({ success: true, member: sanitizeMemberForClient(member) }); });
+    try {
+        const updated = await googleAuthDatabaseRun(
+            `UPDATE youth SET ${assignments.join(', ')} WHERE id = ?`,
+            values
+        );
+        if (updated.changes !== 1) throw new Error('Profile update failed');
+        if (passwordChange.requested) {
+            await googleAuthDatabaseRun('UPDATE users SET password = ? WHERE youth_id = ?', [
+                passwordChange.encodedPassword,
+                targetId
+            ]);
+        }
+
+        let verificationQueued = null;
+        if (pendingEmailChange) {
+            await authTokenStore.revoke({ youthId: targetId, purpose: 'email_verification' });
+            await cancelVerificationDelivery(targetId, previousPendingEmail);
+            await cancelVerificationDelivery(targetId, currentEmail);
+            try {
+                await queueEmailVerification({ youthId: targetId, targetEmail: requestedEmail });
+                verificationQueued = true;
+                logActivity(`Member ${targetId}`, 'EMAIL_CHANGE_REQUESTED', 'Pending email change requested');
+            } catch (error) {
+                verificationQueued = false;
+                console.warn(`[EMAIL] Pending email verification queue failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_REQUEST_FAILED')}`);
+            }
+        } else if (!selfUpdate && emailChanged) {
+            await authTokenStore.revoke({ youthId: targetId, purpose: 'email_verification' });
+            await authTokenStore.revoke({ youthId: targetId, purpose: 'password_reset' });
+            await cancelVerificationDelivery(targetId, previousPendingEmail);
+            await cancelVerificationDelivery(targetId, currentEmail);
+            logActivity(`Member ${targetId}`, 'EMAIL_ADMIN_CHANGED', 'Member email changed and verification cleared');
+        }
+
+        logActivity(getCanonicalAuditActor(req), 'UPDATE_PROFILE', `Updated profile details for ID ${targetId}`);
+        const member = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [targetId]);
+        const response = {
+            success: true,
+            member: selfUpdate ? sanitizeMemberForAuth(member) : sanitizeMemberForClient(member)
         };
-        if (!passwordChange.requested) return finish();
-        db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [passwordChange.encodedPassword, req.params.id], function(passwordErr) {
-            if (passwordErr) return res.status(500).json({ success: false, error: 'Unable to update password.' });
-            finish();
-        });
+        if (pendingEmailChange) {
+            response.email_verification_queued = verificationQueued;
+            response.message = verificationQueued
+                ? 'We sent a confirmation link to your new email. Your current email will stay in place until the new one is confirmed.'
+                : 'Your profile was saved, but we could not send the confirmation email. Please use Resend verification email later.';
+        }
+        return res.json(response);
+    } catch (error) {
+        console.error('Profile update failed');
+        return res.status(500).json({ success: false, error: 'Unable to update profile.' });
+    }
+}
+
+app.put('/api/youth/profile/:id', requireSelfOr('edit_entries', req => req.params.id), async (req, res) => {
+    return updateYouthProfileWithEmailPolicy(req, res, {
+        name: req.body.name,
+        age: req.body.age,
+        birthday: req.body.birthday,
+        social_media: req.body.social_media,
+        parents_name: req.body.parents_name,
+        gender: req.body.gender
     });
 });
 
@@ -3041,21 +3546,62 @@ app.get('/api/youth', async (req, res) => {
     });
 });
 app.get('/api/youth/:id/history', (req, res) => { db.all(`SELECT a.checked_in_at, a.is_walkin, e.name as event_name, e.event_date FROM attendance a JOIN events e ON a.event_id = e.id WHERE a.youth_id = ? ORDER BY a.checked_in_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
-app.post('/api/youth', (req, res) => {
+app.post('/api/youth', async (req, res) => {
     const { name, age, email, mobile, social_media, birthday, parents_name, profile_picture, actor } = req.body;
-    db.get(`SELECT MAX(id) as maxId FROM youth`, [], (err, row) => {
+    const normalizedEmail = email ? normalizeEmail(email) : null;
+    if (email && !normalizedEmail) return res.status(400).json({ error: 'Enter a valid email address.' });
+    if (normalizedEmail && !emailRegistrationLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: normalizedEmail
+    })) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Please wait before submitting another registration.'
+        });
+    }
+    try {
+        if (normalizedEmail) {
+            const existingEmail = await googleAuthDatabaseGet(
+                'SELECT id FROM youth WHERE LOWER(TRIM(email)) = ? LIMIT 1',
+                [normalizedEmail]
+            );
+            if (existingEmail) {
+                return res.status(409).json({ error: 'An account with this email already exists.' });
+            }
+        }
+        const row = await googleAuthDatabaseGet('SELECT MAX(id) as maxId FROM youth');
         const nextId = (row && row.maxId ? row.maxId : 0) + 1;
         const qrCode = `FOG-MEMBER-${String(nextId).padStart(3, '0')}`;
-        db.run(`INSERT INTO youth (name, age, email, mobile, social_media, birthday, parents_name, qr_code, profile_picture, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [name, age, email || null, mobile, social_media, birthday, parents_name, qrCode, profile_picture || null, getManilaTime()], function (err) {
-                if (err) return res.status(500).json({ error: err.message });
-                const youthId = this.lastID;
-                db.run(`INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at) VALUES (?, '[]', ?, ?)`, [qrCode, youthId, getManilaTime()]);
-                logActivity(actor, 'CREATE_MEMBER', `Registered member '${name}' (${qrCode})`);
-                res.json({ id: youthId, qr_code: qrCode });
-            }
+        const inserted = await googleAuthDatabaseRun(
+            `INSERT INTO youth
+                (name, age, email, mobile, social_media, birthday, parents_name, qr_code,
+                 profile_picture, email_verified, email_verified_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)`,
+            [name, age, normalizedEmail, mobile, social_media, birthday, parents_name,
+                qrCode, profile_picture || null, getManilaTime()]
         );
-    });
+        const youthId = inserted.lastID;
+        await googleAuthDatabaseRun(
+            `INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at)
+             VALUES (?, '[]', ?, ?)`,
+            [qrCode, youthId, getManilaTime()]
+        );
+        logActivity(actor, 'CREATE_MEMBER', `Registered member (${qrCode})`);
+        let verificationQueued = false;
+        if (normalizedEmail) {
+            try {
+                await queueEmailVerification({ youthId, targetEmail: normalizedEmail });
+                verificationQueued = true;
+                logActivity(`Member ${youthId}`, 'EMAIL_VERIFICATION_REQUESTED', 'Registration verification message queued');
+            } catch (error) {
+                console.warn(`[EMAIL] Registration verification queue failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_REQUEST_FAILED')}`);
+            }
+        }
+        return res.json({ id: youthId, qr_code: qrCode, email_verification_queued: verificationQueued });
+    } catch (error) {
+        console.error('Member registration failed');
+        return res.status(500).json({ error: 'Unable to register the member.' });
+    }
 });
 app.delete('/api/youth/:id', requireAllPermissions(['access_directory', 'delete_entries']), (req, res) => {
     const actor = getCanonicalAuditActor(req);
@@ -4180,29 +4726,15 @@ app.get('/api/admin/ministry-logs-v36', requirePermission('edit_entries'), (req,
 
 // --- V37: PROFILE DETAILS & PRIORITY ENDPOINTS ---
 app.put('/api/youth-v37/profile/:id', requireSelfOr('edit_entries', req => req.params.id), async (req, res) => {
-    const passwordChange = await getAuthorizedProfilePasswordChange(req, res);
-    if (!passwordChange) return;
-
-    const { name, email, age, birthday, gender, mobile, address, social_media, parents_name, profile_picture } = req.body;
-    let query = "UPDATE youth SET name=?, email=?, age=?, birthday=?, gender=?, mobile=?, address=?, social_media=?, parents_name=?";
-    let params = [name, email, age, birthday, gender, mobile, address, social_media, parents_name];
-    
-    if (profile_picture) { query += ", profile_picture=?"; params.push(profile_picture); }
-    if (passwordChange.requested) { query += ", password=?"; params.push(passwordChange.encodedPassword); }
-    query += " WHERE id=?";
-    params.push(req.params.id);
-
-    db.run(query, params, function(err) {
-        if(err) return res.status(500).json({success: false, error: err.message});
-        const finish = () => {
-            logActivity(getCanonicalAuditActor(req), 'UPDATE_PROFILE', `Updated profile details for ID ${req.params.id}`);
-            db.get("SELECT * FROM youth WHERE id=?", [req.params.id], (err, member) => { res.json({success: true, member: sanitizeMemberForClient(member)}); });
-        };
-        if (!passwordChange.requested) return finish();
-        db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [passwordChange.encodedPassword, req.params.id], function(passwordErr) {
-            if (passwordErr) return res.status(500).json({ success: false, error: 'Unable to update password.' });
-            finish();
-        });
+    return updateYouthProfileWithEmailPolicy(req, res, {
+        name: req.body.name,
+        age: req.body.age,
+        birthday: req.body.birthday,
+        gender: req.body.gender,
+        mobile: req.body.mobile,
+        address: req.body.address,
+        social_media: req.body.social_media,
+        parents_name: req.body.parents_name
     });
 });
 
@@ -4334,16 +4866,26 @@ app.get('/api/growth-games/funnel', (req, res) => {
 // ==========================================
 app.post('/api/public/register-wanderer', (req, res) => {
     const { name, email, password } = req.body;
+    const normalizedEmail = normalizeEmail(email);
     
-    if (!name || !email) {
+    if (!name || !normalizedEmail) {
         return res.status(400).json({ error: "Name and email are strictly required." });
     }
     if (typeof password !== 'string' || password.length < 8 || password.length > 128 || !/\S/.test(password)) {
         return res.status(400).json({ error: "A password of 8 to 128 characters is required." });
     }
+    if (!emailRegistrationLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: normalizedEmail
+    })) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Please wait before submitting another registration.'
+        });
+    }
     
     if (typeof db !== 'undefined') {
-        db.get("SELECT id FROM youth WHERE email = ?", [email], async (err, row) => {
+        db.get("SELECT id FROM youth WHERE LOWER(TRIM(email)) = ? LIMIT 1", [normalizedEmail], async (err, row) => {
             if (err) return res.status(500).json({ error: "Unable to check registration details." });
             
             if (row) {
@@ -4360,13 +4902,27 @@ app.post('/api/public/register-wanderer', (req, res) => {
                     return res.status(500).json({ error: "Unable to create the account." });
                 }
                 // Insert new user
-                db.run("INSERT INTO youth (name, email, password) VALUES (?, ?, ?)", [name, email, encodedPassword], function(err) {
+                db.run(
+                    `INSERT INTO youth
+                        (name, email, password, email_verified, email_verified_at)
+                     VALUES (?, ?, ?, 0, NULL)`,
+                    [name, normalizedEmail, encodedPassword],
+                    function(err) {
                     if (err) return res.status(500).json({ error: "Unable to create the account." });
 
                     const newYouthId = this.lastID;
-                    db.get("SELECT id, email, qr_code FROM youth WHERE id = ?", [newYouthId], (lookupErr, newMember) => {
+                    db.get("SELECT id, email, qr_code FROM youth WHERE id = ?", [newYouthId], async (lookupErr, newMember) => {
                         if (lookupErr || !newMember) {
                             return res.status(500).json({ error: "Account created, but sign-in could not be completed. Please sign in." });
+                        }
+
+                        let verificationQueued = false;
+                        try {
+                            await queueEmailVerification({ youthId: newYouthId, targetEmail: normalizedEmail });
+                            verificationQueued = true;
+                            logActivity(`Member ${newYouthId}`, 'EMAIL_VERIFICATION_REQUESTED', 'Registration verification message queued');
+                        } catch (error) {
+                            console.warn(`[EMAIL] Wanderer verification queue failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_REQUEST_FAILED')}`);
                         }
 
                         const canonicalUsername = newMember.qr_code || newMember.email || String(newMember.id);
@@ -4374,7 +4930,12 @@ app.post('/api/public/register-wanderer', (req, res) => {
                             req,
                             res,
                             { userId: null, youthId: newMember.id, username: canonicalUsername },
-                            { success: true, is_new: true, message: "Profile created successfully." }
+                            {
+                                success: true,
+                                is_new: true,
+                                email_verification_queued: verificationQueued,
+                                message: "Profile created successfully. Please confirm your email when the message arrives."
+                            }
                         );
                     });
                 });

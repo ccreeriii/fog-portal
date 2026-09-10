@@ -5031,11 +5031,69 @@ window.handleSelfProfileUpdate = async function(e) {
         const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await res.json();
         if (data.success) {
-            alert('Profile updated successfully!');
+            alert(data.message || 'Profile updated successfully!');
             window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
             window.populateProfileTab(currentMember);
+        } else {
+            alert(data.error || 'Unable to update your profile.');
         }
     });
+};
+
+window.requestMyEmailVerification = async function() {
+    try {
+        const response = await fetch('/api/auth/email-verification/request', {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+        });
+        const body = await response.json();
+        alert(body.message || (response.ok
+            ? 'If your email needs confirmation, we’ll send you a verification link.'
+            : 'We could not send the verification email right now.'));
+    } catch (error) {
+        alert('We could not send the verification email right now. Please try again later.');
+    }
+};
+
+window.cancelMyEmailChange = async function() {
+    try {
+        const response = await fetch('/api/auth/email-verification/cancel', {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+        });
+        const body = await response.json();
+        if (!response.ok) return alert(body.message || 'The email change could not be cancelled right now.');
+        alert(body.message || 'Your pending email change was cancelled.');
+        const authResult = await window.refreshAuthenticatedIdentity();
+        if (authResult.authenticated && currentMember) window.populateProfileTab(currentMember);
+    } catch (error) {
+        alert('The email change could not be cancelled right now.');
+    }
+};
+
+window.renderMyEmailVerificationStatus = function(member) {
+    const status = document.getElementById('myEmailVerificationStatus');
+    const verifyButton = document.getElementById('verifyMyEmailBtn');
+    const cancelButton = document.getElementById('cancelMyEmailChangeBtn');
+    if (!status || !verifyButton || !cancelButton || !member) return;
+
+    if (member.pending_email) {
+        status.textContent = `Waiting for confirmation: ${member.pending_email}`;
+        verifyButton.textContent = 'Resend verification email';
+        verifyButton.style.display = 'inline-block';
+        cancelButton.style.display = 'inline-block';
+        return;
+    }
+    status.textContent = member.email_verified === 1 ? 'Verified' : 'Not verified';
+    verifyButton.textContent = 'Verify my email';
+    verifyButton.style.display = member.email && member.email_verified !== 1 ? 'inline-block' : 'none';
+    cancelButton.style.display = 'none';
 };
 
 // --- FIX 2: HOME DASHBOARD BUTTONS ("I'm Ready", "Discern", "Expand Service") ---
@@ -6552,6 +6610,9 @@ window.populateProfileTab = function(member) {
             el.value = member[key] || '';
         }
     });
+    if (typeof window.renderMyEmailVerificationStatus === 'function') {
+        window.renderMyEmailVerificationStatus(member);
+    }
 
     if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
 
@@ -6690,6 +6751,9 @@ window.populateProfileTab = function(member) {
             el.value = member[key] || '';
         }
     });
+    if (typeof window.renderMyEmailVerificationStatus === 'function') {
+        window.renderMyEmailVerificationStatus(member);
+    }
 
     if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
 
@@ -8391,6 +8455,9 @@ window.populateProfileTab = function(member) {
             el.value = member[key] || '';
         }
     });
+    if (typeof window.renderMyEmailVerificationStatus === 'function') {
+        window.renderMyEmailVerificationStatus(member);
+    }
 
     if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
     const av = document.getElementById('myProfileAvatar');
@@ -8425,7 +8492,7 @@ window.populateProfileTab = function(member) {
     const form = document.querySelector('form[onsubmit="handleSelfProfileUpdate(event)"]');
 
     if (bio) {
-        const currentState = [member.name, member.email, member.gender, member.mobile, member.address, member.age, member.birthday, member.social_media, member.parents_name].join('|');
+        const currentState = [member.name, member.email, member.email_verified, member.pending_email, member.gender, member.mobile, member.address, member.age, member.birthday, member.social_media, member.parents_name].join('|');
 
         if (bio.getAttribute('data-sync-state') !== currentState) {
             bio.setAttribute('data-sync-state', currentState);
