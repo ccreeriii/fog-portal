@@ -214,6 +214,9 @@ test('account claim HTTP foundation enforces authorization, privacy, and bounded
 
     await fsp.mkdir(path.join(temporaryRoot, 'lib'), { recursive: true });
     await fsp.mkdir(path.join(temporaryRoot, 'public', 'img'), { recursive: true });
+    for (const directory of ['terms', 'privacy']) {
+        await fsp.cp(path.join(repositoryRoot, 'public', directory), path.join(temporaryRoot, 'public', directory), { recursive: true });
+    }
     const serverSource = await fsp.readFile(path.join(repositoryRoot, 'server.js'), 'utf8');
     const isolatedSource = serverSource
         .replace('void runDatabaseBackup();', 'void Promise.resolve();')

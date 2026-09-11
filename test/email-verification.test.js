@@ -107,6 +107,18 @@ function createSession(sessionStore, fixture, suffix) {
     return `koinonia_session=${sessionId}`;
 }
 
+async function acceptCurrentLegalPolicies(database, userId) {
+    const terms = await get(database, "SELECT version, content_sha256 FROM legal_policy_versions WHERE policy_type = 'terms'");
+    const privacy = await get(database, "SELECT version, content_sha256 FROM legal_policy_versions WHERE policy_type = 'privacy'");
+    await run(
+        database,
+        `INSERT INTO legal_acceptances
+            (user_id, terms_version, privacy_version, terms_sha256, privacy_sha256, accepted_at, source)
+         VALUES (?, ?, ?, ?, ?, ?, 'existing_user_gate')`,
+        [userId, terms.version, privacy.version, terms.content_sha256, privacy.content_sha256, Date.now()]
+    );
+}
+
 async function latestVerificationToken(database, encryptionKey, youthId, targetEmail = null) {
     const tokenRow = await get(
         database,
@@ -339,6 +351,7 @@ test('verified email and pending email changes fail closed across application fl
 
     await t.test('cancelling a pending change clears it and invalidates its verification link', async () => {
         const fixture = await createMember(database, 'CANCEL', { verified: 1, permissions: [] });
+        await acceptCurrentLegalPolicies(database, fixture.userId);
         const cookie = createSession(application.sessionStore, fixture, 'cancel');
         const pendingEmail = 'cancelled-change@example.test';
         assert.equal((await requestJson(origin, `/api/youth/profile/${fixture.youthId}`, {
@@ -412,6 +425,7 @@ test('verified email and pending email changes fail closed across application fl
 
     await t.test('self email change remains pending, supersedes old verification, swaps atomically, and revokes reset tokens', async () => {
         const fixture = await createMember(database, 'SELF-CHANGE', { verified: 1, permissions: [] });
+        await acceptCurrentLegalPolicies(database, fixture.userId);
         const cookie = createSession(application.sessionStore, fixture, 'self-change');
         const resetToken = await tokenStore.issue({
             purpose: 'password_reset', youthId: fixture.youthId, email: fixture.email, ttlMs: 60_000
@@ -482,6 +496,7 @@ test('verified email and pending email changes fail closed across application fl
 
     await t.test('same-email save preserves trust while staff email edits clear trust and pending state', async () => {
         const same = await createMember(database, 'SAME', { verified: 1, permissions: [] });
+        await acceptCurrentLegalPolicies(database, same.userId);
         const sameCookie = createSession(application.sessionStore, same, 'same');
         assert.equal((await requestJson(origin, `/api/youth/profile/${same.youthId}`, {
             method: 'PUT', cookie: sameCookie,
@@ -490,6 +505,7 @@ test('verified email and pending email changes fail closed across application fl
         assert.equal((await get(database, 'SELECT email_verified FROM youth WHERE id = ?', [same.youthId])).email_verified, 1);
 
         const staff = await createMember(database, 'STAFF', { verified: 1, permissions: ['edit_entries'] });
+        await acceptCurrentLegalPolicies(database, staff.userId);
         const target = await createMember(database, 'STAFF-TARGET', {
             verified: 1, pendingEmail: 'old-pending@example.test'
         });
@@ -558,20 +574,35 @@ test('verified email and pending email changes fail closed across application fl
         assert.ok(await get(database, "SELECT id FROM auth_one_time_tokens WHERE youth_id = ? AND purpose = 'email_verification'", [member.id]));
         const linkedUser = await get(database, 'SELECT id FROM users WHERE youth_id = ?', [member.id]);
         assert.ok(linkedUser);
-        assert.deepEqual(
-            await get(
-                database,
-                `SELECT user_id, terms_version, privacy_version, source
-                 FROM legal_acceptances WHERE user_id = ?`,
-                [linkedUser.id]
-            ),
-            {
-                user_id: linkedUser.id,
-                terms_version: '2026-09-11',
-                privacy_version: '2026-09-11',
-                source: 'registration'
-            }
+        const registrationAcceptance = await get(
+            database,
+            `SELECT id, user_id, terms_version, privacy_version, terms_sha256,
+                    privacy_sha256, source
+             FROM legal_acceptances WHERE user_id = ?`,
+            [linkedUser.id]
         );
+        assert.equal(registrationAcceptance.user_id, linkedUser.id);
+        assert.equal(registrationAcceptance.terms_version, '2026-09-11');
+        assert.equal(registrationAcceptance.privacy_version, '2026-09-11');
+        assert.equal(registrationAcceptance.source, 'registration');
+        assert.match(registrationAcceptance.terms_sha256, /^[a-f0-9]{64}$/);
+        assert.match(registrationAcceptance.privacy_sha256, /^[a-f0-9]{64}$/);
+        const registrationAudit = await get(
+            database,
+            `SELECT username, details FROM activity_logs
+             WHERE action = 'LEGAL_ACCEPTANCE_RECORDED'
+             ORDER BY id DESC LIMIT 1`
+        );
+        assert.equal(registrationAudit.username, `User ${linkedUser.id}`);
+        assert.deepEqual(JSON.parse(registrationAudit.details), {
+            acceptance_id: registrationAcceptance.id,
+            user_id: linkedUser.id,
+            terms_version: '2026-09-11',
+            privacy_version: '2026-09-11',
+            source: 'registration',
+            terms_sha256: registrationAcceptance.terms_sha256,
+            privacy_sha256: registrationAcceptance.privacy_sha256
+        });
         const duplicate = await requestJson(origin, '/api/public/register-wanderer', {
             body: {
                 name: 'Duplicate', email: 'NEW-WANDERER@example.test',
@@ -745,20 +776,36 @@ test('verified email and pending email changes fail closed across application fl
         assert.ok(newGoogle.email_verified_at);
         const googleUser = await get(database, 'SELECT id FROM users WHERE youth_id = ?', [newGoogle.id]);
         assert.ok(googleUser);
-        assert.deepEqual(
-            await get(
-                database,
-                `SELECT user_id, terms_version, privacy_version, source
-                 FROM legal_acceptances WHERE user_id = ?`,
-                [googleUser.id]
-            ),
-            {
-                user_id: googleUser.id,
-                terms_version: '2026-09-11',
-                privacy_version: '2026-09-11',
-                source: 'google_signup'
-            }
+        const googleAcceptance = await get(
+            database,
+            `SELECT id, user_id, terms_version, privacy_version, terms_sha256,
+                    privacy_sha256, source
+             FROM legal_acceptances WHERE user_id = ?`,
+            [googleUser.id]
         );
+        assert.equal(googleAcceptance.user_id, googleUser.id);
+        assert.equal(googleAcceptance.terms_version, '2026-09-11');
+        assert.equal(googleAcceptance.privacy_version, '2026-09-11');
+        assert.equal(googleAcceptance.source, 'google_signup');
+        assert.match(googleAcceptance.terms_sha256, /^[a-f0-9]{64}$/);
+        assert.match(googleAcceptance.privacy_sha256, /^[a-f0-9]{64}$/);
+        const googleAudits = await all(
+            database,
+            `SELECT username, details FROM activity_logs
+             WHERE action = 'LEGAL_ACCEPTANCE_RECORDED'`
+        );
+        const googleAudit = googleAudits.find(audit => JSON.parse(audit.details).user_id === googleUser.id);
+        assert.ok(googleAudit);
+        assert.equal(googleAudit.username, `User ${googleUser.id}`);
+        assert.deepEqual(JSON.parse(googleAudit.details), {
+            acceptance_id: googleAcceptance.id,
+            user_id: googleUser.id,
+            terms_version: '2026-09-11',
+            privacy_version: '2026-09-11',
+            source: 'google_signup',
+            terms_sha256: googleAcceptance.terms_sha256,
+            privacy_sha256: googleAcceptance.privacy_sha256
+        });
     });
 
     await t.test('email-change notice queue failure never reverses a confirmed pending email', async () => {

@@ -329,6 +329,27 @@
         </div>
     </div>
 
+    <div id="existingUserLegalGate" class="modal" role="dialog" aria-modal="true" aria-labelledby="existingUserLegalGateTitle" hidden style="z-index:30000 !important;">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-drag-handle" aria-hidden="true"></div>
+            <h2 id="existingUserLegalGateTitle">Before you continue</h2>
+            <p style="color:var(--text-muted); line-height:1.6;">We've added our Terms of Service and Privacy Policy for the Fire Of God Ministries Community Portal.</p>
+            <p style="color:var(--text-muted); line-height:1.6;">Please review and accept them to continue using the Community Portal.</p>
+            <form id="existingUserLegalGateForm">
+                <div class="form-group" style="display:flex; gap:10px; align-items:flex-start;">
+                    <input id="existingUserLegalAccepted" type="checkbox" required style="margin-top:5px; width:18px; height:18px; flex:0 0 auto;">
+                    <label for="existingUserLegalAccepted" style="line-height:1.5;">I have read and agree to the <a href="/terms/" target="_blank" rel="noopener noreferrer">Terms of Service</a> and acknowledge the <a href="/privacy/" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</label>
+                </div>
+                <p id="existingUserLegalGateStatus" role="alert" aria-live="polite" style="min-height:1.4em; color:var(--danger);"></p>
+                <button id="existingUserLegalGateSubmit" type="submit" class="btn btn-primary" style="width:100%;">Agree &amp; Continue</button>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
+                    <a class="btn btn-outline" href="/faq/">Help &amp; Support</a>
+                    <button id="existingUserLegalGateLogout" type="button" class="btn btn-outline">Logout</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="forgotPasswordTab" class="tab-content">
         <div class="card" style="max-width: 400px; margin: 40px auto;">
             <h2>Reset your password</h2>
@@ -428,6 +449,14 @@
             <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 10px; border-bottom: 2px solid var(--bg-light); padding-bottom: 5px;">Personal Details</h3>
             <div id="myBioSummary" style="font-size: 0.95rem; color: var(--text-muted); line-height: 1.6; text-align: left;">Loading details...</div>
         </div>
+        <section id="myLegalPrivacySection" aria-labelledby="myLegalPrivacyTitle" style="background:#FFF; padding:20px; border-radius:12px; border:1px solid var(--border-color); margin-bottom:20px;">
+            <h3 id="myLegalPrivacyTitle" style="font-size:1.1rem; color:var(--text-main); margin-bottom:12px; border-bottom:2px solid var(--bg-light); padding-bottom:5px;">Legal &amp; Privacy</h3>
+            <div id="myLegalPrivacyStatus" style="font-size:0.9rem; color:var(--text-muted); line-height:1.6;">Loading legal status…</div>
+            <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;">
+                <a class="btn btn-outline btn-sm" href="/terms/" target="_blank" rel="noopener noreferrer">View Terms of Service</a>
+                <a class="btn btn-outline btn-sm" href="/privacy/" target="_blank" rel="noopener noreferrer">View Privacy Policy</a>
+            </div>
+        </section>
         <div class="sub-nav" style="margin-bottom: 15px;">
             <button id="btnMyProfileTabRoles" class="sub-nav-btn active" onclick="switchMyProfileTab('roles')">🎭 Roles</button>
             <button id="btnMyProfileTabAttendance" class="sub-nav-btn" onclick="switchMyProfileTab('attendance')">📋 Participation</button>
@@ -1761,7 +1790,14 @@
 
 <script>
     window.finishGooglePortalLogin = async function(data) {
+        if (data && data.legal_acceptance_required === true) {
+            window.koinoniaAuthStatus = 'legal-required';
+            window.koinoniaReadOnlyLock = true;
+            if (window.showExistingUserLegalGate) window.showExistingUserLegalGate();
+            return;
+        }
         const authResult = await window.refreshAuthenticatedIdentity();
+        if (authResult.legalAcceptanceRequired) return;
         if (!authResult.authenticated) {
             alert('Google sign-in succeeded, but the authenticated session could not be verified. Please sign in again.');
             return;

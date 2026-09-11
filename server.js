@@ -29,11 +29,19 @@ const {
     createAccountClaimStore
 } = require('./lib/account-claim-security');
 const {
+    TERMS_VERSION,
+    PRIVACY_VERSION,
     hasExplicitLegalAcceptance,
+    createCurrentPolicyEvidence,
     initializeLegalAcceptanceSchema,
     createLegalAcceptanceStore
 } = require('./lib/legal-acceptance');
 const app = express();
+
+const currentLegalPolicies = createCurrentPolicyEvidence({
+    termsContent: fs.readFileSync(path.join(__dirname, 'public', 'terms', 'index.html'), 'utf8'),
+    privacyContent: fs.readFileSync(path.join(__dirname, 'public', 'privacy', 'index.html'), 'utf8')
+});
 
 const BOOTSTRAP_STRONG_ADMIN_USERNAME = 'celsocreeriii@gmail.com';
 const BOOTSTRAP_STRONG_ADMIN_PASSWORD = typeof process.env.KOINONIA_BOOTSTRAP_ADMIN_PASSWORD === 'string'
@@ -1306,11 +1314,36 @@ function getCanonicalAuditActor(req) {
     return auth.youthId === null ? null : `Member ${auth.youthId}`;
 }
 
-function sendAuthenticatedLogin(req, res, identity, responseBody) {
+async function resolveLegalUserIdForLogin(identity) {
+    const directUserId = normalizeCanonicalId(identity && identity.userId);
+    if (directUserId) return directUserId;
+    const youthId = normalizeCanonicalId(identity && identity.youthId);
+    if (!youthId) return null;
+    const user = await new Promise((resolve, reject) => {
+        db.get('SELECT id FROM users WHERE youth_id = ? ORDER BY id ASC LIMIT 1', [youthId], (error, row) => (
+            error ? reject(error) : resolve(row || null)
+        ));
+    });
+    return normalizeCanonicalId(user && user.id);
+}
+
+async function sendAuthenticatedLogin(req, res, identity, responseBody) {
     createAuthenticatedSession(req, res, identity);
     const clientResponse = { ...responseBody };
     if (Object.prototype.hasOwnProperty.call(clientResponse, 'member')) {
         clientResponse.member = sanitizeMemberForAuth(clientResponse.member);
+    }
+    try {
+        const userId = await resolveLegalUserIdForLogin(identity);
+        clientResponse.legal_acceptance_required = !userId ||
+            await legalAcceptanceStore.requiresCurrentAcceptance(userId);
+    } catch (error) {
+        console.error('Login legal acceptance status resolution failed');
+        clientResponse.legal_acceptance_required = true;
+    }
+    if (clientResponse.legal_acceptance_required) {
+        clientResponse.terms_version = TERMS_VERSION;
+        clientResponse.privacy_version = PRIVACY_VERSION;
     }
     return res.json(clientResponse);
 }
@@ -1329,6 +1362,66 @@ sessionCleanupTimer.unref();
 
 
 
+
+const LEGAL_GATE_ALLOWED_API_PATHS = Object.freeze([
+    '/api/login',
+    '/api/logout',
+    '/api/push/config',
+    '/api/legal/status',
+    '/api/legal/accept',
+    '/api/help/faq',
+    '/api/help/contact-support'
+]);
+const LEGAL_GATE_ALLOWED_API_PREFIXES = Object.freeze([
+    '/api/public',
+    '/api/auth/google',
+    '/api/auth/forgot-password',
+    '/api/auth/reset-password',
+    '/api/auth/email-verification',
+    '/api/account-claim',
+    '/api/admin/account-claims'
+]);
+
+function isLegalGateAllowedApiPath(requestPath) {
+    if (LEGAL_GATE_ALLOWED_API_PATHS.includes(requestPath)) return true;
+    return LEGAL_GATE_ALLOWED_API_PREFIXES.some(prefix => (
+        requestPath === prefix || requestPath.startsWith(`${prefix}/`)
+    ));
+}
+
+function sendLegalAcceptanceRequired(res) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Vary', 'Cookie');
+    return res.status(428).json({
+        success: false,
+        legal_acceptance_required: true,
+        terms_version: TERMS_VERSION,
+        privacy_version: PRIVACY_VERSION
+    });
+}
+
+async function enforceCurrentLegalAcceptance(req, res, next) {
+    if (!req.path.startsWith('/api/') || isLegalGateAllowedApiPath(req.path)) return next();
+
+    const activeSession = getValidSession(req);
+    if (!activeSession) return next();
+
+    try {
+        const auth = await loadAuthorizationContext(req, res);
+        if (!auth) return next();
+        if (!auth.userId) return sendAuthorizationUnavailable(res);
+        if (await legalAcceptanceStore.requiresCurrentAcceptance(auth.userId)) {
+            return sendLegalAcceptanceRequired(res);
+        }
+        return next();
+    } catch (error) {
+        console.error('Legal acceptance gate resolution failed');
+        return sendAuthorizationUnavailable(res);
+    }
+}
+
+// Register before every API route, including legacy early routes, so active sessions cannot bypass the gate.
+app.use(enforceCurrentLegalAcceptance);
 
 // [KOINONIA PATCH] SUPER ADMIN PASS-ID BY NAME
 app.get('/api/admin/pass-id-by-name/:name', requireStrongAdmin, (req, res) => {
@@ -1858,7 +1951,10 @@ const db = new sqlite3.Database(databasePath, (err) => {
 
 const authTokenStore = createAuthTokenStore({ database: db });
 const accountClaimStore = createAccountClaimStore({ database: db });
-const legalAcceptanceStore = createLegalAcceptanceStore({ database: db });
+const legalAcceptanceStore = createLegalAcceptanceStore({
+    database: db,
+    currentPolicies: currentLegalPolicies
+});
 let emailRecoveryPublicOrigin = null;
 let emailRecoveryOutbox = null;
 let emailRecoveryWorker = null;
@@ -2219,7 +2315,11 @@ const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
         'consumed_by_user_id'
     ]),
     legal_acceptances: Object.freeze([
-        'id', 'user_id', 'terms_version', 'privacy_version', 'accepted_at', 'source'
+        'id', 'user_id', 'terms_version', 'privacy_version', 'terms_sha256',
+        'privacy_sha256', 'accepted_at', 'source'
+    ]),
+    legal_policy_versions: Object.freeze([
+        'id', 'policy_type', 'version', 'content_sha256', 'content_snapshot', 'published_at'
     ])
 });
 
@@ -2317,7 +2417,7 @@ async function applyDeterministicRuntimeMigration() {
 
     await initializeEmailRecoverySchema(db);
     await initializeAccountClaimSchema(db);
-    await initializeLegalAcceptanceSchema(db);
+    await initializeLegalAcceptanceSchema(db, { currentPolicies: currentLegalPolicies });
     await initializeEmailRecoveryRuntime();
     await assertRuntimeSchema();
 }
@@ -2335,6 +2435,55 @@ async function startServerAfterRuntimeSchemaReady() {
 
 function logActivity(username, action, details) {
     db.run(`INSERT INTO activity_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)`, [username || 'System', action, details, getManilaTime()]);
+}
+
+function recordLegalAcceptanceActivity(acceptance) {
+    const userId = normalizeCanonicalId(acceptance && acceptance.user_id);
+    const acceptanceId = normalizeCanonicalId(acceptance && acceptance.id);
+    if (!userId || !acceptanceId) return Promise.reject(new TypeError('Canonical legal acceptance is required'));
+    const details = JSON.stringify({
+        acceptance_id: acceptanceId,
+        user_id: userId,
+        terms_version: acceptance.terms_version,
+        privacy_version: acceptance.privacy_version,
+        source: acceptance.source,
+        terms_sha256: acceptance.terms_sha256,
+        privacy_sha256: acceptance.privacy_sha256
+    });
+    return new Promise((resolve, reject) => {
+        db.run(
+            `INSERT INTO activity_logs (username, action, details, created_at)
+             SELECT ?, 'LEGAL_ACCEPTANCE_RECORDED', ?, ?
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM activity_logs
+                 WHERE action = 'LEGAL_ACCEPTANCE_RECORDED' AND details = ?
+             )`,
+            [`User ${userId}`, details, getManilaTime(), details],
+            error => error ? reject(error) : resolve()
+        );
+    });
+}
+
+async function getCanonicalLegalStatus(userId) {
+    const current = await legalAcceptanceStore.getCurrentAcceptance(userId);
+    const latest = current || await legalAcceptanceStore.getLatestAcceptance(userId);
+    return Object.freeze({
+        legal_acceptance_required: !current,
+        current: Boolean(current),
+        terms: Object.freeze({
+            current_version: TERMS_VERSION,
+            accepted_version: latest ? latest.terms_version : null,
+            accepted_at: current ? current.accepted_at : latest ? latest.accepted_at : null,
+            status: current ? 'Current' : 'Action Required'
+        }),
+        privacy: Object.freeze({
+            current_version: PRIVACY_VERSION,
+            accepted_version: latest ? latest.privacy_version : null,
+            accepted_at: current ? current.accepted_at : latest ? latest.accepted_at : null,
+            status: current ? 'Current' : 'Action Required'
+        }),
+        latest_source: latest ? latest.source : null
+    });
 }
 
 function pushToUser(youthId, title, message, urlPath = '/') {
@@ -2741,6 +2890,112 @@ app.post('/api/help/contact-support', async (req, res) => {
     }
 });
 
+app.get('/api/legal/status', requireAuth, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Vary', 'Cookie');
+    if (!req.auth.userId) return sendAuthorizationUnavailable(res);
+    try {
+        return res.json({ success: true, ...(await getCanonicalLegalStatus(req.auth.userId)) });
+    } catch (error) {
+        console.error('Legal status lookup failed');
+        return res.status(500).json({ success: false, error: 'Legal status is temporarily unavailable.' });
+    }
+});
+
+app.post('/api/legal/accept', requireAuth, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Vary', 'Cookie');
+    if (!hasExplicitLegalAcceptance(req.body && req.body.legal_accepted)) {
+        return res.status(400).json({
+            success: false,
+            error: 'You must agree to the Terms of Service and acknowledge the Privacy Policy to continue.'
+        });
+    }
+    if (!req.auth.userId) return sendAuthorizationUnavailable(res);
+
+    try {
+        const result = await legalAcceptanceStore.acceptCurrentPolicies({
+            userId: req.auth.userId,
+            accepted: true
+        });
+        await recordLegalAcceptanceActivity(result.acceptance);
+        return res.json({ success: true, ...(await getCanonicalLegalStatus(req.auth.userId)) });
+    } catch (error) {
+        console.error('Legal acceptance recording failed');
+        return res.status(500).json({ success: false, error: 'Unable to record legal acceptance safely.' });
+    }
+});
+
+app.get('/api/admin/legal-acceptances', requirePermission('access_permissions'), async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Vary', 'Cookie');
+    try {
+        const currentParams = [
+            TERMS_VERSION,
+            PRIVACY_VERSION,
+            currentLegalPolicies.terms.contentSha256,
+            currentLegalPolicies.privacy.contentSha256
+        ];
+        const [summary, rows] = await Promise.all([
+            googleAuthDatabaseGet(
+                `SELECT COUNT(*) AS total_users,
+                        SUM(CASE WHEN EXISTS (
+                            SELECT 1 FROM legal_acceptances current
+                            WHERE current.user_id = users.id
+                              AND current.terms_version = ? AND current.privacy_version = ?
+                              AND current.terms_sha256 = ? AND current.privacy_sha256 = ?
+                        ) THEN 1 ELSE 0 END) AS accepted_current
+                 FROM users`,
+                currentParams
+            ),
+            googleAuthDatabaseAll(
+                `SELECT u.id AS user_id, u.youth_id, u.username, y.name AS member_name,
+                        latest.terms_version, latest.privacy_version, latest.accepted_at, latest.source,
+                        CASE WHEN current.id IS NULL THEN 0 ELSE 1 END AS current
+                 FROM users u
+                 LEFT JOIN youth y ON y.id = u.youth_id
+                 LEFT JOIN legal_acceptances latest ON latest.id = (
+                     SELECT id FROM legal_acceptances
+                     WHERE user_id = u.id ORDER BY accepted_at DESC, id DESC LIMIT 1
+                 )
+                 LEFT JOIN legal_acceptances current ON current.id = (
+                     SELECT id FROM legal_acceptances
+                     WHERE user_id = u.id AND terms_version = ? AND privacy_version = ?
+                       AND terms_sha256 = ? AND privacy_sha256 = ?
+                     ORDER BY accepted_at DESC, id DESC LIMIT 1
+                 )
+                 ORDER BY u.id ASC LIMIT 1000`,
+                currentParams
+            )
+        ]);
+        const totalUsers = Number(summary && summary.total_users) || 0;
+        const acceptedCurrent = Number(summary && summary.accepted_current) || 0;
+        return res.json({
+            success: true,
+            summary: {
+                total_users: totalUsers,
+                accepted_current: acceptedCurrent,
+                action_required: Math.max(0, totalUsers - acceptedCurrent)
+            },
+            results_limited: totalUsers > rows.length,
+            users: rows.map(row => ({
+                user_id: row.user_id,
+                youth_id: row.youth_id,
+                username: row.username,
+                member_name: row.member_name,
+                current: row.current === 1,
+                latest_terms_version: row.terms_version || null,
+                latest_privacy_version: row.privacy_version || null,
+                latest_accepted_at: row.accepted_at || null,
+                source: row.source || null
+            }))
+        });
+    } catch (error) {
+        console.error('Legal acceptance administration report failed');
+        return res.status(500).json({ success: false, error: 'Legal acceptance report is unavailable.' });
+    }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/manifest.json', (req, res) => {
@@ -3089,7 +3344,7 @@ app.post('/api/auth/google/complete-signup', async (req, res) => {
         const newMember = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [created.youthId]);
         if (!newMember) throw new Error('Provisioned member unavailable');
         clearPendingGoogleSignup(req, res);
-        logActivity(`User ${created.userId}`, 'LEGAL_TERMS_ACCEPTED', 'Accepted current Terms and acknowledged Privacy Policy during Google signup');
+        await recordLegalAcceptanceActivity(await legalAcceptanceStore.getCurrentAcceptance(created.userId));
         logActivity('System', 'NEW_MEMBER_CREATED', 'Auto-provisioned a new member via Google');
         return sendAuthenticatedLogin(
             req,
@@ -5911,7 +6166,7 @@ app.post('/api/public/register-wanderer', async (req, res) => {
         );
         if (!newMember) throw new Error('Created account unavailable');
 
-        logActivity(`User ${created.userId}`, 'LEGAL_TERMS_ACCEPTED', 'Accepted current Terms and acknowledged Privacy Policy during registration');
+        await recordLegalAcceptanceActivity(await legalAcceptanceStore.getCurrentAcceptance(created.userId));
         let verificationQueued = false;
         try {
             await queueEmailVerification({ youthId: created.youthId, targetEmail: normalizedEmail });

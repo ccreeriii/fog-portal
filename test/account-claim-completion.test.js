@@ -78,6 +78,9 @@ test('authenticated account claim completion is atomic and fails closed', { conc
 
     await fsp.mkdir(path.join(temporaryRoot, 'lib'), { recursive: true });
     await fsp.mkdir(path.join(temporaryRoot, 'public', 'img'), { recursive: true });
+    for (const directory of ['terms', 'privacy']) {
+        await fsp.cp(path.join(repositoryRoot, 'public', directory), path.join(temporaryRoot, 'public', directory), { recursive: true });
+    }
     const source = await fsp.readFile(path.join(repositoryRoot, 'server.js'), 'utf8');
     const isolatedSource = source
         .replace('void runDatabaseBackup();', 'void Promise.resolve();')
@@ -187,6 +190,17 @@ test('authenticated account claim completion is atomic and fails closed', { conc
             ...account,
             youthId: targetYouthId
         });
+        const gatedIdentity = await requestJson(origin, '/api/auth/me', {
+            method: 'GET',
+            cookie: replaySession.cookie
+        });
+        assert.equal(gatedIdentity.status, 428);
+        assert.equal(gatedIdentity.json.legal_acceptance_required, true);
+        const legalAcceptance = await requestJson(origin, '/api/legal/accept', {
+            cookie: replaySession.cookie,
+            body: { legal_accepted: true }
+        });
+        assert.equal(legalAcceptance.status, 200);
         const recoveredIdentity = await requestJson(origin, '/api/auth/me', {
             method: 'GET',
             cookie: replaySession.cookie

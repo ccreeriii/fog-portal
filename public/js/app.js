@@ -311,6 +311,15 @@ window.refreshAuthenticatedIdentity = function() {
                 window.clearAuthenticatedClientState();
                 return { authenticated: false, reason: 'unauthenticated' };
             }
+            if (response.status === 428) {
+                const payload = await response.json();
+                window.koinoniaAuthStatus = 'legal-required';
+                window.koinoniaReadOnlyLock = true;
+                if (payload && payload.legal_acceptance_required === true && window.showExistingUserLegalGate) {
+                    window.showExistingUserLegalGate();
+                }
+                return { authenticated: true, legalAcceptanceRequired: true, reason: 'legal-required' };
+            }
             if (!response.ok) {
                 const offlineReadonly = window.enterOfflineReadonlyIdentity();
                 if (!offlineReadonly) window.clearAuthenticatedClientState({ clearOfflineSnapshot: false });
@@ -1106,12 +1115,16 @@ const OfflineManager = {
             const requestPath = getSameOriginRequestPath(resource);
             const publicReadDuringAuthLock = new Set([
                 '/api/readings/snippet',
-                '/api/liturgical/today'
+                '/api/liturgical/today',
+                '/api/legal/status',
+                '/api/legal/accept',
+                '/api/logout',
+                '/api/help/faq',
+                '/api/help/contact-support'
             ]);
-            const isAllowedPublicRead =
-                method === 'GET' &&
-                requestPath &&
-                publicReadDuringAuthLock.has(requestPath);
+            const isAllowedPublicRead = requestPath && publicReadDuringAuthLock.has(requestPath) &&
+                (method === 'GET' || requestPath === '/api/legal/accept' ||
+                    requestPath === '/api/logout' || requestPath === '/api/help/contact-support');
 
             if (
                 window.koinoniaReadOnlyLock &&
@@ -4248,6 +4261,12 @@ window.handleLogin = async function(e) {
         });
         const data = await res.json();
         if (data.success) {
+            if (data.legal_acceptance_required === true) {
+                window.koinoniaAuthStatus = 'legal-required';
+                window.koinoniaReadOnlyLock = true;
+                if (window.showExistingUserLegalGate) window.showExistingUserLegalGate();
+                return;
+            }
             const authResult = await window.refreshAuthenticatedIdentity();
             if (!authResult.authenticated) {
                 alert('Sign-in succeeded, but the authenticated session could not be verified. Please sign in again.');
@@ -4276,6 +4295,10 @@ window.checkLoginState = async function() {
         if(window.loadSecretPrayerPal) window.loadSecretPrayerPal();
         switchTab('pulseDashboardTab');
             if(window.renderHomeJourney) window.renderHomeJourney();
+    } else if (window.koinoniaAuthStatus === 'legal-required') {
+        if (window.showExistingUserLegalGate) window.showExistingUserLegalGate();
+        const loader = document.getElementById('globalPreloader');
+        if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 500); }
     } else {
         switchTab('loginTab');
         const loader = document.getElementById('globalPreloader');
@@ -6742,6 +6765,9 @@ window.populateProfileTab = function(member) {
     if (typeof window.renderMyEmailVerificationStatus === 'function') {
         window.renderMyEmailVerificationStatus(member);
     }
+    if (typeof window.refreshLegalProfileStatus === 'function') {
+        window.refreshLegalProfileStatus();
+    }
 
     if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
 
@@ -8755,6 +8781,9 @@ window.populateProfileTab = function(member) {
     }
     if (typeof window.renderHomeJourney === 'function') {
         window.renderHomeJourney();
+    }
+    if (typeof window.refreshLegalProfileStatus === 'function') {
+        window.refreshLegalProfileStatus();
     }
 };
 

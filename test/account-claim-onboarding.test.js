@@ -90,6 +90,9 @@ test('member account claim onboarding activates only the token-selected existing
     await fsp.mkdir(path.join(temporaryRoot, 'public', 'js'), { recursive: true });
     await fsp.mkdir(path.join(temporaryRoot, 'public', 'css'), { recursive: true });
     await fsp.mkdir(path.join(temporaryRoot, 'public', 'img'), { recursive: true });
+    for (const directory of ['terms', 'privacy']) {
+        await fsp.cp(path.join(repositoryRoot, 'public', directory), path.join(temporaryRoot, 'public', directory), { recursive: true });
+    }
 
     const serverSource = await fsp.readFile(path.join(repositoryRoot, 'server.js'), 'utf8');
     const googleInitializer = "const googleClient = new OAuth2Client('100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com');";
