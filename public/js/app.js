@@ -716,6 +716,12 @@ function blockOfflineReadonlyInteraction(event) {
     const interactiveTarget = event.target.closest('button, a[href], input, select, textarea, form, [onclick]');
     if (!interactiveTarget || interactiveTarget.closest('[data-koinonia-offline-control]')) return;
 
+    // A legal-required session is intentionally read-only, but it is not
+    // the same thing as an offline-readonly session. The mandatory legal
+    // gate must remain interactive so the user can review, accept, get
+    // help, or log out while the rest of the Portal remains locked.
+    if (interactiveTarget.closest('#existingUserLegalGate')) return;
+
     if (event.type === 'submit') {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -1134,7 +1140,11 @@ const OfflineManager = {
             ) {
                 return createOfflineUnavailableResponse();
             }
-            if ((!navigator.onLine || window.koinoniaReadOnlyLock || hasPendingLogout()) && !OFFLINE_SAFE_METHODS.has(method)) {
+            if (
+                (!navigator.onLine || window.koinoniaReadOnlyLock || hasPendingLogout()) &&
+                !OFFLINE_SAFE_METHODS.has(method) &&
+                !isAllowedPublicRead
+            ) {
                 return OfflineManager.handleOfflineMutation(resource, options, method);
             }
 

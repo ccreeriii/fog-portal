@@ -159,18 +159,27 @@
                         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
                         body: JSON.stringify({ legal_accepted: true })
                     });
-                    const payload = await response.json();
+                    const payload = await response.json().catch(() => ({}));
                     if (!response.ok || payload.success !== true || payload.current !== true) {
-                        throw new Error(payload && payload.error
-                            ? payload.error
-                            : 'Unable to record acceptance safely. Please try again.');
+                        const message = payload && typeof payload.error === 'string' && payload.error.trim()
+                            ? payload.error.trim()
+                            : "We couldn't record your acceptance right now. Please try again.";
+                        const serverError = new Error(message);
+                        serverError.name = 'LegalAcceptanceServerError';
+                        throw serverError;
                     }
                     hideExistingUserLegalGate();
                     window.location.reload();
                 } catch (error) {
-                    gate.status.textContent = error && error.message
-                        ? error.message
-                        : 'Unable to record acceptance safely. Please try again.';
+                    const networkFailure = !navigator.onLine ||
+                        (error && (error.name === 'TypeError' || error.name === 'AbortError'));
+
+                    gate.status.textContent = networkFailure
+                        ? 'Unable to reach the Community Portal. Please check your connection and try again.'
+                        : error && error.message
+                            ? error.message
+                            : "We couldn't record your acceptance right now. Please try again.";
+
                     gate.submit.disabled = !gate.checkbox.checked;
                 }
             });
