@@ -151,6 +151,10 @@
                     <label style="font-weight: bold; font-size: 0.9rem; color: var(--text-main);">Create Password</label>
                     <input type="password" class="form-control" placeholder="Make it secure" minlength="8" maxlength="128" required style="border-radius: 8px; padding: 12px; background: #F8FAFC;">
                 </div>
+                <div class="form-group" style="display:flex; gap:10px; align-items:flex-start; margin-bottom:20px;">
+                    <input id="wandererLegalAccepted" type="checkbox" required style="margin-top:5px; width:18px; height:18px; flex:0 0 auto;">
+                    <label for="wandererLegalAccepted" style="font-size:.88rem; line-height:1.5;">I have read and agree to the <a href="/terms/" target="_blank" rel="noopener noreferrer">Terms of Service</a> and acknowledge the <a href="/privacy/" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</label>
+                </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%; font-weight: bold; padding: 14px; font-size: 1.1rem; border-radius: 12px; background: #F59E0B; border: none;">Create Player Profile</button>
             </form>
             
@@ -227,7 +231,8 @@
                     const payload = {
                         name: nameInput ? nameInput.value.trim() : '',
                         email: emailInput ? emailInput.value.trim() : '',
-                        password: passwordInput ? passwordInput.value : ''
+                        password: passwordInput ? passwordInput.value : '',
+                        legal_accepted: document.getElementById('wandererLegalAccepted').checked
                     };
                     
                     try {
@@ -294,5 +299,10 @@
         });
     </script>
 
+    <footer style="padding: 18px 16px 30px; text-align:center; color:var(--text-muted); font-size:.84rem;">
+        <a href="/privacy/">Privacy Policy</a>
+        <span aria-hidden="true"> · </span>
+        <a href="/terms/">Terms of Service</a>
+    </footer>
 </body>
 </html>

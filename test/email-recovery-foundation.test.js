@@ -629,7 +629,7 @@ test('real Google route refuses unverified and ambiguous email while preserving 
     assert.notEqual(isolatedSource, source);
     assert.ok(isolatedSource.includes(fakeVerifier));
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedSource);
-    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js']) {
+    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'legal-acceptance.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
     }
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
@@ -762,8 +762,22 @@ test('real Google route refuses unverified and ambiguous email while preserving 
     const newResponse = await googleRequest({
         sub: 'new-subject', email: ' Brand.New@Example.com ', email_verified: true, name: 'Brand New'
     });
-    assert.equal(newResponse.status, 200);
-    const newBody = await newResponse.json();
+    assert.equal(newResponse.status, 202);
+    const pendingBody = await newResponse.json();
+    assert.equal(pendingBody.legal_acceptance_required, true);
+    assert.equal(await get(database, "SELECT id FROM youth WHERE google_id = 'new-subject'"), null);
+    const pendingCookie = /koinonia_pending_google_signup=[^;]+/.exec(newResponse.headers.get('set-cookie') || '');
+    assert.ok(pendingCookie);
+    const completedResponse = await fetch(`${origin}/api/auth/google/complete-signup`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Cookie: pendingCookie[0]
+        },
+        body: JSON.stringify({ legal_accepted: true })
+    });
+    assert.equal(completedResponse.status, 200);
+    const newBody = await completedResponse.json();
     assert.equal(newBody.is_new, true);
     assert.equal((await get(database, 'SELECT email FROM youth WHERE id = ?', [newBody.member.id])).email, 'brand.new@example.com');
     assert.equal((await get(database, 'SELECT email_verified FROM youth WHERE id = ?', [newBody.member.id])).email_verified, 1);

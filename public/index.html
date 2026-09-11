@@ -313,6 +313,22 @@
         </div>
     </div>
 
+    <div id="googleLegalSetupModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="googleLegalSetupTitle" hidden>
+        <div class="modal-content" style="max-width: 480px;">
+            <h2 id="googleLegalSetupTitle">Complete Account Setup</h2>
+            <p style="color: var(--text-muted); line-height: 1.55;">Your Google identity was verified. Please review these policies before creating your Community Portal account.</p>
+            <form id="googleLegalSetupForm">
+                <div class="form-group" style="display:flex; gap:10px; align-items:flex-start;">
+                    <input id="googleLegalAccepted" type="checkbox" required style="margin-top:5px; width:18px; height:18px; flex:0 0 auto;">
+                    <label for="googleLegalAccepted" style="line-height:1.5;">I have read and agree to the <a href="/terms/" target="_blank" rel="noopener noreferrer">Terms of Service</a> and acknowledge the <a href="/privacy/" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</label>
+                </div>
+                <p id="googleLegalSetupStatus" role="alert" aria-live="polite" style="min-height:1.4em; color:var(--danger);"></p>
+                <button id="googleLegalSetupSubmit" type="submit" class="btn btn-primary" style="width:100%;">Create My Account</button>
+                <button id="googleLegalSetupCancel" type="button" class="btn btn-outline" style="width:100%; margin-top:10px;">Cancel</button>
+            </form>
+        </div>
+    </div>
+
     <div id="forgotPasswordTab" class="tab-content">
         <div class="card" style="max-width: 400px; margin: 40px auto;">
             <h2>Reset your password</h2>
@@ -1364,6 +1380,14 @@
     </div>
 </div>
 
+<footer aria-label="Legal" style="padding:24px 16px 34px; text-align:center; color:var(--text-muted); font-size:.84rem;">
+    <a href="/privacy/">Privacy Policy</a>
+    <span aria-hidden="true"> · </span>
+    <a href="/terms/">Terms of Service</a>
+    <span aria-hidden="true"> · </span>
+    <a href="/faq/">Help &amp; FAQ</a>
+</footer>
+
 <script>
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -1373,6 +1397,7 @@
 </script>
 
 <script src="/js/offline-data.js?v=12.2"></script>
+<script src="/js/legal-acceptance.js?v=1"></script>
 <script src="/js/app.js?v=12.8"></script>
 <script src="/js/v2-discipleship.js?v=12.2"></script>
 <script src="/js/v3-worship.js?v=12.2"></script>
@@ -1735,6 +1760,19 @@
 </div>
 
 <script>
+    window.finishGooglePortalLogin = async function(data) {
+        const authResult = await window.refreshAuthenticatedIdentity();
+        if (!authResult.authenticated) {
+            alert('Google sign-in succeeded, but the authenticated session could not be verified. Please sign in again.');
+            return;
+        }
+        if (window.buildNav) window.buildNav();
+        if (window.applyGranularPermissions) window.applyGranularPermissions();
+        if (data.is_new) alert('Welcome to FOG Ministries! Welcome to the app! Your account has been created seamlessly.');
+        if (window.loadDailyManna) window.loadDailyManna();
+        switchTab('pulseDashboardTab');
+    };
+
     window.handleGoogleCredentialResponse = async function(response) {
         document.getElementById('globalPreloader').style.display = 'flex';
         document.getElementById('globalPreloader').style.opacity = '1';
@@ -1744,17 +1782,9 @@
                 body: JSON.stringify({ token: response.credential })
             });
             const data = await res.json();
-            if (data.success) {
-                const authResult = await window.refreshAuthenticatedIdentity();
-                if (!authResult.authenticated) {
-                    alert('Google sign-in succeeded, but the authenticated session could not be verified. Please sign in again.');
-                    return;
-                }
-                if (window.buildNav) window.buildNav();
-                if (window.applyGranularPermissions) window.applyGranularPermissions();
-                if (data.is_new) alert('Welcome to FOG Ministries! Welcome to the app! Your account has been created seamlessly.');
-                if (window.loadDailyManna) window.loadDailyManna();
-                switchTab('pulseDashboardTab');
+            if (data.success) await window.finishGooglePortalLogin(data);
+            else if (data.legal_acceptance_required && window.openGoogleLegalSetup) {
+                window.openGoogleLegalSetup();
             } else { alert('Authentication failed.'); }
         } catch(e) { console.error(e); alert('Network error during Google sign-in.'); }
         finally { 

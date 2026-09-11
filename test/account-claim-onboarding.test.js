@@ -114,7 +114,7 @@ test('member account claim onboarding activates only the token-selected existing
     assert.notEqual(isolatedSource, serverSource);
     assert.equal(isolatedSource.includes('global.__koinoniaClaimGoogleClient'), true);
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedSource);
-    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'help-faq.js']) {
+    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'help-faq.js', 'legal-acceptance.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
     }
     for (const filename of ['claim/index.html', 'js/claim.js', 'css/claim.css']) {

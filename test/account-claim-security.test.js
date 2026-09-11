@@ -230,7 +230,7 @@ test('account claim HTTP foundation enforces authorization, privacy, and bounded
             'module.exports = { app, db, sessionStore, ready: applyDeterministicRuntimeMigration() };'
         );
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedSource);
-    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js']) {
+    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'legal-acceptance.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
     }
     await fsp.writeFile(path.join(temporaryRoot, 'public', 'index.html'), '<!doctype html><title>Isolated</title>');

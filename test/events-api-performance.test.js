@@ -167,6 +167,10 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
         path.join(repositoryRoot, 'lib', 'account-claim-security.js'),
         path.join(temporaryRoot, 'lib', 'account-claim-security.js')
     );
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'legal-acceptance.js'),
+        path.join(temporaryRoot, 'lib', 'legal-acceptance.js')
+    );
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
     await fsp.writeFile(
         path.join(temporaryRoot, 'public', 'index.html'),

@@ -87,7 +87,7 @@ async function createIsolatedApplication({ outboxEnabled = true } = {}) {
         );
     assert.notEqual(isolatedSource, serverSource);
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedSource);
-    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'help-faq.js']) {
+    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'help-faq.js', 'legal-acceptance.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
     }
     await fsp.writeFile(

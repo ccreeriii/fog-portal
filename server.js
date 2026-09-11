@@ -28,6 +28,11 @@ const {
     initializeAccountClaimSchema,
     createAccountClaimStore
 } = require('./lib/account-claim-security');
+const {
+    hasExplicitLegalAcceptance,
+    initializeLegalAcceptanceSchema,
+    createLegalAcceptanceStore
+} = require('./lib/legal-acceptance');
 const app = express();
 
 const BOOTSTRAP_STRONG_ADMIN_USERNAME = 'celsocreeriii@gmail.com';
@@ -124,8 +129,12 @@ const SESSION_COOKIE_NAME = 'koinonia_session';
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const SESSION_CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
 const MAX_SESSIONS = 5000;
+const PENDING_GOOGLE_SIGNUP_COOKIE_NAME = 'koinonia_pending_google_signup';
+const PENDING_GOOGLE_SIGNUP_TTL_MS = 10 * 60 * 1000;
+const MAX_PENDING_GOOGLE_SIGNUPS = 1000;
 const FORCE_SECURE_SESSION_COOKIE = /^true$/i.test(process.env.KOINONIA_SESSION_COOKIE_SECURE || '');
 const sessionStore = new Map();
+const pendingGoogleSignupStore = new Map();
 
 const PASSWORD_HASH_SCHEME = 'scrypt';
 const PASSWORD_HASH_VERSION = 'v1';
@@ -574,6 +583,71 @@ function expireSessionCookie(req, res) {
     ];
     if (shouldUseSecureSessionCookie(req)) attributes.push('Secure');
     appendSetCookie(res, attributes.join('; '));
+}
+
+function pruneExpiredPendingGoogleSignups(now = Date.now()) {
+    for (const [pendingId, pending] of pendingGoogleSignupStore) {
+        if (!pending || pending.expiresAt <= now) pendingGoogleSignupStore.delete(pendingId);
+    }
+}
+
+function expirePendingGoogleSignupCookie(req, res) {
+    const attributes = [
+        `${PENDING_GOOGLE_SIGNUP_COOKIE_NAME}=`,
+        'HttpOnly',
+        'SameSite=Strict',
+        'Path=/api/auth/google',
+        'Max-Age=0',
+        'Expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    ];
+    if (shouldUseSecureSessionCookie(req)) attributes.push('Secure');
+    appendSetCookie(res, attributes.join('; '));
+}
+
+function clearPendingGoogleSignup(req, res) {
+    const pendingId = parseCookies(req)[PENDING_GOOGLE_SIGNUP_COOKIE_NAME];
+    if (pendingId) pendingGoogleSignupStore.delete(pendingId);
+    expirePendingGoogleSignupCookie(req, res);
+}
+
+function createPendingGoogleSignup(req, res, identity) {
+    const previousPendingId = parseCookies(req)[PENDING_GOOGLE_SIGNUP_COOKIE_NAME];
+    if (previousPendingId) pendingGoogleSignupStore.delete(previousPendingId);
+    const now = Date.now();
+    pruneExpiredPendingGoogleSignups(now);
+    while (pendingGoogleSignupStore.size >= MAX_PENDING_GOOGLE_SIGNUPS) {
+        const oldestPendingId = pendingGoogleSignupStore.keys().next().value;
+        if (!oldestPendingId) break;
+        pendingGoogleSignupStore.delete(oldestPendingId);
+    }
+
+    let pendingId;
+    do { pendingId = crypto.randomBytes(32).toString('hex'); }
+    while (pendingGoogleSignupStore.has(pendingId));
+    const expiresAt = now + PENDING_GOOGLE_SIGNUP_TTL_MS;
+    pendingGoogleSignupStore.set(pendingId, Object.freeze({
+        identity: Object.freeze({ ...identity }),
+        createdAt: now,
+        expiresAt
+    }));
+    const attributes = [
+        `${PENDING_GOOGLE_SIGNUP_COOKIE_NAME}=${encodeURIComponent(pendingId)}`,
+        'HttpOnly',
+        'SameSite=Strict',
+        'Path=/api/auth/google',
+        `Max-Age=${Math.floor(PENDING_GOOGLE_SIGNUP_TTL_MS / 1000)}`,
+        `Expires=${new Date(expiresAt).toUTCString()}`
+    ];
+    if (shouldUseSecureSessionCookie(req)) attributes.push('Secure');
+    appendSetCookie(res, attributes.join('; '));
+}
+
+function getPendingGoogleSignup(req) {
+    pruneExpiredPendingGoogleSignups();
+    const pendingId = parseCookies(req)[PENDING_GOOGLE_SIGNUP_COOKIE_NAME];
+    if (!pendingId) return null;
+    const pending = pendingGoogleSignupStore.get(pendingId);
+    return pending ? Object.freeze({ pendingId, pending }) : null;
 }
 
 function createAuthenticatedSession(req, res, identity) {
@@ -1784,6 +1858,7 @@ const db = new sqlite3.Database(databasePath, (err) => {
 
 const authTokenStore = createAuthTokenStore({ database: db });
 const accountClaimStore = createAccountClaimStore({ database: db });
+const legalAcceptanceStore = createLegalAcceptanceStore({ database: db });
 let emailRecoveryPublicOrigin = null;
 let emailRecoveryOutbox = null;
 let emailRecoveryWorker = null;
@@ -2142,6 +2217,9 @@ const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
         'id', 'youth_id', 'token_hash', 'created_at', 'expires_at',
         'created_by_user_id', 'revoked_at', 'revoked_by_user_id', 'used_at',
         'consumed_by_user_id'
+    ]),
+    legal_acceptances: Object.freeze([
+        'id', 'user_id', 'terms_version', 'privacy_version', 'accepted_at', 'source'
     ])
 });
 
@@ -2239,6 +2317,7 @@ async function applyDeterministicRuntimeMigration() {
 
     await initializeEmailRecoverySchema(db);
     await initializeAccountClaimSchema(db);
+    await initializeLegalAcceptanceSchema(db);
     await initializeEmailRecoveryRuntime();
     await assertRuntimeSchema();
 }
@@ -2924,32 +3003,101 @@ app.post('/api/auth/google', async (req, res) => {
             return sendExistingGoogleMemberLogin(req, res, identity, member, adminUser);
         }
 
-        const maxRow = await googleAuthDatabaseGet('SELECT MAX(id) AS maxId FROM youth');
-        const nextId = (maxRow && maxRow.maxId ? maxRow.maxId : 0) + 1;
-        const qrCode = `FOG-PASS-${String(nextId).padStart(3, '0')}`;
-        const inserted = await googleAuthDatabaseRun(
-            `INSERT INTO youth
-                (name, email, profile_picture, google_id, account_tier, qr_code,
-                 email_verified, email_verified_at, created_at)
-             VALUES (?, ?, ?, ?, 'New Member', ?, 1, ?, ?)`,
-            [identity.name, identity.normalizedEmail, identity.picture, identity.googleId,
-                qrCode, Date.now(), getManilaTime()]
-        );
-        await googleAuthDatabaseRun(
-            `INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at)
-             VALUES (?, '[]', ?, ?)`,
-            [qrCode, inserted.lastID, getManilaTime()]
-        );
-        const newMember = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [inserted.lastID]);
+        createPendingGoogleSignup(req, res, identity);
+        return sendNoStoreJson(res, 202, {
+            success: false,
+            legal_acceptance_required: true,
+            terms_url: '/terms/',
+            privacy_url: '/privacy/'
+        });
+    } catch (error) {
+        console.error('Google authentication database operation failed');
+        return res.status(500).json({ success: false, error: 'Unable to complete Google sign-in' });
+    }
+});
+
+function createGoogleSignupConflict() {
+    return Object.assign(new Error('Google signup identity is no longer available'), {
+        code: 'GOOGLE_SIGNUP_IDENTITY_CONFLICT'
+    });
+}
+
+app.post('/api/auth/google/complete-signup', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const pendingState = getPendingGoogleSignup(req);
+    if (!pendingState) {
+        expirePendingGoogleSignupCookie(req, res);
+        return res.status(400).json({
+            success: false,
+            error: 'Google account setup expired. Please continue with Google again.'
+        });
+    }
+    if (!hasExplicitLegalAcceptance(req.body && req.body.legal_accepted)) {
+        return res.status(400).json({
+            success: false,
+            error: 'You must agree to the Terms of Service and acknowledge the Privacy Policy to create an account.'
+        });
+    }
+
+    const identity = pendingState.pending.identity;
+    try {
+        const accepted = await legalAcceptanceStore.createAcceptedAccount({
+            accepted: true,
+            source: 'google_signup',
+            createAccount: async transaction => {
+                const youthConflict = await transaction.get(
+                    `SELECT id FROM youth
+                     WHERE google_id = ? OR LOWER(TRIM(email)) = ?
+                     LIMIT 1`,
+                    [identity.googleId, identity.normalizedEmail]
+                );
+                const accountConflict = await transaction.get(
+                    `SELECT id FROM users
+                     WHERE LOWER(TRIM(username)) = ?
+                     LIMIT 1`,
+                    [identity.normalizedEmail]
+                );
+                if (youthConflict || accountConflict) throw createGoogleSignupConflict();
+
+                const maxRow = await transaction.get('SELECT MAX(id) AS maxId FROM youth');
+                const nextId = (maxRow && maxRow.maxId ? maxRow.maxId : 0) + 1;
+                const qrCode = `FOG-PASS-${String(nextId).padStart(3, '0')}`;
+                const memberInsert = await transaction.run(
+                    `INSERT INTO youth
+                        (name, email, profile_picture, google_id, account_tier, qr_code,
+                         email_verified, email_verified_at, created_at)
+                     VALUES (?, ?, ?, ?, 'New Member', ?, 1, ?, ?)`,
+                    [identity.name, identity.normalizedEmail, identity.picture, identity.googleId,
+                        qrCode, Date.now(), getManilaTime()]
+                );
+                const userInsert = await transaction.run(
+                    `INSERT INTO users (username, permissions, youth_id, created_at)
+                     VALUES (?, '[]', ?, ?)`,
+                    [qrCode, memberInsert.lastID, getManilaTime()]
+                );
+                if (!memberInsert.lastID || !userInsert.lastID) throw createGoogleSignupConflict();
+                return Object.freeze({
+                    userId: userInsert.lastID,
+                    youthId: memberInsert.lastID,
+                    username: qrCode
+                });
+            }
+        });
+        if (!accepted.accepted) throw new Error('Legal acceptance was not recorded');
+
+        const created = accepted.result;
+        const newMember = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [created.youthId]);
         if (!newMember) throw new Error('Provisioned member unavailable');
+        clearPendingGoogleSignup(req, res);
+        logActivity(`User ${created.userId}`, 'LEGAL_TERMS_ACCEPTED', 'Accepted current Terms and acknowledged Privacy Policy during Google signup');
         logActivity('System', 'NEW_MEMBER_CREATED', 'Auto-provisioned a new member via Google');
         return sendAuthenticatedLogin(
             req,
             res,
-            { userId: null, youthId: newMember.id, username: newMember.qr_code },
+            { userId: created.userId, youthId: created.youthId, username: created.username },
             {
                 success: true,
-                username: newMember.qr_code,
+                username: created.username,
                 permissions: [],
                 member: sanitizeMemberForAuth(newMember),
                 is_admin: false,
@@ -2957,8 +3105,15 @@ app.post('/api/auth/google', async (req, res) => {
             }
         );
     } catch (error) {
-        console.error('Google authentication database operation failed');
-        return res.status(500).json({ success: false, error: 'Unable to complete Google sign-in' });
+        if (error && error.code === 'GOOGLE_SIGNUP_IDENTITY_CONFLICT') {
+            clearPendingGoogleSignup(req, res);
+            return res.status(409).json({
+                success: false,
+                error: 'This Google identity is already connected. Please continue with Google again.'
+            });
+        }
+        console.error('Google account setup database operation failed');
+        return res.status(500).json({ success: false, error: 'Unable to complete Google account setup.' });
     }
 });
 
@@ -5673,15 +5828,22 @@ app.get('/api/growth-games/funnel', (req, res) => {
 // ==========================================
 // WANDERER REGISTRATION ENDPOINT (SMART V2)
 // ==========================================
-app.post('/api/public/register-wanderer', (req, res) => {
-    const { name, email, password } = req.body;
+app.post('/api/public/register-wanderer', async (req, res) => {
+    const { name, email, password } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
+    const normalizedName = typeof name === 'string' ? name.trim() : '';
     
-    if (!name || !normalizedEmail) {
+    if (!normalizedName || !normalizedEmail) {
         return res.status(400).json({ error: "Name and email are strictly required." });
     }
     if (typeof password !== 'string' || password.length < 8 || password.length > 128 || !/\S/.test(password)) {
         return res.status(400).json({ error: "A password of 8 to 128 characters is required." });
+    }
+    if (!hasExplicitLegalAcceptance(req.body && req.body.legal_accepted)) {
+        return res.status(400).json({
+            success: false,
+            error: 'You must agree to the Terms of Service and acknowledge the Privacy Policy to create an account.'
+        });
     }
     if (!emailRegistrationLimiter.check({
         ip: getRecoveryClientAddress(req),
@@ -5692,66 +5854,93 @@ app.post('/api/public/register-wanderer', (req, res) => {
             message: 'Please wait before submitting another registration.'
         });
     }
-    
-    if (typeof db !== 'undefined') {
-        db.get("SELECT id FROM youth WHERE LOWER(TRIM(email)) = ? LIMIT 1", [normalizedEmail], async (err, row) => {
-            if (err) return res.status(500).json({ error: "Unable to check registration details." });
-            
-            if (row) {
-                return res.status(409).json({
-                    success: false,
-                    error: "An account with this email already exists. Please sign in."
-                });
-            } else {
-                let encodedPassword;
-                try {
-                    encodedPassword = await hashPassword(password);
-                } catch (hashErr) {
-                    console.error('Wanderer password hashing failed');
-                    return res.status(500).json({ error: "Unable to create the account." });
-                }
-                // Insert new user
-                db.run(
-                    `INSERT INTO youth
-                        (name, email, password, email_verified, email_verified_at)
-                     VALUES (?, ?, ?, 0, NULL)`,
-                    [name, normalizedEmail, encodedPassword],
-                    function(err) {
-                    if (err) return res.status(500).json({ error: "Unable to create the account." });
+    if (typeof db === 'undefined') {
+        return res.status(503).json({ error: "Registration is temporarily unavailable." });
+    }
 
-                    const newYouthId = this.lastID;
-                    db.get("SELECT id, email, qr_code FROM youth WHERE id = ?", [newYouthId], async (lookupErr, newMember) => {
-                        if (lookupErr || !newMember) {
-                            return res.status(500).json({ error: "Account created, but sign-in could not be completed. Please sign in." });
-                        }
+    let encodedPassword;
+    try {
+        encodedPassword = await hashPassword(password);
+    } catch (hashErr) {
+        console.error('Wanderer password hashing failed');
+        return res.status(500).json({ error: "Unable to create the account." });
+    }
 
-                        let verificationQueued = false;
-                        try {
-                            await queueEmailVerification({ youthId: newYouthId, targetEmail: normalizedEmail });
-                            verificationQueued = true;
-                            logActivity(`Member ${newYouthId}`, 'EMAIL_VERIFICATION_REQUESTED', 'Registration verification message queued');
-                        } catch (error) {
-                            console.warn(`[EMAIL] Wanderer verification queue failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_REQUEST_FAILED')}`);
-                        }
-
-                        const canonicalUsername = newMember.qr_code || newMember.email || String(newMember.id);
-                        return sendAuthenticatedLogin(
-                            req,
-                            res,
-                            { userId: null, youthId: newMember.id, username: canonicalUsername },
-                            {
-                                success: true,
-                                is_new: true,
-                                email_verification_queued: verificationQueued,
-                                message: "Profile created successfully. Please confirm your email when the message arrives."
-                            }
-                        );
+    try {
+        const accepted = await legalAcceptanceStore.createAcceptedAccount({
+            accepted: true,
+            source: 'registration',
+            createAccount: async transaction => {
+                const existing = await transaction.get(
+                    'SELECT id FROM youth WHERE LOWER(TRIM(email)) = ? LIMIT 1',
+                    [normalizedEmail]
+                );
+                if (existing) {
+                    throw Object.assign(new Error('Registration identity already exists'), {
+                        code: 'REGISTRATION_IDENTITY_EXISTS'
                     });
+                }
+                const maxRow = await transaction.get('SELECT MAX(id) AS maxId FROM youth');
+                const nextId = (maxRow && maxRow.maxId ? maxRow.maxId : 0) + 1;
+                const qrCode = `FOG-PASS-${String(nextId).padStart(3, '0')}`;
+                const memberInsert = await transaction.run(
+                    `INSERT INTO youth
+                        (name, email, password, qr_code, email_verified, email_verified_at, created_at)
+                     VALUES (?, ?, ?, ?, 0, NULL, ?)`,
+                    [normalizedName, normalizedEmail, encodedPassword, qrCode, getManilaTime()]
+                );
+                const userInsert = await transaction.run(
+                    `INSERT INTO users (username, password, permissions, youth_id, created_at)
+                     VALUES (?, ?, '[]', ?, ?)`,
+                    [qrCode, encodedPassword, memberInsert.lastID, getManilaTime()]
+                );
+                if (!memberInsert.lastID || !userInsert.lastID) throw new Error('Registration insert failed');
+                return Object.freeze({
+                    userId: userInsert.lastID,
+                    youthId: memberInsert.lastID,
+                    username: qrCode
                 });
             }
         });
-    } else {
-        res.status(503).json({ error: "Registration is temporarily unavailable." });
+        if (!accepted.accepted) throw new Error('Legal acceptance was not recorded');
+
+        const created = accepted.result;
+        const newMember = await googleAuthDatabaseGet(
+            'SELECT id, email, qr_code FROM youth WHERE id = ?',
+            [created.youthId]
+        );
+        if (!newMember) throw new Error('Created account unavailable');
+
+        logActivity(`User ${created.userId}`, 'LEGAL_TERMS_ACCEPTED', 'Accepted current Terms and acknowledged Privacy Policy during registration');
+        let verificationQueued = false;
+        try {
+            await queueEmailVerification({ youthId: created.youthId, targetEmail: normalizedEmail });
+            verificationQueued = true;
+            logActivity(`Member ${created.youthId}`, 'EMAIL_VERIFICATION_REQUESTED', 'Registration verification message queued');
+        } catch (error) {
+            console.warn(`[EMAIL] Wanderer verification queue failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_REQUEST_FAILED')}`);
+        }
+
+        return sendAuthenticatedLogin(
+            req,
+            res,
+            { userId: created.userId, youthId: created.youthId, username: created.username },
+            {
+                success: true,
+                is_new: true,
+                email_verification_queued: verificationQueued,
+                message: "Profile created successfully. Please confirm your email when the message arrives."
+            }
+        );
+    } catch (error) {
+        if (error && error.code === 'REGISTRATION_IDENTITY_EXISTS') {
+            return res.status(409).json({
+                success: false,
+                error: "An account with this email already exists. Please sign in."
+            });
+        }
+        console.error('Wanderer account creation failed');
+        return res.status(500).json({ error: "Unable to create the account." });
     }
 });
 

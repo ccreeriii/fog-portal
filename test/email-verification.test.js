@@ -195,7 +195,7 @@ test('verified email and pending email changes fail closed across application fl
         );
     assert.notEqual(isolatedSource, source);
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedSource);
-    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js']) {
+    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'legal-acceptance.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
     }
     await fsp.writeFile(
@@ -204,6 +204,13 @@ test('verified email and pending email changes fail closed across application fl
     );
     for (const filename of ['verify-email.html', 'reset-password.html']) {
         await fsp.copyFile(path.join(repositoryRoot, 'public', filename), path.join(temporaryRoot, 'public', filename));
+    }
+    for (const directory of ['legal', 'privacy', 'terms']) {
+        await fsp.cp(
+            path.join(repositoryRoot, 'public', directory),
+            path.join(temporaryRoot, 'public', directory),
+            { recursive: true }
+        );
     }
     for (const filename of ['verify-email.js', 'reset-password.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'public', 'js', filename), path.join(temporaryRoot, 'public', 'js', filename));
@@ -230,6 +237,17 @@ test('verified email and pending email changes fail closed across application fl
     });
     const origin = `http://127.0.0.1:${httpServer.address().port}`;
     const tokenStore = createAuthTokenStore({ database });
+
+    await t.test('privacy and terms pages are publicly available without a session', async () => {
+        for (const pathname of ['/privacy/', '/terms/']) {
+            const response = await fetch(`${origin}${pathname}`, { redirect: 'manual' });
+            assert.equal(response.status, 200);
+            assert.match(response.headers.get('content-type'), /^text\/html/);
+            const html = await response.text();
+            assert.match(html, /Fire Of God Ministries/);
+            assert.match(html, /support@fogmin\.site/);
+        }
+    });
 
     await t.test('migration is additive, defaults legacy/Google rows to unverified, and creates no unique email index', async () => {
         const columns = await all(database, 'PRAGMA table_info(youth)');
@@ -500,10 +518,37 @@ test('verified email and pending email changes fail closed across application fl
         assert.notEqual((await get(database, 'SELECT revoked_at FROM auth_one_time_tokens WHERE id = ?', [reset.id])).revoked_at, null);
     });
 
+    await t.test('existing password login needs no prospective legal acceptance and creates none', async () => {
+        const fixture = await createMember(database, 'LEGAL-EXISTING-LOGIN', { permissions: [] });
+        const before = (await get(database, 'SELECT COUNT(*) count FROM legal_acceptances')).count;
+        const response = await requestJson(origin, '/api/login', {
+            body: { username: `${fixture.qrCode}-USER`, password: 'legacy-LEGAL-EXISTING-LOGIN-password' }
+        });
+        assert.equal(response.status, 200);
+        assert.equal(response.body.success, true);
+        assert.equal((await get(database, 'SELECT COUNT(*) count FROM legal_acceptances')).count, before);
+    });
+
     await t.test('Wanderer registration normalizes duplicates, starts unverified, and queues encrypted verification', async () => {
         const email = 'new-wanderer@example.test';
+        for (const legalAccepted of [undefined, false]) {
+            const rejected = await requestJson(origin, '/api/public/register-wanderer', {
+                body: {
+                    name: 'Rejected Wanderer', email,
+                    password: 'Wanderer-Password-1',
+                    ...(legalAccepted === undefined ? {} : { legal_accepted: legalAccepted })
+                }
+            });
+            assert.equal(rejected.status, 400);
+        }
+        assert.equal(await get(database, 'SELECT id FROM youth WHERE email = ?', [email]), null);
         const created = await requestJson(origin, '/api/public/register-wanderer', {
-            body: { name: 'New Wanderer', email: ` New-Wanderer@Example.Test `, password: 'Wanderer-Password-1' }
+            body: {
+                name: 'New Wanderer', email: ` New-Wanderer@Example.Test `,
+                password: 'Wanderer-Password-1', legal_accepted: true,
+                user_id: 999999, source: 'forged', terms_version: 'forged',
+                privacy_version: 'forged', accepted_at: 1
+            }
         });
         assert.equal(created.status, 200);
         const member = await get(database, 'SELECT * FROM youth WHERE email = ?', [email]);
@@ -511,8 +556,27 @@ test('verified email and pending email changes fail closed across application fl
         assert.equal(member.email_verified, 0);
         assert.equal(member.email_verified_at, null);
         assert.ok(await get(database, "SELECT id FROM auth_one_time_tokens WHERE youth_id = ? AND purpose = 'email_verification'", [member.id]));
+        const linkedUser = await get(database, 'SELECT id FROM users WHERE youth_id = ?', [member.id]);
+        assert.ok(linkedUser);
+        assert.deepEqual(
+            await get(
+                database,
+                `SELECT user_id, terms_version, privacy_version, source
+                 FROM legal_acceptances WHERE user_id = ?`,
+                [linkedUser.id]
+            ),
+            {
+                user_id: linkedUser.id,
+                terms_version: '2026-09-11',
+                privacy_version: '2026-09-11',
+                source: 'registration'
+            }
+        );
         const duplicate = await requestJson(origin, '/api/public/register-wanderer', {
-            body: { name: 'Duplicate', email: 'NEW-WANDERER@example.test', password: 'Wanderer-Password-2' }
+            body: {
+                name: 'Duplicate', email: 'NEW-WANDERER@example.test',
+                password: 'Wanderer-Password-2', legal_accepted: true
+            }
         });
         assert.equal(duplicate.status, 409);
         const rateLimitedAcrossRegistrationRoutes = await requestJson(origin, '/api/youth', {
@@ -532,7 +596,10 @@ test('verified email and pending email changes fail closed across application fl
         );
         const email = 'queue-failure@example.test';
         const created = await requestJson(origin, '/api/public/register-wanderer', {
-            body: { name: 'Queue Failure', email, password: 'Wanderer-Password-3' }
+            body: {
+                name: 'Queue Failure', email, password: 'Wanderer-Password-3',
+                legal_accepted: true
+            }
         });
         await run(database, 'DROP TRIGGER p10_b3_registration_queue_failure');
         assert.equal(created.status, 200);
@@ -586,7 +653,10 @@ test('verified email and pending email changes fail closed across application fl
         assert.equal((await get(database, 'SELECT email_verified FROM youth WHERE id = ?', [unverified.youthId])).email_verified, 0);
     });
 
-    await t.test('Google verifies only an exact safely associated email and new Google accounts start verified', async () => {
+    await t.test('Google verifies existing identities without acceptance and gates new account persistence', async () => {
+        const acceptanceCountBeforeExistingLogins = (
+            await get(database, 'SELECT COUNT(*) count FROM legal_acceptances')
+        ).count;
         const exact = await createMember(database, 'GOOGLE-EXACT', { verified: 0 });
         const exactResponse = await requestJson(origin, '/api/auth/google', {
             body: { token: encodeGooglePayload({
@@ -620,15 +690,75 @@ test('verified email and pending email changes fail closed across application fl
         })).status, 200);
         const unchanged = await get(database, 'SELECT email, email_verified FROM youth WHERE id = ?', [different.youthId]);
         assert.deepEqual(unchanged, { email: 'stored-different@example.test', email_verified: 0 });
+        assert.equal(
+            (await get(database, 'SELECT COUNT(*) count FROM legal_acceptances')).count,
+            acceptanceCountBeforeExistingLogins
+        );
 
-        assert.equal((await requestJson(origin, '/api/auth/google', {
+        const collisionPending = await requestJson(origin, '/api/auth/google', {
+            body: { token: encodeGooglePayload({
+                sub: 'google-collision-subject', email: 'google-collision@example.test',
+                email_verified: true, name: 'Google Collision'
+            }) }
+        });
+        assert.equal(collisionPending.status, 202);
+        const collisionCookie = /koinonia_pending_google_signup=[^;]+/.exec(collisionPending.setCookie || '');
+        assert.ok(collisionCookie);
+        await run(
+            database,
+            `INSERT INTO users (username, permissions, created_at)
+             VALUES ('google-collision@example.test', '[]', datetime('now'))`
+        );
+        assert.equal((await requestJson(origin, '/api/auth/google/complete-signup', {
+            cookie: collisionCookie[0], body: { legal_accepted: true }
+        })).status, 409);
+        assert.equal(await get(database, "SELECT id FROM youth WHERE google_id = 'google-collision-subject'"), null);
+
+        const pendingGoogle = await requestJson(origin, '/api/auth/google', {
             body: { token: encodeGooglePayload({
                 sub: 'google-new-subject', email: 'google-new@example.test', email_verified: true, name: 'Google New'
             }) }
-        })).status, 200);
-        const newGoogle = await get(database, "SELECT email_verified, email_verified_at FROM youth WHERE google_id = 'google-new-subject'");
+        });
+        assert.equal(pendingGoogle.status, 202);
+        assert.equal(pendingGoogle.body.legal_acceptance_required, true);
+        assert.equal(await get(database, "SELECT id FROM youth WHERE google_id = 'google-new-subject'"), null);
+        const pendingCookie = /koinonia_pending_google_signup=[^;]+/.exec(pendingGoogle.setCookie || '');
+        assert.ok(pendingCookie);
+        for (const legalAccepted of [undefined, false]) {
+            const rejected = await requestJson(origin, '/api/auth/google/complete-signup', {
+                cookie: pendingCookie[0],
+                body: legalAccepted === undefined ? {} : { legal_accepted: legalAccepted }
+            });
+            assert.equal(rejected.status, 400);
+        }
+        assert.equal(await get(database, "SELECT id FROM youth WHERE google_id = 'google-new-subject'"), null);
+        const completedGoogle = await requestJson(origin, '/api/auth/google/complete-signup', {
+            cookie: pendingCookie[0],
+            body: {
+                legal_accepted: true, user_id: 999999, source: 'forged',
+                terms_version: 'forged', privacy_version: 'forged', accepted_at: 1
+            }
+        });
+        assert.equal(completedGoogle.status, 200);
+        const newGoogle = await get(database, "SELECT id, email_verified, email_verified_at FROM youth WHERE google_id = 'google-new-subject'");
         assert.equal(newGoogle.email_verified, 1);
         assert.ok(newGoogle.email_verified_at);
+        const googleUser = await get(database, 'SELECT id FROM users WHERE youth_id = ?', [newGoogle.id]);
+        assert.ok(googleUser);
+        assert.deepEqual(
+            await get(
+                database,
+                `SELECT user_id, terms_version, privacy_version, source
+                 FROM legal_acceptances WHERE user_id = ?`,
+                [googleUser.id]
+            ),
+            {
+                user_id: googleUser.id,
+                terms_version: '2026-09-11',
+                privacy_version: '2026-09-11',
+                source: 'google_signup'
+            }
+        );
     });
 
     await t.test('email-change notice queue failure never reverses a confirmed pending email', async () => {
