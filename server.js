@@ -208,6 +208,12 @@ const accountClaimActivationLimiter = createRecoveryRateLimiter({
     ipLimit: 20,
     subjectLimit: 6
 });
+const contactSupportLimiter = createRecoveryRateLimiter({
+    namespace: 'contact-support',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 6,
+    subjectLimit: 3
+});
 
 function getRecoveryClientAddress(req) {
     // Express trust proxy remains disabled; never trust forwarding headers here.
@@ -502,6 +508,7 @@ const passwordLoginLimiterCleanupTimer = setInterval(() => {
     accountClaimPreviewLimiter.cleanupExpired();
     accountClaimPreviewAuditLimiter.cleanupExpired();
     accountClaimActivationLimiter.cleanupExpired();
+    contactSupportLimiter.cleanupExpired();
 }, PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS);
 passwordLoginLimiterCleanupTimer.unref();
 
@@ -2499,6 +2506,159 @@ app.get('/api/help/faq', async (req, res) => {
     } catch (error) {
         console.error('FAQ delivery failed');
         return res.status(500).json({ success: false, error: 'Help is temporarily unavailable.' });
+    }
+});
+
+const CONTACT_SUPPORT_RECIPIENT = 'support@fogmin.site';
+const CONTACT_SUPPORT_CATEGORIES = Object.freeze([
+    'Account & Sign-in',
+    'Profile & Member Record',
+    'Events & Attendance',
+    'Ministry & Community',
+    'Technical Problem',
+    'Other'
+]);
+const CONTACT_SUPPORT_CATEGORY_SET = new Set(CONTACT_SUPPORT_CATEGORIES);
+const CONTACT_SUPPORT_SUCCESS_MESSAGE = 'Your message has been sent to Fire Of God Ministries Support. We’ll get back to you through the email you provided.';
+const CONTACT_SUPPORT_VALIDATION_MESSAGE = 'Please check your name, email, category, and message, then try again.';
+
+function escapeContactSupportHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function validateContactSupportInput(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+    const { name, email, category, message } = body;
+    if (
+        typeof name !== 'string' || typeof email !== 'string' ||
+        typeof category !== 'string' || typeof message !== 'string' ||
+        name.length > 100 || email.length > 320 || message.length > 4000
+    ) return null;
+
+    const trimmedName = name.trim();
+    const normalizedEmail = normalizeEmail(email);
+    const trimmedMessage = message.trim();
+    if (
+        trimmedName.length < 2 || trimmedName.length > 100 ||
+        /[\u0000-\u001f\u007f]/.test(trimmedName) ||
+        !normalizedEmail || !CONTACT_SUPPORT_CATEGORY_SET.has(category) ||
+        trimmedMessage.length < 20 || trimmedMessage.length > 4000 ||
+        trimmedMessage.includes('\u0000')
+    ) return null;
+
+    return Object.freeze({
+        name: trimmedName,
+        email: normalizedEmail,
+        category,
+        message: trimmedMessage
+    });
+}
+
+function buildContactSupportMessage(input, auth) {
+    const authenticatedYouthId = normalizeCanonicalId(auth && auth.youthId);
+    const canonicalSignInId = auth && typeof auth.username === 'string' && auth.username.trim()
+        ? auth.username.trim().slice(0, 320)
+        : null;
+    const submittedAt = new Date().toISOString();
+    const authenticated = Boolean(auth);
+    const safeName = escapeContactSupportHtml(input.name);
+    const safeEmail = escapeContactSupportHtml(input.email);
+    const safeCategory = escapeContactSupportHtml(input.category);
+    const safeMessage = escapeContactSupportHtml(input.message);
+    const safeOrigin = escapeContactSupportHtml(emailRecoveryPublicOrigin);
+    const safeSignInId = canonicalSignInId ? escapeContactSupportHtml(canonicalSignInId) : null;
+    const text = [
+        'Fire Of God Ministries Community Portal support request',
+        '',
+        `Contact name: ${input.name}`,
+        `Contact email: ${input.email}`,
+        `Category: ${input.category}`,
+        `Message:\n${input.message}`,
+        '',
+        `Authenticated: ${authenticated ? 'Yes' : 'No'}`,
+        ...(authenticatedYouthId ? [`Member ID: ${authenticatedYouthId}`] : []),
+        ...(canonicalSignInId ? [`Canonical Sign-in ID: ${canonicalSignInId}`] : []),
+        `Submitted at: ${submittedAt}`,
+        `Environment: ${emailRecoveryPublicOrigin}`
+    ].join('\n');
+    const html = [
+        '<h2>Community Portal support request</h2>',
+        `<p><strong>Contact name:</strong> ${safeName}</p>`,
+        `<p><strong>Contact email:</strong> <a href="mailto:${encodeURIComponent(input.email)}">${safeEmail}</a></p>`,
+        `<p><strong>Category:</strong> ${safeCategory}</p>`,
+        `<p><strong>Message:</strong></p><div style="white-space:pre-wrap">${safeMessage}</div>`,
+        `<p><strong>Authenticated:</strong> ${authenticated ? 'Yes' : 'No'}</p>`,
+        ...(authenticatedYouthId ? [`<p><strong>Member ID:</strong> ${authenticatedYouthId}</p>`] : []),
+        ...(safeSignInId ? [`<p><strong>Canonical Sign-in ID:</strong> ${safeSignInId}</p>`] : []),
+        `<p><strong>Submitted at:</strong> ${escapeContactSupportHtml(submittedAt)}</p>`,
+        `<p><strong>Environment:</strong> ${safeOrigin}</p>`
+    ].join('');
+    return Object.freeze({
+        subject: `[FOG Portal Support] ${input.category}`,
+        text,
+        html
+    });
+}
+
+app.post('/api/help/contact-support', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Vary', 'Cookie');
+
+    const input = validateContactSupportInput(req.body);
+    if (!input) {
+        return res.status(400).json({ success: false, message: CONTACT_SUPPORT_VALIDATION_MESSAGE });
+    }
+
+    const auth = await loadOptionalAuthorizationContext(req);
+    const canonicalYouthId = normalizeCanonicalId(auth && auth.youthId);
+    const canonicalUserId = normalizeCanonicalId(auth && auth.userId);
+    const subject = canonicalYouthId
+        ? `member:${canonicalYouthId}`
+        : canonicalUserId
+            ? `user:${canonicalUserId}`
+            : `email:${input.email}`;
+    if (!contactSupportLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject
+    })) {
+        res.setHeader('Retry-After', String(15 * 60));
+        return res.status(429).json({
+            success: false,
+            message: 'Too many support requests were submitted. Please wait a little while and try again.'
+        });
+    }
+
+    if (!emailRecoveryPublicOrigin || !emailRecoveryOutbox) {
+        return res.status(503).json({
+            success: false,
+            message: 'Support messaging is temporarily unavailable. Please try again later.'
+        });
+    }
+
+    try {
+        await emailRecoveryOutbox.enqueue({
+            recipient: CONTACT_SUPPORT_RECIPIENT,
+            messageType: 'support_request',
+            payload: buildContactSupportMessage(input, auth)
+        });
+        logActivity(
+            canonicalYouthId ? `Member ${canonicalYouthId}` : 'Anonymous',
+            'SUPPORT_REQUEST_QUEUED',
+            'Support request queued for encrypted email delivery'
+        );
+        return res.status(202).json({ success: true, message: CONTACT_SUPPORT_SUCCESS_MESSAGE });
+    } catch (error) {
+        console.warn(`[EMAIL] Support request enqueue failed code=${getSafeEmailRecoveryErrorCode(error, 'SUPPORT_REQUEST_QUEUE_FAILED')}`);
+        return res.status(503).json({
+            success: false,
+            message: 'Support messaging is temporarily unavailable. Please try again later.'
+        });
     }
 });
 
