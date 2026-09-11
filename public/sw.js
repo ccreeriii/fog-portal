@@ -86,6 +86,8 @@ self.addEventListener('fetch', (event) => {
     if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
     if (url.pathname === '/reset-password' || url.pathname.startsWith('/reset-password/')) return;
     if (url.pathname === '/verify-email' || url.pathname.startsWith('/verify-email/')) return;
+    if (url.pathname === '/claim' || url.pathname.startsWith('/claim/')) return;
+    if (url.pathname === '/js/claim.js' || url.pathname === '/css/claim.css') return;
 
     if (request.mode === 'navigate') {
         event.respondWith(networkFirstNavigation(request));

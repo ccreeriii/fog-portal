@@ -6,6 +6,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
+const QRCode = require('qrcode');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
@@ -200,6 +201,12 @@ const accountClaimPreviewAuditLimiter = createRecoveryRateLimiter({
     windowMs: 15 * 60 * 1000,
     ipLimit: 3,
     subjectLimit: 1
+});
+const accountClaimActivationLimiter = createRecoveryRateLimiter({
+    namespace: 'account-claim-activation',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
 });
 
 function getRecoveryClientAddress(req) {
@@ -494,6 +501,7 @@ const passwordLoginLimiterCleanupTimer = setInterval(() => {
     emailRegistrationLimiter.cleanupExpired();
     accountClaimPreviewLimiter.cleanupExpired();
     accountClaimPreviewAuditLimiter.cleanupExpired();
+    accountClaimActivationLimiter.cleanupExpired();
 }, PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS);
 passwordLoginLimiterCleanupTimer.unref();
 
@@ -2446,6 +2454,14 @@ app.get('/verify-email', (req, res) => {
     return res.sendFile(path.join(__dirname, 'public', 'verify-email.html'));
 });
 
+app.get(['/claim', '/claim/'], (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    return res.sendFile(path.join(__dirname, 'public', 'claim', 'index.html'));
+});
+
 app.get('/api/help/faq', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Vary', 'Cookie');
@@ -2787,7 +2803,7 @@ app.post('/api/auth/google', async (req, res) => {
 });
 
 function sendNoStoreJson(res, status, body) {
-    res.setHeader('Cache-Control', 'no-store');
+    if (!res.hasHeader('Cache-Control')) res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Pragma', 'no-cache');
     return res.status(status).json(body);
 }
@@ -2798,6 +2814,93 @@ function auditRejectedAccountClaimPreview(req) {
         logActivity('Anonymous', 'ACCOUNT_CLAIM_PREVIEW_REJECTED', 'Invalid or inactive account claim preview');
     }
 }
+
+function createAccountClaimTargetConflict(reason = 'ACCOUNT_CLAIM_TARGET_CONFLICT') {
+    return Object.assign(new Error('Account claim target is not claimable'), { code: reason });
+}
+
+function accountHasClaimAttestation(account) {
+    return Boolean(account && (
+        account.account_claimed_at !== null ||
+        account.account_claim_method !== null ||
+        account.account_claim_token_id !== null
+    ));
+}
+
+async function inspectAccountClaimTarget(youthId, database = null) {
+    const reader = database || Object.freeze({
+        get: (sql, params = []) => googleAuthDatabaseGet(sql, params),
+        all: (sql, params = []) => googleAuthDatabaseAll(sql, params)
+    });
+    const member = await reader.get(
+        'SELECT id, name, qr_code, google_id, email FROM youth WHERE id = ?',
+        [youthId]
+    );
+    if (!member) return Object.freeze({ status: 'missing', member: null, account: null });
+
+    const accounts = await reader.all(
+        `SELECT id, username, permissions, youth_id, account_claimed_at,
+                account_claim_method, account_claim_token_id
+         FROM users WHERE youth_id = ? ORDER BY id ASC LIMIT 2`,
+        [youthId]
+    );
+    if (accounts.length > 1) {
+        return Object.freeze({ status: 'conflict', member, account: null });
+    }
+    if (accounts.length === 0) {
+        return Object.freeze({ status: 'needs_account', member, account: null });
+    }
+    const account = accounts[0];
+    if (typeof account.username !== 'string' || !account.username.trim()) {
+        return Object.freeze({ status: 'conflict', member, account: null });
+    }
+    if (accountHasClaimAttestation(account)) {
+        return Object.freeze({ status: 'claimed', member, account });
+    }
+    return Object.freeze({ status: 'claimable', member, account });
+}
+
+function requireClaimableAccountTarget(state) {
+    if (!state || state.status !== 'claimable' || !state.member || !state.account) {
+        throw createAccountClaimTargetConflict(
+            state && state.status === 'claimed'
+                ? 'ACCOUNT_CLAIM_ALREADY_CLAIMED'
+                : 'ACCOUNT_CLAIM_TARGET_CONFLICT'
+        );
+    }
+    return state;
+}
+
+function checkAccountClaimActivationLimit(req, res) {
+    const token = req.body && typeof req.body.token === 'string' ? req.body.token : null;
+    const allowed = accountClaimActivationLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: token && /^[A-Za-z0-9_-]{43}$/.test(token) ? token : null
+    });
+    if (allowed) return true;
+    res.setHeader('Retry-After', String(15 * 60));
+    sendNoStoreJson(res, 429, {
+        success: false,
+        error: 'Too many account connection attempts. Please try again later.'
+    });
+    return false;
+}
+
+function rejectPublicAccountClaim(res) {
+    return sendNoStoreJson(res, 400, {
+        success: false,
+        error: 'This account invitation is invalid or cannot be completed.'
+    });
+}
+
+function setAccountClaimResponsePrivacy(req, res, next) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    next();
+}
+
+app.use('/api/admin/account-claims', setAccountClaimResponsePrivacy);
+app.use('/api/account-claim', setAccountClaimResponsePrivacy);
 
 app.post('/api/admin/account-claims', requirePermission('access_permissions'), async (req, res) => {
     const youthId = normalizeCanonicalId(req.body && req.body.youth_id);
@@ -2812,14 +2915,26 @@ app.post('/api/admin/account-claims', requirePermission('access_permissions'), a
         return sendNoStoreJson(res, 503, { success: false, error: 'Account claim issuance is unavailable.' });
     }
 
+    let issued = null;
     try {
-        const member = await googleAuthDatabaseGet('SELECT id FROM youth WHERE id = ?', [youthId]);
+        const member = await googleAuthDatabaseGet('SELECT id, name FROM youth WHERE id = ?', [youthId]);
         if (!member) {
             return sendNoStoreJson(res, 404, { success: false, error: 'Member not found.' });
         }
-        const issued = await accountClaimStore.issue({
+        issued = await accountClaimStore.issue({
             youthId,
-            createdByUserId: actorUserId
+            createdByUserId: actorUserId,
+            validate: async (claim, transaction) => {
+                const state = await inspectAccountClaimTarget(claim.youthId, transaction);
+                requireClaimableAccountTarget(state);
+            }
+        });
+        const claimUrl = `${publicOrigin}/claim#${issued.rawToken}`;
+        const claimQrDataUrl = await QRCode.toDataURL(claimUrl, {
+            type: 'image/png',
+            width: 320,
+            margin: 2,
+            errorCorrectionLevel: 'M'
         });
         logActivity(
             `User ${actorUserId}`,
@@ -2829,10 +2944,33 @@ app.post('/api/admin/account-claims', requirePermission('access_permissions'), a
         return sendNoStoreJson(res, 201, {
             success: true,
             youth_id: youthId,
+            member_name: member.name,
             expires_at: issued.expiresAt,
-            claim_url: `${publicOrigin}/claim#${issued.rawToken}`
+            claim_url: claimUrl,
+            claim_qr_data_url: claimQrDataUrl
         });
     } catch (error) {
+        if (issued) {
+            try {
+                await accountClaimStore.revoke({ youthId, revokedByUserId: actorUserId });
+            } catch (revocationError) {
+                console.error('Unrenderable account claim revocation failed');
+            }
+        }
+        if (error && error.code === 'ACCOUNT_CLAIM_ALREADY_CLAIMED') {
+            return sendNoStoreJson(res, 409, {
+                success: false,
+                error: 'This member already has a connected Community Portal account.',
+                account_status: 'claimed'
+            });
+        }
+        if (error && error.code === 'ACCOUNT_CLAIM_TARGET_CONFLICT') {
+            return sendNoStoreJson(res, 409, {
+                success: false,
+                error: 'This member account needs administrator review before a claim can be issued.',
+                account_status: 'conflict'
+            });
+        }
         console.error('Account claim issuance failed');
         return sendNoStoreJson(res, 500, { success: false, error: 'Unable to issue account claim.' });
     }
@@ -2844,14 +2982,21 @@ app.get('/api/admin/account-claims/:youth_id', requirePermission('access_permiss
         return sendNoStoreJson(res, 400, { success: false, error: 'A valid member ID is required.' });
     }
     try {
-        const member = await googleAuthDatabaseGet('SELECT id FROM youth WHERE id = ?', [youthId]);
-        if (!member) {
+        const target = await inspectAccountClaimTarget(youthId);
+        if (!target.member) {
             return sendNoStoreJson(res, 404, { success: false, error: 'Member not found.' });
         }
         const claim = await accountClaimStore.getStatus(youthId);
+        const accountStatus = target.status === 'claimable' && claim && claim.status === 'active'
+            ? 'active'
+            : target.status === 'claimable' && claim && ['expired', 'revoked'].includes(claim.status)
+                ? claim.status
+                : target.status;
         return sendNoStoreJson(res, 200, {
             success: true,
             youth_id: youthId,
+            member_name: target.member.name,
+            account_status: accountStatus,
             claim: claim ? {
                 id: claim.id,
                 status: claim.status,
@@ -2920,8 +3065,8 @@ app.post('/api/account-claim/preview', async (req, res) => {
                 error: 'This account claim is invalid or no longer active.'
             });
         }
-        const member = await googleAuthDatabaseGet('SELECT id, name FROM youth WHERE id = ?', [claim.youthId]);
-        if (!member) {
+        const target = await inspectAccountClaimTarget(claim.youthId);
+        if (target.status !== 'claimable') {
             auditRejectedAccountClaimPreview(req);
             return sendNoStoreJson(res, 404, {
                 success: false,
@@ -2930,11 +3075,190 @@ app.post('/api/account-claim/preview', async (req, res) => {
         }
         return sendNoStoreJson(res, 200, {
             success: true,
-            member: sanitizeMemberForPublic(member)
+            member: { name: target.member.name },
+            login_identifier: target.account.username
         });
     } catch (error) {
         console.error('Account claim preview failed');
         return sendNoStoreJson(res, 500, { success: false, error: 'Unable to preview account claim.' });
+    }
+});
+
+async function resolveUsableClaimAccount(rawToken) {
+    const claim = await accountClaimStore.getUsable(rawToken);
+    if (!claim) return null;
+    const target = await inspectAccountClaimTarget(claim.youthId);
+    return target.status === 'claimable'
+        ? Object.freeze({ claim, target })
+        : null;
+}
+
+async function consumeFirstTimeAccountClaim({ rawToken, accountId, method }, mutation) {
+    return accountClaimStore.consumeWithMutation(
+        { rawToken, consumedByUserId: accountId },
+        async (claim, transaction) => {
+            const target = requireClaimableAccountTarget(
+                await inspectAccountClaimTarget(claim.youthId, transaction)
+            );
+            if (target.account.id !== accountId) throw createAccountClaimTargetConflict();
+            const mutationResult = await mutation({ claim, target, transaction });
+            const claimedAt = Date.now();
+            const attested = await transaction.run(
+                `UPDATE users
+                 SET account_claimed_at = ?, account_claim_method = ?, account_claim_token_id = ?
+                 WHERE id = ? AND youth_id = ?
+                   AND account_claimed_at IS NULL
+                   AND account_claim_method IS NULL
+                   AND account_claim_token_id IS NULL`,
+                [claimedAt, method, claim.id, target.account.id, claim.youthId]
+            );
+            if (attested.changes !== 1) throw createAccountClaimTargetConflict();
+            return Object.freeze({
+                userId: target.account.id,
+                youthId: claim.youthId,
+                loginIdentifier: target.account.username,
+                ...mutationResult
+            });
+        }
+    );
+}
+
+function completeFirstTimeAccountClaim(req, res, completion, auditMethod) {
+    invalidateSessionsForYouth(sessionStore, completion.youthId);
+    invalidateSessionsForUser(sessionStore, completion.userId);
+    invalidateAuthorizationSession(req, res);
+    logActivity(
+        `User ${completion.userId}`,
+        'ACCOUNT_CLAIM_ACTIVATED',
+        `Community Portal account activated for Member ID ${completion.youthId} using ${auditMethod}`
+    );
+    return sendNoStoreJson(res, 200, {
+        success: true,
+        login_identifier: completion.loginIdentifier,
+        reauthentication_required: true
+    });
+}
+
+app.post('/api/account-claim/activate-password', async (req, res) => {
+    if (!checkAccountClaimActivationLimit(req, res)) return;
+    const rawToken = req.body && req.body.token;
+    const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+    if (password.length < 8 || password.length > 128 || !/\S/.test(password)) {
+        return sendNoStoreJson(res, 400, {
+            success: false,
+            error: 'Password must be 8 to 128 characters and contain meaningful content.'
+        });
+    }
+
+    try {
+        const resolved = await resolveUsableClaimAccount(rawToken);
+        if (!resolved) return rejectPublicAccountClaim(res);
+        const encodedPassword = await hashPassword(password);
+        const consumed = await consumeFirstTimeAccountClaim({
+            rawToken,
+            accountId: resolved.target.account.id,
+            method: 'claim_password'
+        }, async ({ target, transaction }) => {
+            const memberUpdated = await transaction.run(
+                'UPDATE youth SET password = ? WHERE id = ?',
+                [encodedPassword, target.member.id]
+            );
+            const accountUpdated = await transaction.run(
+                'UPDATE users SET password = ? WHERE id = ? AND youth_id = ?',
+                [encodedPassword, target.account.id, target.member.id]
+            );
+            if (memberUpdated.changes !== 1 || accountUpdated.changes !== 1) {
+                throw createAccountClaimTargetConflict();
+            }
+            return {};
+        });
+        if (!consumed) return rejectPublicAccountClaim(res);
+        return completeFirstTimeAccountClaim(req, res, consumed.mutationResult, 'private password');
+    } catch (error) {
+        if (error && typeof error.code === 'string' && error.code.startsWith('ACCOUNT_CLAIM_')) {
+            return rejectPublicAccountClaim(res);
+        }
+        console.error('Account claim password activation failed');
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            error: 'Unable to connect this account safely. Please try again.'
+        });
+    }
+});
+
+app.post('/api/account-claim/activate-google', async (req, res) => {
+    if (!checkAccountClaimActivationLimit(req, res)) return;
+    const rawToken = req.body && req.body.token;
+    const googleToken = req.body && req.body.google_token;
+    if (typeof googleToken !== 'string' || googleToken.length === 0 || googleToken.length > 8192) {
+        return rejectPublicAccountClaim(res);
+    }
+
+    let resolved;
+    let identity;
+    try {
+        resolved = await resolveUsableClaimAccount(rawToken);
+        if (!resolved) return rejectPublicAccountClaim(res);
+        const ticket = await googleClient.verifyIdToken({
+            idToken: googleToken,
+            audience: '100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com'
+        });
+        identity = validateVerifiedGooglePayload(ticket.getPayload());
+    } catch (error) {
+        return rejectPublicAccountClaim(res);
+    }
+    if (!identity) return rejectPublicAccountClaim(res);
+
+    try {
+        const consumed = await consumeFirstTimeAccountClaim({
+            rawToken,
+            accountId: resolved.target.account.id,
+            method: 'claim_google'
+        }, async ({ target, transaction }) => {
+            const conflictingIdentity = await transaction.get(
+                'SELECT id FROM youth WHERE google_id = ? AND id <> ? LIMIT 1',
+                [identity.googleId, target.member.id]
+            );
+            if (conflictingIdentity) throw createAccountClaimTargetConflict();
+            if (target.member.google_id && target.member.google_id !== identity.googleId) {
+                throw createAccountClaimTargetConflict();
+            }
+
+            const exactEmailMatch = normalizeEmail(target.member.email) === identity.normalizedEmail;
+            const linked = await transaction.run(
+                `UPDATE youth
+                 SET google_id = ?,
+                     profile_picture = CASE
+                         WHEN profile_picture IS NULL OR TRIM(profile_picture) = '' THEN ?
+                         ELSE profile_picture
+                     END,
+                     email_verified = CASE WHEN ? THEN 1 ELSE email_verified END,
+                     email_verified_at = CASE
+                         WHEN ? THEN COALESCE(email_verified_at, ?)
+                         ELSE email_verified_at
+                     END
+                 WHERE id = ? AND (google_id IS NULL OR google_id = '' OR google_id = ?)`,
+                [identity.googleId, identity.picture, exactEmailMatch ? 1 : 0,
+                    exactEmailMatch ? 1 : 0, Date.now(), target.member.id, identity.googleId]
+            );
+            if (linked.changes !== 1) throw createAccountClaimTargetConflict();
+            const confirmed = await transaction.get('SELECT google_id FROM youth WHERE id = ?', [target.member.id]);
+            if (!confirmed || confirmed.google_id !== identity.googleId) {
+                throw createAccountClaimTargetConflict();
+            }
+            return {};
+        });
+        if (!consumed) return rejectPublicAccountClaim(res);
+        return completeFirstTimeAccountClaim(req, res, consumed.mutationResult, 'Google');
+    } catch (error) {
+        if (error && typeof error.code === 'string' && error.code.startsWith('ACCOUNT_CLAIM_')) {
+            return rejectPublicAccountClaim(res);
+        }
+        console.error('Account claim Google activation failed');
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            error: 'Unable to connect this account safely. Please try again.'
+        });
     }
 });
 

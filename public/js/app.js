@@ -4017,6 +4017,112 @@ window.loadUserPermissionsList = async function() {
     window.filterPermUserList();
 };
 
+let currentIssuedAccountClaimUrl = null;
+
+function getAccountClaimStatusLabel(status) {
+    return ({
+        claimable: 'Not Claimed',
+        active: 'Active Claim',
+        claimed: 'Claimed',
+        expired: 'Expired',
+        revoked: 'Revoked',
+        conflict: 'Needs Review',
+        needs_account: 'Needs Review'
+    })[status] || 'Needs Review';
+}
+
+window.loadAccountClaimAdminStatus = async function(youthId) {
+    const statusElement = document.getElementById('accountClaimStatus');
+    const actionsElement = document.getElementById('accountClaimActions');
+    if (!statusElement || !actionsElement || !window.hasPerm('access_permissions')) return;
+    statusElement.textContent = 'Loading account status…';
+    actionsElement.replaceChildren();
+    try {
+        const response = await fetch(`/api/admin/account-claims/${youthId}`, {
+            credentials: 'same-origin',
+            cache: 'no-store'
+        });
+        const body = await response.json();
+        if (!response.ok || !body.success) throw new Error(body.error || 'Unable to load account status.');
+        statusElement.textContent = `Status: ${getAccountClaimStatusLabel(body.account_status)}`;
+
+        const canIssue = ['claimable', 'expired', 'revoked'].includes(body.account_status);
+        const canReplace = body.account_status === 'active';
+        if (canIssue || canReplace) {
+            const issueButton = document.createElement('button');
+            issueButton.type = 'button';
+            issueButton.className = 'btn btn-primary btn-sm';
+            issueButton.textContent = canReplace ? 'Replace Account Claim' : 'Issue Account Claim';
+            issueButton.addEventListener('click', () => window.issueAccountClaim(youthId));
+            actionsElement.appendChild(issueButton);
+        }
+        if (body.account_status === 'active') {
+            const revokeButton = document.createElement('button');
+            revokeButton.type = 'button';
+            revokeButton.className = 'btn btn-danger btn-sm';
+            revokeButton.textContent = 'Revoke Claim';
+            revokeButton.addEventListener('click', () => window.revokeAccountClaim(youthId));
+            actionsElement.appendChild(revokeButton);
+        }
+    } catch (error) {
+        statusElement.textContent = error.message || 'Unable to load account status.';
+    }
+};
+
+window.issueAccountClaim = async function(youthId) {
+    const statusElement = document.getElementById('accountClaimStatus');
+    const issuedElement = document.getElementById('accountClaimIssued');
+    try {
+        const response = await fetch('/api/admin/account-claims', {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ youth_id: youthId })
+        });
+        const body = await response.json();
+        if (!response.ok || !body.success) throw new Error(body.error || 'Unable to issue account claim.');
+        currentIssuedAccountClaimUrl = body.claim_url;
+        document.getElementById('accountClaimIssuedName').textContent = body.member_name;
+        document.getElementById('accountClaimIssuedExpiry').textContent = `Expires ${new Date(body.expires_at).toLocaleString()}`;
+        document.getElementById('accountClaimQrImage').src = body.claim_qr_data_url;
+        issuedElement.style.display = 'block';
+        statusElement.textContent = 'Status: Active Claim';
+        await window.loadAccountClaimAdminStatus(youthId);
+    } catch (error) {
+        statusElement.textContent = error.message || 'Unable to issue account claim.';
+    }
+};
+
+window.copyIssuedAccountClaimLink = async function() {
+    if (!currentIssuedAccountClaimUrl) return;
+    try {
+        await navigator.clipboard.writeText(currentIssuedAccountClaimUrl);
+        alert('Account claim link copied.');
+    } catch (error) {
+        alert('Copy was unavailable. Replace the claim if you need a new link.');
+    }
+};
+
+window.revokeAccountClaim = async function(youthId) {
+    const statusElement = document.getElementById('accountClaimStatus');
+    try {
+        const response = await fetch(`/api/admin/account-claims/${youthId}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            cache: 'no-store'
+        });
+        const body = await response.json();
+        if (!response.ok || !body.success) throw new Error(body.error || 'Unable to revoke account claim.');
+        currentIssuedAccountClaimUrl = null;
+        document.getElementById('accountClaimIssued').style.display = 'none';
+        document.getElementById('accountClaimQrImage').removeAttribute('src');
+        await window.loadAccountClaimAdminStatus(youthId);
+    } catch (error) {
+        statusElement.textContent = error.message || 'Unable to revoke account claim.';
+    }
+};
+
 window.openAssignPermissionModal = async function(id, displayName) {
     try {
         // Query the active users list to find their specific permissions rather than the youth list
@@ -4043,6 +4149,10 @@ window.openAssignPermissionModal = async function(id, displayName) {
 
         const modal = document.getElementById('assignPermissionModal');
         if(modal) modal.classList.add('active');
+        currentIssuedAccountClaimUrl = null;
+        document.getElementById('accountClaimIssued').style.display = 'none';
+        document.getElementById('accountClaimQrImage').removeAttribute('src');
+        await window.loadAccountClaimAdminStatus(id);
     } catch(e) {
         console.error(e);
         alert("Failed to load user permissions from server.");
@@ -4052,6 +4162,11 @@ window.openAssignPermissionModal = async function(id, displayName) {
 window.closeAssignPermissionModal = function() {
     const modal = document.getElementById('assignPermissionModal');
     if(modal) modal.classList.remove('active');
+    currentIssuedAccountClaimUrl = null;
+    const issuedElement = document.getElementById('accountClaimIssued');
+    const qrImage = document.getElementById('accountClaimQrImage');
+    if (issuedElement) issuedElement.style.display = 'none';
+    if (qrImage) qrImage.removeAttribute('src');
 };
 
 window.handleSavePermissionsFromModal = function() {

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Connect Your Account - Fire Of God Ministries</title>
+    <link rel="stylesheet" href="/css/styles.css?v=12.2">
+    <link rel="stylesheet" href="/css/claim.css?v=1">
+    <script src="/js/claim.js?v=1" defer></script>
+</head>
+<body>
+    <main class="claim-page">
+        <section class="claim-card" aria-labelledby="claimTitle">
+            <img class="claim-logo" src="/img/logo.png" alt="Fire Of God Ministries">
+            <p class="claim-kicker">Community Portal</p>
+            <h1 id="claimTitle">Connect your membership</h1>
+            <p id="claimStatus" class="claim-status" role="status" aria-live="polite">Checking your invitation…</p>
+
+            <div id="claimActions" hidden>
+                <section id="claimSignInIdentity" class="claim-identity" aria-labelledby="claimSignInLabel" hidden>
+                    <p id="claimSignInLabel" class="claim-identity-label">Your Community Portal Sign-in ID</p>
+                    <p id="claimLoginIdentifier" class="claim-identity-value"></p>
+                    <p class="claim-identity-help">Keep this Sign-in ID. You’ll use it together with your password when signing in.</p>
+                    <button id="claimCopyIdentifier" class="btn btn-outline btn-sm" type="button">Copy Sign-in ID</button>
+                    <p id="claimCopyStatus" class="claim-copy-status" role="status" aria-live="polite"></p>
+                </section>
+                <p class="claim-intro">Choose how you would like to sign in to the Community Portal.</p>
+                <div id="claimGoogleButton" class="claim-google"></div>
+                <p id="claimGoogleStatus" class="claim-note"></p>
+                <div class="claim-divider"><span>or</span></div>
+                <form id="claimPasswordForm">
+                    <div class="form-group">
+                        <label for="claimPassword">Create a private password</label>
+                        <input id="claimPassword" class="form-control" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="claimPasswordConfirm">Confirm your password</label>
+                        <input id="claimPasswordConfirm" class="form-control" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+                    </div>
+                    <button class="btn btn-primary claim-wide" type="submit">Connect with Password</button>
+                </form>
+
+                <div id="claimExistingAccount" class="claim-existing" hidden>
+                    <p>You are already signed in. You may connect this membership to your current account.</p>
+                    <button id="claimExistingButton" class="btn btn-outline claim-wide" type="button">Connect This Account</button>
+                </div>
+            </div>
+
+            <div id="claimSuccess" hidden>
+                <h2>You’re connected!</h2>
+                <p>Your FOG membership is now connected to your Community Portal account.</p>
+                <div id="claimSuccessIdentity" class="claim-identity claim-success-identity" hidden>
+                    <p class="claim-identity-label">Your Community Portal Sign-in ID</p>
+                    <p id="claimSuccessLoginIdentifier" class="claim-identity-value"></p>
+                </div>
+                <p id="claimLoginHelp"></p>
+                <a class="btn btn-primary claim-wide" href="/">Continue to Sign In</a>
+            </div>
+
+            <p id="claimOffline" class="claim-offline" hidden>An internet connection is required to activate your account.</p>
+        </section>
+    </main>
+</body>
+</html>

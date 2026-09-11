@@ -250,6 +250,12 @@ test('account claim HTTP foundation enforces authorization, privacy, and bounded
         ['Disposable Claim Target', 'claim-target@example.test', 'private-mobile', '2000-01-01',
             'private-parent', 'FOG-MEMBER-CLAIM-TARGET', 'private-password']
     );
+    await run(
+        database,
+        `INSERT INTO users (username, permissions, youth_id)
+         VALUES ('FOG-MEMBER-CLAIM-TARGET', '[]', ?)`,
+        [target.lastID]
+    );
     const adminYouth = await run(database, "INSERT INTO youth (name, qr_code) VALUES ('Claim Admin', 'CLAIM-ADMIN')");
     const adminUser = await run(
         database,
@@ -317,7 +323,8 @@ test('account claim HTTP foundation enforces authorization, privacy, and bounded
     });
     assert.equal(preview.status, 200);
     assert.match(preview.headers.get('cache-control'), /no-store/);
-    assert.deepEqual(preview.json.member, { id: target.lastID, name: 'Disposable Claim Target' });
+    assert.deepEqual(preview.json.member, { name: 'Disposable Claim Target' });
+    assert.equal(preview.json.login_identifier, 'FOG-MEMBER-CLAIM-TARGET');
     for (const forbidden of ['email', 'mobile', 'birthday', 'parents_name', 'qr_code', 'password', 'permissions', 'google_id']) {
         assert.equal(Object.hasOwn(preview.json.member, forbidden), false);
     }

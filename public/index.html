@@ -1277,6 +1277,19 @@
             </div>
             <button type="submit" class="btn btn-primary" style="width:100%; margin-top:20px;">Save Permissions</button>
         </form>
+        <section id="accountClaimAdminSection" style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border-color);">
+            <h3 style="margin:0 0 8px;">Account Access</h3>
+            <p style="font-size:0.86rem; color:var(--text-muted); margin:0 0 12px;">Issue a temporary Account Claim QR so this member can securely connect their existing membership. This is different from their attendance QR.</p>
+            <p id="accountClaimStatus" role="status" aria-live="polite">Loading account status…</p>
+            <div id="accountClaimActions" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+            <div id="accountClaimIssued" style="display:none; margin-top:16px; padding:16px; background:#fff7ed; border:1px solid #fed7aa; border-radius:12px; text-align:center;">
+                <strong id="accountClaimIssuedName"></strong>
+                <p id="accountClaimIssuedExpiry" style="font-size:0.86rem; color:var(--text-muted);"></p>
+                <img id="accountClaimQrImage" alt="Temporary Account Claim QR" style="display:block; width:240px; max-width:100%; margin:12px auto; background:#fff; padding:8px; border-radius:10px;">
+                <p style="font-size:0.8rem; color:#9a3412;">Temporary, one-time Account Claim QR — not for attendance.</p>
+                <button type="button" class="btn btn-primary btn-sm" onclick="copyIssuedAccountClaimLink()">Copy Claim Link</button>
+            </div>
+        </section>
     </div>
 </div>
 
