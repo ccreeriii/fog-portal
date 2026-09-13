@@ -3248,6 +3248,7 @@ window.renderEventActionButtons = function(event, capabilities) {
     }
     if (capabilities.canEdit) {
         buttons.push(`<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${eventId})">Form</button>`);
+        buttons.push(`<button type="button" class="btn btn-secondary btn-sm" onclick="openGrowthEventMapping(${eventId})">Growth</button>`);
         buttons.push(`<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${eventId})">Edit</button>`);
     }
     if (capabilities.canDelete) {
@@ -8257,6 +8258,246 @@ window.updateDashboardLifePoints = function() {
                 if(elG) elG.innerText = data.growth_xp || 0;
                 if(elE) elE.innerText = data.event_xp || 0;
             }).catch(e => console.log('Points sync error', e));
+    }
+};
+
+// ==========================================
+// PHASE 2A: EVENT SERIES + GROWTH MAPPING
+// ==========================================
+let growthAdminSeries = [];
+let growthAdminTasks = [];
+let growthAdminEventId = null;
+let growthAdminDirectMappings = [];
+let growthAdminSeriesMappings = [];
+
+window.escapeGrowthAdminText = function(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+window.growthAdminRequest = async function(url, options = {}) {
+    const response = await fetch(url, options);
+    let data = null;
+    try { data = await response.json(); } catch (_) {}
+    if (!response.ok) throw new Error((data && data.error) || `Request failed (${response.status})`);
+    return data;
+};
+
+window.renderGrowthTaskChoices = function(containerId, selectedTaskIds) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const selected = new Set((selectedTaskIds || []).map(Number));
+    let currentPhase = '';
+    const rows = [];
+    for (const task of growthAdminTasks) {
+        if (task.phase_key !== currentPhase) {
+            currentPhase = task.phase_key;
+            rows.push(`<strong style="display:block; margin:${rows.length ? '14px' : '0'} 0 6px; color:var(--primary);">${window.escapeGrowthAdminText(task.phase_title)}</strong>`);
+        }
+        rows.push(`<label style="display:flex; gap:8px; align-items:flex-start; margin:6px 0;">
+            <input type="checkbox" data-growth-task-id="${Number(task.id)}" ${selected.has(Number(task.id)) ? 'checked' : ''}>
+            <span>${window.escapeGrowthAdminText(task.title)} <small style="color:var(--text-muted);">(${window.escapeGrowthAdminText(task.task_key)})</small></span>
+        </label>`);
+    }
+    container.innerHTML = rows.join('') || '<p style="color:var(--text-muted);">No active Growth tasks are available.</p>';
+};
+
+window.renderGrowthSeriesOptions = function(selectedSeriesId = null) {
+    const eventSelect = document.getElementById('growthEventSeriesSelect');
+    if (eventSelect) {
+        eventSelect.innerHTML = '<option value="">No series</option>' + growthAdminSeries.map(series => (
+            `<option value="${Number(series.id)}">${window.escapeGrowthAdminText(series.name)}${series.is_active ? '' : ' (inactive)'}</option>`
+        )).join('');
+        eventSelect.value = selectedSeriesId ? String(selectedSeriesId) : '';
+    }
+    const managerSelect = document.getElementById('growthSeriesManagerSelect');
+    if (managerSelect) {
+        const previous = managerSelect.value;
+        managerSelect.innerHTML = '<option value="">Create new series</option>' + growthAdminSeries.map(series => (
+            `<option value="${Number(series.id)}">${window.escapeGrowthAdminText(series.name)}${series.is_active ? '' : ' (inactive)'}</option>`
+        )).join('');
+        if (growthAdminSeries.some(series => String(series.id) === previous)) managerSelect.value = previous;
+    }
+};
+
+window.toggleGrowthEventFields = function() {
+    const enabled = document.getElementById('growthEventEnabled');
+    const fields = document.getElementById('growthEventFields');
+    if (fields) fields.style.display = enabled && enabled.checked ? 'block' : 'none';
+};
+
+window.openGrowthEventMapping = async function(eventId) {
+    const normalizedEventId = Number(eventId);
+    if (!Number.isSafeInteger(normalizedEventId) || normalizedEventId <= 0) return;
+    try {
+        const [series, tasks, assignment, mappings] = await Promise.all([
+            window.growthAdminRequest('/api/admin/growth/event-series'),
+            window.growthAdminRequest('/api/admin/growth/tasks'),
+            window.growthAdminRequest(`/api/admin/growth/events/${normalizedEventId}/series`),
+            window.growthAdminRequest(`/api/admin/growth/events/${normalizedEventId}/mappings`)
+        ]);
+        growthAdminEventId = normalizedEventId;
+        growthAdminSeries = series;
+        growthAdminTasks = tasks;
+        growthAdminDirectMappings = mappings.direct_mappings || [];
+        const event = (Array.isArray(eventsData) ? eventsData : []).find(item => Number(item.id) === normalizedEventId);
+        const title = document.getElementById('growthEventMappingTitle');
+        if (title) title.textContent = event ? event.name : `Event ${normalizedEventId}`;
+        window.renderGrowthSeriesOptions(assignment.series && assignment.series.id);
+        window.renderGrowthTaskChoices('growthEventTaskList', growthAdminDirectMappings.filter(item => item.is_active).map(item => item.task_id));
+        const enabled = document.getElementById('growthEventEnabled');
+        if (enabled) enabled.checked = Boolean(assignment.series || growthAdminDirectMappings.some(item => item.is_active));
+        window.toggleGrowthEventFields();
+        const manager = document.getElementById('growthSeriesManager');
+        if (manager) manager.style.display = 'none';
+        const modal = document.getElementById('growthEventMappingModal');
+        if (modal) modal.classList.add('active');
+    } catch (error) {
+        alert(error.message || 'Unable to load Growth Journey configuration.');
+    }
+};
+
+window.closeGrowthEventMapping = function() {
+    const modal = document.getElementById('growthEventMappingModal');
+    if (modal) modal.classList.remove('active');
+};
+
+window.getGrowthFormationArea = function(taskId) {
+    const task = growthAdminTasks.find(item => Number(item.id) === Number(taskId));
+    const match = task && String(task.task_key).match(/^form-(spiritual|community|servanthood|ministry|mission)$/);
+    return match ? match[1] : '';
+};
+
+window.syncGrowthTaskMappings = async function(source, containerId, existingMappings) {
+    const container = document.getElementById(containerId);
+    const selected = new Set(Array.from(container ? container.querySelectorAll('[data-growth-task-id]:checked') : [])
+        .map(input => Number(input.dataset.growthTaskId)));
+    const byTask = new Map();
+    for (const mapping of existingMappings || []) {
+        const taskId = Number(mapping.task_id);
+        if (!byTask.has(taskId)) byTask.set(taskId, []);
+        byTask.get(taskId).push(mapping);
+    }
+    for (const [taskId, mappings] of byTask) {
+        if (!selected.has(taskId)) {
+            for (const mapping of mappings) {
+                await window.growthAdminRequest(`/api/admin/growth/event-mappings/${mapping.id}`, { method: 'DELETE' });
+            }
+        } else if (!mappings.some(mapping => mapping.is_active)) {
+            await window.growthAdminRequest(`/api/admin/growth/event-mappings/${mappings[0].id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: true })
+            });
+        }
+    }
+    for (const taskId of selected) {
+        if (byTask.has(taskId)) continue;
+        await window.growthAdminRequest('/api/admin/growth/event-mappings', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ...source,
+                task_id: taskId,
+                evidence_mode: 'attendance',
+                formation_area: window.getGrowthFormationArea(taskId)
+            })
+        });
+    }
+};
+
+window.saveGrowthEventMapping = async function() {
+    if (!growthAdminEventId) return;
+    const enabled = document.getElementById('growthEventEnabled').checked;
+    const seriesValue = enabled ? document.getElementById('growthEventSeriesSelect').value : '';
+    try {
+        await window.growthAdminRequest(`/api/admin/growth/events/${growthAdminEventId}/series`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ series_id: seriesValue ? Number(seriesValue) : null })
+        });
+        if (enabled) {
+            await window.syncGrowthTaskMappings(
+                { event_id: growthAdminEventId }, 'growthEventTaskList', growthAdminDirectMappings
+            );
+        } else {
+            for (const mapping of growthAdminDirectMappings) {
+                await window.growthAdminRequest(`/api/admin/growth/event-mappings/${mapping.id}`, { method: 'DELETE' });
+            }
+        }
+        window.closeGrowthEventMapping();
+        alert('Growth Journey configuration saved.');
+    } catch (error) {
+        alert(error.message || 'Unable to save Growth Journey configuration.');
+    }
+};
+
+window.toggleGrowthSeriesManager = function() {
+    const manager = document.getElementById('growthSeriesManager');
+    if (!manager) return;
+    manager.style.display = manager.style.display === 'none' ? 'block' : 'none';
+    if (manager.style.display === 'block') window.loadGrowthSeriesEditor();
+};
+
+window.startNewGrowthSeries = function() {
+    const select = document.getElementById('growthSeriesManagerSelect');
+    if (select) select.value = '';
+    window.loadGrowthSeriesEditor();
+};
+
+window.loadGrowthSeriesEditor = async function() {
+    const selectedId = Number(document.getElementById('growthSeriesManagerSelect').value || 0);
+    const series = growthAdminSeries.find(item => Number(item.id) === selectedId) || null;
+    document.getElementById('growthSeriesId').value = series ? series.id : '';
+    document.getElementById('growthSeriesName').value = series ? series.name : '';
+    document.getElementById('growthSeriesKey').value = series ? series.series_key : '';
+    document.getElementById('growthSeriesDescription').value = series ? (series.description || '') : '';
+    document.getElementById('growthSeriesAudience').value = series ? series.audience : 'all';
+    document.getElementById('growthSeriesActive').checked = series ? Boolean(series.is_active) : true;
+    growthAdminSeriesMappings = [];
+    if (series) {
+        try {
+            growthAdminSeriesMappings = await window.growthAdminRequest(`/api/admin/growth/event-series/${series.id}/mappings`);
+        } catch (error) {
+            alert(error.message || 'Unable to load series mappings.');
+        }
+    }
+    window.renderGrowthTaskChoices('growthSeriesTaskList', growthAdminSeriesMappings.filter(item => item.is_active).map(item => item.task_id));
+};
+
+window.saveGrowthSeries = async function() {
+    const existingId = Number(document.getElementById('growthSeriesId').value || 0);
+    const name = document.getElementById('growthSeriesName').value.trim();
+    let seriesKey = document.getElementById('growthSeriesKey').value.trim().toLowerCase();
+    if (!seriesKey && name) seriesKey = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const payload = {
+        series_key: seriesKey,
+        name,
+        description: document.getElementById('growthSeriesDescription').value.trim(),
+        audience: document.getElementById('growthSeriesAudience').value,
+        is_active: document.getElementById('growthSeriesActive').checked
+    };
+    try {
+        const saved = await window.growthAdminRequest(
+            existingId ? `/api/admin/growth/event-series/${existingId}` : '/api/admin/growth/event-series',
+            {
+                method: existingId ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }
+        );
+        const seriesId = existingId || Number(saved.id);
+        await window.syncGrowthTaskMappings(
+            { series_id: seriesId }, 'growthSeriesTaskList', existingId ? growthAdminSeriesMappings : []
+        );
+        growthAdminSeries = await window.growthAdminRequest('/api/admin/growth/event-series');
+        window.renderGrowthSeriesOptions(document.getElementById('growthEventSeriesSelect').value);
+        document.getElementById('growthSeriesManagerSelect').value = String(seriesId);
+        await window.loadGrowthSeriesEditor();
+        alert('Event series saved.');
+    } catch (error) {
+        alert(error.message || 'Unable to save event series.');
     }
 };
 

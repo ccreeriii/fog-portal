@@ -5444,6 +5444,345 @@ app.get('/api/attendance/logs', (req, res) => { db.all(`SELECT a.id, a.checked_i
 app.put('/api/attendance/:id', (req, res) => { db.run(`UPDATE attendance SET checked_in_at = ?, is_walkin = ? WHERE id = ?`, [req.body.checked_in_at, req.body.is_walkin ? 1 : 0, req.params.id], function (err) { res.json({ updated: this.changes }); }); });
 app.delete('/api/attendance/:id', requireAllPermissions(['access_attendance', 'delete_entries']), (req, res) => { db.run(`DELETE FROM attendance WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
 
+const requireGrowthEventConfiguration = requireAllPermissions(['access_events', 'edit_entries']);
+const GROWTH_EVENT_EVIDENCE_MODES = new Set(['registration', 'attendance', 'event_role', 'completion']);
+const GROWTH_FORMATION_AREAS = new Set(['', 'spiritual', 'community', 'servanthood', 'ministry', 'mission']);
+
+function normalizeGrowthActiveFlag(value, fallback) {
+    if (value === undefined) return fallback;
+    if (value === true || value === 1 || value === '1') return 1;
+    if (value === false || value === 0 || value === '0') return 0;
+    return null;
+}
+
+function normalizeGrowthSeriesFields(body, current = {}) {
+    const seriesKey = String(body.series_key === undefined ? (current.series_key || '') : body.series_key).trim();
+    const name = String(body.name === undefined ? (current.name || '') : body.name).trim();
+    const descriptionValue = body.description === undefined ? current.description : body.description;
+    const description = descriptionValue == null ? null : String(descriptionValue).trim();
+    const audience = String(body.audience === undefined ? (current.audience || 'all') : body.audience).trim();
+    const isActive = normalizeGrowthActiveFlag(body.is_active, current.is_active === undefined ? 1 : current.is_active);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(seriesKey) || seriesKey.length > 100) {
+        return { error: 'Series key must be a lowercase slug.' };
+    }
+    if (!name || name.length > 160) return { error: 'Series name is required.' };
+    if (description && description.length > 2000) return { error: 'Series description is too long.' };
+    if (!['all', 'youth', 'adult'].includes(audience)) return { error: 'Invalid series audience.' };
+    if (isActive === null) return { error: 'Invalid active status.' };
+    return { seriesKey, name, description, audience, isActive };
+}
+
+async function getGrowthMappingRows(sourceColumn, sourceId) {
+    return GrowthJourney.all(
+        db,
+        `SELECT mapping.id, mapping.task_id, mapping.event_id, mapping.series_id,
+                mapping.evidence_mode, mapping.formation_area, mapping.credit_value,
+                mapping.is_active, mapping.created_at,
+                task.task_key, task.title AS task_title, task.evidence_type AS task_evidence_type,
+                phase.phase_key, phase.title AS phase_title, phase.journey_segment
+         FROM growth_event_task_map mapping
+         JOIN growth_tasks task ON task.id = mapping.task_id
+         JOIN growth_journey_phases phase ON phase.id = task.phase_id
+         WHERE mapping.${sourceColumn} = ?
+         ORDER BY phase.phase_order ASC, task.id ASC, mapping.id ASC`,
+        [sourceId]
+    );
+}
+
+async function validateGrowthMappingSource(eventId, seriesId) {
+    if ((eventId !== null) === (seriesId !== null)) {
+        return { status: 400, error: 'Choose exactly one event or event series.' };
+    }
+    if (eventId !== null) {
+        const event = await GrowthJourney.get(db, 'SELECT id FROM events WHERE id = ?', [eventId]);
+        return event ? null : { status: 404, error: 'Event not found.' };
+    }
+    const series = await GrowthJourney.get(db, 'SELECT id FROM growth_event_series WHERE id = ?', [seriesId]);
+    return series ? null : { status: 404, error: 'Event series not found.' };
+}
+
+function normalizeGrowthMappingFields(body, current = {}) {
+    const taskId = normalizeCanonicalId(body.task_id === undefined ? current.task_id : body.task_id);
+    const evidenceMode = String(body.evidence_mode === undefined
+        ? (current.evidence_mode || 'attendance')
+        : body.evidence_mode).trim();
+    const formationArea = String(body.formation_area === undefined
+        ? (current.formation_area || '')
+        : body.formation_area).trim().toLowerCase();
+    const rawCreditValue = body.credit_value === undefined ? (current.credit_value ?? 1) : body.credit_value;
+    const creditValue = Number(rawCreditValue);
+    const isActive = normalizeGrowthActiveFlag(body.is_active, current.is_active === undefined ? 1 : current.is_active);
+    if (!taskId) return { error: 'A valid Growth task is required.' };
+    if (!GROWTH_EVENT_EVIDENCE_MODES.has(evidenceMode)) return { error: 'Invalid evidence mode.' };
+    if (!GROWTH_FORMATION_AREAS.has(formationArea)) return { error: 'Invalid formation area.' };
+    if (!Number.isFinite(creditValue) || creditValue <= 0) return { error: 'Credit value must be positive.' };
+    if (isActive === null) return { error: 'Invalid active status.' };
+    return { taskId, evidenceMode, formationArea, creditValue, isActive };
+}
+
+app.get('/api/admin/growth/tasks', requireGrowthEventConfiguration, async (req, res) => {
+    try {
+        const tasks = await GrowthJourney.all(
+            db,
+            `SELECT task.id, task.task_key, task.title, task.evidence_type, task.audience,
+                    phase.phase_key, phase.title AS phase_title, phase.phase_order,
+                    phase.journey_segment
+             FROM growth_tasks task
+             JOIN growth_journey_phases phase ON phase.id = task.phase_id
+             WHERE task.is_active = 1 AND phase.is_active = 1
+             ORDER BY phase.phase_order ASC, task.id ASC`
+        );
+        return res.json(tasks);
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to load Growth tasks.' });
+    }
+});
+
+app.get('/api/admin/growth/event-series', requireGrowthEventConfiguration, async (req, res) => {
+    try {
+        const series = await GrowthJourney.all(
+            db,
+            `SELECT series.*,
+                    (SELECT COUNT(*) FROM growth_event_series_events assignment
+                     WHERE assignment.series_id = series.id) AS event_count,
+                    (SELECT COUNT(*) FROM growth_event_task_map mapping
+                     WHERE mapping.series_id = series.id) AS mapping_count
+             FROM growth_event_series series
+             ORDER BY series.is_active DESC, series.name COLLATE NOCASE ASC, series.id ASC`
+        );
+        return res.json(series);
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to load event series.' });
+    }
+});
+
+app.post('/api/admin/growth/event-series', requireGrowthEventConfiguration, async (req, res) => {
+    const fields = normalizeGrowthSeriesFields(req.body || {});
+    if (fields.error) return res.status(400).json({ error: fields.error });
+    try {
+        const result = await GrowthJourney.run(
+            db,
+            `INSERT INTO growth_event_series
+                (series_key, name, description, audience, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [fields.seriesKey, fields.name, fields.description, fields.audience, fields.isActive,
+                getManilaTime(), getManilaTime()]
+        );
+        logActivity(getCanonicalAuditActor(req), 'CREATE_GROWTH_EVENT_SERIES', `Created Growth event series ID ${result.lastID}`);
+        return res.status(201).json({ id: result.lastID });
+    } catch (error) {
+        if (error && error.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ error: 'That series key is already in use.' });
+        }
+        return res.status(500).json({ error: 'Unable to create event series.' });
+    }
+});
+
+app.put('/api/admin/growth/event-series/:id', requireGrowthEventConfiguration, async (req, res) => {
+    const seriesId = normalizeCanonicalId(req.params.id);
+    if (!seriesId) return res.status(404).json({ error: 'Event series not found.' });
+    try {
+        const current = await GrowthJourney.get(db, 'SELECT * FROM growth_event_series WHERE id = ?', [seriesId]);
+        if (!current) return res.status(404).json({ error: 'Event series not found.' });
+        const fields = normalizeGrowthSeriesFields(req.body || {}, current);
+        if (fields.error) return res.status(400).json({ error: fields.error });
+        await GrowthJourney.run(
+            db,
+            `UPDATE growth_event_series
+             SET series_key = ?, name = ?, description = ?, audience = ?, is_active = ?, updated_at = ?
+             WHERE id = ?`,
+            [fields.seriesKey, fields.name, fields.description, fields.audience, fields.isActive,
+                getManilaTime(), seriesId]
+        );
+        logActivity(getCanonicalAuditActor(req), 'UPDATE_GROWTH_EVENT_SERIES', `Updated Growth event series ID ${seriesId}`);
+        return res.json({ updated: 1 });
+    } catch (error) {
+        if (error && error.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ error: 'That series key is already in use.' });
+        }
+        return res.status(500).json({ error: 'Unable to update event series.' });
+    }
+});
+
+app.patch('/api/admin/growth/event-series/:id/active', requireGrowthEventConfiguration, async (req, res) => {
+    const seriesId = normalizeCanonicalId(req.params.id);
+    const isActive = normalizeGrowthActiveFlag(req.body && req.body.is_active, null);
+    if (!seriesId) return res.status(404).json({ error: 'Event series not found.' });
+    if (isActive === null) return res.status(400).json({ error: 'Invalid active status.' });
+    try {
+        const result = await GrowthJourney.run(
+            db,
+            'UPDATE growth_event_series SET is_active = ?, updated_at = ? WHERE id = ?',
+            [isActive, getManilaTime(), seriesId]
+        );
+        if (result.changes !== 1) return res.status(404).json({ error: 'Event series not found.' });
+        logActivity(getCanonicalAuditActor(req), isActive ? 'ACTIVATE_GROWTH_EVENT_SERIES' : 'DEACTIVATE_GROWTH_EVENT_SERIES', `Changed Growth event series ID ${seriesId}`);
+        return res.json({ updated: 1, is_active: isActive });
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to change event series status.' });
+    }
+});
+
+app.get('/api/admin/growth/events/:eventId/series', requireGrowthEventConfiguration, async (req, res) => {
+    const eventId = normalizeCanonicalId(req.params.eventId);
+    if (!eventId) return res.status(404).json({ error: 'Event not found.' });
+    try {
+        const event = await GrowthJourney.get(db, 'SELECT id FROM events WHERE id = ?', [eventId]);
+        if (!event) return res.status(404).json({ error: 'Event not found.' });
+        const assignments = await GrowthJourney.all(
+            db,
+            `SELECT series.id, series.series_key, series.name, series.description,
+                    series.audience, series.is_active, assignment.created_at
+             FROM growth_event_series_events assignment
+             JOIN growth_event_series series ON series.id = assignment.series_id
+             WHERE assignment.event_id = ?
+             ORDER BY assignment.id ASC`,
+            [eventId]
+        );
+        return res.json({ series: assignments[0] || null, assignments });
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to load the event series assignment.' });
+    }
+});
+
+app.put('/api/admin/growth/events/:eventId/series', requireGrowthEventConfiguration, async (req, res) => {
+    const eventId = normalizeCanonicalId(req.params.eventId);
+    const rawSeriesId = req.body && req.body.series_id;
+    const seriesId = rawSeriesId === null || rawSeriesId === undefined || rawSeriesId === ''
+        ? null
+        : normalizeCanonicalId(rawSeriesId);
+    if (!eventId) return res.status(404).json({ error: 'Event not found.' });
+    if (rawSeriesId !== null && rawSeriesId !== undefined && rawSeriesId !== '' && !seriesId) {
+        return res.status(400).json({ error: 'Invalid event series.' });
+    }
+    try {
+        const event = await GrowthJourney.get(db, 'SELECT id FROM events WHERE id = ?', [eventId]);
+        if (!event) return res.status(404).json({ error: 'Event not found.' });
+        if (seriesId) {
+            const series = await GrowthJourney.get(db, 'SELECT id FROM growth_event_series WHERE id = ?', [seriesId]);
+            if (!series) return res.status(404).json({ error: 'Event series not found.' });
+        }
+        await GrowthJourney.run(db, 'BEGIN IMMEDIATE');
+        try {
+            await GrowthJourney.run(db, 'DELETE FROM growth_event_series_events WHERE event_id = ?', [eventId]);
+            if (seriesId) {
+                await GrowthJourney.run(
+                    db,
+                    `INSERT INTO growth_event_series_events (series_id, event_id, created_at)
+                     VALUES (?, ?, ?)`,
+                    [seriesId, eventId, getManilaTime()]
+                );
+            }
+            await GrowthJourney.run(db, 'COMMIT');
+        } catch (error) {
+            await GrowthJourney.run(db, 'ROLLBACK').catch(() => {});
+            throw error;
+        }
+        logActivity(getCanonicalAuditActor(req), 'ASSIGN_GROWTH_EVENT_SERIES', seriesId
+            ? `Assigned event ID ${eventId} to Growth event series ID ${seriesId}`
+            : `Removed Growth event series assignment from event ID ${eventId}`);
+        return res.json({ event_id: eventId, series_id: seriesId });
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to save the event series assignment.' });
+    }
+});
+
+app.get('/api/admin/growth/event-series/:seriesId/mappings', requireGrowthEventConfiguration, async (req, res) => {
+    const seriesId = normalizeCanonicalId(req.params.seriesId);
+    if (!seriesId) return res.status(404).json({ error: 'Event series not found.' });
+    try {
+        const series = await GrowthJourney.get(db, 'SELECT id FROM growth_event_series WHERE id = ?', [seriesId]);
+        if (!series) return res.status(404).json({ error: 'Event series not found.' });
+        return res.json(await getGrowthMappingRows('series_id', seriesId));
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to load event series mappings.' });
+    }
+});
+
+app.get('/api/admin/growth/events/:eventId/mappings', requireGrowthEventConfiguration, async (req, res) => {
+    const eventId = normalizeCanonicalId(req.params.eventId);
+    if (!eventId) return res.status(404).json({ error: 'Event not found.' });
+    try {
+        const event = await GrowthJourney.get(db, 'SELECT id FROM events WHERE id = ?', [eventId]);
+        if (!event) return res.status(404).json({ error: 'Event not found.' });
+        const [directMappings, effectiveMappings] = await Promise.all([
+            getGrowthMappingRows('event_id', eventId),
+            GrowthJourney.effectiveGrowthMappingsForEvent(db, eventId)
+        ]);
+        return res.json({ direct_mappings: directMappings, effective_mappings: effectiveMappings });
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to load event Growth mappings.' });
+    }
+});
+
+app.post('/api/admin/growth/event-mappings', requireGrowthEventConfiguration, async (req, res) => {
+    const eventId = normalizeCanonicalId(req.body && req.body.event_id);
+    const seriesId = normalizeCanonicalId(req.body && req.body.series_id);
+    const fields = normalizeGrowthMappingFields(req.body || {});
+    if (fields.error) return res.status(400).json({ error: fields.error });
+    try {
+        const sourceError = await validateGrowthMappingSource(eventId, seriesId);
+        if (sourceError) return res.status(sourceError.status).json({ error: sourceError.error });
+        const task = await GrowthJourney.get(db, 'SELECT id FROM growth_tasks WHERE id = ? AND is_active = 1', [fields.taskId]);
+        if (!task) return res.status(404).json({ error: 'Growth task not found.' });
+        const result = await GrowthJourney.run(
+            db,
+            `INSERT INTO growth_event_task_map
+                (task_id, event_id, series_id, evidence_mode, formation_area, credit_value, is_active, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [fields.taskId, eventId || 0, seriesId || 0, fields.evidenceMode, fields.formationArea,
+                fields.creditValue, fields.isActive, getManilaTime()]
+        );
+        logActivity(getCanonicalAuditActor(req), 'CREATE_GROWTH_EVENT_MAPPING', `Created Growth event mapping ID ${result.lastID}`);
+        return res.status(201).json({ id: result.lastID });
+    } catch (error) {
+        if (error && error.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ error: 'That Growth mapping already exists.' });
+        }
+        return res.status(500).json({ error: 'Unable to create Growth mapping.' });
+    }
+});
+
+app.put('/api/admin/growth/event-mappings/:id', requireGrowthEventConfiguration, async (req, res) => {
+    const mappingId = normalizeCanonicalId(req.params.id);
+    if (!mappingId) return res.status(404).json({ error: 'Growth mapping not found.' });
+    try {
+        const current = await GrowthJourney.get(db, 'SELECT * FROM growth_event_task_map WHERE id = ?', [mappingId]);
+        if (!current) return res.status(404).json({ error: 'Growth mapping not found.' });
+        const fields = normalizeGrowthMappingFields(req.body || {}, current);
+        if (fields.error) return res.status(400).json({ error: fields.error });
+        const task = await GrowthJourney.get(db, 'SELECT id FROM growth_tasks WHERE id = ? AND is_active = 1', [fields.taskId]);
+        if (!task) return res.status(404).json({ error: 'Growth task not found.' });
+        await GrowthJourney.run(
+            db,
+            `UPDATE growth_event_task_map
+             SET task_id = ?, evidence_mode = ?, formation_area = ?, credit_value = ?, is_active = ?
+             WHERE id = ?`,
+            [fields.taskId, fields.evidenceMode, fields.formationArea, fields.creditValue, fields.isActive, mappingId]
+        );
+        logActivity(getCanonicalAuditActor(req), 'UPDATE_GROWTH_EVENT_MAPPING', `Updated Growth event mapping ID ${mappingId}`);
+        return res.json({ updated: 1 });
+    } catch (error) {
+        if (error && error.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ error: 'That Growth mapping already exists.' });
+        }
+        return res.status(500).json({ error: 'Unable to update Growth mapping.' });
+    }
+});
+
+app.delete('/api/admin/growth/event-mappings/:id', requireGrowthEventConfiguration, async (req, res) => {
+    const mappingId = normalizeCanonicalId(req.params.id);
+    if (!mappingId) return res.status(404).json({ error: 'Growth mapping not found.' });
+    try {
+        const result = await GrowthJourney.run(db, 'DELETE FROM growth_event_task_map WHERE id = ?', [mappingId]);
+        if (result.changes !== 1) return res.status(404).json({ error: 'Growth mapping not found.' });
+        logActivity(getCanonicalAuditActor(req), 'DELETE_GROWTH_EVENT_MAPPING', `Deleted Growth event mapping ID ${mappingId}`);
+        return res.json({ deleted: 1 });
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to delete Growth mapping.' });
+    }
+});
+
 app.get('/api/events', async (req, res) => {
     db.all(
         `SELECT id, name, event_date, time_start, venue, photos_url, materials_url,

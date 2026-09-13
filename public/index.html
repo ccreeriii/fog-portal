@@ -1296,6 +1296,58 @@
     </div>
 </div>
 
+<div id="growthEventMappingModal" class="modal">
+    <div class="modal-content" style="max-width:760px; max-height:90vh; overflow-y:auto;">
+        <span class="close-modal" onclick="closeGrowthEventMapping()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
+        <h2>Growth Journey Configuration</h2>
+        <p id="growthEventMappingTitle" style="color:var(--text-muted);"></p>
+        <label style="display:flex; gap:10px; align-items:center; font-weight:700; margin-bottom:16px;">
+            <input type="checkbox" id="growthEventEnabled" onchange="toggleGrowthEventFields()">
+            Contributes to Growth Journey
+        </label>
+        <div id="growthEventFields" style="display:none;">
+            <div class="form-group">
+                <label>Event Series</label>
+                <select id="growthEventSeriesSelect" class="form-control"></select>
+                <small style="color:var(--text-muted);">Series mappings are inherited. Direct mappings below add to them.</small>
+            </div>
+            <div class="form-group">
+                <label>Direct Event Mappings</label>
+                <div id="growthEventTaskList" style="border:1px solid var(--border-color); border-radius:8px; padding:12px; max-height:260px; overflow-y:auto;"></div>
+            </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:18px;">
+            <button type="button" class="btn btn-primary" style="flex:1;" onclick="saveGrowthEventMapping()">Save Event Mapping</button>
+            <button type="button" class="btn btn-outline" onclick="toggleGrowthSeriesManager()">Manage Series</button>
+        </div>
+        <div id="growthSeriesManager" style="display:none; margin-top:24px; padding-top:20px; border-top:1px solid var(--border-color);">
+            <h3>Event Series</h3>
+            <div class="form-group">
+                <label>Edit Series</label>
+                <select id="growthSeriesManagerSelect" class="form-control" onchange="loadGrowthSeriesEditor()"></select>
+            </div>
+            <input type="hidden" id="growthSeriesId">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="form-group"><label>Name *</label><input type="text" id="growthSeriesName" class="form-control"></div>
+                <div class="form-group"><label>Stable Key *</label><input type="text" id="growthSeriesKey" class="form-control" placeholder="alpha-youth-series"></div>
+            </div>
+            <div class="form-group"><label>Description</label><textarea id="growthSeriesDescription" class="form-control" rows="2"></textarea></div>
+            <div style="display:flex; gap:18px; align-items:center; margin-bottom:14px;">
+                <label>Audience <select id="growthSeriesAudience" class="form-control"><option value="all">All</option><option value="youth">Youth</option><option value="adult">Adult</option></select></label>
+                <label style="display:flex; gap:8px; align-items:center;"><input type="checkbox" id="growthSeriesActive" checked> Active</label>
+            </div>
+            <div class="form-group">
+                <label>Series Growth Mappings</label>
+                <div id="growthSeriesTaskList" style="border:1px solid var(--border-color); border-radius:8px; padding:12px; max-height:260px; overflow-y:auto;"></div>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button type="button" class="btn btn-primary" onclick="saveGrowthSeries()">Save Series</button>
+                <button type="button" class="btn btn-outline" onclick="startNewGrowthSeries()">New Series</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="assignPermissionModal" class="modal">
     <div class="modal-content">
         <span class="close-modal" onclick="closeAssignPermissionModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
