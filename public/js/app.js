@@ -7414,6 +7414,13 @@ window.switchTab = function(tabId, subTabId = null) {
     const targetTab = document.getElementById(tabId);
     if (targetTab) targetTab.classList.add('active');
 
+    if (
+        tabId === 'permissionsTab' &&
+        typeof window.resetPermUserList === 'function'
+    ) {
+        window.resetPermUserList();
+    }
+
     if (tabId === 'discipleshipTab') {
         if (typeof window.switchGrowthSubTab === 'function') {
             setTimeout(() => { window.switchGrowthSubTab(subTabId || 'Home'); }, 50);

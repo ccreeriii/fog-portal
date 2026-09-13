@@ -125,3 +125,62 @@ test('permission overview lists only permission-bearing accounts and handles sys
         /await window\.loadPermissionAccountsOverview\(\);/
     );
 });
+
+test('effective final router loads the Permissions account overview', () => {
+    const finalRouterStart = appSource.lastIndexOf(
+        'window.switchTab = function'
+    );
+
+    assert.notEqual(
+        finalRouterStart,
+        -1,
+        'effective final switchTab router must exist'
+    );
+
+    const finalRouterEnd = appSource.indexOf(
+        'window.renderBottomNav = function',
+        finalRouterStart
+    );
+
+    assert.ok(
+        finalRouterEnd > finalRouterStart,
+        'effective final switchTab router boundary must be valid'
+    );
+
+    const finalRouter = appSource.slice(
+        finalRouterStart,
+        finalRouterEnd
+    );
+
+    assert.match(
+        finalRouter,
+        /tabId === 'permissionsTab'[\s\S]*window\.resetPermUserList\(\)/
+    );
+});
+
+test('active shell and service worker use the current app.js revision', () => {
+    const swSource = fs.readFileSync(
+        path.join(root, 'public', 'sw.js'),
+        'utf8'
+    );
+
+    assert.match(
+        htmlSource,
+        /\/js\/app\.js\?v=12\.9/
+    );
+
+    assert.match(
+        swSource,
+        /\/js\/app\.js\?v=12\.9/
+    );
+
+    assert.doesNotMatch(
+        htmlSource,
+        /\/js\/app\.js\?v=12\.8/
+    );
+
+    assert.doesNotMatch(
+        swSource,
+        /\/js\/app\.js\?v=12\.8/
+    );
+});
