@@ -3443,6 +3443,16 @@ function createGoogleSignupConflict() {
     });
 }
 
+function formatFogPassId(youthId) {
+    const numericId = Number(youthId);
+
+    if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+        throw new Error('Invalid youth ID for FOG Pass generation');
+    }
+
+    return `FOG-PASS-${String(numericId).padStart(3, '0')}`;
+}
+
 app.post('/api/auth/google/complete-signup', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const pendingState = getPendingGoogleSignup(req);
@@ -3480,23 +3490,45 @@ app.post('/api/auth/google/complete-signup', async (req, res) => {
                 );
                 if (youthConflict || accountConflict) throw createGoogleSignupConflict();
 
-                const maxRow = await transaction.get('SELECT MAX(id) AS maxId FROM youth');
-                const nextId = (maxRow && maxRow.maxId ? maxRow.maxId : 0) + 1;
-                const qrCode = `FOG-PASS-${String(nextId).padStart(3, '0')}`;
                 const memberInsert = await transaction.run(
                     `INSERT INTO youth
                         (name, email, profile_picture, google_id, account_tier, qr_code,
                          email_verified, email_verified_at, created_at)
-                     VALUES (?, ?, ?, ?, 'New Member', ?, 1, ?, ?)`,
-                    [identity.name, identity.normalizedEmail, identity.picture, identity.googleId,
-                        qrCode, Date.now(), getManilaTime()]
+                     VALUES (?, ?, ?, ?, 'New Member', NULL, 1, ?, ?)`,
+                    [
+                        identity.name,
+                        identity.normalizedEmail,
+                        identity.picture,
+                        identity.googleId,
+                        Date.now(),
+                        getManilaTime()
+                    ]
                 );
+
+                if (!memberInsert.lastID) {
+                    throw createGoogleSignupConflict();
+                }
+
+                const qrCode = formatFogPassId(memberInsert.lastID);
+
+                const qrUpdate = await transaction.run(
+                    'UPDATE youth SET qr_code = ? WHERE id = ?',
+                    [qrCode, memberInsert.lastID]
+                );
+
+                if (!qrUpdate || Number(qrUpdate.changes) !== 1) {
+                    throw createGoogleSignupConflict();
+                }
+
                 const userInsert = await transaction.run(
                     `INSERT INTO users (username, permissions, youth_id, created_at)
                      VALUES (?, '[]', ?, ?)`,
                     [qrCode, memberInsert.lastID, getManilaTime()]
                 );
-                if (!memberInsert.lastID || !userInsert.lastID) throw createGoogleSignupConflict();
+
+                if (!userInsert.lastID) {
+                    throw createGoogleSignupConflict();
+                }
                 return Object.freeze({
                     userId: userInsert.lastID,
                     youthId: memberInsert.lastID,
@@ -6574,21 +6606,42 @@ app.post('/api/public/register-wanderer', async (req, res) => {
                         code: 'REGISTRATION_IDENTITY_EXISTS'
                     });
                 }
-                const maxRow = await transaction.get('SELECT MAX(id) AS maxId FROM youth');
-                const nextId = (maxRow && maxRow.maxId ? maxRow.maxId : 0) + 1;
-                const qrCode = `FOG-PASS-${String(nextId).padStart(3, '0')}`;
                 const memberInsert = await transaction.run(
                     `INSERT INTO youth
                         (name, email, password, qr_code, email_verified, email_verified_at, created_at)
-                     VALUES (?, ?, ?, ?, 0, NULL, ?)`,
-                    [normalizedName, normalizedEmail, encodedPassword, qrCode, getManilaTime()]
+                     VALUES (?, ?, ?, NULL, 0, NULL, ?)`,
+                    [
+                        normalizedName,
+                        normalizedEmail,
+                        encodedPassword,
+                        getManilaTime()
+                    ]
                 );
+
+                if (!memberInsert.lastID) {
+                    throw new Error('Registration insert failed');
+                }
+
+                const qrCode = formatFogPassId(memberInsert.lastID);
+
+                const qrUpdate = await transaction.run(
+                    'UPDATE youth SET qr_code = ? WHERE id = ?',
+                    [qrCode, memberInsert.lastID]
+                );
+
+                if (!qrUpdate || Number(qrUpdate.changes) !== 1) {
+                    throw new Error('Registration FOG Pass assignment failed');
+                }
+
                 const userInsert = await transaction.run(
                     `INSERT INTO users (username, password, permissions, youth_id, created_at)
                      VALUES (?, ?, '[]', ?, ?)`,
                     [qrCode, encodedPassword, memberInsert.lastID, getManilaTime()]
                 );
-                if (!memberInsert.lastID || !userInsert.lastID) throw new Error('Registration insert failed');
+
+                if (!userInsert.lastID) {
+                    throw new Error('Registration insert failed');
+                }
                 return Object.freeze({
                     userId: userInsert.lastID,
                     youthId: memberInsert.lastID,
