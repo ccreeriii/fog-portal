@@ -237,6 +237,11 @@ test('FAQ API uses canonical sessions, filters on the server, and protects previ
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
     await fsp.writeFile(path.join(temporaryRoot, 'public', 'index.html'), '<!doctype html><title>Isolated</title>');
 
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'growth-journey.js'),
+        path.join(temporaryRoot, 'lib', 'growth-journey.js')
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     database = application.db;

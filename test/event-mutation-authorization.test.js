@@ -179,6 +179,11 @@ test('event-management mutations enforce canonical permissions and ownership', {
 
     const isolatedDatabasePath = path.join(temporaryRoot, 'fog_community.db');
     assert.notEqual(isolatedDatabasePath, path.join(repositoryRoot, 'fog_community.db'));
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'growth-journey.js'),
+        path.join(temporaryRoot, 'lib', 'growth-journey.js')
+    );
+
     const isolatedApplication = require(path.join(temporaryRoot, 'server.js'));
     await isolatedApplication.ready;
     database = isolatedApplication.db;

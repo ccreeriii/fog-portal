@@ -189,6 +189,11 @@ test('forgot/reset routes preserve enumeration resistance and atomic credential 
     process.env.KOINONIA_PUBLIC_ORIGIN = 'https://staging.fogmin.site';
     process.env.EMAIL_OUTBOX_ENCRYPTION_KEY = encryptionKey;
 
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'growth-journey.js'),
+        path.join(temporaryRoot, 'lib', 'growth-journey.js')
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     database = application.db;

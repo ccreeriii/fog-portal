@@ -10,6 +10,7 @@ const QRCode = require('qrcode');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
+const GrowthJourney = require('./lib/growth-journey');
 const {
     normalizeEmail,
     validatePublicOrigin,
@@ -1517,32 +1518,197 @@ const sendCustomPush = (db, webpush, youthId, title, message, urlPath) => {
     });
 };
 
-app.post('/api/prayer-pals/send', (req, res) => {
+app.post('/api/prayer-pals/send', requireAuth, (req, res) => {
     try {
-        if (!req.body || !req.body.sender_id) return res.status(400).json({error: "Missing body data."});
-        const { sender_id, receiver_id, message, sender_name } = req.body;
-        const d = new Date();
-        const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-        const pad = (n) => String(n).padStart(2, '0');
-        const timeNow = `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
+        if (!req.body || !req.body.sender_id) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing body data.'
+            });
+        }
 
-        db.run('INSERT INTO personal_inbox (sender_id, receiver_id, title, message, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-            [sender_id, receiver_id, '🙏 A Prayer from ' + sender_name, message, 'Delivered', timeNow], function(err) {
-                if(err) return res.status(500).json({error: err.message});
-                
-                const todayStr = getManilaTime().split(' ')[0];
-                db.get("SELECT id FROM point_transactions WHERE youth_id = ? AND game_name = 'Daily Prayer Covenant' AND created_at LIKE ?", [sender_id, todayStr + '%'], (err, ptRow) => {
-                    if (!ptRow && typeof awardPoints === 'function') {
-                        awardPoints(sender_id, 'growth', 50, sender_name, 'Daily Prayer Covenant');
+        const authenticatedYouthId =
+            Number(req.auth && req.auth.youthId);
+
+        const senderId = Number(req.body.sender_id);
+        const receiverId = Number(req.body.receiver_id);
+
+        if (
+            !Number.isInteger(authenticatedYouthId) ||
+            authenticatedYouthId <= 0
+        ) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required.'
+            });
+        }
+
+        if (
+            !Number.isInteger(senderId) ||
+            senderId <= 0 ||
+            senderId !== authenticatedYouthId
+        ) {
+            return res.status(403).json({
+                success: false,
+                error: 'You can only send prayer as your own account.'
+            });
+        }
+
+        if (
+            !Number.isInteger(receiverId) ||
+            receiverId <= 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid prayer recipient.'
+            });
+        }
+
+        const message =
+            typeof req.body.message === 'string'
+                ? req.body.message.trim()
+                : '';
+
+        if (!message) {
+            return res.status(400).json({
+                success: false,
+                error: 'Prayer message is required.'
+            });
+        }
+
+        const canonicalSenderName =
+            req.auth &&
+            req.auth.member &&
+            typeof req.auth.member.name === 'string' &&
+            req.auth.member.name.trim()
+                ? req.auth.member.name.trim()
+                : (
+                    req.auth &&
+                    typeof req.auth.username === 'string'
+                        ? req.auth.username
+                        : 'FOG Member'
+                );
+
+        const timeNow = getManilaTime();
+
+        db.run(
+            `INSERT INTO personal_inbox (
+                sender_id,
+                receiver_id,
+                title,
+                message,
+                status,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+                authenticatedYouthId,
+                receiverId,
+                '🙏 A Prayer from ' + canonicalSenderName,
+                message,
+                'Delivered',
+                timeNow
+            ],
+            async function(err) {
+                if (err) {
+                    return res.status(500).json({
+                        success: false,
+                        error: err.message
+                    });
+                }
+
+                const inboxId = this.lastID;
+
+                /*
+                 * Keep the existing Growth XP behavior.
+                 * The existing point ledger already prevents multiple
+                 * Daily Prayer Covenant awards on the same Manila date.
+                 */
+                const todayStr = timeNow.split(' ')[0];
+
+                db.get(
+                    `SELECT id
+                     FROM point_transactions
+                     WHERE youth_id = ?
+                       AND game_name = 'Daily Prayer Covenant'
+                       AND created_at LIKE ?`,
+                    [
+                        authenticatedYouthId,
+                        todayStr + '%'
+                    ],
+                    (pointErr, ptRow) => {
+                        if (
+                            !pointErr &&
+                            !ptRow &&
+                            typeof awardPoints === 'function'
+                        ) {
+                            awardPoints(
+                                authenticatedYouthId,
+                                'growth',
+                                50,
+                                canonicalSenderName,
+                                'Daily Prayer Covenant'
+                            );
+                        }
                     }
-                });
+                );
+
+                let growthJourney = null;
+                let growthJourneyWarning = null;
+
+                try {
+                    growthJourney =
+                        await GrowthJourney
+                            .recordPrayerCovenantCompletion(
+                                db,
+                                authenticatedYouthId,
+                                {
+                                    sourceKey:
+                                        `personal-inbox:${inboxId}`,
+                                    completedAt: timeNow,
+                                    actor:
+                                        req.auth.username ||
+                                        canonicalSenderName,
+                                    details: {
+                                        prayerRecipientId:
+                                            receiverId
+                                    }
+                                }
+                            );
+                } catch (growthErr) {
+                    growthJourneyWarning =
+                        'Prayer was sent, but Journey progress could not be updated.';
+
+                    console.error(
+                        '[Growth Journey] Prayer Covenant hook failed:',
+                        growthErr
+                    );
+                }
 
                 if (typeof webpush !== 'undefined') {
-                    sendCustomPush(db, webpush, receiver_id, '🙏 Prayer Received', 'Prayers sent to you by a prayer covenant.', '/?tab=inbox');
+                    sendCustomPush(
+                        db,
+                        webpush,
+                        receiverId,
+                        '🙏 Prayer Received',
+                        'Prayers sent to you by a prayer covenant.',
+                        '/?tab=inbox'
+                    );
                 }
-                res.json({success: true});
+
+                return res.json({
+                    success: true,
+                    growthJourney,
+                    growthJourneyWarning
+                });
+            }
+        );
+    } catch (e) {
+        return res.status(500).json({
+            success: false,
+            error: e.message
         });
-    } catch (e) { res.status(500).json({error: e.message}); }
+    }
 });
 
 app.post('/api/inbox/personal/:id/respond', (req, res) => {
@@ -5778,24 +5944,262 @@ app.get('/api/prayer-pals/current/:youth_id', (req, res) => {
 });
 
 
+
+// ==========================================
+// FOG GROWTH JOURNEY V1 - MEMBER VIEW
+// ==========================================
+app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
+    try {
+        const youthId = Number(
+            req.auth && req.auth.youthId
+        );
+
+        if (
+            !Number.isInteger(youthId) ||
+            youthId <= 0
+        ) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required.'
+            });
+        }
+
+        const [
+            journey,
+            onboarding
+        ] = await Promise.all([
+            GrowthJourney.getMemberJourney(
+                db,
+                youthId
+            ),
+            GrowthJourney.getDefaultOnboardingStatus(
+                db,
+                youthId
+            )
+        ]);
+
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        return res.json({
+            success: true,
+            journey,
+            onboarding
+        });
+    } catch (err) {
+        console.error(
+            '[Growth Journey] Member Journey API failed:',
+            err
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Your Growth Journey could not be loaded right now.'
+        });
+    }
+});
+
 // ==========================================
 // PHASE 3: COMMITMENT PLEDGE ENDPOINT
 // ==========================================
-app.post('/api/youth/:id/commit', (req, res) => {
-    const youthId = req.params.id;
-    const { actor, intent_message } = req.body;
-    db.run(`UPDATE youth SET account_tier = 'Committed Member', commitment_intent = ? WHERE id = ?`, [intent_message, youthId], function(err) {
-        if (err) return res.status(500).json({ success: false, error: 'Database error updating tier: ' + err.message });
-        db.get(`SELECT permissions FROM users WHERE youth_id = ?`, [youthId], (err, user) => {
-            let perms = [];
-            if (user && user.permissions) { try { perms = JSON.parse(user.permissions); } catch(e) {} }
-            if (!perms.includes('access_directory')) perms.push('access_directory');
-            db.run(`UPDATE users SET permissions = ? WHERE youth_id = ?`, [JSON.stringify(perms), youthId], function(err2) {
-                logActivity(actor || 'System', 'COMMITMENT_PLEDGE', `Member ID ${youthId} committed with intent: ${intent_message}`);
-                db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err3, member) => { res.json({ success: true, member: sanitizeMemberForClient(member), permissions: perms }); });
-            });
+app.post('/api/youth/:id/commit', requireAuth, (req, res) => {
+    const youthId = Number(req.params.id);
+    const authenticatedYouthId =
+        Number(req.auth && req.auth.youthId);
+
+    if (
+        !Number.isInteger(youthId) ||
+        youthId <= 0
+    ) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid member.'
         });
-    });
+    }
+
+    if (
+        !Number.isInteger(authenticatedYouthId) ||
+        youthId !== authenticatedYouthId
+    ) {
+        return res.status(403).json({
+            success: false,
+            error: 'You can only submit an intent for your own account.'
+        });
+    }
+
+    const intentMessage =
+        req.body &&
+        typeof req.body.intent_message === 'string'
+            ? req.body.intent_message.trim()
+            : '';
+
+    if (!intentMessage) {
+        return res.status(400).json({
+            success: false,
+            error: 'Please share your reflection.'
+        });
+    }
+
+    const actor =
+        req.auth &&
+        req.auth.member &&
+        typeof req.auth.member.name === 'string' &&
+        req.auth.member.name.trim()
+            ? req.auth.member.name.trim()
+            : (
+                req.auth &&
+                typeof req.auth.username === 'string'
+                    ? req.auth.username
+                    : 'Member'
+            );
+
+    /*
+     * IMPORTANT:
+     *
+     * account_tier remains untouched semantically in this patch for
+     * compatibility with the current Portal UI.
+     *
+     * Growth Journey evidence is now the canonical formation record.
+     * A later Journey-first UI patch will stop relying on account_tier
+     * to determine spiritual/formation progression.
+     */
+    db.run(
+        `UPDATE youth
+         SET
+             account_tier = 'Committed Member',
+             commitment_intent = ?,
+             commitment_date = COALESCE(
+                 commitment_date,
+                 ?
+             )
+         WHERE id = ?`,
+        [
+            intentMessage,
+            getManilaTime(),
+            youthId
+        ],
+        function(err) {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    error:
+                        'Database error updating intent: ' +
+                        err.message
+                });
+            }
+
+            db.get(
+                `SELECT permissions
+                 FROM users
+                 WHERE youth_id = ?`,
+                [youthId],
+                (userErr, user) => {
+                    let perms = [];
+
+                    if (user && user.permissions) {
+                        try {
+                            perms =
+                                JSON.parse(user.permissions);
+                        } catch (e) {}
+                    }
+
+                    if (
+                        !perms.includes('access_directory')
+                    ) {
+                        perms.push('access_directory');
+                    }
+
+                    db.run(
+                        `UPDATE users
+                         SET permissions = ?
+                         WHERE youth_id = ?`,
+                        [
+                            JSON.stringify(perms),
+                            youthId
+                        ],
+                        async function(permissionErr) {
+                            if (permissionErr) {
+                                return res.status(500).json({
+                                    success: false,
+                                    error:
+                                        'Could not update member permissions.'
+                                });
+                            }
+
+                            logActivity(
+                                actor,
+                                'COMMITMENT_PLEDGE',
+                                `Member ID ${youthId} expressed intent to journey with the community`
+                            );
+
+                            let growthJourney = null;
+                            let growthJourneyWarning = null;
+
+                            try {
+                                growthJourney =
+                                    await GrowthJourney
+                                        .recordMembershipIntent(
+                                            db,
+                                            youthId,
+                                            {
+                                                sourceId:
+                                                    youthId,
+                                                occurredAt:
+                                                    getManilaTime(),
+                                                actor:
+                                                    req.auth.username ||
+                                                    actor,
+                                                details: {
+                                                    source:
+                                                        'community_intent'
+                                                }
+                                            }
+                                        );
+                            } catch (growthErr) {
+                                growthJourneyWarning =
+                                    'Your intent was saved, but the welcome journey could not be started automatically.';
+
+                                console.error(
+                                    '[Growth Journey] Membership intent hook failed:',
+                                    growthErr
+                                );
+                            }
+
+                            db.get(
+                                `SELECT *
+                                 FROM youth
+                                 WHERE id = ?`,
+                                [youthId],
+                                (memberErr, member) => {
+                                    if (memberErr || !member) {
+                                        return res.status(500).json({
+                                            success: false,
+                                            error:
+                                                'Intent was saved but the member record could not be reloaded.'
+                                        });
+                                    }
+
+                                    return res.json({
+                                        success: true,
+                                        member:
+                                            sanitizeMemberForClient(
+                                                member
+                                            ),
+                                        permissions: perms,
+                                        growthJourney,
+                                        growthJourneyWarning
+                                    });
+                                }
+                            );
+                        }
+                    );
+                }
+            );
+        }
+    );
 });
 
 

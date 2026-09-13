@@ -242,6 +242,11 @@ test('account claim HTTP foundation enforces authorization, privacy, and bounded
     process.env.PORT = '0';
     process.env.KOINONIA_PUBLIC_ORIGIN = 'https://staging.fogmin.site';
     delete process.env.EMAIL_OUTBOX_ENCRYPTION_KEY;
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'growth-journey.js'),
+        path.join(temporaryRoot, 'lib', 'growth-journey.js')
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     database = application.db;

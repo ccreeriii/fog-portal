@@ -106,6 +106,11 @@ async function createIsolatedApplication({ outboxEnabled = true } = {}) {
     if (outboxEnabled) process.env.EMAIL_OUTBOX_ENCRYPTION_KEY = encryptionKey;
     else delete process.env.EMAIL_OUTBOX_ENCRYPTION_KEY;
 
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'growth-journey.js'),
+        path.join(temporaryRoot, 'lib', 'growth-journey.js')
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     const server = await new Promise((resolve, reject) => {
