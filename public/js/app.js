@@ -8122,7 +8122,7 @@ window.loadPersonalInbox = async function() {
 
     // 2. Load Global Announcements
     try {
-        const resA = await fetch('/api/communications/inbox?username=' + currentMember.qr_code);
+        const resA = await fetch('/api/communications/inbox');
         const ann = await resA.json();
         const aView = document.getElementById('inboxAnnounceView');
         if(ann.length === 0) {
@@ -9334,3 +9334,2111 @@ setTimeout(() => {
     }
 }, 150);
 // === END V55 ===
+
+// ==========================================================
+// PHASE 2C-B3 CANONICAL NOTIFICATION CENTER UI
+// ==========================================================
+
+(() => {
+    'use strict';
+
+    if (window.__notificationCenterB3Initialized) {
+        return;
+    }
+
+    window.__notificationCenterB3Initialized = true;
+
+    const CATEGORY_LABELS = Object.freeze({
+        prayer_daily_growth: '🙏 Prayer & Daily Growth',
+        journey_progress: '🧭 Journey Progress',
+        events_formation: '📅 Events & Formation',
+        membership_community: '🏠 Membership & Community',
+        ministry_servant: '🔥 Ministry & Servant Journey',
+        prayer_partner: '🤝 Prayer Partner',
+        games_growth: '🎮 Games & Growth',
+        leadership: '📣 Leadership',
+        system: '⚙️ System'
+    });
+
+    const IMPORTANCE_LABELS = Object.freeze({
+        low: 'Low',
+        normal: 'Update',
+        important: 'Important',
+        critical: 'Critical'
+    });
+
+    const notificationInboxState = {
+        section: 'notifications',
+        filter: 'all',
+        unreadCount: 0,
+        notifications: [],
+        prayers: [],
+        announcements: [],
+        errors: {
+            notifications: null,
+            prayers: null,
+            announcements: null
+        }
+    };
+
+    let inboxLoadPromise = null;
+
+    function authenticatedNotificationMemberId() {
+        const memberId = Number(
+            typeof currentMember !== 'undefined' &&
+            currentMember
+                ? currentMember.id
+                : null
+        );
+
+        if (
+            window.koinoniaAuthStatus !== 'authenticated' ||
+            !Number.isSafeInteger(memberId) ||
+            memberId <= 0
+        ) {
+            return null;
+        }
+
+        return memberId;
+    }
+
+    function clearElement(element) {
+        if (!element) return;
+
+        while (element.firstChild) {
+            element.removeChild(element.firstChild);
+        }
+    }
+
+    function makeElement(
+        tag,
+        {
+            className = '',
+            text = null,
+            attributes = {}
+        } = {}
+    ) {
+        const element =
+            document.createElement(tag);
+
+        if (className) {
+            element.className = className;
+        }
+
+        if (text !== null && text !== undefined) {
+            element.textContent =
+                String(text);
+        }
+
+        for (
+            const [name, value]
+            of Object.entries(attributes)
+        ) {
+            if (
+                value !== null &&
+                value !== undefined
+            ) {
+                element.setAttribute(
+                    name,
+                    String(value)
+                );
+            }
+        }
+
+        return element;
+    }
+
+    function formatNotificationTime(value) {
+        if (!value) return '';
+
+        const normalized =
+            typeof value === 'string' &&
+            !/[zZ]|[+-]\d\d:\d\d$/.test(value)
+                ? value.replace(' ', 'T') + '+08:00'
+                : value;
+
+        const date =
+            new Date(normalized);
+
+        if (
+            Number.isNaN(
+                date.getTime()
+            )
+        ) {
+            return String(value);
+        }
+
+        return date.toLocaleString(
+            [],
+            {
+                dateStyle: 'medium',
+                timeStyle: 'short'
+            }
+        );
+    }
+
+    function safeNotificationActionUrl(value) {
+        if (
+            typeof value !== 'string' ||
+            !value.trim()
+        ) {
+            return null;
+        }
+
+        try {
+            const url =
+                new URL(
+                    value,
+                    window.location.origin
+                );
+
+            if (
+                url.origin !==
+                window.location.origin
+            ) {
+                return null;
+            }
+
+            return (
+                url.pathname +
+                url.search +
+                url.hash
+            );
+        } catch {
+            return null;
+        }
+    }
+
+    async function fetchNotificationJson(
+        url,
+        options = {}
+    ) {
+        const response =
+            await fetch(
+                url,
+                {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {
+                        Accept: 'application/json',
+                        ...(
+                            options.headers ||
+                            {}
+                        )
+                    },
+                    ...options
+                }
+            );
+
+        let payload = null;
+
+        try {
+            payload =
+                await response.json();
+        } catch {
+            payload = null;
+        }
+
+        if (!response.ok) {
+            const error =
+                new Error(
+                    payload &&
+                    payload.error
+                        ? payload.error
+                        : `Request failed (${response.status})`
+                );
+
+            error.status =
+                response.status;
+
+            throw error;
+        }
+
+        return payload;
+    }
+
+    function setBellCount(count) {
+        const button =
+            document.getElementById(
+                'headerNotificationBell'
+            );
+
+        const badge =
+            document.getElementById(
+                'headerNotificationBadge'
+            );
+
+        if (!button || !badge) {
+            return;
+        }
+
+        const memberId =
+            authenticatedNotificationMemberId();
+
+        if (!memberId) {
+            button.style.display = 'none';
+            badge.style.display = 'none';
+            badge.textContent = '0';
+            return;
+        }
+
+        button.style.display = 'grid';
+
+        const normalizedCount =
+            Number.isSafeInteger(
+                Number(count)
+            ) &&
+            Number(count) > 0
+                ? Number(count)
+                : 0;
+
+        if (normalizedCount > 0) {
+            badge.textContent =
+                normalizedCount > 99
+                    ? '99+'
+                    : String(
+                        normalizedCount
+                    );
+
+            badge.style.display =
+                'block';
+        } else {
+            badge.textContent = '0';
+            badge.style.display = 'none';
+        }
+
+        button.setAttribute(
+            'aria-label',
+            normalizedCount > 0
+                ? `Notifications, ${normalizedCount} unread`
+                : 'Notifications, no unread notifications'
+        );
+
+        button.title =
+            normalizedCount > 0
+                ? `${normalizedCount} unread notification${normalizedCount === 1 ? '' : 's'}`
+                : 'Notifications';
+    }
+
+    window.refreshNotificationBell =
+        async function() {
+            const memberId =
+                authenticatedNotificationMemberId();
+
+            if (!memberId) {
+                setBellCount(0);
+                return 0;
+            }
+
+            const button =
+                document.getElementById(
+                    'headerNotificationBell'
+                );
+
+            if (!navigator.onLine) {
+                if (button) {
+                    button.style.display =
+                        'grid';
+
+                    button.title =
+                        'Notifications require an internet connection';
+                }
+
+                return notificationInboxState
+                    .unreadCount;
+            }
+
+            try {
+                const payload =
+                    await fetchNotificationJson(
+                        '/api/notifications/unread-count'
+                    );
+
+                const count =
+                    Number(
+                        payload &&
+                        payload.unread_count
+                    );
+
+                notificationInboxState
+                    .unreadCount =
+                    Number.isSafeInteger(count) &&
+                    count >= 0
+                        ? count
+                        : 0;
+
+                setBellCount(
+                    notificationInboxState
+                        .unreadCount
+                );
+
+                return (
+                    notificationInboxState
+                        .unreadCount
+                );
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to refresh unread count.'
+                );
+
+                return (
+                    notificationInboxState
+                        .unreadCount
+                );
+            }
+        };
+
+    window.openNotificationCenter =
+        function() {
+            if (
+                !authenticatedNotificationMemberId()
+            ) {
+                return;
+            }
+
+            notificationInboxState.section =
+                'notifications';
+
+            notificationInboxState.filter =
+                'all';
+
+            if (
+                typeof window.switchTab ===
+                'function'
+            ) {
+                window.switchTab(
+                    'inboxTab'
+                );
+            }
+        };
+
+    function buildInboxShell() {
+        const inboxTab =
+            document.getElementById(
+                'inboxTab'
+            );
+
+        if (!inboxTab) {
+            return false;
+        }
+
+        inboxTab.innerHTML = `
+            <div class="card" style="padding:0;overflow:hidden;">
+                <div style="padding:18px 18px 14px;border-bottom:1px solid var(--border-color);background:#FFF;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                        <div>
+                            <h2 style="margin:0;border:none;padding:0;color:var(--primary);">🔔 Notification Center</h2>
+                            <p id="notificationInboxSummary" style="margin:5px 0 0;color:var(--text-muted);font-size:0.82rem;">Loading your updates…</p>
+                        </div>
+                        <button id="notificationMarkAllReadBtn" type="button" class="btn btn-outline btn-sm" onclick="markAllNotificationsRead()">Mark all read</button>
+                    </div>
+
+                    <div style="display:flex;background:#F1F5F9;border-radius:12px;padding:4px;margin-top:16px;gap:4px;">
+                        <button id="btnInboxNotifications" type="button" onclick="switchInboxSubTab('notifications')" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">🔔 Updates</button>
+                        <button id="btnInboxPrayers" type="button" onclick="switchInboxSubTab('prayers')" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">🙏 Prayers</button>
+                        <button id="btnInboxAnnounce" type="button" onclick="switchInboxSubTab('announcements')" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">📢 News</button>
+                    </div>
+                </div>
+
+                <div style="padding:16px;">
+                    <section id="inboxNotificationsView">
+                        <div style="display:flex;gap:8px;margin-bottom:14px;">
+                            <button id="notificationFilterAll" type="button" class="btn btn-outline btn-sm" onclick="setNotificationInboxFilter('all')">All</button>
+                            <button id="notificationFilterUnread" type="button" class="btn btn-outline btn-sm" onclick="setNotificationInboxFilter('unread')">Unread</button>
+                        </div>
+                        <div id="canonicalNotificationList"></div>
+                    </section>
+
+                    <section id="inboxPrayersView" style="display:none;"></section>
+                    <section id="inboxAnnounceView" style="display:none;"></section>
+                </div>
+            </div>
+        `;
+
+        return true;
+    }
+
+    function updateInboxNavigation() {
+        const sections = {
+            notifications: {
+                button:
+                    document.getElementById(
+                        'btnInboxNotifications'
+                    ),
+                view:
+                    document.getElementById(
+                        'inboxNotificationsView'
+                    )
+            },
+
+            prayers: {
+                button:
+                    document.getElementById(
+                        'btnInboxPrayers'
+                    ),
+                view:
+                    document.getElementById(
+                        'inboxPrayersView'
+                    )
+            },
+
+            announcements: {
+                button:
+                    document.getElementById(
+                        'btnInboxAnnounce'
+                    ),
+                view:
+                    document.getElementById(
+                        'inboxAnnounceView'
+                    )
+            }
+        };
+
+        for (
+            const [name, config]
+            of Object.entries(sections)
+        ) {
+            const active =
+                notificationInboxState
+                    .section === name;
+
+            if (config.button) {
+                config.button.style
+                    .background =
+                    active
+                        ? '#FFF'
+                        : 'transparent';
+
+                config.button.style
+                    .color =
+                    active
+                        ? 'var(--primary)'
+                        : 'var(--text-muted)';
+
+                config.button.style
+                    .boxShadow =
+                    active
+                        ? '0 2px 5px rgba(0,0,0,0.08)'
+                        : 'none';
+
+                config.button.setAttribute(
+                    'aria-pressed',
+                    active
+                        ? 'true'
+                        : 'false'
+                );
+            }
+
+            if (config.view) {
+                config.view.style.display =
+                    active
+                        ? 'block'
+                        : 'none';
+            }
+        }
+
+        const markAll =
+            document.getElementById(
+                'notificationMarkAllReadBtn'
+            );
+
+        if (markAll) {
+            markAll.style.display =
+                notificationInboxState
+                    .section ===
+                    'notifications'
+                    ? 'inline-flex'
+                    : 'none';
+
+            markAll.disabled =
+                notificationInboxState
+                    .unreadCount <= 0;
+        }
+    }
+
+    function updateNotificationFilters() {
+        const allButton =
+            document.getElementById(
+                'notificationFilterAll'
+            );
+
+        const unreadButton =
+            document.getElementById(
+                'notificationFilterUnread'
+            );
+
+        const allActive =
+            notificationInboxState.filter ===
+            'all';
+
+        if (allButton) {
+            allButton.className =
+                allActive
+                    ? 'btn btn-primary btn-sm'
+                    : 'btn btn-outline btn-sm';
+        }
+
+        if (unreadButton) {
+            unreadButton.className =
+                !allActive
+                    ? 'btn btn-primary btn-sm'
+                    : 'btn btn-outline btn-sm';
+        }
+    }
+
+    function appendEmptyState(
+        container,
+        message
+    ) {
+        const empty =
+            makeElement(
+                'div',
+                {
+                    text: message
+                }
+            );
+
+        empty.style.cssText =
+            'text-align:center;padding:30px 18px;color:var(--text-muted);background:#FFF;border-radius:12px;border:1px dashed #CBD5E1;';
+
+        container.appendChild(
+            empty
+        );
+    }
+
+    function notificationSourceLabel(
+        notification
+    ) {
+        if (
+            notification &&
+            typeof notification.source_actor ===
+                'string' &&
+            notification.source_actor.trim()
+        ) {
+            return (
+                notification.source_actor
+                    .trim()
+            );
+        }
+
+        if (
+            notification &&
+            notification.source_type ===
+                'growth_journey'
+        ) {
+            return 'Growth Journey';
+        }
+
+        if (
+            notification &&
+            notification.source_type ===
+                'leadership'
+        ) {
+            return 'FOG Leadership';
+        }
+
+        return 'Community Portal';
+    }
+
+    function renderCanonicalNotifications() {
+        const container =
+            document.getElementById(
+                'canonicalNotificationList'
+            );
+
+        if (!container) return;
+
+        clearElement(container);
+
+        if (
+            notificationInboxState
+                .errors.notifications
+        ) {
+            appendEmptyState(
+                container,
+                'Notifications are temporarily unavailable. Please try again.'
+            );
+
+            return;
+        }
+
+        const notifications =
+            notificationInboxState
+                .notifications
+                .filter(
+                    notification =>
+                        notificationInboxState
+                            .filter ===
+                            'all' ||
+                        !notification.is_read
+                );
+
+        if (
+            notifications.length === 0
+        ) {
+            appendEmptyState(
+                container,
+                notificationInboxState
+                    .filter ===
+                    'unread'
+                    ? 'You have no unread updates.'
+                    : 'No Portal updates yet.'
+            );
+
+            return;
+        }
+
+        for (
+            const notification
+            of notifications
+        ) {
+            const card =
+                makeElement(
+                    'article',
+                    {
+                        className:
+                            'notification-card' +
+                            (
+                                notification.is_read
+                                    ? ''
+                                    : ' unread'
+                            )
+                    }
+                );
+
+            const header =
+                makeElement(
+                    'div',
+                    {
+                        className:
+                            'notification-card-header'
+                    }
+                );
+
+            const titleWrap =
+                makeElement('div');
+
+            const category =
+                makeElement(
+                    'div',
+                    {
+                        text:
+                            CATEGORY_LABELS[
+                                notification.category
+                            ] ||
+                            '🔔 Update'
+                    }
+                );
+
+            category.style.cssText =
+                'font-size:0.72rem;font-weight:800;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px;';
+
+            const title =
+                makeElement(
+                    'h3',
+                    {
+                        className:
+                            'notification-title',
+                        text:
+                            notification.title ||
+                            'Community Update'
+                    }
+                );
+
+            titleWrap.append(
+                category,
+                title
+            );
+
+            const importance =
+                makeElement(
+                    'span',
+                    {
+                        text:
+                            IMPORTANCE_LABELS[
+                                notification.importance
+                            ] ||
+                            'Update'
+                    }
+                );
+
+            importance.style.cssText =
+                notification.importance ===
+                    'critical'
+                    ? 'font-size:.7rem;font-weight:800;background:#FEE2E2;color:#B91C1C;padding:4px 8px;border-radius:999px;'
+                    : notification.importance ===
+                        'important'
+                        ? 'font-size:.7rem;font-weight:800;background:#FEF3C7;color:#B45309;padding:4px 8px;border-radius:999px;'
+                        : 'font-size:.7rem;font-weight:700;background:#F1F5F9;color:#64748B;padding:4px 8px;border-radius:999px;';
+
+            header.append(
+                titleWrap,
+                importance
+            );
+
+            const body =
+                makeElement(
+                    'p',
+                    {
+                        className:
+                            'notification-body',
+                        text:
+                            notification.message ||
+                            ''
+                    }
+                );
+
+            const footer =
+                makeElement(
+                    'div',
+                    {
+                        className:
+                            'notification-footer'
+                    }
+                );
+
+            const source =
+                makeElement(
+                    'span',
+                    {
+                        className:
+                            'notification-author',
+                        text:
+                            notificationSourceLabel(
+                                notification
+                            )
+                    }
+                );
+
+            const time =
+                makeElement(
+                    'span',
+                    {
+                        className:
+                            'notification-date',
+                        text:
+                            formatNotificationTime(
+                                notification.created_at
+                            )
+                    }
+                );
+
+            footer.append(
+                source,
+                time
+            );
+
+            const actions =
+                makeElement('div');
+
+            actions.style.cssText =
+                'display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;';
+
+            if (!notification.is_read) {
+                const readButton =
+                    makeElement(
+                        'button',
+                        {
+                            className:
+                                'btn btn-outline btn-sm',
+                            text:
+                                'Mark read',
+                            attributes: {
+                                type: 'button'
+                            }
+                        }
+                    );
+
+                readButton.addEventListener(
+                    'click',
+                    () => {
+                        window.markNotificationRead(
+                            notification.recipient_id
+                        );
+                    }
+                );
+
+                actions.appendChild(
+                    readButton
+                );
+            }
+
+            const actionUrl =
+                safeNotificationActionUrl(
+                    notification.action_url
+                );
+
+            if (actionUrl) {
+                const openButton =
+                    makeElement(
+                        'button',
+                        {
+                            className:
+                                'btn btn-primary btn-sm',
+                            text:
+                                'Open',
+                            attributes: {
+                                type: 'button'
+                            }
+                        }
+                    );
+
+                openButton.addEventListener(
+                    'click',
+                    () => {
+                        window.openNotificationAction(
+                            notification.recipient_id,
+                            actionUrl,
+                            notification.is_read
+                        );
+                    }
+                );
+
+                actions.appendChild(
+                    openButton
+                );
+            }
+
+            card.append(
+                header,
+                body,
+                footer
+            );
+
+            if (actions.childElementCount) {
+                card.appendChild(
+                    actions
+                );
+            }
+
+            container.appendChild(
+                card
+            );
+        }
+    }
+
+    function renderPrayers() {
+        const container =
+            document.getElementById(
+                'inboxPrayersView'
+            );
+
+        if (!container) return;
+
+        clearElement(container);
+
+        if (
+            notificationInboxState
+                .errors.prayers
+        ) {
+            appendEmptyState(
+                container,
+                'Prayer messages are temporarily unavailable.'
+            );
+
+            return;
+        }
+
+        const prayers =
+            notificationInboxState
+                .prayers;
+
+        if (prayers.length === 0) {
+            appendEmptyState(
+                container,
+                'No personal prayers received yet.'
+            );
+
+            return;
+        }
+
+        for (const prayer of prayers) {
+            const card =
+                makeElement(
+                    'article'
+                );
+
+            card.style.cssText =
+                'background:#FFF;padding:15px;border-radius:16px;border:1px solid #E2E8F0;margin-bottom:15px;box-shadow:0 4px 6px rgba(0,0,0,.02);';
+
+            const heading =
+                makeElement('div');
+
+            heading.style.cssText =
+                'display:flex;align-items:center;gap:12px;margin-bottom:12px;';
+
+            const avatar =
+                makeElement(
+                    'div',
+                    {
+                        text:
+                            (
+                                prayer.sender_name ||
+                                'P'
+                            )
+                                .trim()
+                                .charAt(0)
+                                .toUpperCase() ||
+                            'P'
+                    }
+                );
+
+            avatar.style.cssText =
+                'width:45px;height:45px;border-radius:50%;background:#EEF2FF;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--primary);border:2px solid var(--primary);font-size:1.2rem;flex:0 0 auto;';
+
+            const headingText =
+                makeElement('div');
+
+            const title =
+                makeElement(
+                    'strong',
+                    {
+                        text:
+                            prayer.title ||
+                            'Prayer Message'
+                    }
+                );
+
+            title.style.cssText =
+                'display:block;color:var(--text-main);font-size:1.02rem;';
+
+            const date =
+                makeElement(
+                    'span',
+                    {
+                        text:
+                            formatNotificationTime(
+                                prayer.created_at
+                            )
+                    }
+                );
+
+            date.style.cssText =
+                'font-size:.78rem;color:var(--text-muted);';
+
+            headingText.append(
+                title,
+                date
+            );
+
+            heading.append(
+                avatar,
+                headingText
+            );
+
+            const message =
+                makeElement(
+                    'p',
+                    {
+                        text:
+                            prayer.message ||
+                            ''
+                    }
+                );
+
+            message.style.cssText =
+                'font-size:.95rem;color:var(--text-main);line-height:1.6;margin:0;padding:12px;background:#F8FAFC;border-radius:12px;border-left:3px solid var(--primary);white-space:pre-wrap;';
+
+            card.append(
+                heading,
+                message
+            );
+
+            if (
+                typeof prayer.title ===
+                    'string' &&
+                prayer.title.includes(
+                    'A Prayer from'
+                )
+            ) {
+                const actions =
+                    makeElement('div');
+
+                actions.style.cssText =
+                    'display:flex;gap:10px;margin-top:15px;border-top:1px solid #E2E8F0;padding-top:15px;';
+
+                const status =
+                    typeof prayer.status ===
+                        'string'
+                        ? prayer.status
+                        : '';
+
+                const thanks =
+                    makeElement(
+                        'button',
+                        {
+                            className:
+                                'btn btn-outline btn-sm',
+                            text:
+                                status.includes(
+                                    'thank_you'
+                                )
+                                    ? '✓ Thanks Sent'
+                                    : '💙 Send Thanks',
+                            attributes: {
+                                type: 'button'
+                            }
+                        }
+                    );
+
+                thanks.disabled =
+                    status.includes(
+                        'thank_you'
+                    );
+
+                if (!thanks.disabled) {
+                    thanks.addEventListener(
+                        'click',
+                        () => {
+                            window.acknowledgePrayer(
+                                prayer.id,
+                                'thank_you'
+                            );
+                        }
+                    );
+                }
+
+                const praise =
+                    makeElement(
+                        'button',
+                        {
+                            className:
+                                'btn btn-outline btn-sm',
+                            text:
+                                status.includes(
+                                    'answered'
+                                )
+                                    ? '✓ Praise Shared'
+                                    : '✨ Praise Report',
+                            attributes: {
+                                type: 'button'
+                            }
+                        }
+                    );
+
+                praise.disabled =
+                    status.includes(
+                        'answered'
+                    );
+
+                if (!praise.disabled) {
+                    praise.addEventListener(
+                        'click',
+                        () => {
+                            window.acknowledgePrayer(
+                                prayer.id,
+                                'answered'
+                            );
+                        }
+                    );
+                }
+
+                actions.append(
+                    thanks,
+                    praise
+                );
+
+                card.appendChild(
+                    actions
+                );
+            }
+
+            container.appendChild(
+                card
+            );
+        }
+    }
+
+    function renderAnnouncements() {
+        const container =
+            document.getElementById(
+                'inboxAnnounceView'
+            );
+
+        if (!container) return;
+
+        clearElement(container);
+
+        if (
+            notificationInboxState
+                .errors.announcements
+        ) {
+            appendEmptyState(
+                container,
+                'Community announcements are temporarily unavailable.'
+            );
+
+            return;
+        }
+
+        const announcements =
+            notificationInboxState
+                .announcements;
+
+        if (
+            announcements.length === 0
+        ) {
+            appendEmptyState(
+                container,
+                'No community announcements.'
+            );
+
+            return;
+        }
+
+        for (
+            const announcement
+            of announcements
+        ) {
+            const card =
+                makeElement(
+                    'article',
+                    {
+                        className:
+                            'notification-card'
+                    }
+                );
+
+            const title =
+                makeElement(
+                    'h3',
+                    {
+                        className:
+                            'notification-title',
+                        text:
+                            announcement.title ||
+                            'Community Announcement'
+                    }
+                );
+
+            const body =
+                makeElement(
+                    'p',
+                    {
+                        className:
+                            'notification-body',
+                        text:
+                            announcement.message ||
+                            ''
+                    }
+                );
+
+            const footer =
+                makeElement(
+                    'div',
+                    {
+                        className:
+                            'notification-footer'
+                    }
+                );
+
+            const author =
+                makeElement(
+                    'span',
+                    {
+                        className:
+                            'notification-author',
+                        text:
+                            announcement.author ||
+                            'FOG Leadership'
+                    }
+                );
+
+            const date =
+                makeElement(
+                    'span',
+                    {
+                        className:
+                            'notification-date',
+                        text:
+                            formatNotificationTime(
+                                announcement.created_at
+                            )
+                    }
+                );
+
+            footer.append(
+                author,
+                date
+            );
+
+            card.append(
+                title,
+                body,
+                footer
+            );
+
+            container.appendChild(
+                card
+            );
+        }
+    }
+
+    function renderInboxSummary() {
+        const summary =
+            document.getElementById(
+                'notificationInboxSummary'
+            );
+
+        if (summary) {
+            summary.textContent =
+                notificationInboxState
+                    .unreadCount > 0
+                    ? `${notificationInboxState.unreadCount} unread update${notificationInboxState.unreadCount === 1 ? '' : 's'}`
+                    : 'You are all caught up.';
+        }
+
+        updateInboxNavigation();
+        updateNotificationFilters();
+    }
+
+    function renderAllInboxViews() {
+        renderCanonicalNotifications();
+        renderPrayers();
+        renderAnnouncements();
+        renderInboxSummary();
+    }
+
+    window.switchInboxSubTab =
+        function(section) {
+            if (
+                ![
+                    'notifications',
+                    'prayers',
+                    'announcements'
+                ].includes(section)
+            ) {
+                return;
+            }
+
+            notificationInboxState
+                .section =
+                section;
+
+            updateInboxNavigation();
+        };
+
+    window.setNotificationInboxFilter =
+        function(filter) {
+            if (
+                ![
+                    'all',
+                    'unread'
+                ].includes(filter)
+            ) {
+                return;
+            }
+
+            notificationInboxState.filter =
+                filter;
+
+            updateNotificationFilters();
+            renderCanonicalNotifications();
+        };
+
+    window.markNotificationRead =
+        async function(recipientId) {
+            const id =
+                Number(recipientId);
+
+            if (
+                !Number.isSafeInteger(id) ||
+                id <= 0
+            ) {
+                return false;
+            }
+
+            try {
+                await fetchNotificationJson(
+                    `/api/notifications/${id}/read`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+                        body:
+                            JSON.stringify({})
+                    }
+                );
+
+                for (
+                    const notification
+                    of notificationInboxState
+                        .notifications
+                ) {
+                    if (
+                        Number(
+                            notification.recipient_id
+                        ) === id
+                    ) {
+                        notification.is_read =
+                            true;
+                    }
+                }
+
+                notificationInboxState
+                    .unreadCount =
+                    Math.max(
+                        0,
+                        notificationInboxState
+                            .notifications
+                            .filter(
+                                item =>
+                                    !item.is_read
+                            )
+                            .length
+                    );
+
+                renderCanonicalNotifications();
+                renderInboxSummary();
+
+                await window
+                    .refreshNotificationBell();
+
+                return true;
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to mark notification read.'
+                );
+
+                return false;
+            }
+        };
+
+    window.markAllNotificationsRead =
+        async function() {
+            try {
+                await fetchNotificationJson(
+                    '/api/notifications/read-all',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+                        body:
+                            JSON.stringify({})
+                    }
+                );
+
+                for (
+                    const notification
+                    of notificationInboxState
+                        .notifications
+                ) {
+                    notification.is_read =
+                        true;
+                }
+
+                notificationInboxState
+                    .unreadCount = 0;
+
+                renderCanonicalNotifications();
+                renderInboxSummary();
+
+                await window
+                    .refreshNotificationBell();
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to mark all notifications read.'
+                );
+            }
+        };
+
+    window.openNotificationAction =
+        async function(
+            recipientId,
+            actionUrl,
+            alreadyRead
+        ) {
+            const safeUrl =
+                safeNotificationActionUrl(
+                    actionUrl
+                );
+
+            if (!safeUrl) {
+                return;
+            }
+
+            if (!alreadyRead) {
+                await window
+                    .markNotificationRead(
+                        recipientId
+                    );
+            }
+
+            window.location.assign(
+                safeUrl
+            );
+        };
+
+    window.acknowledgePrayer =
+        async function(
+            inboxId,
+            action
+        ) {
+            const id =
+                Number(inboxId);
+
+            if (
+                !Number.isSafeInteger(id) ||
+                id <= 0 ||
+                ![
+                    'thank_you',
+                    'answered'
+                ].includes(action)
+            ) {
+                return;
+            }
+
+            try {
+                const response =
+                    await fetch(
+                        `/api/inbox/personal/${id}/respond`,
+                        {
+                            method: 'POST',
+                            credentials:
+                                'same-origin',
+                            headers: {
+                                'Content-Type':
+                                    'application/json',
+                                Accept:
+                                    'application/json'
+                            },
+                            body:
+                                JSON.stringify({
+                                    action
+                                })
+                        }
+                    );
+
+                if (!response.ok) {
+                    throw new Error(
+                        'Prayer response failed'
+                    );
+                }
+
+                await window
+                    .loadPersonalInbox();
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to send Prayer response.'
+                );
+            }
+        };
+
+    window.loadPersonalInbox =
+        async function() {
+            const memberId =
+                authenticatedNotificationMemberId();
+
+            if (!memberId) {
+                return;
+            }
+
+            if (inboxLoadPromise) {
+                return inboxLoadPromise;
+            }
+
+            inboxLoadPromise =
+                (async () => {
+                    if (!buildInboxShell()) {
+                        return;
+                    }
+
+                    renderInboxSummary();
+
+                    if (!navigator.onLine) {
+                        notificationInboxState
+                            .errors.notifications =
+                            'offline';
+
+                        notificationInboxState
+                            .errors.prayers =
+                            'offline';
+
+                        notificationInboxState
+                            .errors.announcements =
+                            'offline';
+
+                        renderAllInboxViews();
+                        return;
+                    }
+
+                    const results =
+                        await Promise.allSettled([
+                            fetchNotificationJson(
+                                '/api/notifications?limit=100'
+                            ),
+
+                            fetchNotificationJson(
+                                `/api/inbox/personal/${memberId}`
+                            ),
+
+                            fetchNotificationJson(
+                                '/api/communications/inbox'
+                            ),
+
+                            fetchNotificationJson(
+                                '/api/notifications/unread-count'
+                            )
+                        ]);
+
+                    const [
+                        notificationsResult,
+                        prayersResult,
+                        announcementsResult,
+                        countResult
+                    ] = results;
+
+                    if (
+                        notificationsResult.status ===
+                        'fulfilled'
+                    ) {
+                        notificationInboxState
+                            .notifications =
+                            Array.isArray(
+                                notificationsResult
+                                    .value
+                                    ?.notifications
+                            )
+                                ? notificationsResult
+                                    .value
+                                    .notifications
+                                : [];
+
+                        notificationInboxState
+                            .errors.notifications =
+                            null;
+                    } else {
+                        notificationInboxState
+                            .notifications = [];
+
+                        notificationInboxState
+                            .errors.notifications =
+                            notificationsResult
+                                .reason ||
+                            'unavailable';
+                    }
+
+                    if (
+                        prayersResult.status ===
+                        'fulfilled'
+                    ) {
+                        notificationInboxState
+                            .prayers =
+                            Array.isArray(
+                                prayersResult.value
+                            )
+                                ? prayersResult.value
+                                : [];
+
+                        notificationInboxState
+                            .errors.prayers =
+                            null;
+                    } else {
+                        notificationInboxState
+                            .prayers = [];
+
+                        notificationInboxState
+                            .errors.prayers =
+                            prayersResult.reason ||
+                            'unavailable';
+                    }
+
+                    if (
+                        announcementsResult.status ===
+                        'fulfilled'
+                    ) {
+                        notificationInboxState
+                            .announcements =
+                            Array.isArray(
+                                announcementsResult
+                                    .value
+                            )
+                                ? announcementsResult
+                                    .value
+                                : [];
+
+                        notificationInboxState
+                            .errors.announcements =
+                            null;
+                    } else {
+                        notificationInboxState
+                            .announcements = [];
+
+                        notificationInboxState
+                            .errors.announcements =
+                            announcementsResult
+                                .reason ||
+                            'unavailable';
+                    }
+
+                    if (
+                        countResult.status ===
+                        'fulfilled'
+                    ) {
+                        const count =
+                            Number(
+                                countResult.value
+                                    ?.unread_count
+                            );
+
+                        notificationInboxState
+                            .unreadCount =
+                            Number.isSafeInteger(
+                                count
+                            ) &&
+                            count >= 0
+                                ? count
+                                : 0;
+                    } else {
+                        notificationInboxState
+                            .unreadCount =
+                            notificationInboxState
+                                .notifications
+                                .filter(
+                                    item =>
+                                        !item.is_read
+                                )
+                                .length;
+                    }
+
+                    renderAllInboxViews();
+
+                    setBellCount(
+                        notificationInboxState
+                            .unreadCount
+                    );
+                })();
+
+            try {
+                return await inboxLoadPromise;
+            } finally {
+                inboxLoadPromise = null;
+            }
+        };
+
+    const PREFERENCE_FIELDS =
+        Object.freeze({
+            notifPrefPushEnabled:
+                'push_enabled',
+
+            notifPrefEmailEnabled:
+                'email_enabled',
+
+            notifPrefPrayerDailyGrowth:
+                'prayer_daily_growth',
+
+            notifPrefJourneyProgress:
+                'journey_progress',
+
+            notifPrefEventsFormation:
+                'events_formation',
+
+            notifPrefMembershipCommunity:
+                'membership_community',
+
+            notifPrefMinistryServant:
+                'ministry_servant',
+
+            notifPrefPrayerPartner:
+                'prayer_partner',
+
+            notifPrefGamesGrowth:
+                'games_growth'
+        });
+
+    function setPreferencesStatus(
+        message,
+        isError = false
+    ) {
+        const status =
+            document.getElementById(
+                'notificationPreferencesStatus'
+            );
+
+        if (!status) return;
+
+        status.textContent =
+            message || '';
+
+        status.style.color =
+            isError
+                ? 'var(--danger)'
+                : 'var(--text-muted)';
+    }
+
+    window.loadNotificationPreferences =
+        async function() {
+            if (
+                !authenticatedNotificationMemberId()
+            ) {
+                return;
+            }
+
+            if (!navigator.onLine) {
+                setPreferencesStatus(
+                    'Notification preferences require an internet connection.',
+                    true
+                );
+
+                return;
+            }
+
+            setPreferencesStatus(
+                'Loading preferences…'
+            );
+
+            try {
+                const payload =
+                    await fetchNotificationJson(
+                        '/api/notifications/preferences'
+                    );
+
+                const preferences =
+                    payload &&
+                    payload.preferences;
+
+                if (
+                    !preferences ||
+                    typeof preferences !==
+                        'object'
+                ) {
+                    throw new Error(
+                        'Invalid preference response'
+                    );
+                }
+
+                for (
+                    const [
+                        elementId,
+                        preferenceKey
+                    ]
+                    of Object.entries(
+                        PREFERENCE_FIELDS
+                    )
+                ) {
+                    const element =
+                        document.getElementById(
+                            elementId
+                        );
+
+                    if (element) {
+                        element.checked =
+                            preferences[
+                                preferenceKey
+                            ] === true;
+                    }
+                }
+
+                const prayerTime =
+                    document.getElementById(
+                        'notifPrefPrayerTime'
+                    );
+
+                const quietStart =
+                    document.getElementById(
+                        'notifPrefQuietStart'
+                    );
+
+                const quietEnd =
+                    document.getElementById(
+                        'notifPrefQuietEnd'
+                    );
+
+                if (prayerTime) {
+                    prayerTime.value =
+                        preferences
+                            .preferred_prayer_time ||
+                        '';
+                }
+
+                if (quietStart) {
+                    quietStart.value =
+                        preferences
+                            .quiet_hours_start ||
+                        '';
+                }
+
+                if (quietEnd) {
+                    quietEnd.value =
+                        preferences
+                            .quiet_hours_end ||
+                        '';
+                }
+
+                setPreferencesStatus(
+                    preferences.stored
+                        ? 'Your saved preferences are loaded.'
+                        : 'Using recommended defaults. Save only if you want to change them.'
+                );
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to load preferences.'
+                );
+
+                setPreferencesStatus(
+                    'Unable to load notification preferences.',
+                    true
+                );
+            }
+        };
+
+    window.saveNotificationPreferences =
+        async function() {
+            if (
+                !authenticatedNotificationMemberId()
+            ) {
+                return;
+            }
+
+            if (!navigator.onLine) {
+                setPreferencesStatus(
+                    'You must be online to save notification preferences.',
+                    true
+                );
+
+                return;
+            }
+
+            const button =
+                document.getElementById(
+                    'saveNotificationPreferencesBtn'
+                );
+
+            if (button) {
+                button.disabled = true;
+            }
+
+            setPreferencesStatus(
+                'Saving…'
+            );
+
+            try {
+                const body = {};
+
+                for (
+                    const [
+                        elementId,
+                        preferenceKey
+                    ]
+                    of Object.entries(
+                        PREFERENCE_FIELDS
+                    )
+                ) {
+                    const element =
+                        document.getElementById(
+                            elementId
+                        );
+
+                    if (!element) {
+                        throw new Error(
+                            `Missing preference control ${elementId}`
+                        );
+                    }
+
+                    body[preferenceKey] =
+                        element.checked === true;
+                }
+
+                const prayerTime =
+                    document.getElementById(
+                        'notifPrefPrayerTime'
+                    )?.value || null;
+
+                const quietStart =
+                    document.getElementById(
+                        'notifPrefQuietStart'
+                    )?.value || null;
+
+                const quietEnd =
+                    document.getElementById(
+                        'notifPrefQuietEnd'
+                    )?.value || null;
+
+                body.preferred_prayer_time =
+                    prayerTime;
+
+                body.quiet_hours_start =
+                    quietStart;
+
+                body.quiet_hours_end =
+                    quietEnd;
+
+                await fetchNotificationJson(
+                    '/api/notifications/preferences',
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+                        body:
+                            JSON.stringify(
+                                body
+                            )
+                    }
+                );
+
+                setPreferencesStatus(
+                    'Notification preferences saved.'
+                );
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to save preferences.'
+                );
+
+                setPreferencesStatus(
+                    'Unable to save notification preferences.',
+                    true
+                );
+            } finally {
+                if (button) {
+                    button.disabled =
+                        false;
+                }
+            }
+        };
+
+    /*
+     * Final router wrapper.
+     *
+     * app.js contains several historical switchTab
+     * wrappers. B3 intentionally wraps the effective
+     * final function rather than modifying an earlier
+     * superseded implementation.
+     */
+    const previousSwitchTabNotificationCenter =
+        window.switchTab;
+
+    window.switchTab =
+        async function(
+            tabId,
+            subTabId
+        ) {
+            const result =
+                previousSwitchTabNotificationCenter
+                    ? await previousSwitchTabNotificationCenter(
+                        tabId,
+                        subTabId
+                    )
+                    : undefined;
+
+            if (
+                tabId ===
+                'inboxTab'
+            ) {
+                setTimeout(
+                    () => {
+                        window
+                            .loadPersonalInbox();
+                    },
+                    30
+                );
+            }
+
+            if (
+                tabId ===
+                'profileTab'
+            ) {
+                setTimeout(
+                    () => {
+                        window
+                            .loadNotificationPreferences();
+                    },
+                    50
+                );
+            }
+
+            return result;
+        };
+
+    function beginNotificationBellLifecycle() {
+        Promise.resolve(
+            window.authReady
+        )
+            .catch(() => null)
+            .finally(
+                () => {
+                    window
+                        .refreshNotificationBell();
+                }
+            );
+
+        setTimeout(
+            () => {
+                window
+                    .refreshNotificationBell();
+            },
+            800
+        );
+    }
+
+    if (
+        document.readyState ===
+        'loading'
+    ) {
+        document.addEventListener(
+            'DOMContentLoaded',
+            beginNotificationBellLifecycle,
+            {
+                once: true
+            }
+        );
+    } else {
+        beginNotificationBellLifecycle();
+    }
+
+    window.addEventListener(
+        'online',
+        () => {
+            window
+                .refreshNotificationBell();
+        }
+    );
+
+    window.addEventListener(
+        'offline',
+        () => {
+            const button =
+                document.getElementById(
+                    'headerNotificationBell'
+                );
+
+            if (button) {
+                button.title =
+                    'Notifications require an internet connection';
+            }
+        }
+    );
+
+    document.addEventListener(
+        'visibilitychange',
+        () => {
+            if (
+                document.visibilityState ===
+                'visible'
+            ) {
+                window
+                    .refreshNotificationBell();
+            }
+        }
+    );
+
+    setInterval(
+        () => {
+            if (
+                document.visibilityState ===
+                    'visible' &&
+                authenticatedNotificationMemberId() &&
+                navigator.onLine
+            ) {
+                window
+                    .refreshNotificationBell();
+            }
+        },
+        60 * 1000
+    );
+})();

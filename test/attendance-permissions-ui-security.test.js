@@ -166,12 +166,12 @@ test('active shell and service worker use the current app.js revision', () => {
 
     assert.match(
         htmlSource,
-        /\/js\/app\.js\?v=12\.9/
+        /\/js\/app\.js\?v=13\.0/
     );
 
     assert.match(
         swSource,
-        /\/js\/app\.js\?v=12\.9/
+        /\/js\/app\.js\?v=13\.0/
     );
 
     assert.doesNotMatch(

@@ -423,8 +423,25 @@ test('FAQ client shell, interactive behavior, and universal header entry point a
         assert.match(html, /support@fogmin\.site/);
     });
     await t.test('universal header help link is an accessible direct link', () => {
-        assert.match(portal, /<a id="headerHelpLink"[^>]+href="\/faq\/"[^>]+aria-label="Help &amp; FAQ"[^>]+title="Help &amp; FAQ"/);
-        assert.match(portal, /id="headerHelpLink"[^>]+min-width:44px[^>]+min-height:44px/);
+        assert.match(
+            portal,
+            /id="headerNotificationBell"/
+        );
+
+        assert.match(
+            portal,
+            /id="headerNotificationBadge"/
+        );
+
+        assert.doesNotMatch(
+            portal,
+            /id="headerHelpLink"/
+        );
+
+        assert.match(
+            portal,
+            /href="\/faq\/"/
+        );
     });
     await t.test('existing navigation menu remains available and separately labeled', () => {
         assert.match(portal, /id="hamburgerBtn"[^>]+onclick="openSidebar\(\)"[^>]+aria-label="Open navigation menu"/);

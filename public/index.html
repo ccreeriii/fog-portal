@@ -35,7 +35,25 @@
         .growth-sub-tab { display: none; animation: fadeIn 0.3s ease-out; }
         .growth-sub-tab.active { display: block; }
         body:has(.modal.active) .bottom-nav { display: none !important; }
-</style>
+
+        .notification-pref-row {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:14px;
+            padding:11px 14px;
+            border:1px solid var(--border-color);
+            border-radius:10px;
+            background:#FFF;
+            font-size:0.9rem;
+        }
+        .notification-pref-row input {
+            width:20px;
+            height:20px;
+            flex:0 0 auto;
+        }
+
+    </style>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>.bottom-nav { z-index: 90 !important; } .modal { z-index: 9999 !important; }</style>
     <style>
@@ -192,7 +210,18 @@
             </div>
         </div>
         <div class="fog-header-actions" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-            <a id="headerHelpLink" class="hamburger-btn" href="/faq/" aria-label="Help &amp; FAQ" title="Help &amp; FAQ" style="display:grid;place-items:center;min-width:44px;min-height:44px;margin-left:0;text-decoration:none;font-weight:800;">?</a>
+            <button id="headerNotificationBell"
+                    class="hamburger-btn"
+                    type="button"
+                    onclick="openNotificationCenter()"
+                    aria-label="Notifications"
+                    title="Notifications"
+                    style="display:none;place-items:center;min-width:44px;min-height:44px;margin-left:0;position:relative;font-size:1.45rem;">
+                <span aria-hidden="true">🔔</span>
+                <span id="headerNotificationBadge"
+                      aria-hidden="true"
+                      style="display:none;position:absolute;top:1px;right:0;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#DC2626;color:#FFF;font-size:0.68rem;font-weight:800;line-height:18px;text-align:center;border:2px solid #FFF;">0</span>
+            </button>
             <button id="hamburgerBtn" class="hamburger-btn" onclick="openSidebar()" aria-label="Open navigation menu" title="Menu" style="display: none;min-width:44px;min-height:44px;">☰</button>
         </div>
     </div>
@@ -494,17 +523,91 @@
             </div>
         </div>
 
-        <div class="card" style="margin-top: 20px;">
-            <h2 style="display:flex; align-items:center; gap:8px;">🔔 Notification Preferences</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Turn on push notifications to receive real-time updates and important alerts directly to your device.</p>
-            <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-light); padding:15px; border-radius:8px; border:1px solid var(--border-color);">
-                <div>
-                    <strong id="notifStatusText" style="color:var(--text-main);">Status: Checking...</strong>
-                    <div id="notifSubtext" style="font-size: 0.75rem; color:var(--text-muted);">Please wait.</div>
+        <div id="notificationPreferencesCard" class="card" style="margin-top:20px;">
+            <h2 style="display:flex;align-items:center;gap:8px;">🔔 Notification Preferences</h2>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin-top:-10px;margin-bottom:18px;line-height:1.5;">
+                Choose how you would like to receive Community Portal updates. Your Inbox remains available for applicable notices even when Push or Email is turned off.
+            </p>
+
+            <div style="background:var(--bg-light);padding:15px;border-radius:10px;border:1px solid var(--border-color);margin-bottom:18px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                    <div>
+                        <strong id="notifStatusText" style="color:var(--text-main);">Device Push: Checking...</strong>
+                        <div id="notifSubtext" style="font-size:0.75rem;color:var(--text-muted);margin-top:3px;">
+                            Browser permission and device subscription.
+                        </div>
+                    </div>
+                    <button id="notifToggleBtn"
+                            type="button"
+                            class="btn btn-primary btn-sm"
+                            onclick="if(window.V4Communications && typeof V4Communications.togglePush === 'function') V4Communications.togglePush(); else alert('Push setup is temporarily unavailable.');">
+                        Enable
+                    </button>
                 </div>
-                <button id="notifToggleBtn" class="btn btn-primary btn-sm" onclick="V4Communications.togglePush()">Enable</button>
+
+                <p id="iosWarning" style="display:none;font-size:0.75rem;color:#F59E0B;margin-top:10px;margin-bottom:0;">
+                    📱 <strong>iPhone Users:</strong> Add the Community Portal to your Home Screen first for Push notifications to work.
+                </p>
             </div>
-            <p id="iosWarning" style="display:none; font-size: 0.75rem; color: #F59E0B; margin-top: 10px;">📱 <strong>iPhone Users:</strong> You must tap "Share" and "Add to Home Screen" first for notifications to work!</p>
+
+            <div style="display:grid;gap:10px;margin-bottom:18px;">
+                <label style="display:flex;align-items:center;justify-content:space-between;gap:15px;padding:12px 14px;border:1px solid var(--border-color);border-radius:10px;">
+                    <span><strong>Push Notifications</strong><br><small style="color:var(--text-muted);">Allow the Portal to use Push when this device is subscribed.</small></span>
+                    <input id="notifPrefPushEnabled" type="checkbox" style="width:20px;height:20px;">
+                </label>
+
+                <label style="display:flex;align-items:center;justify-content:space-between;gap:15px;padding:12px 14px;border:1px solid var(--border-color);border-radius:10px;">
+                    <span><strong>Email Notifications</strong><br><small style="color:var(--text-muted);">Receive eligible important updates by email.</small></span>
+                    <input id="notifPrefEmailEnabled" type="checkbox" style="width:20px;height:20px;">
+                </label>
+            </div>
+
+            <h3 style="font-size:0.95rem;margin-bottom:10px;color:var(--text-main);">What would you like to hear about?</h3>
+
+            <div style="display:grid;gap:8px;margin-bottom:18px;">
+                <label class="notification-pref-row"><span>🙏 Prayer &amp; Daily Growth</span><input id="notifPrefPrayerDailyGrowth" type="checkbox"></label>
+                <label class="notification-pref-row"><span>🧭 Journey Progress &amp; Next Steps</span><input id="notifPrefJourneyProgress" type="checkbox"></label>
+                <label class="notification-pref-row"><span>📅 Events &amp; Formation</span><input id="notifPrefEventsFormation" type="checkbox"></label>
+                <label class="notification-pref-row"><span>🏠 Membership &amp; Community</span><input id="notifPrefMembershipCommunity" type="checkbox"></label>
+                <label class="notification-pref-row"><span>🔥 Ministry &amp; Servant Journey</span><input id="notifPrefMinistryServant" type="checkbox"></label>
+                <label class="notification-pref-row"><span>🤝 Prayer Partner</span><input id="notifPrefPrayerPartner" type="checkbox"></label>
+                <label class="notification-pref-row"><span>🎮 Games &amp; Growth Activities</span><input id="notifPrefGamesGrowth" type="checkbox"></label>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:15px;">
+                <div class="form-group" style="margin:0;">
+                    <label for="notifPrefPrayerTime">Preferred Prayer Reminder</label>
+                    <input id="notifPrefPrayerTime" type="time" class="form-control">
+                </div>
+
+                <div class="form-group" style="margin:0;">
+                    <label for="notifPrefQuietStart">Quiet Hours Start</label>
+                    <input id="notifPrefQuietStart" type="time" class="form-control">
+                </div>
+
+                <div class="form-group" style="margin:0;">
+                    <label for="notifPrefQuietEnd">Quiet Hours End</label>
+                    <input id="notifPrefQuietEnd" type="time" class="form-control">
+                </div>
+            </div>
+
+            <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.5;">
+                Important security, legal and account-recovery notices are handled separately from ordinary Growth preferences.
+            </p>
+
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;">
+                <button id="saveNotificationPreferencesBtn"
+                        type="button"
+                        class="btn btn-primary"
+                        onclick="saveNotificationPreferences()">
+                    Save Notification Preferences
+                </button>
+
+                <span id="notificationPreferencesStatus"
+                      role="status"
+                      aria-live="polite"
+                      style="font-size:0.8rem;color:var(--text-muted);"></span>
+            </div>
         </div>
 
         <div class="card" style="margin-top: 20px;">
@@ -629,8 +732,8 @@
     </div>
     <div id="inboxTab" class="tab-content">
         <div class="card">
-            <h2>🔔 My Inbox</h2>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Announcements and messages from the leadership team.</p>
+            <h2>🔔 Notification Center</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 20px;">Journey updates, prayers, announcements and messages from our community.</p>
             <div id="inboxContainer">
                 <div style="text-align:center; padding:40px 20px;"><p style="color:var(--text-muted);">Loading your messages...</p></div>
             </div>
@@ -1546,7 +1649,7 @@
 
 <script src="/js/offline-data.js?v=12.2"></script>
 <script src="/js/legal-acceptance.js?v=1"></script>
-<script src="/js/app.js?v=12.9"></script>
+<script src="/js/app.js?v=13.0"></script>
 <script src="/js/v2-discipleship.js?v=12.2"></script>
 <script src="/js/v3-worship.js?v=12.2"></script>
 <script src="/js/v4-communications.js?v=12.3"></script>
