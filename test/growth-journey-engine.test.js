@@ -106,6 +106,92 @@ lifecycleTest(
                 `
             );
 
+            const accountStart =
+                await GrowthJourney.recordAccountCreated(
+                    db,
+                    youthA,
+                    {
+                        sourceTable: 'users',
+                        sourceId: 800001,
+                        occurredAt: '2026-09-13 17:00:00',
+                        actor: 'TEST',
+                        details: {
+                            method: 'registration'
+                        }
+                    }
+                );
+
+            assert.equal(
+                accountStart.evidence.inserted,
+                true,
+                'First account-created evidence should be inserted'
+            );
+
+            assert.equal(
+                accountStart.encounter.status,
+                'in_progress'
+            );
+
+            assert.ok(
+                accountStart.encounter.progressPercent > 0,
+                'Account creation should begin Encounter'
+            );
+
+            const repeatedAccountStart =
+                await GrowthJourney.recordAccountCreated(
+                    db,
+                    youthA,
+                    {
+                        sourceTable: 'users',
+                        sourceId: 800001,
+                        occurredAt: '2026-09-13 17:01:00',
+                        actor: 'TEST',
+                        details: {
+                            method: 'registration'
+                        }
+                    }
+                );
+
+            assert.equal(
+                repeatedAccountStart.evidence.inserted,
+                false,
+                'Account-created evidence must be idempotent'
+            );
+
+            const preIntentEnrollment =
+                await GrowthJourney.get(
+                    db,
+                    `
+                    SELECT COUNT(*) AS total
+                    FROM growth_onboarding_enrollments
+                    WHERE youth_id = ?
+                    `,
+                    [youthA]
+                );
+
+            assert.equal(
+                preIntentEnrollment.total,
+                0,
+                'Account creation alone must not start the Prayer Covenant'
+            );
+
+            const preIntentPartner =
+                await GrowthJourney.get(
+                    db,
+                    `
+                    SELECT COUNT(*) AS total
+                    FROM secret_prayer_pals
+                    WHERE youth_id = ?
+                    `,
+                    [youthA]
+                );
+
+            assert.equal(
+                preIntentPartner.total,
+                0,
+                'Account creation alone must not assign an onboarding Prayer Partner'
+            );
+
             const intent = await GrowthJourney.recordMembershipIntent(
                 db,
                 youthA,

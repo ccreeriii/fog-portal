@@ -3509,6 +3509,39 @@ app.post('/api/auth/google/complete-signup', async (req, res) => {
         const created = accepted.result;
         const newMember = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [created.youthId]);
         if (!newMember) throw new Error('Provisioned member unavailable');
+
+        let growthJourney = null;
+        let growthJourneyWarning = null;
+
+        try {
+            growthJourney =
+                await GrowthJourney.recordAccountCreated(
+                    db,
+                    created.youthId,
+                    {
+                        sourceTable: 'users',
+                        sourceId: created.userId,
+                        sourceKey:
+                            `account-created:youth:${created.youthId}`,
+                        occurredAt:
+                            newMember.created_at ||
+                            getManilaTime(),
+                        actor: created.username,
+                        details: {
+                            method: 'google_signup'
+                        }
+                    }
+                );
+        } catch (growthErr) {
+            growthJourneyWarning =
+                'Your account was created, but your Growth Journey could not be started automatically.';
+
+            console.error(
+                '[Growth Journey] Google account-start hook failed:',
+                growthErr
+            );
+        }
+
         clearPendingGoogleSignup(req, res);
         await recordLegalAcceptanceActivity(await legalAcceptanceStore.getCurrentAcceptance(created.userId));
         logActivity('System', 'NEW_MEMBER_CREATED', 'Auto-provisioned a new member via Google');
@@ -3522,7 +3555,9 @@ app.post('/api/auth/google/complete-signup', async (req, res) => {
                 permissions: [],
                 member: sanitizeMemberForAuth(newMember),
                 is_admin: false,
-                is_new: true
+                is_new: true,
+                growthJourney,
+                growthJourneyWarning
             }
         );
     } catch (error) {
@@ -6571,6 +6606,37 @@ app.post('/api/public/register-wanderer', async (req, res) => {
         if (!newMember) throw new Error('Created account unavailable');
 
         await recordLegalAcceptanceActivity(await legalAcceptanceStore.getCurrentAcceptance(created.userId));
+
+        let growthJourney = null;
+        let growthJourneyWarning = null;
+
+        try {
+            growthJourney =
+                await GrowthJourney.recordAccountCreated(
+                    db,
+                    created.youthId,
+                    {
+                        sourceTable: 'users',
+                        sourceId: created.userId,
+                        sourceKey:
+                            `account-created:youth:${created.youthId}`,
+                        occurredAt: getManilaTime(),
+                        actor: created.username,
+                        details: {
+                            method: 'registration'
+                        }
+                    }
+                );
+        } catch (growthErr) {
+            growthJourneyWarning =
+                'Your account was created, but your Growth Journey could not be started automatically.';
+
+            console.error(
+                '[Growth Journey] Registration account-start hook failed:',
+                growthErr
+            );
+        }
+
         let verificationQueued = false;
         try {
             await queueEmailVerification({ youthId: created.youthId, targetEmail: normalizedEmail });
@@ -6588,7 +6654,9 @@ app.post('/api/public/register-wanderer', async (req, res) => {
                 success: true,
                 is_new: true,
                 email_verification_queued: verificationQueued,
-                message: "Profile created successfully. Please confirm your email when the message arrives."
+                message: "Profile created successfully. Please confirm your email when the message arrives.",
+                growthJourney,
+                growthJourneyWarning
             }
         );
     } catch (error) {

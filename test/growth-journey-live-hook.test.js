@@ -134,3 +134,67 @@ test(
         );
     }
 );
+
+test(
+    'new Google signup starts Encounter account evidence',
+    () => {
+        const start = source.indexOf(
+            "app.post('/api/auth/google/complete-signup'"
+        );
+
+        const end = source.indexOf(
+            'function sendNoStoreJson',
+            start
+        );
+
+        assert.ok(start >= 0 && end > start);
+
+        const route = source.slice(start, end);
+
+        assert.match(
+            route,
+            /GrowthJourney\.recordAccountCreated/
+        );
+
+        assert.match(
+            route,
+            /method:\s*'google_signup'/
+        );
+
+        assert.match(
+            route,
+            /account-created:youth:/
+        );
+    }
+);
+
+test(
+    'new Wanderer registration starts Encounter account evidence',
+    () => {
+        const start = source.indexOf(
+            "app.post('/api/public/register-wanderer'"
+        );
+
+        assert.ok(
+            start >= 0,
+            'Wanderer registration route must exist'
+        );
+
+        const route = source.slice(start);
+
+        assert.match(
+            route,
+            /GrowthJourney\.recordAccountCreated/
+        );
+
+        assert.match(
+            route,
+            /method:\s*'registration'/
+        );
+
+        assert.match(
+            route,
+            /account-created:youth:/
+        );
+    }
+);
