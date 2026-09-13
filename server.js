@@ -6523,7 +6523,9 @@ app.post('/api/youth/:id/commit', requireAuth, (req, res) => {
 
     if (
         !Number.isInteger(authenticatedYouthId) ||
-        youthId !== authenticatedYouthId
+        youthId !== authenticatedYouthId ||
+        (req.body && Object.prototype.hasOwnProperty.call(req.body, 'youth_id') &&
+            normalizeCanonicalId(req.body.youth_id) !== authenticatedYouthId)
     ) {
         return res.status(403).json({
             success: false,
@@ -6705,9 +6707,15 @@ app.post('/api/youth/:id/commit', requireAuth, (req, res) => {
 
 
 // --- V30: NEW LOGGING & INTEGRATION API ROUTES ---
-app.post('/api/youth/:id/commit-v2', (req, res) => {
-    const youthId = req.params.id;
-    const { actor, intent_message } = req.body;
+app.post('/api/youth/:id/commit-v2', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth.youthId);
+    if (!youthId || !isCanonicalSelf(req.auth, req.params.id) ||
+        (req.body && Object.prototype.hasOwnProperty.call(req.body, 'youth_id') &&
+            normalizeCanonicalId(req.body.youth_id) !== youthId)) {
+        return sendForbidden(res);
+    }
+    const actor = getCanonicalAuditActor(req);
+    const { intent_message } = req.body;
     db.run(`UPDATE youth SET account_tier = 'Integration Period', commitment_intent = ?, commitment_date = ? WHERE id = ?`, [intent_message, getManilaTime(), youthId], function(err) {
         if (err) return res.status(500).json({ success: false, error: err.message });
         db.get(`SELECT permissions FROM users WHERE youth_id = ?`, [youthId], (err, user) => {
@@ -6715,7 +6723,7 @@ app.post('/api/youth/:id/commit-v2', (req, res) => {
             if (user && user.permissions) { try { perms = JSON.parse(user.permissions); } catch(e) {} }
             if (!perms.includes('access_directory')) perms.push('access_directory');
             db.run(`UPDATE users SET permissions = ? WHERE youth_id = ?`, [JSON.stringify(perms), youthId], function(err2) {
-                logActivity(actor || 'System', 'COMMITMENT_PLEDGE', `Member ID ${youthId} committed with intent: ${intent_message}`);
+                logActivity(actor, 'COMMITMENT_PLEDGE', `Member ID ${youthId} expressed intent to journey with the community`);
                 db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err3, member) => { res.json({ success: true, member: sanitizeMemberForClient(member), permissions: perms }); });
             });
         });
@@ -6726,8 +6734,16 @@ app.get('/api/admin/community-intents', requirePermission('edit_entries'), (req,
     db.all(`SELECT id, name, email, profile_picture, account_tier, commitment_intent, commitment_date FROM youth WHERE commitment_intent IS NOT NULL ORDER BY commitment_date DESC`, [], (err, rows) => { res.json(rows || []); });
 });
 
-app.post('/api/admin/community-intents/:id/approve', (req, res) => {
-    db.run(`UPDATE youth SET account_tier = 'Committed Member' WHERE id = ?`, [req.params.id], function(err) { res.json({success:true}); });
+app.post('/api/admin/community-intents/:id/approve', requirePermission('edit_entries'), (req, res) => {
+    const youthId = normalizeCanonicalId(req.params.id);
+    if (!youthId) return res.status(400).json({ success: false, error: 'Invalid member.' });
+    const actor = getCanonicalAuditActor(req);
+    db.run(`UPDATE youth SET account_tier = 'Committed Member' WHERE id = ?`, [youthId], function(err) {
+        if (err) return res.status(500).json({ success: false, error: 'Unable to approve membership.' });
+        if (!this.changes) return res.status(404).json({ success: false, error: 'Member not found.' });
+        logActivity(actor, 'MEMBERSHIP_APPROVED', `Approved membership for Member ID ${youthId}`);
+        res.json({success:true});
+    });
 });
 
 app.get('/api/admin/ministry-logs', requirePermission('edit_entries'), (req, res) => {
@@ -6740,13 +6756,20 @@ app.get('/api/admin/community-intents-v2', requirePermission('edit_entries'), (r
     db.all("SELECT id, name, email, profile_picture, account_tier, commitment_intent, commitment_date, commitment_accepted_at, commitment_accepted_by FROM youth WHERE commitment_intent IS NOT NULL ORDER BY commitment_date DESC", [], (err, rows) => { res.json(rows || []); });
 });
 
-app.post('/api/admin/community-intents-v2/:id/approve', (req, res) => {
-    const { actor } = req.body;
+app.post('/api/admin/community-intents-v2/:id/approve', requirePermission('edit_entries'), (req, res) => {
+    const youthId = normalizeCanonicalId(req.params.id);
+    if (!youthId) return res.status(400).json({ success: false, error: 'Invalid member.' });
+    const actor = getCanonicalAuditActor(req);
     const timeNow = typeof getManilaTime === 'function' ? getManilaTime() : new Date().toISOString();
-    db.run("UPDATE youth SET account_tier = 'Committed Member', commitment_accepted_at = ?, commitment_accepted_by = ? WHERE id = ?", [timeNow, actor || 'Admin', req.params.id], function(err) { res.json({success:true}); });
+    db.run("UPDATE youth SET account_tier = 'Committed Member', commitment_accepted_at = ?, commitment_accepted_by = ? WHERE id = ?", [timeNow, actor, youthId], function(err) {
+        if (err) return res.status(500).json({ success: false, error: 'Unable to approve membership.' });
+        if (!this.changes) return res.status(404).json({ success: false, error: 'Member not found.' });
+        logActivity(actor, 'MEMBERSHIP_APPROVED', `Accepted membership for Member ID ${youthId}`);
+        res.json({success:true});
+    });
 });
 
-app.get('/api/youth-v2/:id/tier', (req, res) => {
+app.get('/api/youth-v2/:id/tier', requireSelfOr('edit_entries', req => req.params.id), (req, res) => {
     db.get("SELECT account_tier FROM youth WHERE id = ?", [req.params.id], (err, row) => { res.json(row || {}); });
 });
 
