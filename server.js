@@ -2070,64 +2070,8 @@ app.post('/api/inbox/personal/:id/respond', requireAuth, (req, res) => {
     }
 });
 
-app.post('/api/communications/broadcast', requirePushAvailable, (req, res) => {
-    try {
-        if (!req.body || !req.body.target) return res.status(400).json({error: "Missing body data."});
-        const { target, title, message, actor } = req.body;
-        const d = new Date();
-        const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-        const pad = (n) => String(n).padStart(2, '0');
-        const timeNow = `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
-
-        db.run("INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)", [title, message, target, actor || 'System', timeNow], function(err) {
-            if (err) return res.status(500).json({success: false, error: err.message});
-            const announcementId = this.lastID;
-            
-            let targetQuery = "SELECT id, qr_code FROM youth"; let targetParams = [];
-            if (target === 'Leaders') {
-                targetQuery = "SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'";
-            } else if (target === 'Groups') {
-                targetQuery = "SELECT DISTINCT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id";
-            } else if (target.startsWith('Ministry:')) {
-                targetQuery = "SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?";
-                targetParams.push(target.split(':')[1]);
-            } else if (target.startsWith('Group:')) {
-                targetQuery = "SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?";
-                targetParams.push(target.split(':')[1]);
-            }
-            
-            db.all(targetQuery, targetParams, (err, youths) => {
-                const usernames = ['celsocreeriii@gmail.com'];
-                if (youths && youths.length > 0) {
-                    const stmt = db.prepare("INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)");
-                    youths.forEach(y => { if (y && y.id) { stmt.run([y.id, announcementId, timeNow]); if (y.qr_code) usernames.push(y.qr_code); } });
-                    stmt.finalize();
-                }
-                
-                const queryAll = target === 'All' ? "SELECT subscription FROM push_subscriptions" : "SELECT subscription FROM push_subscriptions WHERE username IN (" + usernames.map(()=>'?').join(',') + ")";
-                const paramsAll = target === 'All' ? [] : usernames;
-                
-                db.all(queryAll, paramsAll, (err, subs) => {
-                    if (err || !subs || subs.length === 0) return res.json({ success: true, sentCount: 0 });
-                    const payload = JSON.stringify({ title, body: message, url: '/' });
-                    let sentCount = 0;
-                    Promise.all(subs.map(row => {
-                        try {
-                            return webpush.sendNotification(JSON.parse(row.subscription), payload)
-                                .then(() => { sentCount++; })
-                                .catch(e => { 
-                                    if (e.statusCode === 404 || e.statusCode === 410) db.run("DELETE FROM push_subscriptions WHERE subscription = ?", [row.subscription]); 
-                                });
-                        } catch(e) { return Promise.resolve(); }
-                    })).then(() => { 
-                        try { if(typeof logActivity === 'function') logActivity(actor, 'BROADCAST', "Sent broadcast to " + target); } catch(e){}
-                        res.json({ success: true, sentCount }); 
-                    });
-                });
-            });
-        });
-    } catch (error) { res.status(500).json({success: false, error: error.message}); }
-});
+// Legacy duplicate Communications broadcast route removed.
+// Canonical route is defined in the Communications API section.
 // --- END V114 ---
 
 
@@ -2303,75 +2247,7 @@ app.get('/api/small-groups/:id/memories', (req, res) => {
     });
 });
 
-app.post('/api/communications/broadcast', requirePushAvailable, (req, res) => {
-    try {
-        const { target, title, message, actor } = req.body;
-        if (!target || !title || !message) return res.status(400).json({success: false, error: 'Missing parameters'});
-
-        const d = new Date();
-        const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-        const pad = (n) => String(n).padStart(2, '0');
-        const timeNow = `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
-
-        db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', timeNow], function(err) {
-            if (err) return res.status(500).json({success: false, error: err.message});
-            const announcementId = this.lastID;
-            
-            let targetQuery = `SELECT id, qr_code FROM youth`; let targetParams = [];
-            if (target === 'Leaders') {
-                targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`;
-            } else if (target === 'Groups') {
-                targetQuery = `SELECT DISTINCT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id`;
-            } else if (target.startsWith('Ministry:')) {
-                targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`;
-                targetParams.push(target.split(':')[1]);
-            } else if (target.startsWith('Group:')) {
-                targetQuery = `SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?`;
-                targetParams.push(target.split(':')[1]);
-            }
-            
-            db.all(targetQuery, targetParams, (err, youths) => {
-                try {
-                    const usernames = ['celsocreeriii@gmail.com'];
-                    if (youths && youths.length > 0) {
-                        const stmt = db.prepare(`INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)`);
-                        youths.forEach(y => { if (y && y.id) { stmt.run([y.id, announcementId, timeNow]); if (y.qr_code) usernames.push(y.qr_code); } });
-                        stmt.finalize();
-                    }
-                    
-                    const queryAll = target === 'All' ? `SELECT subscription FROM push_subscriptions` : `SELECT subscription FROM push_subscriptions WHERE username IN (${usernames.map(()=>'?').join(',')})`;
-                    const paramsAll = target === 'All' ? [] : usernames;
-                    
-                    db.all(queryAll, paramsAll, (err, subs) => {
-                        if (err || !subs || subs.length === 0) return res.json({ success: true, sentCount: 0 });
-                        const payload = JSON.stringify({ title, body: message, url: urlPath });
-                        let sentCount = 0;
-                        Promise.all(subs.map(row => {
-                            try {
-                                return webpush.sendNotification(JSON.parse(row.subscription), payload)
-                                    .then(() => { sentCount++; })
-                                    .catch(e => { 
-                                        if (e.statusCode === 404 || e.statusCode === 410) db.run(`DELETE FROM push_subscriptions WHERE subscription = ?`, [row.subscription]); 
-                                    });
-                            } catch(e) { return Promise.resolve(); }
-                        })).then(() => { 
-                            res.json({ success: true, sentCount }); 
-                        });
-                    });
-                } catch (innerErr) {
-                    res.status(500).json({success: false, error: innerErr.message});
-                }
-            });
-        });
-    } catch (error) {
-        res.status(500).json({success: false, error: error.message});
-    }
-});
-
-
-
-
-
+// Legacy duplicate Communications broadcast route removed.
 
 // FOG Prayer Partner weekly rotation
 cron.schedule('0 9 * * 1', async () => {
@@ -6636,57 +6512,474 @@ app.post('/api/communications/unsubscribe', requireAuth, (req, res) => {
         return res.json({ success: true });
     });
 });
-app.post('/api/communications/broadcast', requirePushAvailable, (req, res) => {
-    const { target, title, message, actor } = req.body;
-    db.run(`INSERT INTO announcements (title, message, target_audience, author, created_at) VALUES (?, ?, ?, ?, ?)`, [title, message, target, actor || 'System', getManilaTime()], function(err) {
-            const announcementId = this.lastID;
-            let targetQuery = `SELECT id, qr_code FROM youth`; let targetParams = [];
-            if (target === 'Leaders') { 
-                targetQuery = `SELECT y.id, y.qr_code FROM users u JOIN youth y ON u.youth_id = y.id WHERE u.permissions LIKE '%edit_entries%'`; 
-            } else if (target === 'Groups') { 
-                targetQuery = `SELECT DISTINCT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id`; 
-            } else if (target.startsWith('Ministry:')) { 
-                targetQuery = `SELECT y.id, y.qr_code FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ?`; 
-                targetParams.push(target.split(':')[1]); 
-            } else if (target.startsWith('Group:')) { 
-                targetQuery = `SELECT y.id, y.qr_code FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ?`; 
-                targetParams.push(target.split(':')[1]); 
-            }
-            db.all(targetQuery, targetParams, (err, youths) => {
-                const usernames = ['celsocreeriii@gmail.com'];
-                if (youths && youths?.length || 0 > 0) {
-                    const stmt = db.prepare(`INSERT INTO user_notifications (youth_id, announcement_id, created_at) VALUES (?, ?, ?)`);
-                    youths.forEach(y => { if (y && y.id) { stmt.run([y.id, announcementId, getManilaTime()]); if (y.qr_code) usernames.push(y.qr_code); } });
-                    stmt.finalize();
-                }
-                const placeholders = usernames.map(() => '?').join(',');
-                db.all(`SELECT subscription FROM push_subscriptions WHERE username IN (${placeholders})`, usernames, (err, subs) => {
-                    if (err || !subs || subs?.length || 0 === 0) return res.json({ success: true, sentCount: 0 });
-                    const payload = JSON.stringify({ title, body: message, url: '/' });
-                    let sentCount = 0;
-                    Promise.all(subs.map(row => {
-                        try {
-                            return webpush.sendNotification(JSON.parse(row.subscription), payload).then(() => { sentCount++; }).catch(e => { if (e.statusCode === 404 || e.statusCode === 410) db.run(`DELETE FROM push_subscriptions WHERE subscription = ?`, [row.subscription]); });
-                        } catch(e) { return Promise.resolve(); }
-                    })).then(() => { logActivity(actor, 'BROADCAST', `Sent broadcast '${title}' to ${target}`); res.json({ success: true, sentCount }); });
+app.post('/api/communications/broadcast', requireAllPermissions(['access_communications', 'edit_entries']), requirePushAvailable, (req, res) => {
+    const body =
+        req.body &&
+        typeof req.body === 'object' &&
+        !Array.isArray(req.body)
+            ? req.body
+            : {};
+
+    const target =
+        typeof body.target === 'string'
+            ? body.target.trim()
+            : '';
+
+    const title =
+        typeof body.title === 'string'
+            ? body.title.trim()
+            : '';
+
+    const message =
+        typeof body.message === 'string'
+            ? body.message.trim()
+            : '';
+
+    const actor =
+        getCanonicalAuditActor(req) ||
+        'Authenticated Communications User';
+
+    if (
+        !target ||
+        !title ||
+        !message
+    ) {
+        return res.status(400).json({
+            success: false,
+            error: 'Target, title, and message are required.'
+        });
+    }
+
+    const fixedTargets =
+        new Set([
+            'All',
+            'Leaders',
+            'Groups'
+        ]);
+
+    const scopedTarget =
+        /^(Ministry|Group):([1-9]\d*)$/.exec(
+            target
+        );
+
+    if (
+        !fixedTargets.has(target) &&
+        !scopedTarget
+    ) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid broadcast target.'
+        });
+    }
+
+    let targetQuery =
+        `SELECT id, qr_code
+         FROM youth`;
+
+    const targetParams = [];
+
+    if (target === 'Leaders') {
+        targetQuery =
+            `SELECT DISTINCT
+                y.id,
+                y.qr_code
+             FROM users u
+             JOIN youth y
+               ON u.youth_id = y.id
+             WHERE u.permissions LIKE
+                   '%edit_entries%'`;
+    } else if (target === 'Groups') {
+        targetQuery =
+            `SELECT DISTINCT
+                y.id,
+                y.qr_code
+             FROM small_group_members sgm
+             JOIN youth y
+               ON sgm.youth_id = y.id`;
+    } else if (
+        scopedTarget &&
+        scopedTarget[1] === 'Ministry'
+    ) {
+        targetQuery =
+            `SELECT DISTINCT
+                y.id,
+                y.qr_code
+             FROM ministry_members mm
+             JOIN youth y
+               ON mm.youth_id = y.id
+             WHERE mm.ministry_id = ?`;
+
+        targetParams.push(
+            Number(scopedTarget[2])
+        );
+    } else if (
+        scopedTarget &&
+        scopedTarget[1] === 'Group'
+    ) {
+        targetQuery =
+            `SELECT DISTINCT
+                y.id,
+                y.qr_code
+             FROM small_group_members sgm
+             JOIN youth y
+               ON sgm.youth_id = y.id
+             WHERE sgm.group_id = ?`;
+
+        targetParams.push(
+            Number(scopedTarget[2])
+        );
+    }
+
+    const createdAt =
+        getManilaTime();
+
+    db.run(
+        `INSERT INTO announcements (
+            title,
+            message,
+            target_audience,
+            author,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?)`,
+        [
+            title,
+            message,
+            target,
+            actor,
+            createdAt
+        ],
+        function (announcementErr) {
+            if (announcementErr) {
+                console.error(
+                    '[Communications] Unable to create broadcast.'
+                );
+
+                return res.status(500).json({
+                    success: false,
+                    error: 'Unable to create broadcast.'
                 });
-            });
-    });
+            }
+
+            const announcementId =
+                this.lastID;
+
+            db.all(
+                targetQuery,
+                targetParams,
+                (targetErr, youths) => {
+                    if (targetErr) {
+                        console.error(
+                            '[Communications] Unable to resolve broadcast recipients.'
+                        );
+
+                        return res.status(500).json({
+                            success: false,
+                            error:
+                                'Unable to resolve broadcast recipients.'
+                        });
+                    }
+
+                    const recipients =
+                        Array.isArray(youths)
+                            ? youths.filter(
+                                youth =>
+                                    youth &&
+                                    Number.isInteger(
+                                        Number(youth.id)
+                                    ) &&
+                                    Number(youth.id) > 0
+                            )
+                            : [];
+
+                    const stmt =
+                        db.prepare(
+                            `INSERT INTO user_notifications (
+                                youth_id,
+                                announcement_id,
+                                created_at
+                            )
+                            VALUES (?, ?, ?)`
+                        );
+
+                    for (const youth of recipients) {
+                        stmt.run(
+                            [
+                                Number(youth.id),
+                                announcementId,
+                                createdAt
+                            ]
+                        );
+                    }
+
+                    stmt.finalize(
+                        finalizeErr => {
+                            if (finalizeErr) {
+                                console.error(
+                                    '[Communications] Unable to create inbox recipients.'
+                                );
+
+                                return res.status(500).json({
+                                    success: false,
+                                    error:
+                                        'Unable to create broadcast recipients.'
+                                });
+                            }
+
+                            const usernames =
+                                recipients
+                                    .map(
+                                        youth =>
+                                            typeof youth.qr_code ===
+                                                'string'
+                                                ? youth.qr_code.trim()
+                                                : ''
+                                    )
+                                    .filter(Boolean);
+
+                            let pushSql;
+                            let pushParams;
+
+                            if (target === 'All') {
+                                pushSql =
+                                    `SELECT subscription
+                                     FROM push_subscriptions`;
+
+                                pushParams = [];
+                            } else if (
+                                usernames.length > 0
+                            ) {
+                                const placeholders =
+                                    usernames
+                                        .map(() => '?')
+                                        .join(',');
+
+                                pushSql =
+                                    `SELECT subscription
+                                     FROM push_subscriptions
+                                     WHERE username IN (
+                                         ${placeholders}
+                                     )`;
+
+                                pushParams =
+                                    usernames;
+                            } else {
+                                logActivity(
+                                    actor,
+                                    'BROADCAST',
+                                    `Sent broadcast '${title}' to ${target}`
+                                );
+
+                                return res.json({
+                                    success: true,
+                                    sentCount: 0
+                                });
+                            }
+
+                            db.all(
+                                pushSql,
+                                pushParams,
+                                async (
+                                    pushErr,
+                                    subscriptions
+                                ) => {
+                                    if (pushErr) {
+                                        console.error(
+                                            '[Communications] Unable to load push recipients.'
+                                        );
+
+                                        return res.status(500).json({
+                                            success: false,
+                                            error:
+                                                'Broadcast saved, but push delivery could not start.'
+                                        });
+                                    }
+
+                                    let sentCount = 0;
+
+                                    await Promise.all(
+                                        (
+                                            subscriptions || []
+                                        ).map(
+                                            async row => {
+                                                try {
+                                                    await webpush
+                                                        .sendNotification(
+                                                            JSON.parse(
+                                                                row.subscription
+                                                            ),
+                                                            JSON.stringify({
+                                                                title,
+                                                                body:
+                                                                    message,
+                                                                url: '/'
+                                                            })
+                                                        );
+
+                                                    sentCount += 1;
+                                                } catch (error) {
+                                                    if (
+                                                        error &&
+                                                        (
+                                                            error.statusCode ===
+                                                                404 ||
+                                                            error.statusCode ===
+                                                                410
+                                                        )
+                                                    ) {
+                                                        db.run(
+                                                            `DELETE FROM push_subscriptions
+                                                             WHERE subscription = ?`,
+                                                            [
+                                                                row.subscription
+                                                            ]
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    );
+
+                                    logActivity(
+                                        actor,
+                                        'BROADCAST',
+                                        `Sent broadcast '${title}' to ${target}`
+                                    );
+
+                                    return res.json({
+                                        success: true,
+                                        sentCount
+                                    });
+                                }
+                            );
+                        }
+                    );
+                }
+            );
+        }
+    );
 });
-app.get('/api/communications/history', (req, res) => { db.all(`SELECT id, title, target_audience as target, message, author as sender, created_at FROM announcements ORDER BY created_at DESC`, [], (err, rows) => { res.json(rows || []); }); });
+
+app.get('/api/communications/history', requirePermission('access_communications'), (req, res) => {
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    db.all(
+        `SELECT
+            id,
+            title,
+            target_audience AS target,
+            message,
+            author AS sender,
+            created_at
+         FROM announcements
+         ORDER BY created_at DESC`,
+        [],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    error:
+                        'Unable to load broadcast history.'
+                });
+            }
+
+            return res.json(
+                rows || []
+            );
+        }
+    );
+});
 app.delete('/api/communications/broadcast/:id', requireAllPermissions(['access_communications', 'delete_entries']), (req, res) => {
     const actor = getCanonicalAuditActor(req);
     function executeDelete() { db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]); logActivity(actor, 'DELETE_BROADCAST', `Deleted global broadcast ID ${req.params.id}`); res.json({ success: true }); }); }
     executeDelete();
 });
-app.get('/api/communications/inbox', (req, res) => {
-    const username = req.query.username;
-    if (username === 'celsocreeriii@gmail.com') return db.all(`SELECT id as notification_id, title, message, author, created_at FROM announcements ORDER BY created_at DESC LIMIT 50`, [], (err, rows) => { res.json(rows || []); });
-    db.get(`SELECT id FROM youth WHERE qr_code = ?`, [username], (err, youth) => {
-        if (!youth) return res.json([]);
-        db.all(`SELECT n.id as notification_id, a.title, a.message, a.author, a.created_at FROM user_notifications n JOIN announcements a ON n.announcement_id = a.id WHERE n.youth_id = ? ORDER BY a.created_at DESC LIMIT 50`, [youth.id], (err, rows) => { res.json(rows || []); });
-    });
+app.get('/api/communications/inbox', requireAuth, (req, res) => {
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    if (isStrongAdmin(req.auth)) {
+        return db.all(
+            `SELECT
+                id AS notification_id,
+                title,
+                message,
+                author,
+                created_at,
+                0 AS is_read
+             FROM announcements
+             ORDER BY created_at DESC
+             LIMIT 50`,
+            [],
+            (err, rows) => {
+                if (err) {
+                    return res.status(500).json({
+                        success: false,
+                        error:
+                            'Unable to load announcements.'
+                    });
+                }
+
+                return res.json(
+                    rows || []
+                );
+            }
+        );
+    }
+
+    const authenticatedYouthId =
+        Number(
+            req.auth &&
+            req.auth.youthId
+        );
+
+    if (
+        !Number.isInteger(
+            authenticatedYouthId
+        ) ||
+        authenticatedYouthId <= 0
+    ) {
+        return sendForbidden(res);
+    }
+
+    return db.all(
+        `SELECT
+            n.id AS notification_id,
+            n.is_read,
+            a.title,
+            a.message,
+            a.author,
+            a.created_at
+         FROM user_notifications n
+         JOIN announcements a
+           ON n.announcement_id = a.id
+         WHERE n.youth_id = ?
+         ORDER BY a.created_at DESC
+         LIMIT 50`,
+        [
+            authenticatedYouthId
+        ],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    error:
+                        'Unable to load your announcements.'
+                });
+            }
+
+            return res.json(
+                rows || []
+            );
+        }
+    );
 });
+
 app.delete('/api/communications/inbox/:id', requireAuth, async (req, res) => {
     if (isStrongAdmin(req.auth)) {
         const actor = getCanonicalAuditActor(req);
