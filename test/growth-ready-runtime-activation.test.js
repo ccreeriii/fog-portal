@@ -111,7 +111,7 @@ test(
 );
 
 test(
-    'Prayer Covenant ready evaluation uses Encounter',
+    'Prayer Covenant ready evaluation uses every mutation-driven phase transition',
     () => {
         const marker =
             server.indexOf(
@@ -128,10 +128,8 @@ test(
                 marker + 1000
             );
 
-        assert.match(
-            block,
-            /growthJourney\s*&&\s*growthJourney\.encounter/
-        );
+        assert.match(block, /growthJourney\.phaseTransitions/);
+        assert.match(block, /for\s*\([\s\S]*const phaseProgress[\s\S]*of phaseTransitions/);
     }
 );
 

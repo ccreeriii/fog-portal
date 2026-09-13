@@ -1537,280 +1537,176 @@ const sendCustomPush = (db, webpush, youthId, title, message, urlPath) => {
     });
 };
 
-app.post('/api/prayer-pals/send', requireAuth, (req, res) => {
+app.post('/api/prayer-pals/send', requireAuth, async (req, res) => {
     try {
         if (!req.body || !req.body.sender_id) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing body data.'
-            });
+            return res.status(400).json({ success: false, error: 'Missing body data.' });
         }
 
-        const authenticatedYouthId =
-            Number(req.auth && req.auth.youthId);
+        const authenticatedYouthId = Number(req.auth && req.auth.youthId);
+        const senderId = Number(req.body.sender_id);
+        const receiverId = Number(req.body.receiver_id);
 
-        const senderId =
-            Number(req.body.sender_id);
-
-        const receiverId =
-            Number(req.body.receiver_id);
-
-        if (
-            !Number.isInteger(authenticatedYouthId) ||
-            authenticatedYouthId <= 0
-        ) {
-            return res.status(401).json({
-                success: false,
-                error: 'Authentication required.'
-            });
+        if (!Number.isInteger(authenticatedYouthId) || authenticatedYouthId <= 0) {
+            return res.status(401).json({ success: false, error: 'Authentication required.' });
         }
-
         /*
-         * sender_id remains accepted for compatibility with the
-         * existing client, but authenticated identity is authoritative.
+         * sender_id remains accepted for compatibility, but the canonical
+         * authenticated youth identity is authoritative.
          */
-        if (
-            !Number.isInteger(senderId) ||
-            senderId <= 0 ||
-            senderId !== authenticatedYouthId
-        ) {
+        if (!Number.isInteger(senderId) || senderId <= 0 || senderId !== authenticatedYouthId) {
             return res.status(403).json({
                 success: false,
-                error:
-                    'You can only send prayer as your own account.'
+                error: 'You can only send prayer as your own account.'
             });
         }
-
-        if (
-            !Number.isInteger(receiverId) ||
-            receiverId <= 0
-        ) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid prayer recipient.'
-            });
+        if (!Number.isInteger(receiverId) || receiverId <= 0) {
+            return res.status(400).json({ success: false, error: 'Invalid prayer recipient.' });
         }
 
-        const message =
-            typeof req.body.message === 'string'
-                ? req.body.message.trim()
-                : '';
-
+        const message = typeof req.body.message === 'string' ? req.body.message.trim() : '';
         if (!message) {
-            return res.status(400).json({
-                success: false,
-                error: 'Prayer message is required.'
-            });
+            return res.status(400).json({ success: false, error: 'Prayer message is required.' });
         }
 
-        const canonicalSenderName =
-            req.auth &&
-            req.auth.member &&
-            typeof req.auth.member.name === 'string' &&
-            req.auth.member.name.trim()
-                ? req.auth.member.name.trim()
-                : (
-                    req.auth &&
-                    typeof req.auth.username === 'string'
-                        ? req.auth.username
-                        : 'FOG Member'
-                );
+        const canonicalSenderName = req.auth && req.auth.member &&
+            typeof req.auth.member.name === 'string' && req.auth.member.name.trim()
+            ? req.auth.member.name.trim()
+            : (req.auth && typeof req.auth.username === 'string'
+                ? req.auth.username
+                : 'FOG Member');
 
         /*
-         * A member may only send Prayer Covenant prayer to the
-         * Prayer Partner currently assigned to that member.
-         *
-         * The latest assignment row is authoritative because both
-         * onboarding assignment and weekly rotation append a new
-         * assignment rather than rewriting historical rows.
+         * The latest stored assignment is authoritative. Prayer habit and
+         * prayer coverage remain separate concepts: this route credits only
+         * the authenticated sender's personal prayer activity.
          */
-        db.get(
-            `SELECT
-                pal_youth_id
+        const assignment = await GrowthJourney.get(
+            db,
+            `SELECT pal_youth_id
              FROM secret_prayer_pals
              WHERE youth_id = ?
              ORDER BY id DESC
              LIMIT 1`,
-            [authenticatedYouthId],
-            (assignmentErr, assignment) => {
-                if (assignmentErr) {
-                    return res.status(500).json({
-                        success: false,
-                        error:
-                            'Unable to verify your Prayer Partner.'
-                    });
-                }
+            [authenticatedYouthId]
+        );
+        if (!assignment) {
+            return res.status(409).json({
+                success: false,
+                error: 'No Prayer Partner is currently assigned.'
+            });
+        }
+        const assignedPrayerPartnerId = Number(assignment.pal_youth_id);
+        if (!Number.isInteger(assignedPrayerPartnerId) || assignedPrayerPartnerId !== receiverId) {
+            return res.status(403).json({
+                success: false,
+                error: 'Prayer can only be sent to your assigned Prayer Partner.'
+            });
+        }
 
-                if (!assignment) {
-                    return res.status(409).json({
-                        success: false,
-                        error:
-                            'No Prayer Partner is currently assigned.'
-                    });
-                }
+        const timeNow = getManilaTime();
+        let inboxId = null;
+        let growthJourney = null;
 
-                const assignedPrayerPartnerId =
-                    Number(
-                        assignment.pal_youth_id
+        try {
+            growthJourney = await GrowthJourney.withPrayerRhythmMutation(db, async () => {
+                await GrowthJourney.run(db, 'BEGIN IMMEDIATE');
+                try {
+                    const inbox = await GrowthJourney.run(
+                        db,
+                        `INSERT INTO personal_inbox (
+                            sender_id, receiver_id, title, message, status, created_at
+                         ) VALUES (?, ?, ?, ?, ?, ?)`,
+                        [
+                            authenticatedYouthId,
+                            assignedPrayerPartnerId,
+                            '🙏 A Prayer from ' + canonicalSenderName,
+                            message,
+                            'Delivered',
+                            timeNow
+                        ]
                     );
-
-                if (
-                    !Number.isInteger(
-                        assignedPrayerPartnerId
-                    ) ||
-                    assignedPrayerPartnerId !==
-                        receiverId
-                ) {
-                    return res.status(403).json({
-                        success: false,
-                        error:
-                            'Prayer can only be sent to your assigned Prayer Partner.'
-                    });
-                }
-
-                const timeNow =
-                    getManilaTime();
-
-                db.run(
-                    `INSERT INTO personal_inbox (
-                        sender_id,
-                        receiver_id,
-                        title,
-                        message,
-                        status,
-                        created_at
-                     )
-                     VALUES (?, ?, ?, ?, ?, ?)`,
-                    [
+                    inboxId = inbox.lastID;
+                    const result = await GrowthJourney.recordPrayerCovenantCompletion(
+                        db,
                         authenticatedYouthId,
-                        assignedPrayerPartnerId,
-                        '🙏 A Prayer from ' +
-                            canonicalSenderName,
-                        message,
-                        'Delivered',
-                        timeNow
-                    ],
-                    async function(err) {
-                        if (err) {
-                            return res.status(500).json({
-                                success: false,
-                                error: err.message
-                            });
+                        {
+                            sourceKey: `personal-inbox:${inboxId}`,
+                            sourceTable: 'personal_inbox',
+                            sourceId: inboxId,
+                            completedAt: timeNow,
+                            actor: req.auth.username || canonicalSenderName,
+                            details: { prayerRecipientId: assignedPrayerPartnerId },
+                            useExistingTransaction: true
                         }
+                    );
+                    await GrowthJourney.run(db, 'COMMIT');
+                    return result;
+                } catch (error) {
+                    await GrowthJourney.run(db, 'ROLLBACK').catch(() => {});
+                    throw error;
+                }
+            });
+        } catch (growthError) {
+            console.error('[Growth Journey] Prayer Covenant transaction failed:', growthError);
+            return res.status(500).json({
+                success: false,
+                error: 'Unable to record Prayer Covenant activity.'
+            });
+        }
 
-                        const inboxId =
-                            this.lastID;
-
-                        /*
-                         * Preserve existing daily Growth XP behavior.
-                         * The ledger prevents duplicate Daily Prayer
-                         * Covenant awards on the same Manila date.
-                         */
-                        const todayStr =
-                            timeNow.split(' ')[0];
-
-                        db.get(
-                            `SELECT id
-                             FROM point_transactions
-                             WHERE youth_id = ?
-                               AND game_name =
-                                   'Daily Prayer Covenant'
-                               AND created_at LIKE ?`,
-                            [
-                                authenticatedYouthId,
-                                todayStr + '%'
-                            ],
-                            (
-                                pointErr,
-                                pointRow
-                            ) => {
-                                if (
-                                    !pointErr &&
-                                    !pointRow &&
-                                    typeof awardPoints ===
-                                        'function'
-                                ) {
-                                    awardPoints(
-                                        authenticatedYouthId,
-                                        'growth',
-                                        50,
-                                        canonicalSenderName,
-                                        'Daily Prayer Covenant'
-                                    );
-                                }
-                            }
-                        );
-
-                        let growthJourney = null;
-                        let growthJourneyWarning = null;
-
-                        try {
-                            growthJourney =
-                                await GrowthJourney
-                                    .recordPrayerCovenantCompletion(
-                                        db,
-                                        authenticatedYouthId,
-                                        {
-                                            sourceKey:
-                                                `personal-inbox:${inboxId}`,
-                                            completedAt:
-                                                timeNow,
-                                            actor:
-                                                req.auth.username ||
-                                                canonicalSenderName,
-                                            details: {
-                                                prayerRecipientId:
-                                                    assignedPrayerPartnerId
-                                            }
-                                        }
-                                    );
-
-                            await processJourneyReadyNotification({
-                                youthId:
-                                    authenticatedYouthId,
-                                phaseProgress:
-                                    growthJourney &&
-                                    growthJourney.encounter,
-                                source:
-                                    'prayer_covenant_completion'
-                            });
-                        } catch (growthErr) {
-                            growthJourneyWarning =
-                                'Prayer was sent, but Journey progress could not be updated.';
-
-                            console.error(
-                                '[Growth Journey] Prayer Covenant hook failed:',
-                                growthErr
-                            );
-                        }
-
-                        if (
-                            typeof webpush !==
-                            'undefined'
-                        ) {
-                            sendCustomPush(
-                                db,
-                                webpush,
-                                assignedPrayerPartnerId,
-                                '🙏 Prayer Received',
-                                'Prayers sent to you by a prayer covenant.',
-                                '/?tab=inbox'
-                            );
-                        }
-
-                        return res.json({
-                            success: true,
-                            growthJourney,
-                            growthJourneyWarning
-                        });
-                    }
-                );
+        /* Preserve the existing once-per-Manila-day Growth XP behavior. */
+        const todayStr = timeNow.split(' ')[0];
+        db.get(
+            `SELECT id FROM point_transactions
+             WHERE youth_id = ?
+               AND game_name = 'Daily Prayer Covenant'
+               AND created_at LIKE ?`,
+            [authenticatedYouthId, todayStr + '%'],
+            (pointError, pointRow) => {
+                if (!pointError && !pointRow && typeof awardPoints === 'function') {
+                    awardPoints(
+                        authenticatedYouthId,
+                        'growth',
+                        50,
+                        canonicalSenderName,
+                        'Daily Prayer Covenant'
+                    );
+                }
             }
         );
+
+        const phaseTransitions = growthJourney && Array.isArray(growthJourney.phaseTransitions)
+            ? growthJourney.phaseTransitions
+            : [];
+        for (const phaseProgress of phaseTransitions) {
+            await processJourneyReadyNotification({
+                youthId: authenticatedYouthId,
+                phaseProgress,
+                source: 'prayer_covenant_completion'
+            });
+        }
+
+        if (typeof webpush !== 'undefined') {
+            sendCustomPush(
+                db,
+                webpush,
+                assignedPrayerPartnerId,
+                '🙏 Prayer Received',
+                'Prayers sent to you by a prayer covenant.',
+                '/?tab=inbox'
+            );
+        }
+
+        return res.json({
+            success: true,
+            growthJourney,
+            growthJourneyWarning: null
+        });
     } catch (error) {
         return res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Unable to send Prayer Covenant activity.'
         });
     }
 });
@@ -7817,13 +7713,18 @@ app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
 
         const [
             journey,
-            onboarding
+            onboarding,
+            prayerRhythm
         ] = await Promise.all([
             GrowthJourney.getMemberJourney(
                 db,
                 youthId
             ),
             GrowthJourney.getDefaultOnboardingStatus(
+                db,
+                youthId
+            ),
+            GrowthJourney.getPrayerRhythmStatus(
                 db,
                 youthId
             )
@@ -7837,7 +7738,8 @@ app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
         return res.json({
             success: true,
             journey,
-            onboarding
+            onboarding,
+            prayerRhythm
         });
     } catch (err) {
         console.error(

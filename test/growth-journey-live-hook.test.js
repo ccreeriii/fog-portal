@@ -70,6 +70,31 @@ test(
             route,
             /personal-inbox:/
         );
+
+        assert.match(
+            route,
+            /sourceTable:\s*'personal_inbox'/
+        );
+
+        assert.match(
+            route,
+            /growthJourney\.phaseTransitions/
+        );
+
+        assert.match(
+            route,
+            /withPrayerRhythmMutation/
+        );
+
+        assert.match(
+            route,
+            /BEGIN IMMEDIATE[\s\S]*INSERT INTO personal_inbox[\s\S]*recordPrayerCovenantCompletion[\s\S]*COMMIT/
+        );
+
+        assert.match(
+            route,
+            /useExistingTransaction:\s*true/
+        );
     }
 );
 
@@ -146,6 +171,11 @@ test(
         assert.match(
             source,
             /GrowthJourney\.getDefaultOnboardingStatus/
+        );
+
+        assert.match(
+            source,
+            /GrowthJourney\.getPrayerRhythmStatus/
         );
     }
 );
