@@ -87,6 +87,15 @@ lifecycleTest(
             await GrowthJourney.run(
                 db,
                 `
+                DELETE FROM secret_prayer_pals
+                WHERE youth_id IN (?, ?)
+                `,
+                [youthA, youthB]
+            );
+
+            await GrowthJourney.run(
+                db,
+                `
                 UPDATE growth_onboarding_templates
                 SET
                     is_paused = 0,
@@ -114,6 +123,39 @@ lifecycleTest(
                 0
             );
 
+            assert.ok(
+                intent.prayerPartner,
+                'Active onboarding should attempt Prayer Partner assignment'
+            );
+
+            assert.equal(
+                intent.prayerPartner.available,
+                true
+            );
+
+            assert.notEqual(
+                Number(intent.prayerPartner.partnerYouthId),
+                Number(youthA),
+                'Member must never be assigned to pray for self'
+            );
+
+            const partnerRows =
+                await GrowthJourney.get(
+                    db,
+                    `
+                    SELECT COUNT(*) AS total
+                    FROM secret_prayer_pals
+                    WHERE youth_id = ?
+                    `,
+                    [youthA]
+                );
+
+            assert.equal(
+                partnerRows.total,
+                1,
+                'Onboarding creates exactly one Prayer Partner assignment'
+            );
+
             const repeatedIntent =
                 await GrowthJourney.recordMembershipIntent(
                     db,
@@ -134,6 +176,42 @@ lifecycleTest(
             assert.equal(
                 repeatedIntent.onboarding.reason,
                 'already_enrolled'
+            );
+
+            assert.ok(
+                repeatedIntent.prayerPartner
+            );
+
+            assert.equal(
+                repeatedIntent.prayerPartner.available,
+                true
+            );
+
+            assert.equal(
+                Number(
+                    repeatedIntent.prayerPartner.partnerYouthId
+                ),
+                Number(
+                    intent.prayerPartner.partnerYouthId
+                ),
+                'Repeated intent must preserve the same existing partner'
+            );
+
+            const partnerRowsAfterRepeat =
+                await GrowthJourney.get(
+                    db,
+                    `
+                    SELECT COUNT(*) AS total
+                    FROM secret_prayer_pals
+                    WHERE youth_id = ?
+                    `,
+                    [youthA]
+                );
+
+            assert.equal(
+                partnerRowsAfterRepeat.total,
+                1,
+                'Repeated intent must not create duplicate partner assignments'
             );
 
             const enrollmentCount = await GrowthJourney.get(
@@ -316,6 +394,28 @@ lifecycleTest(
             assert.equal(
                 pausedIntent.onboarding.reason,
                 'template_not_enrolling'
+            );
+
+            assert.equal(
+                pausedIntent.prayerPartner,
+                null,
+                'Paused onboarding must not assign a Prayer Partner'
+            );
+
+            const youthBPartner = await GrowthJourney.get(
+                db,
+                `
+                SELECT COUNT(*) AS total
+                FROM secret_prayer_pals
+                WHERE youth_id = ?
+                `,
+                [youthB]
+            );
+
+            assert.equal(
+                youthBPartner.total,
+                0,
+                'Paused onboarding creates no Prayer Partner assignment'
             );
 
             const youthBEnrollment = await GrowthJourney.get(
