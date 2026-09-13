@@ -30,7 +30,7 @@ test('check-in and attendance routes use canonical permissions', () => {
 
     assert.match(
         serverSource,
-        /const \{ youth_id, event_id, is_walkin, qr_code \} = req\.body;/
+        /const\s*\{\s*youth_id,\s*event_id,\s*is_walkin,\s*qr_code\s*\}\s*=\s*req\.body;/
     );
 
     assert.match(

@@ -5419,28 +5419,206 @@ app.delete('/api/youth/:id', requireAllPermissions(['access_directory', 'delete_
 app.get('/api/users/list', requirePermission('access_permissions'), (req, res) => { db.all(`SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`, [], (err, rows) => { res.json(rows.map(r => ({ id: r.id, username: r.username, display_name: r.member_name ? `${r.member_name}` : r.username, qr_code: r.member_code || r.username, youth_id: r.youth_id, permissions: r.permissions || '[]' }))); }); });
 
 app.post('/api/checkin', requirePermission('access_checkin'), (req, res) => {
-    const { youth_id, event_id, is_walkin, qr_code } = req.body;
+    const {
+        youth_id,
+        event_id,
+        is_walkin,
+        qr_code
+    } = req.body;
+
     const actor = getCanonicalAuditActor(req);
+
     const processCheckin = (targetYouthId) => {
-        db.get(`SELECT id FROM attendance WHERE youth_id = ? AND event_id = ?`, [targetYouthId, event_id], (err, row) => {
-            if (row) return res.status(400).json({ error: 'Member is ALREADY checked in for this event.' });
-            db.run(`INSERT INTO attendance (youth_id, event_id, is_walkin, checked_in_at) VALUES (?, ?, ?, ?)`, [targetYouthId, event_id, is_walkin ? 1 : 0, getManilaTime()], function (err) {
-                const logId = this.lastID;
-                db.get(`SELECT event_points FROM events WHERE id = ?`, [event_id], (err, evt) => {
-                    const pts = (evt && evt.event_points !== null) ? evt.event_points : 10;
-                    db.get(`SELECT id FROM pre_registrations WHERE youth_id = ? AND event_id = ?`, [targetYouthId, event_id], (err, pre) => {
-                        const preRegBonus = pre ? Math.floor(pts * 0.5) : 0;
-                        const finalPts = pts + preRegBonus;
-                        awardPoints(targetYouthId, 'event', finalPts, actor, pre ? 'Event Check-In + Pre-Reg Bonus' : 'Event Check-In');
-                        db.get(`SELECT name FROM youth WHERE id = ?`, [targetYouthId], (e, y) => { res.json({ success: true, member_name: y ? y.name : 'Member', youth_id: targetYouthId, log_id: logId, points: finalPts }); });
+        db.get(
+            `SELECT id
+             FROM attendance
+             WHERE youth_id = ?
+               AND event_id = ?`,
+            [targetYouthId, event_id],
+            (err, row) => {
+                if (err) {
+                    console.error('Check-in lookup failed');
+                    return res.status(500).json({
+                        error: 'Unable to process check-in.'
                     });
-                });
-            });
-        });
+                }
+
+                if (row) {
+                    return res.status(400).json({
+                        error:
+                            'Member is ALREADY checked in for this event.'
+                    });
+                }
+
+                const checkedInAt = getManilaTime();
+
+                db.run(
+                    `INSERT INTO attendance (
+                        youth_id,
+                        event_id,
+                        is_walkin,
+                        checked_in_at
+                    )
+                    VALUES (?, ?, ?, ?)`,
+                    [
+                        targetYouthId,
+                        event_id,
+                        is_walkin ? 1 : 0,
+                        checkedInAt
+                    ],
+                    async function (insertErr) {
+                        if (insertErr) {
+                            console.error(
+                                'Check-in attendance insert failed'
+                            );
+
+                            return res.status(500).json({
+                                error: 'Unable to record check-in.'
+                            });
+                        }
+
+                        const logId = this.lastID;
+
+                        /*
+                         * Attendance is authoritative.
+                         *
+                         * Growth Journey processing happens only after the
+                         * attendance row has successfully committed.
+                         * A Growth error is logged but must never undo or
+                         * hide a valid attendance check-in.
+                         */
+                        try {
+                            await GrowthJourney
+                                .recordEventAttendanceGrowthEvidence(
+                                    db,
+                                    {
+                                        youthId: targetYouthId,
+                                        eventId: event_id,
+                                        attendanceId: logId,
+                                        isWalkin: Boolean(is_walkin),
+                                        occurredAt: checkedInAt,
+                                        actor
+                                    }
+                                );
+                        } catch (growthError) {
+                            console.error(
+                                '[Growth Journey] Attendance evidence hook failed:',
+                                growthError &&
+                                growthError.message
+                                    ? growthError.message
+                                    : growthError
+                            );
+                        }
+
+                        db.get(
+                            `SELECT event_points
+                             FROM events
+                             WHERE id = ?`,
+                            [event_id],
+                            (eventErr, evt) => {
+                                const pts =
+                                    (
+                                        evt &&
+                                        evt.event_points !== null
+                                    )
+                                        ? evt.event_points
+                                        : 10;
+
+                                db.get(
+                                    `SELECT id
+                                     FROM pre_registrations
+                                     WHERE youth_id = ?
+                                       AND event_id = ?`,
+                                    [
+                                        targetYouthId,
+                                        event_id
+                                    ],
+                                    (preErr, pre) => {
+                                        const preRegBonus =
+                                            pre
+                                                ? Math.floor(
+                                                    pts * 0.5
+                                                )
+                                                : 0;
+
+                                        const finalPts =
+                                            pts + preRegBonus;
+
+                                        awardPoints(
+                                            targetYouthId,
+                                            'event',
+                                            finalPts,
+                                            actor,
+                                            pre
+                                                ? 'Event Check-In + Pre-Reg Bonus'
+                                                : 'Event Check-In'
+                                        );
+
+                                        db.get(
+                                            `SELECT name
+                                             FROM youth
+                                             WHERE id = ?`,
+                                            [targetYouthId],
+                                            (nameErr, youth) => {
+                                                res.json({
+                                                    success: true,
+                                                    member_name:
+                                                        youth
+                                                            ? youth.name
+                                                            : 'Member',
+                                                    youth_id:
+                                                        targetYouthId,
+                                                    log_id: logId,
+                                                    points: finalPts
+                                                });
+                                            }
+                                        );
+                                    }
+                                );
+                            }
+                        );
+                    }
+                );
+            }
+        );
     };
-    if (qr_code) { db.get(`SELECT id FROM youth WHERE qr_code = ?`, [qr_code], (err, row) => { if (!row) return res.status(404).json({ error: 'Invalid QR Pass Code.' }); processCheckin(row.id); }); }
-    else if (youth_id) { processCheckin(youth_id); } else res.status(400).json({ error: 'Missing youth identifier for check-in.' });
+
+    if (qr_code) {
+        db.get(
+            `SELECT id
+             FROM youth
+             WHERE qr_code = ?`,
+            [qr_code],
+            (err, row) => {
+                if (err) {
+                    return res.status(500).json({
+                        error: 'Unable to process QR check-in.'
+                    });
+                }
+
+                if (!row) {
+                    return res.status(404).json({
+                        error: 'Invalid QR Pass Code.'
+                    });
+                }
+
+                processCheckin(row.id);
+            }
+        );
+
+        return;
+    }
+
+    if (youth_id) {
+        processCheckin(youth_id);
+        return;
+    }
+
+    return res.status(400).json({
+        error: 'Missing youth identifier for check-in.'
+    });
 });
+
 app.get('/api/attendance/logs', requirePermission('access_attendance'), (req, res) => { db.all(`SELECT a.id, a.checked_in_at, a.is_walkin, y.name as member_name, e.name as event_name, a.youth_id, a.event_id FROM attendance a JOIN youth y ON a.youth_id = y.id JOIN events e ON a.event_id = e.id ORDER BY a.checked_in_at DESC`, [], (err, rows) => { res.json(rows); }); });
 app.put('/api/attendance/:id', requireAllPermissions(['access_attendance', 'edit_entries']), (req, res) => { db.run(`UPDATE attendance SET checked_in_at = ?, is_walkin = ? WHERE id = ?`, [req.body.checked_in_at, req.body.is_walkin ? 1 : 0, req.params.id], function (err) { res.json({ updated: this.changes }); }); });
 app.delete('/api/attendance/:id', requireAllPermissions(['access_attendance', 'delete_entries']), (req, res) => { db.run(`DELETE FROM attendance WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
