@@ -5297,6 +5297,69 @@ window.loadPendingApplications = async function() {
 };
 
 // ==========================================
+
+/*
+ * Canonical Email verification indicator.
+ *
+ * Informational only. The canonical source of truth
+ * is youth.email_verified === 1.
+ */
+function emailVerificationBadgeHtml(member) {
+    const verified =
+        Boolean(
+            member &&
+            member.email_verified === 1
+        );
+
+    const label =
+        verified
+            ? '✓ Verified'
+            : 'Not verified';
+
+    const state =
+        verified
+            ? 'verified'
+            : 'not-verified';
+
+    const palette =
+        verified
+            ? {
+                background: '#DCFCE7',
+                color: '#166534',
+                border: '#BBF7D0'
+            }
+            : {
+                background: '#FEF3C7',
+                color: '#92400E',
+                border: '#FDE68A'
+            };
+
+    return `
+        <span
+            class="email-verification-badge"
+            data-email-verification-state="${state}"
+            role="status"
+            aria-label="Email ${verified ? 'verified' : 'not verified'}"
+            style="
+                display:inline-flex;
+                align-items:center;
+                white-space:nowrap;
+                border-radius:999px;
+                padding:2px 7px;
+                background:${palette.background};
+                color:${palette.color};
+                border:1px solid ${palette.border};
+                font-size:0.62rem;
+                line-height:1.25;
+                font-weight:800;
+                letter-spacing:0;
+                text-transform:none;
+                vertical-align:middle;
+            "
+        >${label}</span>
+    `;
+}
+
 // V24: UNIFIED DIRECTORY PROFILE & FREEZE FIX (CLEAN)
 // ==========================================
 window.openViewProfileModal = async function(id) {
@@ -5345,7 +5408,7 @@ window.openViewProfileModal = async function(id) {
                 <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 20px;">
                     <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 10px; border-bottom: 2px solid var(--bg-light); padding-bottom: 5px;">Personal Details</h3>
                     <div style="font-size: 0.95rem; color: var(--text-muted); line-height: 1.6; text-align: left;">
-                        <strong>Email:</strong> ${safeText(member.email)}<br>
+                        <strong>Email:</strong> ${emailVerificationBadgeHtml(member)} ${safeText(member.email)}<br>
                         <strong>Age:</strong> ${safeText(member.age)}<br>
                         <strong>Gender:</strong> ${safeText(member.gender)}<br>
                         <strong>Birthday:</strong> ${safeText(member.birthday)}<br>
@@ -9201,7 +9264,10 @@ window.populateProfileTab = function(member) {
                         <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
                             <div style="width: 34px; height: 34px; border-radius: 8px; background: #EEF2FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">✉️</div>
                             <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
-                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Email Address</span>
+                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Email Address</span>
+                                    ${emailVerificationBadgeHtml(member)}
+                                </div>
                                 <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.email)}">${safeText(member.email)}</span>
                             </div>
                         </div>
