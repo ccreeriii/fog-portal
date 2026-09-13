@@ -5418,8 +5418,9 @@ app.delete('/api/youth/:id', requireAllPermissions(['access_directory', 'delete_
 });
 app.get('/api/users/list', requirePermission('access_permissions'), (req, res) => { db.all(`SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`, [], (err, rows) => { res.json(rows.map(r => ({ id: r.id, username: r.username, display_name: r.member_name ? `${r.member_name}` : r.username, qr_code: r.member_code || r.username, youth_id: r.youth_id, permissions: r.permissions || '[]' }))); }); });
 
-app.post('/api/checkin', (req, res) => {
-    const { youth_id, event_id, is_walkin, actor, qr_code } = req.body;
+app.post('/api/checkin', requirePermission('access_checkin'), (req, res) => {
+    const { youth_id, event_id, is_walkin, qr_code } = req.body;
+    const actor = getCanonicalAuditActor(req);
     const processCheckin = (targetYouthId) => {
         db.get(`SELECT id FROM attendance WHERE youth_id = ? AND event_id = ?`, [targetYouthId, event_id], (err, row) => {
             if (row) return res.status(400).json({ error: 'Member is ALREADY checked in for this event.' });
@@ -5440,8 +5441,8 @@ app.post('/api/checkin', (req, res) => {
     if (qr_code) { db.get(`SELECT id FROM youth WHERE qr_code = ?`, [qr_code], (err, row) => { if (!row) return res.status(404).json({ error: 'Invalid QR Pass Code.' }); processCheckin(row.id); }); }
     else if (youth_id) { processCheckin(youth_id); } else res.status(400).json({ error: 'Missing youth identifier for check-in.' });
 });
-app.get('/api/attendance/logs', (req, res) => { db.all(`SELECT a.id, a.checked_in_at, a.is_walkin, y.name as member_name, e.name as event_name, a.youth_id, a.event_id FROM attendance a JOIN youth y ON a.youth_id = y.id JOIN events e ON a.event_id = e.id ORDER BY a.checked_in_at DESC`, [], (err, rows) => { res.json(rows); }); });
-app.put('/api/attendance/:id', (req, res) => { db.run(`UPDATE attendance SET checked_in_at = ?, is_walkin = ? WHERE id = ?`, [req.body.checked_in_at, req.body.is_walkin ? 1 : 0, req.params.id], function (err) { res.json({ updated: this.changes }); }); });
+app.get('/api/attendance/logs', requirePermission('access_attendance'), (req, res) => { db.all(`SELECT a.id, a.checked_in_at, a.is_walkin, y.name as member_name, e.name as event_name, a.youth_id, a.event_id FROM attendance a JOIN youth y ON a.youth_id = y.id JOIN events e ON a.event_id = e.id ORDER BY a.checked_in_at DESC`, [], (err, rows) => { res.json(rows); }); });
+app.put('/api/attendance/:id', requireAllPermissions(['access_attendance', 'edit_entries']), (req, res) => { db.run(`UPDATE attendance SET checked_in_at = ?, is_walkin = ? WHERE id = ?`, [req.body.checked_in_at, req.body.is_walkin ? 1 : 0, req.params.id], function (err) { res.json({ updated: this.changes }); }); });
 app.delete('/api/attendance/:id', requireAllPermissions(['access_attendance', 'delete_entries']), (req, res) => { db.run(`DELETE FROM attendance WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
 
 const requireGrowthEventConfiguration = requireAllPermissions(['access_events', 'edit_entries']);

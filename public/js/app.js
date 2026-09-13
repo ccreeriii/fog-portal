@@ -1488,11 +1488,280 @@ window.applyGranularPermissions = function() {
     setDisp('btnDirectoryAddMember');
 };
 
+let permissionAccountsCache = [];
+
+const PERMISSION_DISPLAY_LABELS = Object.freeze({
+    access_checkin: 'Check-In',
+    access_directory: 'Directory',
+    access_events: 'Events',
+    access_attendance: 'Attendance Logs',
+    access_ministries: 'Ministries',
+    access_activity: 'Activity Logs',
+    access_permissions: 'Permissions',
+    access_discipleship: 'Discipleship Admin',
+    access_ai: 'AI Assistant',
+    access_worship: 'Worship Hub',
+    access_communications: 'Broadcasts',
+    add_entries: 'Add Entries',
+    edit_entries: 'Edit Entries',
+    delete_entries: 'Delete Entries'
+});
+
+function escapePermissionHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function parsePermissionList(value) {
+    try {
+        const parsed = Array.isArray(value)
+            ? value
+            : JSON.parse(value || '[]');
+
+        if (!Array.isArray(parsed)) return [];
+
+        return [...new Set(
+            parsed
+                .filter(item => typeof item === 'string' && item.trim())
+                .map(item => item.trim())
+        )];
+    } catch (e) {
+        return [];
+    }
+}
+
+function permissionDisplayName(permission) {
+    return PERMISSION_DISPLAY_LABELS[permission] || permission;
+}
+
+window.loadPermissionAccountsOverview = async function() {
+    const container = document.getElementById('permAccountsContainer');
+    const summary = document.getElementById('permAccountsSummary');
+
+    if (!container || !summary) return;
+    if (!window.hasPerm('access_permissions')) return;
+
+    container.innerHTML = `
+        <div style="padding:18px; color:var(--text-muted); text-align:center;">
+            Loading accounts with permissions…
+        </div>
+    `;
+
+    try {
+        const res = await fetch('/api/users/list');
+
+        if (!res.ok) {
+            throw new Error(`Unable to load permission accounts (${res.status})`);
+        }
+
+        const rawAccounts = await res.json();
+
+        permissionAccountsCache = (Array.isArray(rawAccounts) ? rawAccounts : [])
+            .map(account => ({
+                ...account,
+                permission_list: parsePermissionList(account.permissions)
+            }))
+            .filter(account => account.permission_list.length > 0)
+            .sort((a, b) => {
+                const aName = String(a.display_name || a.username || '');
+                const bName = String(b.display_name || b.username || '');
+                return aName.localeCompare(bName, undefined, { sensitivity: 'base' });
+            });
+
+        const checkinCount = permissionAccountsCache.filter(
+            account => account.permission_list.includes('access_checkin')
+        ).length;
+
+        const attendanceCount = permissionAccountsCache.filter(
+            account => account.permission_list.includes('access_attendance')
+        ).length;
+
+        const permissionManagerCount = permissionAccountsCache.filter(
+            account => account.permission_list.includes('access_permissions')
+        ).length;
+
+        summary.textContent =
+            `${permissionAccountsCache.length} Accounts • ` +
+            `${checkinCount} Check-In • ` +
+            `${attendanceCount} Attendance • ` +
+            `${permissionManagerCount} Permission Managers`;
+
+        if (permissionAccountsCache.length === 0) {
+            container.innerHTML = `
+                <div style="padding:18px; color:var(--text-muted); text-align:center;">
+                    No accounts currently have Portal permissions.
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = permissionAccountsCache.map(account => {
+            const displayName = escapePermissionHtml(
+                account.display_name || account.username || 'Account'
+            );
+
+            const username = escapePermissionHtml(account.username || '');
+
+            const accountType = account.youth_id == null
+                ? 'System account'
+                : `Member ID ${escapePermissionHtml(account.youth_id)}`;
+
+            const preview = account.permission_list
+                .slice(0, 3)
+                .map(permission => `
+                    <span style="display:inline-block; background:var(--bg-light); border:1px solid var(--border-color); border-radius:999px; padding:3px 8px; font-size:0.72rem;">
+                        ${escapePermissionHtml(permissionDisplayName(permission))}
+                    </span>
+                `)
+                .join('');
+
+            const extra = account.permission_list.length > 3
+                ? `<span style="font-size:0.75rem; color:var(--text-muted);">+${account.permission_list.length - 3} more</span>`
+                : '';
+
+            return `
+                <button type="button"
+                        onclick="openPermissionAccountDetails(${Number(account.id)})"
+                        style="display:block; width:100%; text-align:left; border:0; border-bottom:1px solid var(--border-color); background:transparent; padding:14px 16px; cursor:pointer;">
+                    <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+                        <div style="min-width:0;">
+                            <div style="font-weight:800; color:var(--text-main);">
+                                ${displayName}
+                            </div>
+
+                            <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px; overflow-wrap:anywhere;">
+                                ${username} • ${accountType}
+                            </div>
+
+                            <div style="display:flex; flex-wrap:wrap; gap:5px; align-items:center; margin-top:8px;">
+                                ${preview}
+                                ${extra}
+                            </div>
+                        </div>
+
+                        <span class="badge badge-blue" style="white-space:nowrap;">
+                            ${account.permission_list.length}
+                        </span>
+                    </div>
+                </button>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('Permission account overview failed', error);
+
+        summary.textContent = 'Unavailable';
+
+        container.innerHTML = `
+            <div style="padding:18px; color:var(--danger); text-align:center;">
+                Unable to load accounts with permissions.
+            </div>
+        `;
+    }
+};
+
+window.openPermissionAccountDetails = async function(userId) {
+    let account = permissionAccountsCache.find(
+        item => Number(item.id) === Number(userId)
+    );
+
+    if (!account) {
+        await window.loadPermissionAccountsOverview();
+
+        account = permissionAccountsCache.find(
+            item => Number(item.id) === Number(userId)
+        );
+    }
+
+    if (!account) {
+        alert('Unable to load this permission account.');
+        return;
+    }
+
+    const header = document.getElementById('permissionAccountDetailHeader');
+    const badges = document.getElementById('permissionAccountDetailBadges');
+    const note = document.getElementById('permissionAccountDetailNote');
+    const editBtn = document.getElementById('permissionAccountEditBtn');
+    const modal = document.getElementById('permissionAccountDetailsModal');
+
+    if (!header || !badges || !note || !editBtn || !modal) return;
+
+    const displayName = account.display_name || account.username || 'Account';
+
+    header.innerHTML = `
+        <div style="font-weight:800; font-size:1.05rem;">
+            ${escapePermissionHtml(displayName)}
+        </div>
+        <div style="color:var(--text-muted); font-size:0.82rem; margin-top:4px; overflow-wrap:anywhere;">
+            ${escapePermissionHtml(account.username || '')}
+            ${account.youth_id == null
+                ? ' • System account'
+                : ` • Member ID ${escapePermissionHtml(account.youth_id)}`}
+        </div>
+    `;
+
+    badges.innerHTML = account.permission_list.length
+        ? account.permission_list.map(permission => `
+            <span style="display:inline-block; background:rgba(255,107,0,0.10); color:var(--primary); border:1px solid rgba(255,107,0,0.22); border-radius:999px; padding:6px 10px; font-size:0.78rem; font-weight:700;">
+                ${escapePermissionHtml(permissionDisplayName(permission))}
+            </span>
+        `).join('')
+        : '<span style="color:var(--text-muted);">No permissions assigned.</span>';
+
+    if (account.youth_id == null) {
+        note.style.display = 'block';
+        note.textContent =
+            'This is a system account rather than a member-linked account. ' +
+            'Its current permissions are shown here for visibility.';
+
+        editBtn.style.display = 'none';
+        editBtn.onclick = null;
+    } else {
+        note.style.display = 'none';
+        note.textContent = '';
+
+        editBtn.style.display = 'inline-flex';
+
+        editBtn.onclick = () => {
+            window.closePermissionAccountDetails();
+
+            window['openAssignPermissionModal'](
+                Number(account.youth_id),
+                displayName
+            );
+        };
+    }
+
+    modal.classList.add('active');
+};
+
+window.closePermissionAccountDetails = function() {
+    const modal = document.getElementById('permissionAccountDetailsModal');
+
+    if (modal) {
+        modal.classList.remove('active');
+    }
+};
+
 window.resetPermUserList = function() {
     const searchInput = document.getElementById('permUserSearchInput');
     const container = document.getElementById('permUserListContainer');
-    if(searchInput) searchInput.value = '';
-    if(container) container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>`;
+
+    if (searchInput) searchInput.value = '';
+
+    if (container) {
+        container.innerHTML = `
+            <div style="padding:15px; color:var(--text-muted); text-align:center;">
+                Type at least 3 characters to find another member and assign permissions.
+            </div>
+        `;
+    }
+
+    window.loadPermissionAccountsOverview();
 };
 
 window.switchTab = function(tabId) {
@@ -4214,6 +4483,7 @@ window.handleSavePermissionsFromModal = function() {
             if (data.success) {
                 alert('Permissions updated successfully!');
                 window.closeAssignPermissionModal();
+                await window.loadPermissionAccountsOverview();
                 window.resetPermUserList();
                 youthData = []; await window.loadDirectory();
             } else {
