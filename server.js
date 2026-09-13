@@ -1801,47 +1801,69 @@ app.post('/api/communications/broadcast', requirePushAvailable, (req, res) => {
 
 
 
-// [KOINONIA PATCH] ADMIN MANUAL PRAYER PAL TRIGGER
-app.post('/api/admin/trigger-prayer-pals', requirePermission('edit_entries'), (req, res) => {
-    if(typeof db === 'undefined') return res.status(500).json({error: "DB not initialized"});
-    
-    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    const pad = (n) => String(n).padStart(2, '0');
-    const weekStart = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-
-    const assignPals = () => {
-        return new Promise((resolve) => {
-            // Pull EVERY user in the database
-            db.all(`SELECT id FROM youth WHERE id IS NOT NULL`, [], (err, members) => {
-                if (err || !members || members.length < 2) return resolve();
-                
-                // Fisher-Yates Shuffle for true randomness
-                let shuffled = [...members];
-                for (let i = shuffled.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-                }
-                
-                // CRITICAL FIX: Wipe today's fragmented pairings to guarantee an unbroken chain
-                db.run(`DELETE FROM secret_prayer_pals WHERE week_start = ?`, [weekStart], () => {
-                    const stmt = db.prepare(`INSERT INTO secret_prayer_pals (youth_id, pal_youth_id, week_start) VALUES (?, ?, ?)`);
-                    for (let i = 0; i < shuffled.length; i++) {
-                        const current = shuffled[i];
-                        const next = shuffled[(i + 1) % shuffled.length]; // Mathematical circular mapping
-                        stmt.run([current.id, next.id, weekStart]);
-                    }
-                    stmt.finalize();
-                    resolve();
-                });
-            });
+// FOG Prayer Partner rotation - authorized manual ensure/rebuild
+app.post('/api/admin/trigger-prayer-pals', requirePermission('edit_entries'), async (req, res) => {
+    if (typeof db === 'undefined') {
+        return res.status(500).json({
+            success: false,
+            error: 'DB not initialized'
         });
-    };
+    }
 
-    Promise.all([assignPals()]).then(() => {
-        res.json({success: true, message: "Unbroken prayer covenant chain assigned to EVERY member!"});
-    }).catch(err => {
-        res.status(500).json({error: "Pairing failed"});
-    });
+    try {
+        const force =
+            Boolean(
+                req.body &&
+                req.body.force_rebuild === true
+            );
+
+        const result =
+            await GrowthJourney.rotatePrayerPartners(
+                db,
+                {
+                    force
+                }
+            );
+
+        try {
+            if (
+                typeof logActivity ===
+                'function'
+            ) {
+                logActivity(
+                    (
+                        req.auth &&
+                        req.auth.username
+                    ) ||
+                    'System',
+                    'PRAYER_PARTNER_ROTATION',
+                    [
+                        result.status,
+                        result.weekStart,
+                        result.assignedCount
+                    ].join(' | ')
+                );
+            }
+        } catch (_) {
+            // Rotation success does not depend on
+            // optional activity logging.
+        }
+
+        return res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        console.error(
+            '[Prayer Partner] Manual rotation failed:',
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            error: 'Unable to rotate Prayer Partners.'
+        });
+    }
 });
 
 // [KOINONIA PATCH V107] PENDING MEMBER REQUESTS FIX ONLY
@@ -2015,38 +2037,33 @@ app.post('/api/communications/broadcast', requirePushAvailable, (req, res) => {
 
 
 
-// SILAS SECRET PRAYER PAL ENGINE (STRICT GENDER MATCHING)
-cron.schedule('0 9 * * 1', () => { // Every Monday at 9:00 AM
-    console.log('[CRON] Silas is assigning gender-strict Secret Prayer Pals...');
-    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    const pad = (n) => String(n).padStart(2, '0');
-    const weekStart = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+// FOG Prayer Partner weekly rotation
+cron.schedule('0 9 * * 1', async () => {
+    try {
+        const result =
+            await GrowthJourney.rotatePrayerPartners(
+                db,
+                {
+                    force: false
+                }
+            );
 
-    const assignPalsByGender = (gender) => {
-        db.all(`SELECT id FROM youth`, [], (err, members) => {
-            if (!members || members?.length || 0 < 2) return;
-            
-            // Fisher-Yates Shuffle
-            let shuffled = [...members];
-            for (let i = shuffled?.length || 0 - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-            }
-
-            const stmt = db.prepare(`INSERT OR IGNORE INTO secret_prayer_pals (youth_id, pal_youth_id, week_start) VALUES (?, ?, ?)`);
-            for (let i = 0; i < shuffled?.length || 0; i++) {
-                const current = shuffled[i];
-                const next = shuffled[(i + 1) % shuffled?.length || 0]; // Circular assignment ensures everyone gives and receives
-                stmt.run([current.id, next.id, weekStart]);
-            }
-            stmt.finalize();
-        });
-    };
-
-    assignPalsByGender('Male');
-    assignPalsByGender('Female');
-
-}, { scheduled: true, timezone: "Asia/Manila" });
+        console.log(
+            '[CRON] Prayer Partner rotation:',
+            result.status,
+            result.weekStart,
+            result.assignedCount
+        );
+    } catch (error) {
+        console.error(
+            '[CRON] Prayer Partner rotation failed:',
+            error
+        );
+    }
+}, {
+    scheduled: true,
+    timezone: 'Asia/Manila'
+});
 
 const getManilaTime = () => {
     const d = new Date();
