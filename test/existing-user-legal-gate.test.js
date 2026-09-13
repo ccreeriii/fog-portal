@@ -139,6 +139,11 @@ async function createIsolatedApplication() {
         path.join(temporaryRoot, 'lib', 'notification-center.js')
     );
 
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'notification-delivery.js'),
+        path.join(temporaryRoot, 'lib', 'notification-delivery.js')
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     const httpServer = await new Promise((resolve, reject) => {

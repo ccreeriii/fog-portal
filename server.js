@@ -13,6 +13,9 @@ const { createSqliteBackupManager } = require('./lib/sqlite-backup');
 const GrowthJourney = require('./lib/growth-journey');
 const NotificationCenter = require('./lib/notification-center');
 const {
+    createRuntimeNotificationDeliveryEngine
+} = require('./lib/notification-delivery');
+const {
     normalizeEmail,
     validatePublicOrigin,
     validateVerifiedGooglePayload,
@@ -6506,6 +6509,68 @@ function getAuthenticatedNotificationYouthId(req) {
     )
         ? youthId
         : null;
+}
+
+
+/*
+ * Canonical Notification external delivery runtime.
+ *
+ * This is intentionally internal-only. There is no public
+ * send endpoint. Growth/leadership triggers call these
+ * helpers only after the canonical Inbox event exists.
+ *
+ * The factory is created lazily so it always receives the
+ * current secure Email outbox and current Push availability.
+ */
+function getCanonicalNotificationDeliveryEngine() {
+    return createRuntimeNotificationDeliveryEngine({
+        database:
+            db,
+
+        webpush,
+
+        pushEnabled:
+            pushNotificationsAvailable,
+
+        emailOutbox:
+            emailRecoveryOutbox || null,
+
+        publicOrigin:
+            typeof process.env.KOINONIA_PUBLIC_ORIGIN === 'string'
+                ? process.env.KOINONIA_PUBLIC_ORIGIN.trim()
+                : null
+    });
+}
+
+async function dispatchCanonicalNotificationRecipient(
+    recipientId,
+    options = {}
+) {
+    return getCanonicalNotificationDeliveryEngine()
+        .dispatchRecipient(
+            recipientId,
+            options
+        );
+}
+
+async function dispatchCanonicalNotificationEvent(
+    eventId,
+    options = {}
+) {
+    return getCanonicalNotificationDeliveryEngine()
+        .dispatchEvent(
+            eventId,
+            options
+        );
+}
+
+async function reconcileCanonicalNotificationEmailDeliveries(
+    options = {}
+) {
+    return getCanonicalNotificationDeliveryEngine()
+        .reconcileEmailDeliveries(
+            options
+        );
 }
 
 app.get('/api/notifications', requireAuth, async (req, res) => {

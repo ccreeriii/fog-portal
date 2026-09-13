@@ -252,6 +252,11 @@ test('account claim HTTP foundation enforces authorization, privacy, and bounded
         path.join(temporaryRoot, 'lib', 'notification-center.js')
     );
 
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'notification-delivery.js'),
+        path.join(temporaryRoot, 'lib', 'notification-delivery.js')
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     database = application.db;

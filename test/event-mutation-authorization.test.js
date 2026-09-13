@@ -189,6 +189,11 @@ test('event-management mutations enforce canonical permissions and ownership', {
         path.join(temporaryRoot, 'lib', 'notification-center.js')
     );
 
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'notification-delivery.js'),
+        path.join(temporaryRoot, 'lib', 'notification-delivery.js')
+    );
+
     const isolatedApplication = require(path.join(temporaryRoot, 'server.js'));
     await isolatedApplication.ready;
     database = isolatedApplication.db;
