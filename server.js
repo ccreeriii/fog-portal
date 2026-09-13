@@ -11,6 +11,7 @@ const webpush = require('web-push');
 const cron = require('node-cron');
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
 const GrowthJourney = require('./lib/growth-journey');
+const NotificationCenter = require('./lib/notification-center');
 const {
     normalizeEmail,
     validatePublicOrigin,
@@ -6485,6 +6486,348 @@ app.get('/api/inbox/personal/:youth_id', requireAuth, (req, res) => {
             );
         }
     );
+});
+
+
+// ==========================================
+// CANONICAL NOTIFICATION CENTER API
+// ==========================================
+
+function getAuthenticatedNotificationYouthId(req) {
+    const youthId =
+        Number(
+            req.auth &&
+            req.auth.youthId
+        );
+
+    return (
+        Number.isSafeInteger(youthId) &&
+        youthId > 0
+    )
+        ? youthId
+        : null;
+}
+
+app.get('/api/notifications', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    const unreadOnly =
+        req.query &&
+        req.query.unread === '1';
+
+    const limit =
+        req.query &&
+        req.query.limit !== undefined
+            ? Number(req.query.limit)
+            : 50;
+
+    try {
+        const notifications =
+            await NotificationCenter
+                .listNotifications(
+                    db,
+                    youthId,
+                    {
+                        unreadOnly,
+                        limit
+                    }
+                );
+
+        return res.json({
+            success: true,
+            notifications
+        });
+    } catch (error) {
+        if (
+            error instanceof TypeError ||
+            error instanceof RangeError
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Invalid notification query.'
+            });
+        }
+
+        console.error(
+            '[Notification Center] Inbox load failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to load notifications.'
+        });
+    }
+});
+
+app.get('/api/notifications/unread-count', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    try {
+        const count =
+            await NotificationCenter
+                .unreadCount(
+                    db,
+                    youthId
+                );
+
+        return res.json({
+            success: true,
+            unread_count: count
+        });
+    } catch (error) {
+        console.error(
+            '[Notification Center] Unread count failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to load notification count.'
+        });
+    }
+});
+
+app.post('/api/notifications/:id/read', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    const recipientId =
+        Number(req.params.id);
+
+    if (
+        !Number.isSafeInteger(recipientId) ||
+        recipientId <= 0
+    ) {
+        return res.status(400).json({
+            success: false,
+            error:
+                'Invalid notification.'
+        });
+    }
+
+    try {
+        const updated =
+            await NotificationCenter
+                .markRead(
+                    db,
+                    {
+                        youthId,
+                        recipientId,
+                        readAt:
+                            getManilaTime()
+                    }
+                );
+
+        if (!updated) {
+            return res.status(404).json({
+                success: false,
+                error:
+                    'Notification not found.'
+            });
+        }
+
+        return res.json({
+            success: true
+        });
+    } catch (error) {
+        console.error(
+            '[Notification Center] Mark-read failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to update notification.'
+        });
+    }
+});
+
+app.post('/api/notifications/read-all', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    try {
+        const updated =
+            await NotificationCenter
+                .markAllRead(
+                    db,
+                    {
+                        youthId,
+                        readAt:
+                            getManilaTime()
+                    }
+                );
+
+        return res.json({
+            success: true,
+            updated
+        });
+    } catch (error) {
+        console.error(
+            '[Notification Center] Mark-all-read failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to update notifications.'
+        });
+    }
+});
+
+app.get('/api/notifications/preferences', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    try {
+        const preferences =
+            await NotificationCenter
+                .getPreferences(
+                    db,
+                    youthId
+                );
+
+        return res.json({
+            success: true,
+            preferences
+        });
+    } catch (error) {
+        console.error(
+            '[Notification Center] Preference load failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to load notification preferences.'
+        });
+    }
+});
+
+app.put('/api/notifications/preferences', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    const body =
+        req.body &&
+        typeof req.body === 'object' &&
+        !Array.isArray(req.body)
+            ? req.body
+            : {};
+
+    try {
+        const current =
+            await NotificationCenter
+                .getPreferences(
+                    db,
+                    youthId
+                );
+
+        const keys = [
+            'push_enabled',
+            'email_enabled',
+            'prayer_daily_growth',
+            'journey_progress',
+            'events_formation',
+            'membership_community',
+            'ministry_servant',
+            'prayer_partner',
+            'games_growth',
+            'preferred_prayer_time',
+            'quiet_hours_start',
+            'quiet_hours_end'
+        ];
+
+        const next = {};
+
+        for (const key of keys) {
+            next[key] =
+                Object.prototype.hasOwnProperty.call(
+                    body,
+                    key
+                )
+                    ? body[key]
+                    : current[key];
+        }
+
+        const preferences =
+            await NotificationCenter
+                .savePreferences(
+                    db,
+                    youthId,
+                    next,
+                    getManilaTime()
+                );
+
+        return res.json({
+            success: true,
+            preferences
+        });
+    } catch (error) {
+        if (
+            error instanceof TypeError ||
+            error instanceof RangeError
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Invalid notification preferences.'
+            });
+        }
+
+        console.error(
+            '[Notification Center] Preference save failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to save notification preferences.'
+        });
+    }
 });
 
 app.post('/api/communications/subscribe', requireAuth, requirePushAvailable, (req, res) => {

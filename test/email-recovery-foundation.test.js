@@ -643,6 +643,11 @@ test('real Google route refuses unverified and ambiguous email while preserving 
         path.join(temporaryRoot, 'lib', 'growth-journey.js')
     );
 
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'notification-center.js'),
+        path.join(temporaryRoot, 'lib', 'notification-center.js')
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     database = application.db;
