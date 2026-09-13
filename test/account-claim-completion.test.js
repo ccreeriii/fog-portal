@@ -121,6 +121,19 @@ test('authenticated account claim completion is atomic and fails closed', { conc
         path.join(temporaryRoot, 'lib', 'notification-delivery.js')
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'growth-notifications.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'growth-notifications.js'
+        )
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     database = application.db;

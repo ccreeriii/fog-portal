@@ -195,6 +195,19 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
         path.join(temporaryRoot, 'lib', 'notification-delivery.js')
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'growth-notifications.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'growth-notifications.js'
+        )
+    );
+
     const isolatedApplication = require(path.join(temporaryRoot, 'server.js'));
     await isolatedApplication.ready;
     database = isolatedApplication.db;

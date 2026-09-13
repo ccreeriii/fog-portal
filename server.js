@@ -11,6 +11,7 @@ const webpush = require('web-push');
 const cron = require('node-cron');
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
 const GrowthJourney = require('./lib/growth-journey');
+const GrowthNotifications = require('./lib/growth-notifications');
 const NotificationCenter = require('./lib/notification-center');
 const {
     createRuntimeNotificationDeliveryEngine
@@ -1763,6 +1764,16 @@ app.post('/api/prayer-pals/send', requireAuth, (req, res) => {
                                             }
                                         }
                                     );
+
+                            await processJourneyReadyNotification({
+                                youthId:
+                                    authenticatedYouthId,
+                                phaseProgress:
+                                    growthJourney &&
+                                    growthJourney.encounter,
+                                source:
+                                    'prayer_covenant_completion'
+                            });
                         } catch (growthErr) {
                             growthJourneyWarning =
                                 'Prayer was sent, but Journey progress could not be updated.';
@@ -3797,6 +3808,16 @@ app.post('/api/auth/google/complete-signup', async (req, res) => {
                         }
                     }
                 );
+
+            await processJourneyReadyNotification({
+                youthId:
+                    created.youthId,
+                phaseProgress:
+                    growthJourney &&
+                    growthJourney.encounter,
+                source:
+                    'google_account_created'
+            });
         } catch (growthErr) {
             growthJourneyWarning =
                 'Your account was created, but your Growth Journey could not be started automatically.';
@@ -5368,18 +5389,40 @@ app.post('/api/checkin', requirePermission('access_checkin'), (req, res) => {
                          * hide a valid attendance check-in.
                          */
                         try {
-                            await GrowthJourney
-                                .recordEventAttendanceGrowthEvidence(
-                                    db,
-                                    {
-                                        youthId: targetYouthId,
-                                        eventId: event_id,
-                                        attendanceId: logId,
-                                        isWalkin: Boolean(is_walkin),
-                                        occurredAt: checkedInAt,
-                                        actor
-                                    }
-                                );
+                            const growthResult =
+                                await GrowthJourney
+                                    .recordEventAttendanceGrowthEvidence(
+                                        db,
+                                        {
+                                            youthId: targetYouthId,
+                                            eventId: event_id,
+                                            attendanceId: logId,
+                                            isWalkin: Boolean(is_walkin),
+                                            occurredAt: checkedInAt,
+                                            actor
+                                        }
+                                    );
+
+                            const phaseTransitions =
+                                growthResult &&
+                                Array.isArray(
+                                    growthResult.phaseTransitions
+                                )
+                                    ? growthResult.phaseTransitions
+                                    : [];
+
+                            for (
+                                const phaseProgress
+                                of phaseTransitions
+                            ) {
+                                await processJourneyReadyNotification({
+                                    youthId:
+                                        targetYouthId,
+                                    phaseProgress,
+                                    source:
+                                        'event_attendance'
+                                });
+                            }
                         } catch (growthError) {
                             console.error(
                                 '[Growth Journey] Attendance evidence hook failed:',
@@ -6562,6 +6605,80 @@ async function dispatchCanonicalNotificationEvent(
             eventId,
             options
         );
+}
+
+/*
+ * Growth Journey notifications are strictly downstream.
+ *
+ * A failure here must never roll back:
+ * - attendance
+ * - Prayer Covenant completion
+ * - membership intent
+ * - account creation
+ * - Growth evidence/progress
+ */
+async function processJourneyReadyNotification({
+    youthId,
+    phaseProgress,
+    source = 'growth_mutation'
+} = {}) {
+    try {
+        const result =
+            await GrowthNotifications
+                .createPhaseReadyNotification(
+                    db,
+                    {
+                        youthId,
+                        phaseProgress
+                    }
+                );
+
+        if (
+            !result ||
+            result.eligible !== true ||
+            !result.eventId
+        ) {
+            return result || null;
+        }
+
+        /*
+         * The canonical Inbox event exists before any
+         * Push or Email attempt.
+         *
+         * Only a newly-created event begins external
+         * delivery here. Notification creation itself
+         * is event-key idempotent.
+         */
+        if (result.created === true) {
+            try {
+                await dispatchCanonicalNotificationEvent(
+                    result.eventId
+                );
+            } catch (deliveryError) {
+                console.error(
+                    '[Growth Notification] External delivery failed:',
+                    source,
+                    deliveryError &&
+                    deliveryError.message
+                        ? deliveryError.message
+                        : deliveryError
+                );
+            }
+        }
+
+        return result;
+    } catch (notificationError) {
+        console.error(
+            '[Growth Notification] Journey-ready processing failed:',
+            source,
+            notificationError &&
+            notificationError.message
+                ? notificationError.message
+                : notificationError
+        );
+
+        return null;
+    }
 }
 
 async function reconcileCanonicalNotificationEmailDeliveries(
@@ -7882,6 +7999,15 @@ function handleMembershipIntent(req, res) {
                                                 }
                                             }
                                         );
+
+                                await processJourneyReadyNotification({
+                                    youthId,
+                                    phaseProgress:
+                                        growthJourney &&
+                                        growthJourney.belong,
+                                    source:
+                                        'membership_intent'
+                                });
                             } catch (growthErr) {
                                 growthJourneyWarning =
                                     'Your intent was saved, but the welcome journey could not be started automatically.';
@@ -8342,6 +8468,16 @@ app.post('/api/public/register-wanderer', async (req, res) => {
                         }
                     }
                 );
+
+            await processJourneyReadyNotification({
+                youthId:
+                    created.youthId,
+                phaseProgress:
+                    growthJourney &&
+                    growthJourney.encounter,
+                source:
+                    'wanderer_account_created'
+            });
         } catch (growthErr) {
             growthJourneyWarning =
                 'Your account was created, but your Growth Journey could not be started automatically.';

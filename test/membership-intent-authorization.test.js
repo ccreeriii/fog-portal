@@ -169,7 +169,7 @@ test('membership intents enforce canonical ownership and leadership approval', {
         isolatedServerSource = isolatedServerSource.replace(original, replacement);
     }
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedServerSource);
-    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'legal-acceptance.js', 'growth-journey.js', 'notification-center.js', 'notification-delivery.js']) {
+    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'legal-acceptance.js', 'growth-journey.js', 'notification-center.js', 'notification-delivery.js', 'growth-notifications.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
     }
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');

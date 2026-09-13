@@ -252,6 +252,19 @@ test('FAQ API uses canonical sessions, filters on the server, and protects previ
         path.join(temporaryRoot, 'lib', 'notification-delivery.js')
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'growth-notifications.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'growth-notifications.js'
+        )
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     database = application.db;
