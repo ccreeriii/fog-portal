@@ -393,7 +393,7 @@
             <div id="pulsePrayerPalWidget" class="card" style="margin: 0; border-left: 4px solid #8B5CF6; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
                 <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">🙏 DAILY PRAYER COVENANT</h3>
                 <p style="font-size: 1rem; color: var(--text-main); margin: 0;">Your DAILY PRAYER COVENANT is <strong id="pulsePrayerPalName" style="color: #8B5CF6;">Loading...</strong></p>
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">Your Today's Prayer Pal is...</p>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">Your Prayer Partner for this week is...</p>
             </div>
 
             <!-- Your Pathway (Phases 3+) -->
@@ -2252,7 +2252,7 @@
                             <span style="font-size: 1.8rem; background: #EEF2FF; padding: 10px; border-radius: 12px; line-height: 1;">🙏</span>
                             <div>
                                 <h3 style="margin: 0; color: var(--primary); font-size: 1.15rem; border: none; padding: 0; font-weight: 800;">Covenant Prayer Partner</h3>
-                                <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">Your Today's Prayer Pal is...</p>
+                                <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">Your Prayer Partner for this week is...</p>
                             </div>
                         </div>
                         <div style="background: #F8FAFC; padding: 12px 15px; border-radius: 12px; border: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: space-between;">
@@ -2267,13 +2267,7 @@
                         ${adminBtn}
                     `;
                 } else {
-                    let fallbackMsg = "We assign new prayer partners every Monday! Stay tuned.";
-                    let actionBtn = "";
-                    
-                    if (!window.currentMember.gender || window.currentMember.gender === 'null') {
-                        fallbackMsg = "<strong>Action Required:</strong> Please update your profile with your gender (Male/Female) so we can securely pair you with a spiritual brother or sister.";
-                        actionBtn = `<button onclick="if(window.hubNavTo) window.hubNavTo('profile'); else window.location.href='/?tab=profile';" style="margin-top: 10px; background: #D97706; color: #FFF; padding: 8px 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; width: 100%;">Update My Profile</button>`;
-                    }
+                    const fallbackMsg = "Your Prayer Partner will appear here when your Prayer Covenant begins. Weekly assignments refresh on Mondays.";
                     
                     card.innerHTML = `
                         <div style="display:flex; align-items:center; gap: 12px; margin-bottom: 15px;">
@@ -2285,7 +2279,6 @@
                         </div>
                         <div style="background: #FFFBEB; padding: 15px; border-radius: 12px; border: 1px solid #FDE68A;">
                             <p style="margin: 0; font-size: 0.9rem; color: #D97706; line-height: 1.5;">${fallbackMsg}</p>
-                            ${actionBtn}
                         </div>
                         ${adminBtn}
                     `;
@@ -2526,7 +2519,7 @@
                                      (currentMember.role === 'Super Admin') || 
                                      (window.userPermissions && window.userPermissions.includes('edit_entries'));
 
-                const adminBtn = isSuperAdmin ? `<button onclick="window.triggerPrayerPalMatching()" style="margin-top: 15px; font-size: 0.8rem; background: #F1F5F9; color: #475569; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: background 0.2s;"><span style="margin-right:5px;">⚙️</span> Admin: Force Daily Pairing Now</button>` : '';
+                const adminBtn = isSuperAdmin ? `<button onclick="window.triggerPrayerPalMatching()" style="margin-top: 15px; font-size: 0.8rem; background: #F1F5F9; color: #475569; padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: background 0.2s;"><span style="margin-right:5px;">⚙️</span> Admin: Force Weekly Pairing Now</button>` : '';
 
                 if (pal && pal.pal_name) {
                     if (window.KoinoniaOfflineData && typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
@@ -2553,7 +2546,7 @@
                             <span style="font-size: 2rem; background: #EEF2FF; padding: 12px; border-radius: 12px; line-height: 1;">🙏</span>
                             <div>
                                 <h3 style="margin: 0; color: var(--primary); font-size: 1.2rem; border: none; padding: 0; font-weight: 800;">Daily Prayer Covenant</h3>
-                                <p style="margin: 3px 0 0 0; font-size: 0.9rem; color: var(--text-muted); font-weight: 600;">Your Today's Prayer Pal is...</p>
+                                <p style="margin: 3px 0 0 0; font-size: 0.9rem; color: var(--text-muted); font-weight: 600;">Your Prayer Partner for this week is...</p>
                             </div>
                         </div>
 
@@ -2571,8 +2564,7 @@
                         ${adminBtn}
                     `;
                 } else {
-                    let fallbackMsg = "We assign new prayer partners every day! Finding your prayer pal...";
-                    let actionBtn = "";
+                    const fallbackMsg = "Your Prayer Partner will appear here when your Prayer Covenant begins. Weekly assignments refresh on Mondays.";
                     
                     
                     
@@ -2581,13 +2573,12 @@
                             <span style="font-size: 2rem; background: #EEF2FF; padding: 12px; border-radius: 12px; line-height: 1;">🙏</span>
                             <div>
                                 <h3 style="margin: 0; color: var(--primary); font-size: 1.2rem; border: none; padding: 0; font-weight: 800;">Daily Prayer Covenant</h3>
-                                <p style="margin: 3px 0 0 0; font-size: 0.9rem; color: var(--text-muted); font-weight: 600;">Finding your prayer pal...</p>
+                                <p style="margin: 3px 0 0 0; font-size: 0.9rem; color: var(--text-muted); font-weight: 600;">Weekly assignments refresh on Mondays.</p>
                             </div>
                         </div>
 
                         <div style="background: #FFFBEB; padding: 15px; border-radius: 12px; border: 1px solid #FDE68A;">
                             <p style="margin: 0; font-size: 0.95rem; color: #D97706; line-height: 1.5;">${fallbackMsg}</p>
-                            ${actionBtn}
                         </div>
 
                         ${pastoralEncouragement}
