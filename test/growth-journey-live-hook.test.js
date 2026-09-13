@@ -86,7 +86,7 @@ test(
         );
 
         const end = source.indexOf(
-            '// --- V30: NEW LOGGING & INTEGRATION API ROUTES ---',
+            "app.get('/api/admin/community-intents'",
             start
         );
 
@@ -111,6 +111,21 @@ test(
         assert.match(
             route,
             /recordMembershipIntent/
+        );
+
+        assert.match(
+            route,
+            /app\.post\('\/api\/youth\/:id\/commit-v2', requireAuth, handleMembershipIntent\)/
+        );
+
+        assert.doesNotMatch(
+            route,
+            /SET[\s\S]*account_tier\s*=/
+        );
+
+        assert.doesNotMatch(
+            route,
+            /SET[\s\S]*commitment_date\s*=/
         );
     }
 );

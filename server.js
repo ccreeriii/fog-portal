@@ -757,11 +757,25 @@ function projectResponseFields(record, fields) {
 }
 
 function sanitizeMemberForClient(member) {
-    return projectResponseFields(member, MEMBER_RESPONSE_FIELDS);
+    return {
+        ...projectResponseFields(member, MEMBER_RESPONSE_FIELDS),
+        membership_intent_submitted: Boolean(
+            member &&
+            typeof member.commitment_intent === 'string' &&
+            member.commitment_intent.trim()
+        )
+    };
 }
 
 function sanitizeMemberForAuth(member) {
-    return projectResponseFields(member, AUTHENTICATED_MEMBER_RESPONSE_FIELDS);
+    return {
+        ...projectResponseFields(member, AUTHENTICATED_MEMBER_RESPONSE_FIELDS),
+        membership_intent_submitted: Boolean(
+            member &&
+            typeof member.commitment_intent === 'string' &&
+            member.commitment_intent.trim()
+        )
+    };
 }
 
 function sanitizeMemberForDirectory(member) {
@@ -6504,9 +6518,12 @@ app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
 });
 
 // ==========================================
-// PHASE 3: COMMITMENT PLEDGE ENDPOINT
+// MEMBERSHIP INTENT ENDPOINT
 // ==========================================
-app.post('/api/youth/:id/commit', requireAuth, (req, res) => {
+app.post('/api/youth/:id/commit', requireAuth, handleMembershipIntent);
+app.post('/api/youth/:id/commit-v2', requireAuth, handleMembershipIntent);
+
+function handleMembershipIntent(req, res) {
     const youthId = Number(req.params.id);
     const authenticatedYouthId =
         Number(req.auth && req.auth.youthId);
@@ -6559,29 +6576,14 @@ app.post('/api/youth/:id/commit', requireAuth, (req, res) => {
                     : 'Member'
             );
 
-    /*
-     * IMPORTANT:
-     *
-     * account_tier remains untouched semantically in this patch for
-     * compatibility with the current Portal UI.
-     *
-     * Growth Journey evidence is now the canonical formation record.
-     * A later Journey-first UI patch will stop relying on account_tier
-     * to determine spiritual/formation progression.
-     */
+    // Intent starts Belong. Formal status and commitment metadata are
+    // recorded only by the authorized leadership approval route.
     db.run(
         `UPDATE youth
-         SET
-             account_tier = 'Committed Member',
-             commitment_intent = ?,
-             commitment_date = COALESCE(
-                 commitment_date,
-                 ?
-             )
+         SET commitment_intent = ?
          WHERE id = ?`,
         [
             intentMessage,
-            getManilaTime(),
             youthId
         ],
         function(err) {
@@ -6703,32 +6705,7 @@ app.post('/api/youth/:id/commit', requireAuth, (req, res) => {
             );
         }
     );
-});
-
-
-// --- V30: NEW LOGGING & INTEGRATION API ROUTES ---
-app.post('/api/youth/:id/commit-v2', requireAuth, (req, res) => {
-    const youthId = normalizeCanonicalId(req.auth.youthId);
-    if (!youthId || !isCanonicalSelf(req.auth, req.params.id) ||
-        (req.body && Object.prototype.hasOwnProperty.call(req.body, 'youth_id') &&
-            normalizeCanonicalId(req.body.youth_id) !== youthId)) {
-        return sendForbidden(res);
-    }
-    const actor = getCanonicalAuditActor(req);
-    const { intent_message } = req.body;
-    db.run(`UPDATE youth SET account_tier = 'Integration Period', commitment_intent = ?, commitment_date = ? WHERE id = ?`, [intent_message, getManilaTime(), youthId], function(err) {
-        if (err) return res.status(500).json({ success: false, error: err.message });
-        db.get(`SELECT permissions FROM users WHERE youth_id = ?`, [youthId], (err, user) => {
-            let perms = [];
-            if (user && user.permissions) { try { perms = JSON.parse(user.permissions); } catch(e) {} }
-            if (!perms.includes('access_directory')) perms.push('access_directory');
-            db.run(`UPDATE users SET permissions = ? WHERE youth_id = ?`, [JSON.stringify(perms), youthId], function(err2) {
-                logActivity(actor, 'COMMITMENT_PLEDGE', `Member ID ${youthId} expressed intent to journey with the community`);
-                db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err3, member) => { res.json({ success: true, member: sanitizeMemberForClient(member), permissions: perms }); });
-            });
-        });
-    });
-});
+}
 
 app.get('/api/admin/community-intents', requirePermission('edit_entries'), (req, res) => {
     db.all(`SELECT id, name, email, profile_picture, account_tier, commitment_intent, commitment_date FROM youth WHERE commitment_intent IS NOT NULL ORDER BY commitment_date DESC`, [], (err, rows) => { res.json(rows || []); });
@@ -6753,7 +6730,16 @@ app.get('/api/admin/ministry-logs', requirePermission('edit_entries'), (req, res
 
 // --- V31: V2 ENDPOINTS FOR FILTERS & ACCEPTANCE LOGS ---
 app.get('/api/admin/community-intents-v2', requirePermission('edit_entries'), (req, res) => {
-    db.all("SELECT id, name, email, profile_picture, account_tier, commitment_intent, commitment_date, commitment_accepted_at, commitment_accepted_by FROM youth WHERE commitment_intent IS NOT NULL ORDER BY commitment_date DESC", [], (err, rows) => { res.json(rows || []); });
+    db.all(`SELECT id, name, email, profile_picture, account_tier, commitment_intent,
+                   commitment_date, commitment_accepted_at, commitment_accepted_by,
+                   COALESCE(
+                       (SELECT MAX(e.occurred_at) FROM growth_evidence e
+                        WHERE e.youth_id = youth.id AND e.evidence_type = 'membership_intent'),
+                       commitment_date
+                   ) AS intent_recorded_at
+            FROM youth
+            WHERE commitment_intent IS NOT NULL
+            ORDER BY intent_recorded_at DESC`, [], (err, rows) => { res.json(rows || []); });
 });
 
 app.post('/api/admin/community-intents-v2/:id/approve', requirePermission('edit_entries'), (req, res) => {
@@ -6761,7 +6747,7 @@ app.post('/api/admin/community-intents-v2/:id/approve', requirePermission('edit_
     if (!youthId) return res.status(400).json({ success: false, error: 'Invalid member.' });
     const actor = getCanonicalAuditActor(req);
     const timeNow = typeof getManilaTime === 'function' ? getManilaTime() : new Date().toISOString();
-    db.run("UPDATE youth SET account_tier = 'Committed Member', commitment_accepted_at = ?, commitment_accepted_by = ? WHERE id = ?", [timeNow, actor, youthId], function(err) {
+    db.run("UPDATE youth SET account_tier = 'Committed Member', commitment_date = COALESCE(commitment_date, ?), commitment_accepted_at = ?, commitment_accepted_by = ? WHERE id = ?", [timeNow, timeNow, actor, youthId], function(err) {
         if (err) return res.status(500).json({ success: false, error: 'Unable to approve membership.' });
         if (!this.changes) return res.status(404).json({ success: false, error: 'Member not found.' });
         logActivity(actor, 'MEMBERSHIP_APPROVED', `Accepted membership for Member ID ${youthId}`);

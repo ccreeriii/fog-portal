@@ -4457,7 +4457,7 @@ window.submitCommitmentPledge = async function(e) {
             window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions || [], member: data.member });
             window.closeCommitmentModal();
             if(window.renderHomeJourney) window.renderHomeJourney();
-            alert('Welcome to the family! You have successfully committed to Fire of God Ministries.');
+            alert('Your membership intent was received. We are grateful to begin this journey of belonging with you.');
         } else { alert('Error: ' + data.error); }
     } catch(err) { alert('Network error while processing your pledge.'); } 
     finally {
@@ -5465,7 +5465,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="close-modal" onclick="closeCommitmentModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer;">&times;</span>
                 <div style="font-size: 3rem; margin-bottom: 10px;">🕊️</div>
                 <h2 style="color: var(--primary); margin-bottom: 5px; border: none;">Choose to Belong</h2>
-                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">You are about to officially embrace Fire of God Ministries as your spiritual family.</p>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Share your desire to belong and begin walking with the community.</p>
                 
                 <div style="background: #FFFBEB; padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 20px; text-align: left;">
                     <p style="font-size: 0.9rem; color: #D97706; margin: 0; font-style: italic;">
@@ -5479,7 +5479,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 8px;">We'd love to hear a brief reflection on your heart to journey with us.</p>
                         <textarea id="commitmentIntentMsg" class="form-control" rows="4" placeholder="Share your heart..." required></textarea>
                     </div>
-                    <button type="button" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-radius: 12px; background: #F59E0B; border: none;" onclick="submitCommitment(event)">Commit to the Community</button>
+                    <button type="button" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-radius: 12px; background: #F59E0B; border: none;" onclick="submitCommitment(event)">Share My Intent</button>
                 </form>
             </div>`;
         }
@@ -5818,7 +5818,7 @@ window.submitCommitment = async function(e) {
             closeCommitmentModal();
             if(window.renderHomeJourney) window.renderHomeJourney();
             
-            showSuccessMessage('🎉', 'Welcome to the Family!', "Thank you for choosing to belong to Fire of God Ministries. This is a beautiful step in your spiritual journey.\n\nWe are excited to walk alongside you in faith, fellowship, and formation. Welcome home!");
+            showSuccessMessage('🕊️', 'Intent Received!', "Thank you for sharing your desire to belong to Fire of God Ministries. We are grateful to begin this season of prayer, relationship, and discernment with you.");
         } else { alert(data.error || 'Failed to submit commitment.'); }
     } catch(err) { alert('Network Error'); }
 };
@@ -6319,7 +6319,7 @@ window.filterCommunityLogs = function() {
         let matchName = (c.name || '').toLowerCase().includes(q);
         let matchDate = true;
         if(start || end) {
-            const intentDate = c.commitment_date ? c.commitment_date.split(' ')[0] : '';
+            const intentDate = c.intent_recorded_at ? c.intent_recorded_at.split(' ')[0] : '';
             if(start && intentDate < start) matchDate = false;
             if(end && intentDate > end) matchDate = false;
         }
@@ -6353,19 +6353,22 @@ window.renderCommunityIntents = function(list) {
         cList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); border: 1px dashed var(--border-color); border-radius: 8px;">No intents match your filter.</div>';
         return;
     }
-    cList.innerHTML = list.map(c => `
+    cList.innerHTML = list.map(c => {
+        const awaitingAcceptance = !c.commitment_accepted_at && c.account_tier !== 'Committed Member' && c.account_tier !== 'Leader';
+        return `
     <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
             <div style="flex: 1;">
                 <strong style="color: var(--text-main); font-size: 1.05rem;">${c.name}</strong>
                 <span class="badge ${c.account_tier === 'Integration Period' ? 'badge-orange' : 'badge-blue'}">${c.account_tier}</span><br>
-                <small style="color: var(--text-muted);">📅 Intent submitted: ${c.commitment_date || 'Unknown'}</small>
+                <small style="color: var(--text-muted);">🕊️ Membership intent recorded: ${c.intent_recorded_at || 'Date unavailable'}</small>
                 ${c.commitment_accepted_at ? `<br><small style="color: var(--success); font-weight: bold;">✅ Accepted: ${c.commitment_accepted_at} by ${c.commitment_accepted_by || 'Admin'}</small>` : ''}
                 <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${c.commitment_intent || 'No message provided.'}"</p>
             </div>
-            ${c.account_tier === 'Integration Period' ? `<button class="btn btn-primary btn-sm" onclick="approveFullMember(${c.id})">Grant Full Member</button>` : `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold; background: #D1FAE5; padding: 4px 8px; border-radius: 8px;">Completed</span>`}
+            ${awaitingAcceptance ? `<button class="btn btn-primary btn-sm" onclick="approveFullMember(${c.id})">Accept as Committed Member</button>` : `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold; background: #D1FAE5; padding: 4px 8px; border-radius: 8px;">Accepted</span>`}
         </div>
-    </div>`).join('');
+    </div>`;
+    }).join('');
 };
 
 window.renderMinistryLogs = function(list) {
@@ -6393,7 +6396,7 @@ window.renderMinistryLogs = function(list) {
 };
 
 window.approveFullMember = async function(id) {
-    if(!confirm('Advance this user from Integration Period to Full Committed Member?')) return;
+    if(!confirm('Accept this membership intent and grant formal Committed Member status?')) return;
     try {
         await fetch('/api/admin/community-intents-v2/' + id + '/approve', { 
             method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -7261,7 +7264,10 @@ window.renderHomeJourney = async function() {
     const container = document.getElementById('dynamicJourneyContainer');
     if (!container || !currentMember) return;
     let html = '';
-    if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
+    const isPreCommitTier = currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker';
+    if (isPreCommitTier && currentMember.membership_intent_submitted === true) {
+        html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">Beginning Belong</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your membership intent has been received. We are walking with you in prayer, relationship, and discernment.</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Intent Received</button>`;
+    } else if (isPreCommitTier) {
         html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take the next step to officially become a member of our spiritual family.</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
     } else {
         try {
@@ -7897,7 +7903,14 @@ window.renderHomeJourneyCard = async function() {
     let btnAction = "if(window.hubNavTo) window.hubNavTo('/?tab=events'); else window.location.href='/?tab=events';";
     let statusColor = "#3B82F6";
 
-    if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
+    const isPreCommitTier = currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker';
+    if (isPreCommitTier && currentMember.membership_intent_submitted === true) {
+        title = "Beginning Belong";
+        desc = "Your membership intent has been received. We are walking with you in prayer, relationship, and discernment.";
+        btnText = "Intent Received";
+        btnAction = "";
+        statusColor = "#F59E0B";
+    } else if (isPreCommitTier) {
         title = "Welcome Home";
         desc = "We would love for you to plant your roots here. Take the next step to officially become a member of our spiritual family.";
         btnText = "Join Our Family";

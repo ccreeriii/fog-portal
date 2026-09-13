@@ -107,7 +107,7 @@ async function createIdentity(database, suffix, permissions = []) {
     const password = 'disposable-membership-fixture-password';
     const youth = await run(database,
         `INSERT INTO youth (name, email, qr_code, password, account_tier, created_at)
-         VALUES (?, ?, ?, ?, 'Wanderer', datetime('now'))`,
+         VALUES (?, ?, ?, ?, 'New Member', datetime('now'))`,
         [name, `${suffix.toLowerCase()}@invalid.test`, username, password]);
     const user = await run(database,
         `INSERT INTO users (username, password, permissions, youth_id, created_at)
@@ -272,7 +272,7 @@ test('membership intents enforce canonical ownership and leadership approval', {
         assert.deepEqual(await membershipState(database), before);
     });
 
-    await t.test('own primary intent preserves permissions and starts real Growth Journey onboarding', async () => {
+    await t.test('own primary intent starts Belong without granting formal membership', async () => {
         const otherBefore = await get(database, 'SELECT * FROM youth WHERE id = ?', [other.youthId]);
         const response = await request(app, `/api/youth/${member.youthId}/commit`, {
             method: 'POST', cookie: memberCookie,
@@ -281,13 +281,18 @@ test('membership intents enforce canonical ownership and leadership approval', {
         assert.equal(response.status, 200);
         assert.equal(response.json.success, true);
         assert.equal(response.json.member.id, member.youthId);
-        assert.equal(response.json.member.account_tier, 'Committed Member');
+        assert.equal(response.json.member.account_tier, 'New Member');
+        assert.equal(response.json.member.membership_intent_submitted, true);
+        const refreshedIdentity = await request(app, '/api/auth/me', { cookie: memberCookie });
+        assert.equal(refreshedIdentity.status, 200);
+        assert.equal(refreshedIdentity.json.member.membership_intent_submitted, true);
         assert.equal(response.json.growthJourneyWarning, null);
         assert.ok(response.json.growthJourney);
         assert.deepEqual([...response.json.permissions].sort(), ['access_directory', 'access_prayer']);
         const stored = await get(database, 'SELECT * FROM youth WHERE id = ?', [member.youthId]);
         assert.equal(stored.commitment_intent, 'My genuine reflection.');
-        assert.ok(stored.commitment_date);
+        assert.equal(stored.account_tier, 'New Member');
+        assert.equal(stored.commitment_date, null);
         assert.equal(stored.commitment_accepted_at, null);
         assert.equal(stored.commitment_accepted_by, null);
         const evidence = await get(database,
@@ -296,22 +301,32 @@ test('membership intents enforce canonical ownership and leadership approval', {
         const enrollment = await get(database, 'SELECT * FROM growth_onboarding_enrollments WHERE youth_id = ?', [member.youthId]);
         assert.equal(enrollment.status, 'active');
         assert.equal(enrollment.trigger_type, 'membership_intent');
+        const belong = await get(database,
+            `SELECT progress.* FROM growth_phase_progress progress
+             JOIN growth_journey_phases phase ON phase.id = progress.phase_id
+             WHERE progress.youth_id = ? AND phase.phase_key = 'belong'`, [member.youthId]);
+        assert.equal(belong.status, 'in_progress');
+        assert.ok(belong.progress_percent > 0);
+        const partner = await get(database, 'SELECT * FROM secret_prayer_pals WHERE youth_id = ?', [member.youthId]);
+        assert.ok(partner);
+        assert.notEqual(partner.pal_youth_id, member.youthId);
         const log = await get(database, "SELECT * FROM activity_logs WHERE action = 'COMMITMENT_PLEDGE' ORDER BY id DESC LIMIT 1");
         assert.equal(log.username, member.name);
         assert.ok(log.details.includes(`Member ID ${member.youthId}`));
         assert.deepEqual(await get(database, 'SELECT * FROM youth WHERE id = ?', [other.youthId]), otherBefore);
 
-        // A retry without a redundant body ID keeps the first commitment date
-        // and does not duplicate evidence or onboarding enrollment.
+        // A retry does not create formal commitment metadata or duplicate
+        // Growth Journey evidence, onboarding, or the Prayer Partner assignment.
         assert.equal((await request(app, `/api/youth/${member.youthId}/commit`, {
             method: 'POST', cookie: memberCookie, body: { intent_message: 'Updated reflection.' }
         })).status, 200);
-        assert.equal((await get(database, 'SELECT commitment_date FROM youth WHERE id = ?', [member.youthId])).commitment_date, stored.commitment_date);
+        assert.equal((await get(database, 'SELECT commitment_date FROM youth WHERE id = ?', [member.youthId])).commitment_date, null);
         assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_evidence WHERE youth_id = ?', [member.youthId])).count, 1);
         assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_onboarding_enrollments WHERE youth_id = ?', [member.youthId])).count, 1);
+        assert.equal((await get(database, 'SELECT COUNT(*) count FROM secret_prayer_pals WHERE youth_id = ?', [member.youthId])).count, 1);
     });
 
-    await t.test('own legacy intent retains Integration Period without adding a Growth Journey hook', async () => {
+    await t.test('legacy intent alias uses the same prospective Belong semantics', async () => {
         const response = await request(app, `/api/youth/${legacyMember.youthId}/commit-v2`, {
             method: 'POST', cookie: legacyCookie,
             body: { ...forgedBody, youth_id: legacyMember.youthId, intent_message: 'Legacy reflection.' }
@@ -319,17 +334,20 @@ test('membership intents enforce canonical ownership and leadership approval', {
         assert.equal(response.status, 200);
         assert.equal(response.json.success, true);
         assert.equal(response.json.member.id, legacyMember.youthId);
-        assert.equal(response.json.member.account_tier, 'Integration Period');
+        assert.equal(response.json.member.account_tier, 'New Member');
+        assert.equal(response.json.member.membership_intent_submitted, true);
         assert.deepEqual(response.json.permissions, ['access_directory']);
         const stored = await get(database, 'SELECT * FROM youth WHERE id = ?', [legacyMember.youthId]);
         assert.equal(stored.commitment_intent, 'Legacy reflection.');
-        assert.ok(stored.commitment_date);
+        assert.equal(stored.account_tier, 'New Member');
+        assert.equal(stored.commitment_date, null);
         assert.equal(stored.commitment_accepted_at, null);
         assert.equal(stored.commitment_accepted_by, null);
-        assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_evidence WHERE youth_id = ?', [legacyMember.youthId])).count, 0);
-        assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_onboarding_enrollments WHERE youth_id = ?', [legacyMember.youthId])).count, 0);
+        assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_evidence WHERE youth_id = ?', [legacyMember.youthId])).count, 1);
+        assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_onboarding_enrollments WHERE youth_id = ?', [legacyMember.youthId])).count, 1);
+        assert.equal((await get(database, 'SELECT COUNT(*) count FROM secret_prayer_pals WHERE youth_id = ?', [legacyMember.youthId])).count, 1);
         const log = await get(database, "SELECT * FROM activity_logs WHERE action = 'COMMITMENT_PLEDGE' ORDER BY id DESC LIMIT 1");
-        assert.equal(log.username, legacyMember.username);
+        assert.equal(log.username, legacyMember.name);
         assert.ok(log.details.includes(`Member ID ${legacyMember.youthId}`));
     });
 
@@ -353,9 +371,11 @@ test('membership intents enforce canonical ownership and leadership approval', {
             if (hasAcceptance) {
                 assert.equal(stored.commitment_accepted_by, leader.username);
                 assert.ok(stored.commitment_accepted_at);
+                assert.equal(stored.commitment_date, stored.commitment_accepted_at);
             } else {
                 assert.equal(stored.commitment_accepted_by, null);
                 assert.equal(stored.commitment_accepted_at, null);
+                assert.equal(stored.commitment_date, null);
             }
             const logs = await all(database, "SELECT * FROM activity_logs WHERE action = 'MEMBERSHIP_APPROVED' ORDER BY id");
             assert.equal(logs.length, beforeLogs + 1);
@@ -373,6 +393,9 @@ test('membership intents enforce canonical ownership and leadership approval', {
             assert.equal(allowed.status, 200);
             assert.ok(Array.isArray(allowed.json));
             assert.ok(allowed.json.some(row => row.id === member.youthId));
+            if (route === 'community-intents-v2') {
+                assert.ok(allowed.json.find(row => row.id === member.youthId).intent_recorded_at);
+            }
         }
         const tierPath = `/api/youth-v2/${other.youthId}/tier`;
         assert.equal((await request(app, tierPath)).status, 401);
