@@ -2296,7 +2296,15 @@
         window.triggerPrayerPalMatching = async function() {
             if (!confirm("Are you sure you want to force a new round of prayer partner assignments right now? This will overwrite the current week's pairings.")) return;
             try {
-                const res = await fetch('/api/admin/trigger-prayer-pals', { method: 'POST' });
+                const res = await fetch('/api/admin/trigger-prayer-pals', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        force_rebuild: true
+                    })
+                });
                 const data = await res.json();
                 if (data.success) {
                     alert("✅ Success! " + data.message);
@@ -2592,7 +2600,15 @@
         window.triggerPrayerPalMatching = async function() {
             if (!confirm("Are you sure you want to force a new round of prayer partner assignments right now?")) return;
             try {
-                const res = await fetch('/api/admin/trigger-prayer-pals', { method: 'POST' });
+                const res = await fetch('/api/admin/trigger-prayer-pals', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        force_rebuild: true
+                    })
+                });
                 const data = await res.json();
                 if (data.success) {
                     alert("✅ Success! " + data.message);

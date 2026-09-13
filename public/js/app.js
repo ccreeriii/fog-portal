@@ -7760,11 +7760,11 @@ window.switchInboxSubTab = function(tab) {
     aView.style.display = tab === 'announcements' ? 'block' : 'none';
 };
 
-window.acknowledgePrayer = async function(inboxId, originalSenderId, action) {
+window.acknowledgePrayer = async function(inboxId, action) {
     try {
         const res = await fetch('/api/inbox/personal/' + inboxId + '/respond', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ sender_id: currentMember.id, original_sender_id: originalSenderId, action: action, sender_name: currentMember.name })
+            body: JSON.stringify({ action: action })
         });
         if(res.ok) {
             window.loadPersonalInbox(); // Instantly refresh UI to show the checkmark
@@ -7811,11 +7811,11 @@ window.loadPersonalInbox = async function() {
                     
                     const thankBtn = hasThanks 
                         ? `<div style="flex:1; background:#F8FAFC; color:#3B82F6; font-weight:bold; padding:8px; border-radius:8px; text-align:center; font-size:0.85rem; border:1px solid #E2E8F0;">✓ Thanks Sent</div>`
-                        : `<button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, ${p.sender_id}, 'thank_you')" style="flex:1; background:#EFF6FF; color:#3B82F6; font-weight:bold; border-radius:8px; border:none; cursor:pointer; padding:8px; transition:0.2s;">💙 Send Thanks</button>`;
+                        : `<button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, 'thank_you')" style="flex:1; background:#EFF6FF; color:#3B82F6; font-weight:bold; border-radius:8px; border:none; cursor:pointer; padding:8px; transition:0.2s;">💙 Send Thanks</button>`;
                         
                     const praiseBtn = hasPraise 
                         ? `<div style="flex:1; background:#F8FAFC; color:#10B981; font-weight:bold; padding:8px; border-radius:8px; text-align:center; font-size:0.85rem; border:1px solid #E2E8F0;">✓ Praise Shared</div>`
-                        : `<button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, ${p.sender_id}, 'answered')" style="flex:1; background:#ECFDF5; color:#10B981; font-weight:bold; border-radius:8px; border:none; cursor:pointer; padding:8px; transition:0.2s;">✨ Praise Report</button>`;
+                        : `<button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, 'answered')" style="flex:1; background:#ECFDF5; color:#10B981; font-weight:bold; border-radius:8px; border:none; cursor:pointer; padding:8px; transition:0.2s;">✨ Praise Report</button>`;
                         
                     actionHtml = `<div style="display:flex; gap:10px; margin-top:15px; border-top:1px solid #E2E8F0; padding-top:15px;">${thankBtn}${praiseBtn}</div>`;
                 }
