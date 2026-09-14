@@ -54,6 +54,61 @@
             flex:0 0 auto;
         }
 
+        .watchtower-shell {
+            max-width:760px;
+            margin:0 auto;
+        }
+        .watchtower-intro,
+        .watchtower-status,
+        .watchtower-member {
+            background:#FFF;
+            border:1px solid var(--border-color);
+            border-radius:14px;
+            padding:16px;
+        }
+        .watchtower-intro {
+            border-left:5px solid #7C3AED;
+            margin-bottom:14px;
+        }
+        .watchtower-status {
+            margin-bottom:14px;
+            color:var(--text-muted);
+        }
+        .watchtower-list {
+            display:grid;
+            gap:12px;
+        }
+        .watchtower-member {
+            display:flex;
+            align-items:center;
+            gap:12px;
+        }
+        .watchtower-member-copy {
+            min-width:0;
+            flex:1;
+        }
+        .watchtower-member-name {
+            margin:0 0 4px;
+            overflow-wrap:anywhere;
+        }
+        .watchtower-avatar {
+            width:48px;
+            height:48px;
+            border-radius:50%;
+            object-fit:cover;
+            background:#F3E8FF;
+            flex:0 0 auto;
+        }
+        @media (max-width:560px) {
+            .watchtower-member {
+                align-items:flex-start;
+                flex-wrap:wrap;
+            }
+            .watchtower-member .btn {
+                width:100%;
+            }
+        }
+
     </style>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>.bottom-nav { z-index: 90 !important; } .modal { z-index: 9999 !important; }</style>
@@ -715,6 +770,20 @@
             <div id="inboxContainer">
                 <div style="text-align:center; padding:40px 20px;"><p style="color:var(--text-muted);">Loading your messages...</p></div>
             </div>
+        </div>
+    </div>
+
+    <div id="watchtowerTab" class="tab-content" aria-labelledby="watchtowerHeading">
+        <div class="watchtower-shell">
+            <div class="watchtower-intro">
+                <h1 id="watchtowerHeading" style="margin:0 0 8px;">Watchtower</h1>
+                <p style="margin:0;">A prayer ministry fallback helping ensure participating members are covered in prayer. This is not a leaderboard or competition.</p>
+            </div>
+            <section aria-labelledby="watchtowerUncoveredHeading">
+                <h2 id="watchtowerUncoveredHeading">Uncovered Today</h2>
+                <div id="watchtowerStatus" class="watchtower-status" role="status" aria-live="polite">Loading Watchtower…</div>
+                <div id="watchtowerList" class="watchtower-list"></div>
+            </section>
         </div>
     </div>
 
@@ -1515,6 +1584,7 @@
                 <label><input type="checkbox" class="permCheckModal" value="access_ai"> AI Assistant</label>
                 <label><input type="checkbox" class="permCheckModal" value="access_worship"> Worship Hub</label>
                 <label><input type="checkbox" class="permCheckModal" value="access_communications"> Broadcasts</label>
+                <label><input type="checkbox" class="permCheckModal" value="access_prayer"> Watchtower Prayer</label>
                 <hr>
                 <label style="color:var(--primary);"><input type="checkbox" class="permCheckModal" value="add_entries"> ➕ Add Entries</label>
                 <label style="color:#8B5CF6;"><input type="checkbox" class="permCheckModal" value="edit_entries"> ✏️ Edit Entries</label>
@@ -1629,6 +1699,7 @@
 <script src="/js/legal-acceptance.js?v=1"></script>
 <script src="/js/app.js?v=13.3"></script>
 <script src="/js/growth-journey-leadership.js?v=3"></script>
+<script src="/js/watchtower.js?v=1"></script>
 <script src="/js/v2-discipleship.js?v=12.2"></script>
 <script src="/js/v3-worship.js?v=12.2"></script>
 <script src="/js/v4-communications.js?v=12.3"></script>

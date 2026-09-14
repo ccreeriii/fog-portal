@@ -68,6 +68,16 @@ const PRAYER_COVENANT_REMINDERS_ENABLED =
     );
 const PRAYER_COVENANT_REMINDER_HOUR =
     process.env.PRAYER_COVENANT_REMINDER_HOUR;
+const WATCHTOWER_PRAYER_COVERAGE_ENABLED =
+    /^true$/i.test(
+        process.env.WATCHTOWER_PRAYER_COVERAGE_ENABLED || ''
+    );
+const WATCHTOWER_OPEN_HOUR =
+    process.env.WATCHTOWER_OPEN_HOUR;
+const WATCHTOWER_REPORT_HOUR =
+    process.env.WATCHTOWER_REPORT_HOUR;
+const WATCHTOWER_CLAIM_MINUTES =
+    process.env.WATCHTOWER_CLAIM_MINUTES;
 let pushNotificationsAvailable = false;
 
 if (VAPID_SUBJECT && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
@@ -2611,6 +2621,19 @@ const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
     gamification_points: Object.freeze(['id', 'youth_id', 'points', 'arcade_xp', 'growth_xp', 'event_xp']),
     point_transactions: Object.freeze(['id', 'youth_id', 'type', 'amount']),
     secret_prayer_pals: Object.freeze(['id', 'youth_id', 'pal_youth_id', 'week_start']),
+    watchtower_prayer_claims: Object.freeze([
+        'id', 'coverage_date', 'covered_youth_id', 'claimant_youth_id',
+        'claimed_at', 'expires_at', 'completed_at'
+    ]),
+    watchtower_prayer_coverage: Object.freeze([
+        'id', 'coverage_date', 'covered_youth_id', 'coverage_source',
+        'intercessor_youth_id', 'claim_id', 'completed_at'
+    ]),
+    watchtower_daily_reports: Object.freeze([
+        'id', 'coverage_date', 'eligible_population', 'normal_coverage',
+        'watchtower_coverage', 'total_covered', 'uncovered',
+        'coverage_percent', 'generated_at'
+    ]),
     auth_one_time_tokens: Object.freeze([
         'id', 'token_hash', 'purpose', 'youth_id', 'target_email', 'created_at',
         'expires_at', 'used_at', 'revoked_at'
@@ -2695,6 +2718,51 @@ async function applyDeterministicRuntimeMigration() {
         created_at DATETIME,
         status TEXT DEFAULT 'Delivered'
     )`);
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS watchtower_prayer_claims (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        coverage_date TEXT NOT NULL,
+        covered_youth_id INTEGER NOT NULL,
+        claimant_youth_id INTEGER NOT NULL,
+        claimed_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        completed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(coverage_date, covered_youth_id),
+        FOREIGN KEY (covered_youth_id) REFERENCES youth(id),
+        FOREIGN KEY (claimant_youth_id) REFERENCES youth(id)
+    )`);
+    await runMigrationStatement(`CREATE INDEX IF NOT EXISTS watchtower_claim_owner_expiry_idx
+        ON watchtower_prayer_claims(claimant_youth_id, coverage_date, expires_at)`);
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS watchtower_prayer_coverage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        coverage_date TEXT NOT NULL,
+        covered_youth_id INTEGER NOT NULL,
+        coverage_source TEXT NOT NULL DEFAULT 'watchtower'
+            CHECK (coverage_source = 'watchtower'),
+        intercessor_youth_id INTEGER NOT NULL,
+        claim_id INTEGER NOT NULL UNIQUE,
+        completed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(coverage_date, covered_youth_id),
+        FOREIGN KEY (covered_youth_id) REFERENCES youth(id),
+        FOREIGN KEY (intercessor_youth_id) REFERENCES youth(id),
+        FOREIGN KEY (claim_id) REFERENCES watchtower_prayer_claims(id)
+    )`);
+    await runMigrationStatement(`CREATE INDEX IF NOT EXISTS watchtower_coverage_date_idx
+        ON watchtower_prayer_coverage(coverage_date, covered_youth_id)`);
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS watchtower_daily_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        coverage_date TEXT NOT NULL UNIQUE,
+        eligible_population INTEGER NOT NULL,
+        normal_coverage INTEGER NOT NULL,
+        watchtower_coverage INTEGER NOT NULL,
+        total_covered INTEGER NOT NULL,
+        uncovered INTEGER NOT NULL,
+        coverage_percent REAL NOT NULL,
+        generated_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
 
     await ensureRuntimeColumn('personal_inbox', 'status', "status TEXT DEFAULT 'Delivered'");
     await ensureRuntimeColumn('youth', 'address', 'address TEXT');
@@ -2740,6 +2808,7 @@ async function startServerAfterRuntimeSchemaReady() {
         console.log('[MIGRATION] Runtime database schema verified.');
         app.listen(PORT, () => { console.log(`Server running safely on Port ${PORT}`); });
         startPrayerCovenantReminderScheduler();
+        startWatchtowerPrayerCoverageScheduler();
     } catch (err) {
         console.error(`[MIGRATION] Runtime database schema verification failed: ${err.message}`);
         db.close(() => process.exit(1));
@@ -6550,6 +6619,52 @@ function startPrayerCovenantReminderScheduler() {
 }
 
 /*
+ * Watchtower report scheduling is independently opt-in. The restricted
+ * interactive APIs remain available to authorized intercessors, but no
+ * automatic report or notification work begins unless this flag is true.
+ */
+function startWatchtowerPrayerCoverageScheduler() {
+    if (!WATCHTOWER_PRAYER_COVERAGE_ENABLED) {
+        return null;
+    }
+
+    try {
+        const {
+            startWatchtowerScheduler
+        } = require('./lib/watchtower-prayer-coverage');
+
+        return startWatchtowerScheduler({
+            enabled:
+                true,
+            database:
+                db,
+            cron,
+            openHour:
+                WATCHTOWER_OPEN_HOUR,
+            reportHour:
+                WATCHTOWER_REPORT_HOUR,
+            claimMinutes:
+                WATCHTOWER_CLAIM_MINUTES,
+            dispatchEvent:
+                (eventId, options) =>
+                    dispatchCanonicalNotificationEvent(
+                        eventId,
+                        options
+                    )
+        });
+    } catch (error) {
+        console.error(
+            '[WATCHTOWER_COVERAGE] startup failed',
+            error && error.code
+                ? error.code
+                : 'STARTUP_FAILED'
+        );
+
+        return null;
+    }
+}
+
+/*
  * Growth Journey notifications are strictly downstream.
  *
  * A failure here must never roll back:
@@ -7664,6 +7779,241 @@ app.post('/api/growth-games/whoami/submit', (req, res) => { const { youth_id, qu
 app.get('/api/growth-games/verse-chain', (req, res) => { const { group_id } = req.query; db.get(`SELECT * FROM brain_verse_chain ORDER BY id DESC LIMIT 1`, [], (err, verse) => { if (!verse) return res.json({ verse: null, contributions: [] }); if (!group_id) return res.json({ verse, contributions: [] }); db.all(`SELECT word_index, youth_id, guessed_word FROM brain_verse_contributions WHERE group_id = ? AND verse_id = ?`, [group_id, verse.id], (err2, contribs) => { res.json({ verse, contributions: contribs || [] }); }); }); });
 app.post('/api/growth-games/verse-chain/submit', (req, res) => { const { youth_id, group_id, verse_id, word_index, guessed_word, actor } = req.body; if (!group_id) return res.status(400).json({error: "You must be in a small group to play this."}); db.run(`INSERT INTO brain_verse_contributions (group_id, verse_id, youth_id, word_index, guessed_word, created_at) VALUES (?, ?, ?, ?, ?, ?)`, [group_id, verse_id, youth_id, word_index, guessed_word, getManilaTime()], function(err) { if (err) return res.status(400).json({error: "Word already solved by your group!"}); awardPoints(youth_id, 'growth', 10, actor || 'System', 'Verse Chain'); res.json({ success: true, pointsAwarded: 10 }); }); });
 
+
+let watchtowerPrayerCoverageModule = null;
+
+function getWatchtowerPrayerCoverageModule() {
+    if (!watchtowerPrayerCoverageModule) {
+        watchtowerPrayerCoverageModule =
+            require('./lib/watchtower-prayer-coverage');
+    }
+
+    return watchtowerPrayerCoverageModule;
+}
+
+function hasForgedWatchtowerAuthority(req) {
+    const authorityFields = [
+        'actor_youth_id',
+        'claimant_youth_id',
+        'intercessor_youth_id',
+        'user_id',
+        'permissions',
+        'is_admin'
+    ];
+
+    const body =
+        req.body &&
+        typeof req.body === 'object' &&
+        !Array.isArray(req.body)
+            ? req.body
+            : {};
+
+    const query =
+        req.query &&
+        typeof req.query === 'object'
+            ? req.query
+            : {};
+
+    return (
+        authorityFields.some(
+            field =>
+                Object.prototype.hasOwnProperty.call(
+                    body,
+                    field
+                ) ||
+                Object.prototype.hasOwnProperty.call(
+                    query,
+                    field
+                )
+        ) ||
+        Boolean(
+            req.get('X-User-Id') ||
+            req.get('X-User-Permissions') ||
+            req.get('X-Admin')
+        )
+    );
+}
+
+function sendWatchtowerError(res, error) {
+    const statusByCode = {
+        INVALID_ID: 400,
+        SELF_CLAIM: 403,
+        TARGET_INELIGIBLE: 404,
+        WATCHTOWER_CLOSED: 409,
+        ALREADY_COVERED: 409,
+        CLAIMED_BY_ANOTHER: 409,
+        CLAIM_CONFLICT: 409,
+        CLAIM_REQUIRED: 409,
+        CLAIM_NOT_OWNED: 403
+    };
+
+    const status =
+        statusByCode[
+            error && error.code
+        ];
+
+    if (!status) {
+        return false;
+    }
+
+    res.status(status).json({
+        success:
+            false,
+        error:
+            error.message,
+        code:
+            error.code
+    });
+
+    return true;
+}
+
+app.get(
+    '/api/prayer/watchtower',
+    requirePermission('access_prayer'),
+    async (req, res) => {
+        try {
+            const state =
+                await getWatchtowerPrayerCoverageModule()
+                    .getWatchtowerState(
+                        db,
+                        {
+                            actorYouthId:
+                                req.auth.youthId,
+                            openHour:
+                                WATCHTOWER_OPEN_HOUR,
+                            reportHour:
+                                WATCHTOWER_REPORT_HOUR,
+                            claimMinutes:
+                                WATCHTOWER_CLAIM_MINUTES
+                        }
+                    );
+
+            return res.json({
+                success:
+                    true,
+                ...state
+            });
+        } catch (error) {
+            if (sendWatchtowerError(res, error)) {
+                return;
+            }
+
+            console.error(
+                '[WATCHTOWER_COVERAGE] state failed'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to load Watchtower.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/prayer/watchtower/:youthId/claim',
+    requirePermission('access_prayer'),
+    async (req, res) => {
+        if (hasForgedWatchtowerAuthority(req)) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const result =
+                await getWatchtowerPrayerCoverageModule()
+                    .claimWatchtowerMember(
+                        db,
+                        {
+                            actorYouthId:
+                                req.auth.youthId,
+                            coveredYouthId:
+                                req.params.youthId,
+                            openHour:
+                                WATCHTOWER_OPEN_HOUR,
+                            reportHour:
+                                WATCHTOWER_REPORT_HOUR,
+                            claimMinutes:
+                                WATCHTOWER_CLAIM_MINUTES
+                        }
+                    );
+
+            return res.json({
+                success:
+                    true,
+                ...result
+            });
+        } catch (error) {
+            if (sendWatchtowerError(res, error)) {
+                return;
+            }
+
+            console.error(
+                '[WATCHTOWER_COVERAGE] claim failed'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to claim this prayer.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/prayer/watchtower/:youthId/complete',
+    requirePermission('access_prayer'),
+    async (req, res) => {
+        if (hasForgedWatchtowerAuthority(req)) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const result =
+                await getWatchtowerPrayerCoverageModule()
+                    .completeWatchtowerPrayer(
+                        db,
+                        {
+                            actorYouthId:
+                                req.auth.youthId,
+                            coveredYouthId:
+                                req.params.youthId,
+                            openHour:
+                                WATCHTOWER_OPEN_HOUR,
+                            reportHour:
+                                WATCHTOWER_REPORT_HOUR,
+                            claimMinutes:
+                                WATCHTOWER_CLAIM_MINUTES
+                        }
+                    );
+
+            return res.json({
+                success:
+                    true,
+                ...result
+            });
+        } catch (error) {
+            if (sendWatchtowerError(res, error)) {
+                return;
+            }
+
+            console.error(
+                '[WATCHTOWER_COVERAGE] completion failed'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to complete this prayer.'
+            });
+        }
+    }
+);
 
 app.get('/api/prayer-pals/current/:youth_id', requireAuth, (req, res) => {
     const authenticatedYouthId =

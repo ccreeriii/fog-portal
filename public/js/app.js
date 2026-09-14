@@ -1502,6 +1502,7 @@ const PERMISSION_DISPLAY_LABELS = Object.freeze({
     access_ai: 'AI Assistant',
     access_worship: 'Worship Hub',
     access_communications: 'Broadcasts',
+    access_prayer: 'Watchtower Prayer',
     add_entries: 'Add Entries',
     edit_entries: 'Edit Entries',
     delete_entries: 'Delete Entries'
