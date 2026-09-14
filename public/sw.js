@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v22';
+const CACHE_NAME = 'fog-portal-v23';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',

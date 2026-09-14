@@ -138,7 +138,7 @@ const elementIds = [
     'growthSeriesTaskList',
     'growthEventEditSection',
     'growthEventEditAccessMessage',
-    'openGrowthEventMappingFromEditor',
+    'growthEventMappingEditorButton',
     'editEvtId'
 ];
 
@@ -256,7 +256,7 @@ test('Event Create/Edit expose the launch-ready mapping entry points and preserv
     assert.match(index, /Save this event first to configure Growth Journey mappings\./);
     assert.match(index, /id="editEventForm"[^>]*submitEditEvent/);
     assert.match(index, /id="growthEventEditSection"/);
-    assert.match(index, /id="openGrowthEventMappingFromEditor"/);
+    assert.match(index, /id="growthEventMappingEditorButton"/);
     assert.match(index, /Growth Journey Mapping/);
     assert.match(appSource, /openPreregSettings\(\$\{eventId\}\)/);
     assert.match(appSource, /openEditEventModal\(\$\{eventId\}\)/);
@@ -379,7 +379,7 @@ test('frontend permission visibility is conservative and direct invocation canno
     await ui.addDirectMapping();
 
     assert.equal(fetchCount, 0);
-    assert.equal(elements.openGrowthEventMappingFromEditor.style.display, 'none');
+    assert.equal(elements.growthEventMappingEditorButton.style.display, 'none');
     assert.equal(elements.growthSeriesManagerToggle.style.display, 'none');
     assert.match(elements.growthEventMappingStatus.textContent, /do not have permission/);
     assert.match(serverSource, /requireAllPermissions\(\['access_events', 'edit_entries'\]\)/);
@@ -434,6 +434,6 @@ test('UI introduces neither event-name inference nor direct Growth Evidence crea
 
 test('new mapping asset is loaded after app.js and cached under a fresh shell revision', () => {
     assert.ok(index.indexOf('/js/growth-event-mapping-ui.js?v=1') > index.indexOf('/js/app.js?v=13.3'));
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v22'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v23'/);
     assert.match(serviceWorker, /'\/js\/growth-event-mapping-ui\.js\?v=1'/);
 });

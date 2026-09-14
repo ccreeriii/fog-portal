@@ -617,7 +617,7 @@
 
     function updateEntryPoints() {
         const allowed = canConfigure();
-        const editButton = element('openGrowthEventMappingFromEditor');
+        const editButton = element('growthEventMappingEditorButton');
         if (editButton) editButton.style.display = allowed ? 'inline-flex' : 'none';
         const seriesManagerToggle = element('growthSeriesManagerToggle');
         if (seriesManagerToggle) seriesManagerToggle.style.display = allowed ? 'inline-flex' : 'none';
