@@ -7689,6 +7689,26 @@ app.get('/api/prayer-pals/current/:youth_id', requireAuth, (req, res) => {
 // ==========================================
 // FOG GROWTH JOURNEY V1 - MEMBER VIEW
 // ==========================================
+function sendGrowthAdvancementError(res, error) {
+    const statusByCode = {
+        INVALID_MEMBER_ID: 400,
+        INVALID_PHASE_KEY: 400,
+        MEMBER_NOT_FOUND: 404,
+        PHASE_NOT_FOUND: 404,
+        PHASE_NOT_CURRENT: 409,
+        PHASE_NOT_READY: 409,
+        ESSENTIALS_INCOMPLETE: 409,
+        PHASE_UPDATE_CONFLICT: 409
+    };
+    const status = statusByCode[error && error.code];
+    if (!status) return false;
+    res.status(status).json({
+        success: false,
+        error: error.message
+    });
+    return true;
+}
+
 app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
     try {
         const youthId = Number(
@@ -7769,6 +7789,81 @@ app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
         });
     }
 });
+
+app.get(
+    '/api/admin/growth-journey/members/:youthId',
+    requirePermission('edit_entries'),
+    async (req, res) => {
+        const youthId = normalizeCanonicalId(req.params.youthId);
+        if (!youthId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid member.'
+            });
+        }
+
+        try {
+            const member = await GrowthJourney.get(
+                db,
+                'SELECT id, name FROM youth WHERE id = ? LIMIT 1',
+                [youthId]
+            );
+            if (!member) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Member not found.'
+                });
+            }
+
+            const journey = await GrowthJourney.getMemberJourney(db, youthId);
+            res.setHeader('Cache-Control', 'no-store');
+            return res.json({
+                success: true,
+                member,
+                journey
+            });
+        } catch (error) {
+            console.error('[Growth Journey] Leadership review failed:', error);
+            return res.status(500).json({
+                success: false,
+                error: 'The member Growth Journey could not be loaded right now.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/admin/growth-journey/members/:youthId/phases/:phaseKey/complete',
+    requirePermission('edit_entries'),
+    async (req, res) => {
+        try {
+            const result = await GrowthJourney.completeReadyPhase(
+                db,
+                req.params.youthId,
+                req.params.phaseKey,
+                {
+                    actor: getCanonicalAuditActor(req)
+                }
+            );
+
+            res.setHeader('Cache-Control', 'no-store');
+            return res.json({
+                success: true,
+                completed: result.completed,
+                idempotent: result.idempotent,
+                member: result.member,
+                journey: result.journey
+            });
+        } catch (error) {
+            if (sendGrowthAdvancementError(res, error)) return;
+            console.error('[Growth Journey] Leadership advancement failed:', error);
+            return res.status(500).json({
+                success: false,
+                error: 'The Growth Journey phase could not be advanced right now.'
+            });
+        }
+    }
+);
 
 app.post('/api/growth-journey/prayer-covenant/join', requireAuth, async (req, res) => {
     const youthId = Number(req.auth && req.auth.youthId);
