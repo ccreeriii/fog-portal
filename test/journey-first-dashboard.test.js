@@ -18,6 +18,8 @@ const dashboardStyles = fs.readFileSync(
 );
 const serviceWorker = fs.readFileSync(path.join(root, 'public', 'sw.js'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+const growthJourney = fs.readFileSync(path.join(root, 'lib', 'growth-journey.js'), 'utf8');
+const appSource = fs.readFileSync(path.join(root, 'public', 'js', 'app.js'), 'utf8');
 
 function routeBlock(marker, nextMarker) {
     const start = server.indexOf(marker);
@@ -29,7 +31,11 @@ function routeBlock(marker, nextMarker) {
 
 test('Prayer Covenant view states remain permanent and server-authoritative', () => {
     const noEnrollment = Dashboard.buildPrayerModel({
-        onboarding: { durationDays: 21, enrollment: null },
+        onboarding: {
+            templateCode: 'prayer-covenant-21',
+            durationDays: 21,
+            enrollment: null
+        },
         prayerRhythm: {
             available: true,
             completedToday: false,
@@ -42,6 +48,8 @@ test('Prayer Covenant view states remain permanent and server-authoritative', ()
     assert.equal(noEnrollment.state, 'rhythm');
     assert.equal(noEnrollment.action, 'Pray Today');
     assert.equal(noEnrollment.rhythm.qualifyingDays, 3);
+    assert.equal(noEnrollment.joinAvailable, true);
+    assert.equal(noEnrollment.title, 'Your Prayer Rhythm');
 
     const active = Dashboard.buildPrayerModel({
         onboarding: {
@@ -51,9 +59,11 @@ test('Prayer Covenant view states remain permanent and server-authoritative', ()
         prayerRhythm: { available: true, completedToday: false }
     }, true);
     assert.equal(active.state, 'active_challenge');
-    assert.equal(active.status, 'Day 8 of 21');
+    assert.equal(active.title, 'Day 8 of 21');
     assert.equal(active.action, 'Continue Prayer');
     assert.equal(active.challengeProgress.completedDays, 7);
+    assert.equal(active.showRhythm, false);
+    assert.equal(active.joinAvailable, false);
 
     const activePrayed = Dashboard.buildPrayerModel({
         onboarding: {
@@ -62,7 +72,8 @@ test('Prayer Covenant view states remain permanent and server-authoritative', ()
         },
         prayerRhythm: { available: true, completedToday: true }
     }, true);
-    assert.equal(activePrayed.status, 'Day 8 of 21 complete');
+    assert.equal(activePrayed.title, 'Day 8 of 21');
+    assert.equal(activePrayed.status, 'Prayer offered today');
     assert.equal(activePrayed.actionDisabled, true);
 
     const completed = Dashboard.buildPrayerModel({
@@ -80,8 +91,10 @@ test('Prayer Covenant view states remain permanent and server-authoritative', ()
         }
     }, true);
     assert.equal(completed.state, 'completed_challenge');
-    assert.equal(completed.status, '21-day welcome complete');
+    assert.equal(completed.title, '21-Day Prayer Covenant Completed');
     assert.equal(completed.action, 'Pray Today');
+    assert.equal(completed.showRhythm, true);
+    assert.equal(completed.joinAvailable, false);
     assert.doesNotMatch(JSON.stringify(completed), /Day 22|22\/21|22 of 21/);
 
     const prayedToday = Dashboard.buildPrayerModel({
@@ -169,6 +182,20 @@ test('member dashboard data remains authenticated, self-scoped, and safely proje
     assert.doesNotMatch(route, /roles_restricted_notes/);
 });
 
+test('direct Prayer Covenant join is authenticated, self-scoped, and canonical', () => {
+    const route = routeBlock(
+        "app.post('/api/growth-journey/prayer-covenant/join'",
+        '// ==========================================\n// MEMBERSHIP INTENT ENDPOINT'
+    );
+    assert.match(route, /requireAuth/);
+    assert.match(route, /req\.auth\s*&&\s*req\.auth\.youthId/);
+    assert.doesNotMatch(route, /req\.body|req\.query|req\.params/);
+    assert.match(route, /enrollPrayerCovenantChallenge/);
+    assert.match(growthJourney, /PRAYER_COVENANT_TEMPLATE_CODE\s*=\s*'prayer-covenant-21'/);
+    assert.match(growthJourney, /BEGIN IMMEDIATE/);
+    assert.match(growthJourney, /INSERT OR IGNORE INTO growth_onboarding_enrollments/);
+});
+
 test('Home information architecture and final runtime module are ordered and focused', () => {
     const prayer = index.indexOf('id="journeyPrayerCard"');
     const growth = index.indexOf('id="journeyGrowthCard"');
@@ -176,26 +203,36 @@ test('Home information architecture and final runtime module are ordered and foc
     const connected = index.indexOf('id="journeyConnectedCard"');
     assert.ok(prayer > 0 && prayer < growth && growth < events && events < connected);
 
-    const finalModule = index.indexOf('/js/journey-dashboard.js?v=1');
+    const finalModule = index.indexOf('/js/journey-dashboard.js?v=2');
     const historicalDashboard = index.indexOf('id="dashboardReorderEngine"');
     assert.ok(finalModule > historicalDashboard);
     assert.match(index, /id="headerNotificationBell"/);
     assert.doesNotMatch(dashboardSource + dashboardStyles, /watchtower|prayer coverage/i);
     assert.match(dashboardSource, /fetch\('\/api\/growth-journey\/me'/);
     assert.match(dashboardSource, /fetch\('\/api\/prayer-pals\/send'/);
-    assert.match(dashboardSource, /Membership Journey · Encounter → Belong → Commit/);
-    assert.match(dashboardSource, /Servant Journey · Discern → Form → Serve → Be Sent/);
+    assert.match(dashboardSource, /Join the 21-Day Prayer Covenant Challenge/);
+    assert.doesNotMatch(dashboardSource, /Measured across the latest 14 Manila days/);
+    assert.doesNotMatch(dashboardSource, /Membership Journey · Encounter → Belong → Commit/);
+    assert.doesNotMatch(dashboardSource, /Servant Journey · Discern → Form → Serve → Be Sent/);
+    assert.doesNotMatch(dashboardSource, /essential steps complete/i);
     assert.match(dashboardSource, /textContent/);
     assert.doesNotMatch(dashboardSource, /localStorage\.getItem\([^)]*prayed/i);
+    assert.doesNotMatch(
+        appSource.match(/const ogIntervalV19[\s\S]*?}, 1500\);/)?.[0] || '',
+        /renderHomeJourneyCard/
+    );
+    assert.match(dashboardSource, /Promise\.all\(\[/);
 });
 
 test('mobile dashboard assets advance the explicit PWA cache coherently', () => {
-    assert.match(index, /\/css\/journey-dashboard\.css\?v=1/);
-    assert.match(index, /\/js\/journey-dashboard\.js\?v=1/);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v15'/);
-    assert.match(serviceWorker, /'\/css\/journey-dashboard\.css\?v=1'/);
-    assert.match(serviceWorker, /'\/js\/journey-dashboard\.js\?v=1'/);
+    assert.match(index, /\/css\/journey-dashboard\.css\?v=2/);
+    assert.match(index, /\/js\/journey-dashboard\.js\?v=2/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v16'/);
+    assert.match(serviceWorker, /'\/css\/journey-dashboard\.css\?v=2'/);
+    assert.match(serviceWorker, /'\/js\/journey-dashboard\.js\?v=2'/);
     assert.match(dashboardStyles, /env\(safe-area-inset-bottom\)/);
+    assert.match(dashboardStyles, /#mainHeader[\s\S]*env\(safe-area-inset-top\)/);
+    assert.match(dashboardStyles, /\.journey-home__welcome[\s\S]*position:\s*static/);
     assert.match(dashboardStyles, /overflow-x:\s*clip/);
     assert.match(dashboardStyles, /@media \(max-width: 420px\)/);
 });

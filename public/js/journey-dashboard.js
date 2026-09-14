@@ -23,8 +23,6 @@
         { key: 'serve', title: 'Serve' },
         { key: 'be_sent', title: 'Be Sent' }
     ]);
-    const SEQUENCE_STATES = new Set(['completed', 'current', 'upcoming']);
-
     function clamp(value, minimum, maximum) {
         return Math.min(Math.max(Number(value) || 0, minimum), maximum);
     }
@@ -53,25 +51,23 @@
         const completedChallenge = Boolean(enrollment && enrollment.status === 'completed');
 
         let state = 'rhythm';
-        let status = 'Prayer Rhythm';
-        let title = 'Make space for prayer today';
-        let description = 'A simple daily prayer keeps you close to God and connected with your community.';
+        let eyebrow = 'Prayer Covenant';
+        let status = completedToday ? 'Prayer offered today' : null;
+        let title = 'Your Prayer Rhythm';
+        let description = completedToday
+            ? 'You prayed today. Keep making prayer part of your everyday walk with God and our community.'
+            : 'Take a moment to pray today and continue building a steady rhythm with God and your community.';
         let challengeProgress = null;
 
         if (activeChallenge) {
             state = 'active_challenge';
+            eyebrow = '21-Day Prayer Covenant';
             const displayedDay = completedToday
                 ? Math.max(completedDays, 1)
                 : Math.min(completedDays + 1, duration);
-            status = completedToday
-                ? `Day ${displayedDay} of ${duration} complete`
-                : `Day ${displayedDay} of ${duration}`;
-            title = completedToday
-                ? 'Thank you for praying today'
-                : 'Continue your Prayer Covenant';
-            description = completedToday
-                ? 'Your welcome journey continues. Return tomorrow for the next prayer day.'
-                : 'Pray for your Prayer Partner and continue this welcoming rhythm one day at a time.';
+            title = `Day ${displayedDay} of ${duration}`;
+            status = completedToday ? 'Prayer offered today' : 'Keep going';
+            description = 'Keep showing up in prayer each day. If you miss a day, simply continue—every prayer matters.';
             challengeProgress = {
                 completedDays,
                 duration,
@@ -79,18 +75,12 @@
             };
         } else if (completedChallenge) {
             state = 'completed_challenge';
-            status = `${duration}-day welcome complete`;
-            title = completedToday
-                ? 'Prayer offered for today'
-                : 'Your Prayer Covenant continues';
-            description = completedToday
-                ? 'Your ongoing Prayer Rhythm is growing. Carry this prayer with you and return tomorrow.'
-                : 'The welcome challenge is complete, and this daily spiritual practice remains part of your journey.';
+            status = completedToday ? 'Prayer offered today' : 'Journey completed';
+            title = `${duration}-Day Prayer Covenant Completed`;
+            description = `You completed the ${duration}-day journey. Keep making prayer part of your everyday walk with God.`;
         } else if (completedToday) {
             state = 'rhythm_complete_today';
             status = 'Prayer offered today';
-            title = 'Thank you for praying today';
-            description = 'Let this prayer shape the rest of your day. Your community journey continues below.';
         }
 
         if (completedToday && activeChallenge === false && completedChallenge === false) {
@@ -105,7 +95,6 @@
         } else if (!hasPrayerPartner) {
             action = 'Prayer Partner pending';
             actionDisabled = true;
-            description = 'Your Prayer Covenant remains here. A Prayer Partner will appear when an assignment is available.';
         } else if (activeChallenge) {
             action = 'Continue Prayer';
         }
@@ -116,6 +105,7 @@
 
         return {
             state,
+            eyebrow,
             status,
             title,
             description,
@@ -123,6 +113,13 @@
             actionDisabled,
             completedToday,
             challengeProgress,
+            showRhythm: !activeChallenge,
+            joinAvailable: Boolean(
+                onboarding &&
+                onboarding.templateCode === 'prayer-covenant-21' &&
+                !enrollment &&
+                onboarding.paused !== true
+            ),
             rhythm: {
                 available: rhythm.available === true,
                 qualifyingDays,
@@ -136,15 +133,17 @@
     function buildJourneyModel(journey = {}) {
         const received = Array.isArray(journey.phases) ? journey.phases : [];
         const byKey = new Map(received.map(phase => [phase.phaseKey, phase]));
-        const currentKey = journey.currentPhase && journey.currentPhase.phaseKey;
+        const current = journey.currentPhase || null;
+        const currentKey = current && current.status !== 'completed'
+            ? current.phaseKey
+            : null;
         const phases = PHASES.map((definition, index) => {
             const phase = byKey.get(definition.key) || {};
-            let sequenceState = SEQUENCE_STATES.has(phase.sequenceState)
-                ? phase.sequenceState
-                : 'upcoming';
-            if (!SEQUENCE_STATES.has(phase.sequenceState) && definition.key === currentKey) {
-                sequenceState = 'current';
-            }
+            const sequenceState = definition.key === currentKey
+                ? 'current'
+                : phase.sequenceState === 'completed'
+                    ? 'completed'
+                    : 'upcoming';
             return {
                 order: index + 1,
                 key: definition.key,
@@ -153,7 +152,6 @@
                 rawStatus: phase.status || 'not_started'
             };
         });
-        const current = journey.currentPhase || null;
         const progressPercent = clamp(current && current.progressPercent, 0, 100);
 
         return {
@@ -264,12 +262,14 @@
         const head = appendCardHeading(
             document,
             card,
-            'Today',
-            'Prayer Covenant',
+            model.eyebrow,
+            model.title,
             'journeyPrayerTitle',
-            model.title
+            null
         );
-        head.appendChild(element(document, 'span', 'journey-status-pill', model.status));
+        if (model.status) {
+            head.appendChild(element(document, 'span', 'journey-status-pill', model.status));
+        }
         card.appendChild(element(document, 'p', 'journey-card__copy', model.description));
 
         if (model.challengeProgress) {
@@ -285,30 +285,30 @@
             track.appendChild(fill);
             progress.appendChild(track);
             const caption = element(document, 'div', 'journey-progress__caption');
-            caption.appendChild(element(document, 'span', '', `${model.challengeProgress.completedDays} days completed`));
-            caption.appendChild(element(document, 'span', '', `${model.challengeProgress.duration} day welcome`));
+            caption.appendChild(element(document, 'span', '', `${model.challengeProgress.completedDays} prayer days completed`));
+            caption.appendChild(element(document, 'span', '', `${model.challengeProgress.duration}-day journey`));
             progress.appendChild(caption);
             card.appendChild(progress);
         }
 
-        const rhythm = element(document, 'div', 'journey-rhythm');
-        rhythm.appendChild(element(document, 'span', 'journey-rhythm__label', 'Current Prayer Rhythm'));
-        rhythm.appendChild(element(
-            document,
-            'span',
-            'journey-rhythm__value',
-            model.rhythm.available
-                ? `${model.rhythm.qualifyingDays} of ${model.rhythm.targetDays} days`
-                : 'Available after activation'
-        ));
-        rhythm.appendChild(element(
-            document,
-            'span',
-            'journey-rhythm__label',
-            `Measured across the latest ${model.rhythm.windowDays} Manila days`
-        ));
-        rhythm.appendChild(element(document, 'span', 'journey-rhythm__value', `${model.rhythm.percent}%`));
-        card.appendChild(rhythm);
+        if (model.showRhythm) {
+            const rhythm = element(document, 'div', 'journey-rhythm');
+            rhythm.appendChild(element(
+                document,
+                'span',
+                'journey-rhythm__label',
+                'Your rhythm grows as you keep returning to prayer.'
+            ));
+            rhythm.appendChild(element(
+                document,
+                'span',
+                'journey-rhythm__value',
+                model.rhythm.available
+                    ? `${model.rhythm.qualifyingDays} of ${model.rhythm.targetDays} prayer days`
+                    : 'Prayer is always here for you'
+            ));
+            card.appendChild(rhythm);
+        }
 
         const action = element(document, 'button', 'journey-action', model.action);
         action.type = 'button';
@@ -321,6 +321,23 @@
             });
         }
         card.appendChild(action);
+
+        if (model.joinAvailable) {
+            const joinAction = element(
+                document,
+                'button',
+                'journey-action journey-action--secondary',
+                'Join the 21-Day Prayer Covenant Challenge'
+            );
+            joinAction.id = 'journeyPrayerJoinAction';
+            joinAction.type = 'button';
+            joinAction.addEventListener('click', () => {
+                if (typeof window.joinPrayerCovenantChallenge === 'function') {
+                    window.joinPrayerCovenantChallenge();
+                }
+            });
+            card.appendChild(joinAction);
+        }
     }
 
     function invitationDestination(invitation) {
@@ -342,24 +359,17 @@
             model.current ? model.current.title : 'Walking together',
             'journeyGrowthTitle',
             model.current
-                ? 'Your current phase follows the seven-step pathway one phase at a time.'
+                ? ({
+                    encounter: 'This is where your journey begins. Take your next step in faith, friendship, and community.',
+                    belong: 'Grow roots in friendship, prayer, and life with your spiritual family.',
+                    commit: 'Take a faithful step toward calling this community your spiritual home.',
+                    discern: 'Discover the gifts God has placed in you and where they may serve others.',
+                    form: 'Grow in character, wisdom, and readiness alongside people who will walk with you.',
+                    serve: 'Put your gifts into practice with love, humility, and the support of your community.',
+                    be_sent: 'Go forward with courage, carrying God’s love wherever you are sent.'
+                }[model.current.key] || 'Take your next step in faith, friendship, and community.')
                 : 'Your Growth Journey will appear here as you begin.'
         );
-
-        if (model.current) {
-            const summary = element(document, 'div', 'journey-growth__summary');
-            const copy = element(document, 'div');
-            copy.appendChild(element(document, 'span', 'journey-growth__phase', model.current.title));
-            copy.appendChild(element(
-                document,
-                'p',
-                'journey-card__copy',
-                `${model.current.essentialCompleted} of ${model.current.essentialTotal} essential steps complete`
-            ));
-            summary.appendChild(copy);
-            summary.appendChild(element(document, 'div', 'journey-growth__percent', `${Math.round(model.current.progressPercent)}%`));
-            card.appendChild(summary);
-        }
 
         const phaseList = element(document, 'div', 'journey-phases');
         phaseList.setAttribute('aria-label', 'Seven Growth Journey phases');
@@ -377,23 +387,10 @@
             phaseList.appendChild(item);
         });
         card.appendChild(phaseList);
-        const segments = element(document, 'div', 'journey-segments');
-        segments.appendChild(element(
-            document,
-            'span',
-            '',
-            'Membership Journey · Encounter → Belong → Commit'
-        ));
-        segments.appendChild(element(
-            document,
-            'span',
-            '',
-            'Servant Journey · Discern → Form → Serve → Be Sent'
-        ));
-        card.appendChild(segments);
 
         if (model.invitation) {
             const invitation = element(document, 'div', 'journey-invitation');
+            invitation.appendChild(element(document, 'span', 'journey-invitation__eyebrow', 'Your next step'));
             invitation.appendChild(element(document, 'strong', '', model.invitation.title));
             invitation.appendChild(element(document, 'span', '', model.invitation.description));
             card.appendChild(invitation);
@@ -416,13 +413,6 @@
             });
             card.appendChild(button);
         }
-
-        card.appendChild(element(
-            document,
-            'p',
-            'journey-essential-note',
-            'Prayer supports every phase. Essential community, formation, service, and rite steps still guide when each phase is ready.'
-        ));
     }
 
     function renderEvents(document, window, payload) {
@@ -564,24 +554,20 @@
                     return cached;
                 }
 
-                const journeyResponse = await window.fetch('/api/growth-journey/me', {
-                    headers: { Accept: 'application/json' },
-                    cache: 'no-store'
-                });
+                const [journeyResponse, partner] = await Promise.all([
+                    window.fetch('/api/growth-journey/me', {
+                        headers: { Accept: 'application/json' },
+                        cache: 'no-store'
+                    }),
+                    window.fetch(
+                        `/api/prayer-pals/current/${encodeURIComponent(String(member.id))}`,
+                        { headers: { Accept: 'application/json' }, cache: 'no-store' }
+                    ).then(response => response.ok ? response.json() : null)
+                        .catch(() => null)
+                ]);
                 if (!journeyResponse.ok) throw new Error('dashboard_unavailable');
                 const payload = await journeyResponse.json();
                 if (!payload || payload.success !== true) throw new Error('dashboard_unavailable');
-
-                let partner = null;
-                try {
-                    const partnerResponse = await window.fetch(
-                        `/api/prayer-pals/current/${encodeURIComponent(String(member.id))}`,
-                        { headers: { Accept: 'application/json' }, cache: 'no-store' }
-                    );
-                    if (partnerResponse.ok) partner = await partnerResponse.json();
-                } catch (_) {
-                    partner = null;
-                }
 
                 renderPrayer(document, window, payload, partner, state.growthMoment);
                 state.growthMoment = null;
@@ -606,6 +592,40 @@
 
             return state.loadPromise;
         }
+
+        window.joinPrayerCovenantChallenge = async function() {
+            const button = document.getElementById('journeyPrayerJoinAction');
+            if (!authenticatedMember() || !button || button.disabled) return;
+            button.disabled = true;
+            button.textContent = 'Joining the challenge…';
+
+            try {
+                const response = await window.fetch(
+                    '/api/growth-journey/prayer-covenant/join',
+                    {
+                        method: 'POST',
+                        headers: { Accept: 'application/json' }
+                    }
+                );
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || result.success !== true) {
+                    throw new Error(result.error || 'The challenge could not be joined right now.');
+                }
+                state.lastLoadedAt = 0;
+                await renderDashboard({ force: true });
+            } catch (error) {
+                button.disabled = false;
+                button.textContent = 'Join the 21-Day Prayer Covenant Challenge';
+                const message = element(
+                    document,
+                    'p',
+                    'journey-action-status',
+                    error.message || 'The challenge could not be joined right now.'
+                );
+                message.setAttribute('role', 'status');
+                button.insertAdjacentElement('afterend', message);
+            }
+        };
 
         function prayerStatusElement() {
             let status = document.getElementById('guidedPrayerStatus');

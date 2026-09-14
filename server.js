@@ -2930,14 +2930,8 @@ function getPublicPortalOrigin() {
         ? process.env.KOINONIA_PUBLIC_ORIGIN.trim()
         : '';
     if (configuredOrigin) {
-        try {
-            const parsed = new URL(configuredOrigin);
-            if ((parsed.protocol === 'https:' || parsed.protocol === 'http:') && !parsed.username && !parsed.password) {
-                return parsed.origin;
-            }
-        } catch (err) {
-            // Fall through to the environment-specific, non-secret canonical URL.
-        }
+        const validatedOrigin = validatePublicOrigin(configuredOrigin);
+        if (validatedOrigin) return validatedOrigin;
     }
     return __dirname.includes('staging') ? 'https://staging.fogmin.site' : 'https://fogmin.site';
 }
@@ -7772,6 +7766,78 @@ app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
             success: false,
             error:
                 'Your Growth Journey could not be loaded right now.'
+        });
+    }
+});
+
+app.post('/api/growth-journey/prayer-covenant/join', requireAuth, async (req, res) => {
+    const youthId = Number(req.auth && req.auth.youthId);
+    if (!Number.isInteger(youthId) || youthId <= 0) {
+        return res.status(401).json({
+            success: false,
+            error: 'Authentication required.'
+        });
+    }
+
+    try {
+        const occurredAt = getManilaTime();
+        const result = await GrowthJourney.enrollPrayerCovenantChallenge(
+            db,
+            youthId,
+            {
+                triggerType: 'member_direct_join',
+                occurredAt
+            }
+        );
+
+        if (!result.enrollment) {
+            const unavailable = result.reason === 'template_not_enrolling';
+            return res.status(unavailable ? 409 : 503).json({
+                success: false,
+                error: unavailable
+                    ? 'The 21-Day Prayer Covenant Challenge is paused right now.'
+                    : 'The 21-Day Prayer Covenant Challenge is unavailable right now.'
+            });
+        }
+
+        let prayerPartner = null;
+        if (result.enrollment.status === 'active') {
+            try {
+                prayerPartner = await GrowthJourney.ensureOnboardingPrayerPartner(
+                    db,
+                    youthId,
+                    { assignedAt: occurredAt }
+                );
+            } catch (partnerError) {
+                console.error(
+                    '[Growth Journey] Direct Prayer Covenant partner assignment failed:',
+                    partnerError
+                );
+                prayerPartner = {
+                    available: false,
+                    created: false,
+                    reason: 'assignment_error'
+                };
+            }
+        }
+
+        const onboarding = await GrowthJourney.getDefaultOnboardingStatus(
+            db,
+            youthId
+        );
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json({
+            success: true,
+            joined: result.enrolled,
+            reason: result.reason,
+            onboarding,
+            prayerPartner
+        });
+    } catch (err) {
+        console.error('[Growth Journey] Direct Prayer Covenant join failed:', err);
+        return res.status(500).json({
+            success: false,
+            error: 'The 21-Day Prayer Covenant Challenge could not be joined right now.'
         });
     }
 });

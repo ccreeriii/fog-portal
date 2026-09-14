@@ -208,12 +208,13 @@ test('membership intents enforce canonical ownership and leadership approval', {
         intent_message: 'A personal reflection for the isolated fixture.'
     };
 
-    await t.test('all seven effective routes have exactly one registration', () => {
+    await t.test('all effective routes have exactly one registration', () => {
         const expected = [
             ...commitRoutes.map(route => ['post', `/api/youth/:id/${route}`]),
             ...approvalRoutes.flatMap(route => [
                 ['get', `/api/admin/${route}`], ['post', `/api/admin/${route}/:id/approve`]
             ]),
+            ['post', '/api/growth-journey/prayer-covenant/join'],
             ['get', '/api/youth-v2/:id/tier']
         ];
         const stack = (app.router || app._router).stack;
@@ -252,20 +253,79 @@ test('membership intents enforce canonical ownership and leadership approval', {
         assert.equal(notificationCountAfter.count, notificationCountBefore.count);
     });
 
-    await t.test('existing Prayer send still records one isolated inbox message and canonical rhythm day', async () => {
-        await run(
+    await t.test('direct Prayer Covenant join is authenticated, self-scoped, and idempotent', async () => {
+        const otherBefore = await get(database, 'SELECT * FROM youth WHERE id = ?', [other.youthId]);
+        const response = await request(app, '/api/growth-journey/prayer-covenant/join', {
+            method: 'POST',
+            cookie: memberCookie,
+            body: {
+                youth_id: other.youthId,
+                commitment_intent: 'FORGED',
+                account_tier: 'Committed Member'
+            }
+        });
+        assert.equal(response.status, 200);
+        assert.equal(response.json.success, true);
+        assert.equal(response.json.joined, true);
+        assert.equal(response.json.onboarding.templateCode, 'prayer-covenant-21');
+        assert.equal(response.json.onboarding.enrollment.status, 'active');
+        assert.equal(response.json.onboarding.enrollment.triggerType, 'member_direct_join');
+
+        const enrollment = await get(
             database,
-            `INSERT INTO secret_prayer_pals
-                (youth_id, pal_youth_id, week_start)
-             VALUES (?, ?, '2026-09-14')`,
-            [member.youthId, other.youthId]
+            'SELECT * FROM growth_onboarding_enrollments WHERE youth_id = ?',
+            [member.youthId]
         );
+        assert.equal(enrollment.status, 'active');
+        assert.equal(enrollment.trigger_type, 'member_direct_join');
+        assert.equal(enrollment.completed_days, 0);
+        assert.equal((await get(
+            database,
+            'SELECT COUNT(*) AS count FROM growth_onboarding_enrollments WHERE youth_id = ?',
+            [other.youthId]
+        )).count, 0);
+
+        const memberState = await get(database, 'SELECT * FROM youth WHERE id = ?', [member.youthId]);
+        assert.equal(memberState.commitment_intent, null);
+        assert.equal(memberState.account_tier, 'New Member');
+        assert.equal(memberState.commitment_date, null);
+        assert.deepEqual(await get(database, 'SELECT * FROM youth WHERE id = ?', [other.youthId]), otherBefore);
+        assert.equal((await get(
+            database,
+            "SELECT COUNT(*) AS count FROM growth_evidence WHERE youth_id = ? AND evidence_type = 'membership_intent'",
+            [member.youthId]
+        )).count, 0);
+
+        const dashboard = await request(app, '/api/growth-journey/me', { cookie: memberCookie });
+        assert.equal(dashboard.json.journey.currentPhase.phaseKey, 'encounter');
+        assert.equal(dashboard.json.journey.nextInvitation.title, 'Come and See');
+
+        const replay = await request(app, '/api/growth-journey/prayer-covenant/join', {
+            method: 'POST', cookie: memberCookie, body: { youth_id: other.youthId }
+        });
+        assert.equal(replay.status, 200);
+        assert.equal(replay.json.joined, false);
+        assert.equal(replay.json.reason, 'already_enrolled');
+        assert.equal((await get(
+            database,
+            'SELECT COUNT(*) AS count FROM growth_onboarding_enrollments WHERE youth_id = ?',
+            [member.youthId]
+        )).count, 1);
+    });
+
+    await t.test('existing Prayer send still records one isolated inbox message and canonical rhythm day', async () => {
+        const partner = await get(
+            database,
+            'SELECT * FROM secret_prayer_pals WHERE youth_id = ?',
+            [member.youthId]
+        );
+        assert.ok(partner);
         const response = await request(app, '/api/prayer-pals/send', {
             method: 'POST',
             cookie: memberCookie,
             body: {
                 sender_id: member.youthId,
-                receiver_id: other.youthId,
+                receiver_id: partner.pal_youth_id,
                 message: 'A private prayer from the isolated dashboard fixture.'
             }
         });
@@ -275,13 +335,59 @@ test('membership intents enforce canonical ownership and leadership approval', {
             database,
             `SELECT COUNT(*) AS count FROM personal_inbox
              WHERE sender_id = ? AND receiver_id = ?`,
-            [member.youthId, other.youthId]
+            [member.youthId, partner.pal_youth_id]
         )).count, 1);
         assert.equal((await get(
             database,
             'SELECT COUNT(*) AS count FROM growth_prayer_rhythm_days WHERE youth_id = ?',
             [member.youthId]
         )).count, 1);
+        const enrollment = await get(
+            database,
+            'SELECT * FROM growth_onboarding_enrollments WHERE youth_id = ?',
+            [member.youthId]
+        );
+        assert.equal(enrollment.status, 'active');
+        assert.equal(enrollment.completed_days, 1);
+
+        const replay = await request(app, '/api/growth-journey/prayer-covenant/join', {
+            method: 'POST', cookie: memberCookie
+        });
+        assert.equal(replay.status, 200);
+        assert.equal(replay.json.joined, false);
+        assert.equal(replay.json.onboarding.enrollment.completedDays, 1);
+    });
+
+    await t.test('a completed directly joined challenge cannot be restarted', async () => {
+        const joined = await request(app, '/api/growth-journey/prayer-covenant/join', {
+            method: 'POST', cookie: legacyCookie
+        });
+        assert.equal(joined.status, 200);
+        assert.equal(joined.json.joined, true);
+        await run(
+            database,
+            `UPDATE growth_onboarding_enrollments
+             SET status = 'completed', completed_days = 21,
+                 completed_at = '2026-09-14 12:00:00'
+             WHERE youth_id = ?`,
+            [legacyMember.youthId]
+        );
+
+        const replay = await request(app, '/api/growth-journey/prayer-covenant/join', {
+            method: 'POST', cookie: legacyCookie
+        });
+        assert.equal(replay.status, 200);
+        assert.equal(replay.json.joined, false);
+        assert.equal(replay.json.onboarding.enrollment.status, 'completed');
+        assert.equal(replay.json.onboarding.enrollment.completedDays, 21);
+        const enrollment = await get(
+            database,
+            'SELECT * FROM growth_onboarding_enrollments WHERE youth_id = ?',
+            [legacyMember.youthId]
+        );
+        assert.equal(enrollment.status, 'completed');
+        assert.equal(enrollment.completed_days, 21);
+        assert.equal(enrollment.completed_at, '2026-09-14 12:00:00');
     });
 
     await t.test('anonymous mutations return 401 and leave membership state unchanged', async () => {
@@ -296,6 +402,9 @@ test('membership intents enforce canonical ownership and leadership approval', {
                 method: 'POST', body: forgedBody
             })).status, 401);
         }
+        assert.equal((await request(app, '/api/growth-journey/prayer-covenant/join', {
+            method: 'POST', body: forgedBody
+        })).status, 401);
         assert.deepEqual(await membershipState(database), before);
     });
 
@@ -366,7 +475,8 @@ test('membership intents enforce canonical ownership and leadership approval', {
         assert.equal(evidence.recorded_by, member.username);
         const enrollment = await get(database, 'SELECT * FROM growth_onboarding_enrollments WHERE youth_id = ?', [member.youthId]);
         assert.equal(enrollment.status, 'active');
-        assert.equal(enrollment.trigger_type, 'membership_intent');
+        assert.equal(enrollment.trigger_type, 'member_direct_join');
+        assert.equal(enrollment.completed_days, 1);
         const belong = await get(database,
             `SELECT progress.* FROM growth_phase_progress progress
              JOIN growth_journey_phases phase ON phase.id = progress.phase_id
@@ -387,7 +497,7 @@ test('membership intents enforce canonical ownership and leadership approval', {
             method: 'POST', cookie: memberCookie, body: { intent_message: 'Updated reflection.' }
         })).status, 200);
         assert.equal((await get(database, 'SELECT commitment_date FROM youth WHERE id = ?', [member.youthId])).commitment_date, null);
-        assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_evidence WHERE youth_id = ?', [member.youthId])).count, 1);
+        assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_evidence WHERE youth_id = ?', [member.youthId])).count, 2);
         assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_onboarding_enrollments WHERE youth_id = ?', [member.youthId])).count, 1);
         assert.equal((await get(database, 'SELECT COUNT(*) count FROM secret_prayer_pals WHERE youth_id = ?', [member.youthId])).count, 1);
     });
@@ -411,6 +521,10 @@ test('membership intents enforce canonical ownership and leadership approval', {
         assert.equal(stored.commitment_accepted_by, null);
         assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_evidence WHERE youth_id = ?', [legacyMember.youthId])).count, 1);
         assert.equal((await get(database, 'SELECT COUNT(*) count FROM growth_onboarding_enrollments WHERE youth_id = ?', [legacyMember.youthId])).count, 1);
+        const enrollment = await get(database, 'SELECT * FROM growth_onboarding_enrollments WHERE youth_id = ?', [legacyMember.youthId]);
+        assert.equal(enrollment.status, 'completed');
+        assert.equal(enrollment.completed_days, 21);
+        assert.equal(enrollment.trigger_type, 'member_direct_join');
         assert.equal((await get(database, 'SELECT COUNT(*) count FROM secret_prayer_pals WHERE youth_id = ?', [legacyMember.youthId])).count, 1);
         const log = await get(database, "SELECT * FROM activity_logs WHERE action = 'COMMITMENT_PLEDGE' ORDER BY id DESC LIMIT 1");
         assert.equal(log.username, legacyMember.name);

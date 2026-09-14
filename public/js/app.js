@@ -8398,7 +8398,6 @@ window.renderGrowthPathwayCard = async function() {
 
 // 3. HOOK INTERVALS
 const ogIntervalV19 = setInterval(() => {
-    window.renderHomeJourneyCard();
     window.renderGrowthPathwayCard();
 }, 1500);
 // --- END V19 ---
