@@ -5624,7 +5624,8 @@ app.get('/api/admin/growth/tasks', requireGrowthEventConfiguration, async (req, 
     try {
         const tasks = await GrowthJourney.all(
             db,
-            `SELECT task.id, task.task_key, task.title, task.evidence_type, task.audience,
+            `SELECT task.id, task.task_key, task.title, task.classification,
+                    task.evidence_type, task.audience,
                     phase.phase_key, phase.title AS phase_title, phase.phase_order,
                     phase.journey_segment
              FROM growth_tasks task
