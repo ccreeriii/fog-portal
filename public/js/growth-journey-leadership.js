@@ -3,6 +3,8 @@
 
     const REVIEW_PERMISSION = 'access_discipleship';
     const ADVANCEMENT_PERMISSION = 'edit_entries';
+    const REVIEW_CONTAINER_ID = 'growthLeadershipJourneyReview';
+    let reviewRequestGeneration = 0;
 
     function hasReviewPermission() {
         return Boolean(
@@ -39,6 +41,41 @@
         container.append(messageElement);
     }
 
+    function normalizeYouthId(value) {
+        const youthId = Number(value);
+        return Number.isSafeInteger(youthId) && youthId > 0 ? youthId : null;
+    }
+
+    function removeLeadershipJourneyReview() {
+        const existing = document.getElementById(REVIEW_CONTAINER_ID);
+        if (existing) existing.remove();
+    }
+
+    function invalidateLeadershipJourneyReview() {
+        reviewRequestGeneration += 1;
+        removeLeadershipJourneyReview();
+    }
+
+    function isCurrentReview(container, modal, youthId, requestGeneration) {
+        return Boolean(
+            container &&
+            modal &&
+            requestGeneration === reviewRequestGeneration &&
+            container.isConnected &&
+            container.dataset.youthId === String(youthId) &&
+            modal.dataset.profileYouthId === String(youthId) &&
+            modal.classList.contains('active')
+        );
+    }
+
+    function hasMatchingMemberIdentity(body, requestedYouthId) {
+        return Boolean(
+            body &&
+            body.member &&
+            body.member.id === requestedYouthId
+        );
+    }
+
     function buildReviewModel(member, journey, canMutate = hasAdvancementPermission()) {
         const currentPhase = journey && journey.currentPhase
             ? journey.currentPhase
@@ -65,8 +102,15 @@
 
     async function advanceCurrentPhase(container, member, journey) {
         const currentPhase = journey && journey.currentPhase;
+        const youthId = normalizeYouthId(member && member.id);
+        const modal = document.getElementById('viewProfileModal');
         if (
             !hasAdvancementPermission() ||
+            !youthId ||
+            !modal ||
+            container.dataset.youthId !== String(youthId) ||
+            modal.dataset.profileYouthId !== String(youthId) ||
+            !modal.classList.contains('active') ||
             !currentPhase ||
             currentPhase.status !== 'ready'
         ) return;
@@ -83,7 +127,7 @@
 
         try {
             const response = await root.fetch(
-                `/api/admin/growth-journey/members/${encodeURIComponent(member.id)}` +
+                `/api/admin/growth-journey/members/${encodeURIComponent(youthId)}` +
                 `/phases/${encodeURIComponent(currentPhase.phaseKey)}/complete`,
                 {
                     method: 'POST',
@@ -97,9 +141,24 @@
             if (!response.ok || !body.success) {
                 throw new Error(body.error || 'The phase could not be advanced.');
             }
+            if (!hasMatchingMemberIdentity(body, youthId)) {
+                throw new Error('The phase response could not be verified for this member.');
+            }
+            if (
+                !container.isConnected ||
+                container.dataset.youthId !== String(youthId) ||
+                modal.dataset.profileYouthId !== String(youthId) ||
+                !modal.classList.contains('active')
+            ) return;
 
             renderJourneyReview(container, body.member, body.journey);
         } catch (error) {
+            if (
+                !container.isConnected ||
+                container.dataset.youthId !== String(youthId) ||
+                modal.dataset.profileYouthId !== String(youthId) ||
+                !modal.classList.contains('active')
+            ) return;
             showMessage(
                 container,
                 error && error.message
@@ -177,19 +236,25 @@
     }
 
     async function mountLeadershipJourneyReview(youthId) {
+        const requestGeneration = ++reviewRequestGeneration;
+        removeLeadershipJourneyReview();
         if (!hasReviewPermission()) return;
 
-        const normalizedYouthId = Number(youthId);
-        if (!Number.isSafeInteger(normalizedYouthId) || normalizedYouthId <= 0) return;
+        const normalizedYouthId = normalizeYouthId(youthId);
+        if (!normalizedYouthId) return;
 
-        const modalContent = document.querySelector('#viewProfileModal .modal-content');
+        const modal = document.getElementById('viewProfileModal');
+        if (
+            !modal ||
+            modal.dataset.profileYouthId !== String(normalizedYouthId) ||
+            !modal.classList.contains('active')
+        ) return;
+
+        const modalContent = modal.querySelector('.modal-content');
         if (!modalContent) return;
 
-        const existing = document.getElementById('growthLeadershipJourneyReview');
-        if (existing) existing.remove();
-
         const container = createElement('section', 'card');
-        container.id = 'growthLeadershipJourneyReview';
+        container.id = REVIEW_CONTAINER_ID;
         container.dataset.youthId = String(normalizedYouthId);
         container.style.margin = '0 20px 20px';
         container.style.padding = '18px';
@@ -208,12 +273,13 @@
             if (!response.ok || !body.success) {
                 throw new Error(body.error || 'The member Growth Journey could not be loaded.');
             }
-            if (!container.isConnected || container.dataset.youthId !== String(normalizedYouthId)) {
-                return;
+            if (!hasMatchingMemberIdentity(body, normalizedYouthId)) {
+                throw new Error('The member Growth Journey could not be verified.');
             }
+            if (!isCurrentReview(container, modal, normalizedYouthId, requestGeneration)) return;
             renderJourneyReview(container, body.member, body.journey);
         } catch (error) {
-            if (!container.isConnected) return;
+            if (!isCurrentReview(container, modal, normalizedYouthId, requestGeneration)) return;
             showMessage(
                 container,
                 error && error.message
@@ -224,20 +290,12 @@
         }
     }
 
-    const existingOpenViewProfileModal = root.openViewProfileModal;
-    if (typeof existingOpenViewProfileModal === 'function') {
-        root.openViewProfileModal = async function openLeadershipMemberProfile(youthId) {
-            const result = await existingOpenViewProfileModal.apply(this, arguments);
-            await mountLeadershipJourneyReview(youthId);
-            return result;
-        };
-    }
-
     const publicApi = Object.freeze({
         hasReviewPermission,
         hasAdvancementPermission,
         buildReviewModel,
         renderJourneyReview,
+        invalidateLeadershipJourneyReview,
         mountLeadershipJourneyReview
     });
     root.GrowthJourneyLeadership = publicApi;

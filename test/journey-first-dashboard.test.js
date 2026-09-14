@@ -227,7 +227,7 @@ test('Home information architecture and final runtime module are ordered and foc
 test('mobile dashboard assets advance the explicit PWA cache coherently', () => {
     assert.match(index, /\/css\/journey-dashboard\.css\?v=2/);
     assert.match(index, /\/js\/journey-dashboard\.js\?v=3/);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v19'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v20'/);
     assert.match(serviceWorker, /'\/css\/journey-dashboard\.css\?v=2'/);
     assert.match(serviceWorker, /'\/js\/journey-dashboard\.js\?v=3'/);
     assert.match(dashboardStyles, /env\(safe-area-inset-bottom\)/);

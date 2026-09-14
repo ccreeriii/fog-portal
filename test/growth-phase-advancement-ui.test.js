@@ -95,14 +95,14 @@ test('review model exposes advancement only for the current ready phase', () => 
 });
 
 test('leadership Journey asset is loaded and cached coherently', () => {
-    assert.match(index, /\/js\/app\.js\?v=13\.2/);
-    assert.match(index, /\/js\/growth-journey-leadership\.js\?v=2/);
+    assert.match(index, /\/js\/app\.js\?v=13\.3/);
+    assert.match(index, /\/js\/growth-journey-leadership\.js\?v=3/);
     assert.ok(
-        index.indexOf('/js/growth-journey-leadership.js?v=2') >
-        index.indexOf('/js/app.js?v=13.2')
+        index.indexOf('/js/growth-journey-leadership.js?v=3') >
+        index.indexOf('/js/app.js?v=13.3')
     );
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v19'/);
-    assert.match(serviceWorker, /'\/js\/growth-journey-leadership\.js\?v=2'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v20'/);
+    assert.match(serviceWorker, /'\/js\/growth-journey-leadership\.js\?v=3'/);
 });
 
 test('advancement routes do not couple the transaction to notifications', () => {

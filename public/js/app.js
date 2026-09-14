@@ -5362,7 +5362,41 @@ function emailVerificationBadgeHtml(member) {
 
 // V24: UNIFIED DIRECTORY PROFILE & FREEZE FIX (CLEAN)
 // ==========================================
+let directoryProfileRequestGeneration = 0;
+
+function normalizeDirectoryProfileYouthId(value) {
+    const youthId = Number(value);
+    return Number.isSafeInteger(youthId) && youthId > 0 ? youthId : null;
+}
+
+function isCurrentDirectoryProfileRequest(modal, youthId, requestGeneration) {
+    return Boolean(
+        modal &&
+        directoryProfileRequestGeneration === requestGeneration &&
+        modal.dataset.profileYouthId === String(youthId) &&
+        modal.dataset.profileRequestGeneration === String(requestGeneration)
+    );
+}
+
 window.openViewProfileModal = async function(id) {
+    const youthId = normalizeDirectoryProfileYouthId(id);
+    if (!youthId) return;
+
+    const requestGeneration = ++directoryProfileRequestGeneration;
+    const modal = document.getElementById('viewProfileModal');
+    if (!modal) return;
+
+    if (window.GrowthJourneyLeadership?.invalidateLeadershipJourneyReview) {
+        window.GrowthJourneyLeadership.invalidateLeadershipJourneyReview();
+    } else {
+        const previousJourney = document.getElementById('growthLeadershipJourneyReview');
+        if (previousJourney) previousJourney.remove();
+    }
+    modal.dataset.profileYouthId = String(youthId);
+    modal.dataset.profileRequestGeneration = String(requestGeneration);
+    modal.style.display = 'none';
+    modal.classList.remove('active');
+
     try {
         document.getElementById('globalPreloader').style.display = 'flex';
         document.getElementById('globalPreloader').style.opacity = '1';
@@ -5370,13 +5404,13 @@ window.openViewProfileModal = async function(id) {
         // Fetch User and their specific history
         const [usersRes, minRes, evtRes, histRes] = await Promise.all([
             fetch('/api/youth'),
-            fetch('/api/youth/' + id + '/ministries'),
-            fetch('/api/youth/' + id + '/event_roles'),
-            fetch('/api/youth/' + id + '/history')
+            fetch('/api/youth/' + youthId + '/ministries'),
+            fetch('/api/youth/' + youthId + '/event_roles'),
+            fetch('/api/youth/' + youthId + '/history')
         ]);
 
         const users = await usersRes.json();
-        const member = users.find(u => String(u.id) === String(id));
+        const member = users.find(u => Number(u.id) === youthId);
         if (!member) throw new Error('Member not found.');
 
         const ministries = await minRes.json();
@@ -5454,19 +5488,31 @@ window.openViewProfileModal = async function(id) {
             </div>
         </div>`;
 
-        let modal = document.getElementById('viewProfileModal');
-        if (modal) {
-            modal.innerHTML = modalHtml;
-            modal.style.display = 'flex';
-            modal.classList.add('active');
-            document.body.style.overflow = 'hidden'; // Lock background scroll
+        if (!isCurrentDirectoryProfileRequest(modal, youthId, requestGeneration)) return;
+
+        modal.innerHTML = modalHtml;
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden'; // Lock background scroll
+
+        if (window.GrowthJourneyLeadership?.mountLeadershipJourneyReview) {
+            void window.GrowthJourneyLeadership.mountLeadershipJourneyReview(youthId);
         }
     } catch(e) { 
+        if (!isCurrentDirectoryProfileRequest(modal, youthId, requestGeneration)) return;
         console.error(e);
+        delete modal.dataset.profileYouthId;
+        delete modal.dataset.profileRequestGeneration;
         alert("Error loading member profile."); 
     } finally { 
-        document.getElementById('globalPreloader').style.opacity = '0'; 
-        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500); 
+        if (directoryProfileRequestGeneration === requestGeneration) {
+            document.getElementById('globalPreloader').style.opacity = '0';
+            setTimeout(() => {
+                if (directoryProfileRequestGeneration === requestGeneration) {
+                    document.getElementById('globalPreloader').style.display = 'none';
+                }
+            }, 500);
+        }
     }
 };
 
@@ -5480,10 +5526,24 @@ window.switchModalViewTab = function(btnEl, tabId) {
 
 // CRITICAL FIX: Unlock screen when closed
 window.closeViewProfileModal = function() {
+    directoryProfileRequestGeneration += 1;
     const modal = document.getElementById('viewProfileModal');
-    if(modal) { 
-        modal.style.display = 'none'; 
-        modal.classList.remove('active'); 
+    if(modal) {
+        if (window.GrowthJourneyLeadership?.invalidateLeadershipJourneyReview) {
+            window.GrowthJourneyLeadership.invalidateLeadershipJourneyReview();
+        } else {
+            const journey = document.getElementById('growthLeadershipJourneyReview');
+            if (journey) journey.remove();
+        }
+        delete modal.dataset.profileYouthId;
+        delete modal.dataset.profileRequestGeneration;
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+    const preloader = document.getElementById('globalPreloader');
+    if (preloader) {
+        preloader.style.opacity = '0';
+        preloader.style.display = 'none';
     }
     document.body.style.overflow = ''; // Restores background scrolling
 };
@@ -5492,6 +5552,10 @@ window.closeViewProfileModal = function() {
 if (!window.isModalFailsafePatched) {
     window.addEventListener('click', function(event) {
         if (event.target && event.target.classList && event.target.classList.contains('modal')) {
+            if (event.target.id === 'viewProfileModal') {
+                window.closeViewProfileModal();
+                return;
+            }
             event.target.style.display = 'none';
             event.target.classList.remove('active');
             document.body.style.overflow = ''; // Restores background scrolling
@@ -5662,17 +5726,30 @@ window.closeMinistryIntentModal = function() {
 const origOpenViewProfileModal = window.openViewProfileModal;
 window.openViewProfileModal = async function(id) {
     await origOpenViewProfileModal(id);
+    const youthId = normalizeDirectoryProfileYouthId(id);
+    if (!youthId) return;
     
     // Inject XP specifically under the generated name header inside the modal
     setTimeout(async () => {
         try {
+            const modal = document.getElementById('viewProfileModal');
+            if (
+                !modal ||
+                modal.dataset.profileYouthId !== String(youthId) ||
+                !modal.classList.contains('active')
+            ) return;
+
             const usersRes = await fetch('/api/youth');
             const users = await usersRes.json();
-            const member = users.find(u => String(u.id) === String(id));
+            const member = users.find(u => Number(u.id) === youthId);
             if (!member) return;
+            if (
+                modal.dataset.profileYouthId !== String(youthId) ||
+                !modal.classList.contains('active')
+            ) return;
 
-            const modalNameHeader = document.querySelector('#viewProfileModal h2');
-            if (modalNameHeader && !document.getElementById('injectedModalXP')) {
+            const modalNameHeader = modal.querySelector('h2');
+            if (modalNameHeader && !modal.querySelector('#injectedModalXP')) {
                 modalNameHeader.insertAdjacentHTML('afterend', `
                 <div id="injectedModalXP" style="display:flex; justify-content:center; gap:10px; margin-top:10px;">
                     <span class="badge badge-orange" style="font-size: 0.9rem;">⭐ ${member.points || 0} XP</span>
