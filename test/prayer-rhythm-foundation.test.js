@@ -280,6 +280,13 @@ test('Prayer Rhythm uses a bounded Manila-day window and contributes without byp
         assert.ok(encounter.essentialCompleted < encounter.essentialTotal);
         assert.ok(belong.essentialCompleted < belong.essentialTotal);
         assert.ok(sent.essentialCompleted < sent.essentialTotal);
+        assert.equal(journey.currentPhase.phaseKey, 'encounter');
+        assert.equal(journey.currentPhase.sequenceState, 'current');
+        assert.equal(journey.nextInvitation.taskKey, 'encounter-community-event');
+        assert.deepEqual(
+            journey.phases.map(phase => phase.sequenceState),
+            ['current', 'upcoming', 'upcoming', 'upcoming', 'upcoming', 'upcoming', 'upcoming']
+        );
     } finally {
         await close(db);
     }
@@ -310,6 +317,23 @@ test('Prayer Rhythm preserves mutation-driven ready transitions and Manila bound
         assert.equal(encounter.previousStatus, 'in_progress');
         assert.equal(encounter.status, 'ready');
         assert.equal(encounter.statusChanged, true);
+
+        await GrowthJourney.run(
+            db,
+            `UPDATE growth_phase_progress
+             SET status = 'completed', completed_at = '2026-09-21 20:00:00'
+             WHERE youth_id = 1 AND phase_id = ?`,
+            [essentialTask.phase_id]
+        );
+        const advancedJourney = await GrowthJourney.getMemberJourney(db, 1, {
+            asOf: '2026-09-21 21:00:00'
+        });
+        assert.equal(advancedJourney.currentPhase.phaseKey, 'belong');
+        assert.equal(advancedJourney.nextPhase.phaseKey, 'commit');
+        assert.deepEqual(
+            advancedJourney.phases.map(phase => phase.sequenceState),
+            ['completed', 'current', 'upcoming', 'upcoming', 'upcoming', 'upcoming', 'upcoming']
+        );
 
         const privateTables = await GrowthJourney.all(
             db,

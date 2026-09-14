@@ -7714,7 +7714,8 @@ app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
         const [
             journey,
             onboarding,
-            prayerRhythm
+            prayerRhythm,
+            upcomingEventRows
         ] = await Promise.all([
             GrowthJourney.getMemberJourney(
                 db,
@@ -7727,8 +7728,27 @@ app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
             GrowthJourney.getPrayerRhythmStatus(
                 db,
                 youthId
+            ),
+            GrowthJourney.all(
+                db,
+                `SELECT id, name, event_date, time_start, venue,
+                        photos_url, materials_url, event_points,
+                        CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster,
+                        1 AS preregistration_available
+                 FROM events
+                 WHERE date(event_date) >= date(?)
+                 ORDER BY date(event_date) ASC, time_start ASC, id ASC
+                 LIMIT 3`,
+                [getManilaTime().slice(0, 10)]
             )
         ]);
+
+        const upcomingEvents = (upcomingEventRows || []).map(row =>
+            projectResponseFields(
+                addEventMediaReferences(row),
+                EVENT_LIST_RESPONSE_FIELDS
+            )
+        );
 
         res.setHeader(
             'Cache-Control',
@@ -7739,7 +7759,8 @@ app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
             success: true,
             journey,
             onboarding,
-            prayerRhythm
+            prayerRhythm,
+            upcomingEvents
         });
     } catch (err) {
         console.error(

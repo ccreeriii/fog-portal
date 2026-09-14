@@ -25,6 +25,7 @@
     <link rel="stylesheet" href="/css/v2-styles.css?v=12.2">
     <link rel="stylesheet" href="/css/v3-styles.css?v=12.2">
     <link rel="stylesheet" href="/css/v4-styles.css?v=12.2">
+    <link rel="stylesheet" href="/css/journey-dashboard.css?v=1">
     <style>
         .ai-chat-box { display: flex; flex-direction: column; gap: 15px; max-height: 450px; overflow-y: auto; padding: 15px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin-bottom: 15px; }
         .chat-msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; font-size: 0.95rem; line-height: 1.4; }
@@ -397,52 +398,29 @@
 
     
     <div id="pulseDashboardTab" class="tab-content active">
-        
-    <!-- UPGRADED DYNAMIC HERO BANNER -->
-    <div id="dashboardHeroBanner" style="background: linear-gradient(135deg, #F97316 0%, #F59E0B 100%); color: white; padding: 15px 20px; border-radius: 0; text-align: center; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3); margin: -20px 0 20px 0; width: 100%; box-sizing: border-box;">
-        <h2 id="dashWelcomeName" style="margin: 0 0 5px 0; font-size: 1.8rem; font-weight: 800; border: none; color: #FFF;">Welcome Home!</h2>
-        <p style="margin: 0 0 15px 0; font-size: 0.95rem; opacity: 0.9;">Continue your spiritual journey.</p>
-        
-        <div style="background: rgba(255,255,255,0.2); backdrop-filter: blur(5px); border-radius: 20px; padding: 8px 18px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,0.3); cursor: pointer;" title="Jump to Faith Quest Challenge">
-        <span style="font-size: 1.2rem;">🏆</span>
-        <span id="dashXpCounter" style="font-size: 1.1rem; font-weight: 800; margin: 0;">0 Life Points</span>
-    </div>
-    </div>
+        <main id="journeyFirstDashboard" class="journey-home" aria-labelledby="journeyHomeGreeting">
+            <header class="journey-home__welcome">
+                <p class="journey-home__eyebrow">Your community home</p>
+                <h2 id="journeyHomeGreeting">Welcome home</h2>
+                <p>Prayer, growth, and the next invitation for your journey.</p>
+            </header>
 
+            <section id="journeyPrayerCard" class="journey-card journey-prayer" aria-labelledby="journeyPrayerTitle" aria-live="polite">
+                <div class="journey-loading">Preparing today’s Prayer Covenant…</div>
+            </section>
 
-        <div style="padding: 20px; display: flex; flex-direction: column; gap: 15px; margin-top: -15px;">
-            
-            <!-- Phase 1: Encounter -->
-            <div class="card" style="margin: 0; border-left: 4px solid #10B981; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-                <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">📖 Daily Manna</h3>
-                <p id="pulseDailyGospelText" style="font-size: 1rem; color: var(--text-main); font-style: italic; margin: 0; line-height: 1.5;">Loading Daily Manna...</p>
-            </div>
+            <section id="journeyGrowthCard" class="journey-card journey-growth" aria-labelledby="journeyGrowthTitle" aria-live="polite">
+                <div class="journey-loading">Loading your Growth Journey…</div>
+            </section>
 
-            <!-- Phase 2: Belonging -->
-            <div id="pulsePrayerPalWidget" class="card" style="margin: 0; border-left: 4px solid #8B5CF6; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-                <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">🙏 DAILY PRAYER COVENANT</h3>
-                <p style="font-size: 1rem; color: var(--text-main); margin: 0;">Your DAILY PRAYER COVENANT is <strong id="pulsePrayerPalName" style="color: #8B5CF6;">Loading...</strong></p>
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">Your Prayer Partner for this week is...</p>
-            </div>
+            <section id="journeyEventsCard" class="journey-card journey-events" aria-labelledby="journeyEventsTitle" aria-live="polite">
+                <div class="journey-loading">Looking for what’s coming up…</div>
+            </section>
 
-            <!-- Your Pathway (Phases 3+) -->
-            <div class="card" style="margin: 0; border-left: 4px solid var(--primary); padding: 15px; background: var(--bg-light); box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-                <h3 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px;">📍 My Journey</h3>
-                <div id="dynamicJourneyContainer" style="display: flex; align-items: center; justify-content: space-between; background: #FFF; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); width: 100%;">
-                    <div>
-                        <strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Connect</strong>
-                        <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Join an upcoming gathering</p>
-                    </div>
-                    <button class="btn btn-outline btn-sm" onclick="switchTab('eventsTab')">View</button>
-                </div>
-            </div>
-
-            <!-- Quick Actions -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <button class="btn btn-primary" style="padding: 12px; font-weight: bold; border-radius: 12px;" onclick="switchTab('eventsTab')">📅 Events</button>
-                <button class="btn btn-outline" style="padding: 12px; font-weight: bold; border-radius: 12px; color: var(--text-main); border-color: var(--border-color);" onclick="switchTab('discipleshipTab')">🔥 Campfire</button>
-            </div>
-        </div>
+            <section id="journeyConnectedCard" class="journey-card journey-connected" aria-labelledby="journeyConnectedTitle">
+                <div class="journey-loading">Preparing ways to stay connected…</div>
+            </section>
+        </main>
     </div>
 
     <div id="profileTab" class="tab-content">
@@ -3250,5 +3228,6 @@
             modal.style.display = 'flex';
         };
     </script>
+    <script src="/js/journey-dashboard.js?v=1"></script>
 </body>
 </html>

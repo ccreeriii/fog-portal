@@ -138,7 +138,7 @@ test(
 );
 
 test(
-    'PWA publishes app 13.1 and cache v14',
+    'PWA publishes app 13.1 and cache v15',
     () => {
         assert.match(
             html,
@@ -147,7 +147,7 @@ test(
 
         assert.match(
             sw,
-            /fog-portal-v14/
+            /fog-portal-v15/
         );
 
         assert.match(

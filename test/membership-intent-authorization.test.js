@@ -181,7 +181,12 @@ test('membership intents enforce canonical ownership and leadership approval', {
     database = isolatedApplication.db;
     assert.equal(database.filename, path.join(temporaryRoot, 'fog_community.db'));
     await isolatedApplication.ready;
-    for (const migration of ['20260913_growth_journey_v1.sql', '20260913_growth_journey_ministry_hierarchy_fix.sql']) {
+    for (const migration of [
+        '20260913_growth_journey_v1.sql',
+        '20260913_growth_journey_ministry_hierarchy_fix.sql',
+        '20260914_growth_encounter_readiness_v1.sql',
+        '20260914_growth_prayer_rhythm_v1.sql'
+    ]) {
         await execute(database, await fsp.readFile(path.join(repositoryRoot, 'migrations', migration), 'utf8'));
     }
 
@@ -216,6 +221,67 @@ test('membership intents enforce canonical ownership and leadership approval', {
             assert.equal(stack.filter(layer => layer.route?.path === pathname && layer.route.methods[method]).length,
                 1, `${method.toUpperCase()} ${pathname}`);
         }
+    });
+
+    await t.test('member dashboard requires authentication and remains self-scoped', async () => {
+        const notificationCountBefore = await get(
+            database,
+            'SELECT COUNT(*) AS count FROM user_notifications'
+        );
+        assert.equal((await request(app, '/api/growth-journey/me')).status, 401);
+
+        const own = await request(app, `/api/growth-journey/me?youth_id=${other.youthId}`, {
+            cookie: memberCookie
+        });
+        assert.equal(own.status, 200);
+        assert.equal(own.json.journey.youthId, member.youthId);
+        assert.equal(Array.isArray(own.json.upcomingEvents), true);
+        assert.equal(own.headers['cache-control'], 'no-store');
+
+        const anotherMember = await request(app, '/api/growth-journey/me', {
+            cookie: otherCookie
+        });
+        assert.equal(anotherMember.status, 200);
+        assert.equal(anotherMember.json.journey.youthId, other.youthId);
+        assert.notEqual(anotherMember.json.journey.youthId, own.json.journey.youthId);
+
+        const notificationCountAfter = await get(
+            database,
+            'SELECT COUNT(*) AS count FROM user_notifications'
+        );
+        assert.equal(notificationCountAfter.count, notificationCountBefore.count);
+    });
+
+    await t.test('existing Prayer send still records one isolated inbox message and canonical rhythm day', async () => {
+        await run(
+            database,
+            `INSERT INTO secret_prayer_pals
+                (youth_id, pal_youth_id, week_start)
+             VALUES (?, ?, '2026-09-14')`,
+            [member.youthId, other.youthId]
+        );
+        const response = await request(app, '/api/prayer-pals/send', {
+            method: 'POST',
+            cookie: memberCookie,
+            body: {
+                sender_id: member.youthId,
+                receiver_id: other.youthId,
+                message: 'A private prayer from the isolated dashboard fixture.'
+            }
+        });
+        assert.equal(response.status, 200);
+        assert.equal(response.json.success, true);
+        assert.equal((await get(
+            database,
+            `SELECT COUNT(*) AS count FROM personal_inbox
+             WHERE sender_id = ? AND receiver_id = ?`,
+            [member.youthId, other.youthId]
+        )).count, 1);
+        assert.equal((await get(
+            database,
+            'SELECT COUNT(*) AS count FROM growth_prayer_rhythm_days WHERE youth_id = ?',
+            [member.youthId]
+        )).count, 1);
     });
 
     await t.test('anonymous mutations return 401 and leave membership state unchanged', async () => {
