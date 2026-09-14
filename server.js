@@ -62,6 +62,12 @@ const VAPID_PUBLIC_KEY = typeof process.env.VAPID_PUBLIC_KEY === 'string'
 const VAPID_PRIVATE_KEY = typeof process.env.VAPID_PRIVATE_KEY === 'string'
     ? process.env.VAPID_PRIVATE_KEY.trim()
     : '';
+const PRAYER_COVENANT_REMINDERS_ENABLED =
+    /^true$/i.test(
+        process.env.PRAYER_COVENANT_REMINDERS_ENABLED || ''
+    );
+const PRAYER_COVENANT_REMINDER_HOUR =
+    process.env.PRAYER_COVENANT_REMINDER_HOUR;
 let pushNotificationsAvailable = false;
 
 if (VAPID_SUBJECT && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
@@ -2733,6 +2739,7 @@ async function startServerAfterRuntimeSchemaReady() {
         await applyDeterministicRuntimeMigration();
         console.log('[MIGRATION] Runtime database schema verified.');
         app.listen(PORT, () => { console.log(`Server running safely on Port ${PORT}`); });
+        startPrayerCovenantReminderScheduler();
     } catch (err) {
         console.error(`[MIGRATION] Runtime database schema verification failed: ${err.message}`);
         db.close(() => process.exit(1));
@@ -6495,6 +6502,51 @@ async function dispatchCanonicalNotificationEvent(
             eventId,
             options
         );
+}
+
+/*
+ * Opt-in Prayer Covenant reminder runtime.
+ *
+ * The module is loaded only when explicitly enabled. This keeps the
+ * default-safe server path inert and starts reminder reads only after the
+ * deterministic runtime schema has been verified.
+ */
+function startPrayerCovenantReminderScheduler() {
+    if (!PRAYER_COVENANT_REMINDERS_ENABLED) {
+        return null;
+    }
+
+    try {
+        const {
+            startPrayerCovenantReminderScheduler:
+                startScheduler
+        } = require('./lib/prayer-covenant-reminders');
+
+        return startScheduler({
+            enabled:
+                true,
+            database:
+                db,
+            cron,
+            reminderHour:
+                PRAYER_COVENANT_REMINDER_HOUR,
+            dispatchEvent:
+                (eventId, options) =>
+                    dispatchCanonicalNotificationEvent(
+                        eventId,
+                        options
+                    )
+        });
+    } catch (error) {
+        console.error(
+            '[PRAYER_COVENANT_REMINDERS] startup failed',
+            error && error.code
+                ? error.code
+                : 'STARTUP_FAILED'
+        );
+
+        return null;
+    }
 }
 
 /*
