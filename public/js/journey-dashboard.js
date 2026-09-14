@@ -53,7 +53,7 @@
         let state = 'rhythm';
         let eyebrow = 'Prayer Covenant';
         let status = completedToday ? 'Prayer offered today' : null;
-        let title = 'Your Prayer Rhythm';
+        let title = 'Your Prayer Habit';
         let description = completedToday
             ? 'You prayed today. Keep making prayer part of your everyday walk with God and our community.'
             : 'Take a moment to pray today and continue building a steady rhythm with God and your community.';

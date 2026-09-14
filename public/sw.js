@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v16';
+const CACHE_NAME = 'fog-portal-v17';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -21,7 +21,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/v8-jonahs-dive.js?v=12.2',
     '/js/v9-growth-games.js?v=12.2',
     '/js/v10-expansion.js?v=12.3',
-    '/js/journey-dashboard.js?v=2',
+    '/js/journey-dashboard.js?v=3',
     '/manifest.json',
     '/img/logo.png'
 ];
