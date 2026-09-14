@@ -17,8 +17,10 @@ const serviceWorker = fs.readFileSync(path.join(root, 'public', 'sw.js'), 'utf8'
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
 test('leadership Journey control is permission-gated and server-authoritative', () => {
-    assert.match(source, /REQUIRED_PERMISSION = 'edit_entries'/);
-    assert.match(source, /if \(!hasLeadershipPermission\(\)\) return/);
+    assert.match(source, /REVIEW_PERMISSION = 'access_discipleship'/);
+    assert.match(source, /ADVANCEMENT_PERMISSION = 'edit_entries'/);
+    assert.match(source, /if \(!hasReviewPermission\(\)\) return/);
+    assert.match(source, /hasAdvancementPermission\(\)/);
     assert.match(source, /currentPhase\.status !== 'ready'/);
     assert.match(source, /currentPhase\.status === 'ready'/);
     assert.match(source, /Ready for advancement/);
@@ -35,9 +37,23 @@ test('leadership Journey control is permission-gated and server-authoritative', 
 test('review model exposes advancement only for the current ready phase', () => {
     const originalHasPerm = globalThis.hasPerm;
     globalThis.hasPerm = () => false;
-    assert.equal(LeadershipUI.hasLeadershipPermission(), false);
+    assert.equal(LeadershipUI.hasReviewPermission(), false);
+    assert.equal(LeadershipUI.hasAdvancementPermission(), false);
+
     globalThis.hasPerm = permission => permission === 'edit_entries';
-    assert.equal(LeadershipUI.hasLeadershipPermission(), true);
+    assert.equal(LeadershipUI.hasReviewPermission(), false);
+    assert.equal(LeadershipUI.hasAdvancementPermission(), false);
+
+    globalThis.hasPerm = permission => permission === 'access_discipleship';
+    assert.equal(LeadershipUI.hasReviewPermission(), true);
+    assert.equal(LeadershipUI.hasAdvancementPermission(), false);
+
+    globalThis.hasPerm = permission => [
+        'access_discipleship',
+        'edit_entries'
+    ].includes(permission);
+    assert.equal(LeadershipUI.hasReviewPermission(), true);
+    assert.equal(LeadershipUI.hasAdvancementPermission(), true);
     if (originalHasPerm === undefined) delete globalThis.hasPerm;
     else globalThis.hasPerm = originalHasPerm;
 
@@ -47,32 +63,46 @@ test('review model exposes advancement only for the current ready phase', () => 
             currentPhase: { phaseKey: 'encounter', title: 'Encounter', status: 'in_progress' },
             nextPhase: { phaseKey: 'belong', title: 'Belong' },
             phases: []
-        }
+        },
+        true
     );
     assert.equal(notReady.canAdvance, false);
     assert.equal(notReady.actionLabel, null);
 
-    const ready = LeadershipUI.buildReviewModel(
+    const reviewOnlyReady = LeadershipUI.buildReviewModel(
         { id: 7, name: 'Member' },
         {
             currentPhase: { phaseKey: 'encounter', title: 'Encounter', status: 'ready' },
             nextPhase: { phaseKey: 'belong', title: 'Belong' },
             phases: []
-        }
+        },
+        false
     );
-    assert.equal(ready.canAdvance, true);
-    assert.equal(ready.actionLabel, 'Advance to Belong');
+    assert.equal(reviewOnlyReady.canAdvance, false);
+    assert.equal(reviewOnlyReady.actionLabel, null);
+
+    const authorizedReady = LeadershipUI.buildReviewModel(
+        { id: 7, name: 'Member' },
+        {
+            currentPhase: { phaseKey: 'encounter', title: 'Encounter', status: 'ready' },
+            nextPhase: { phaseKey: 'belong', title: 'Belong' },
+            phases: []
+        },
+        true
+    );
+    assert.equal(authorizedReady.canAdvance, true);
+    assert.equal(authorizedReady.actionLabel, 'Advance to Belong');
 });
 
 test('leadership Journey asset is loaded and cached coherently', () => {
     assert.match(index, /\/js\/app\.js\?v=13\.2/);
-    assert.match(index, /\/js\/growth-journey-leadership\.js\?v=1/);
+    assert.match(index, /\/js\/growth-journey-leadership\.js\?v=2/);
     assert.ok(
-        index.indexOf('/js/growth-journey-leadership.js?v=1') >
+        index.indexOf('/js/growth-journey-leadership.js?v=2') >
         index.indexOf('/js/app.js?v=13.2')
     );
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v18'/);
-    assert.match(serviceWorker, /'\/js\/growth-journey-leadership\.js\?v=1'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v19'/);
+    assert.match(serviceWorker, /'\/js\/growth-journey-leadership\.js\?v=2'/);
 });
 
 test('advancement routes do not couple the transaction to notifications', () => {
@@ -80,6 +110,11 @@ test('advancement routes do not couple the transaction to notifications', () => 
     const end = server.indexOf("app.post('/api/growth-journey/prayer-covenant/join'", start);
     assert.ok(start >= 0 && end > start);
     const routeBlock = server.slice(start, end);
+    assert.match(routeBlock, /requirePermission\('access_discipleship'\)/);
+    assert.match(
+        routeBlock,
+        /requireAllPermissions\(\['access_discipleship', 'edit_entries'\]\)/
+    );
     assert.doesNotMatch(routeBlock, /processJourneyReadyNotification|pushToUser|sendNotification/);
     assert.doesNotMatch(routeBlock, /req\.body|req\.query/);
 });

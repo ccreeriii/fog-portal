@@ -216,7 +216,13 @@ test('leadership-controlled Growth Journey phase advancement', { concurrency: fa
 
     const { app, sessionStore } = isolatedApplication;
     const ordinary = await createIdentity(database, 'ORDINARY');
-    const leader = await createIdentity(database, 'LEADER', ['edit_entries']);
+    const editor = await createIdentity(database, 'EDITOR', ['edit_entries']);
+    const reviewer = await createIdentity(database, 'REVIEWER', ['access_discipleship']);
+    const leader = await createIdentity(
+        database,
+        'LEADER',
+        ['access_discipleship', 'edit_entries']
+    );
     const target = await createIdentity(database, 'TARGET');
     const untouched = await createIdentity(database, 'UNTOUCHED');
     const notStarted = await createIdentity(database, 'NOT-STARTED');
@@ -224,6 +230,8 @@ test('leadership-controlled Growth Journey phase advancement', { concurrency: fa
     const paused = await createIdentity(database, 'PAUSED');
     const concurrent = await createIdentity(database, 'CONCURRENT');
     const ordinaryCookie = createSession(sessionStore, ordinary);
+    const editorCookie = createSession(sessionStore, editor);
+    const reviewerCookie = createSession(sessionStore, reviewer);
     const leaderCookie = createSession(sessionStore, leader);
 
     const reviewPath = `/api/admin/growth-journey/members/${target.youthId}`;
@@ -232,7 +240,7 @@ test('leadership-controlled Growth Journey phase advancement', { concurrency: fa
     await addFuturePrayerProgress(database, target.youthId);
     await makeEncounterReady(database, target.youthId, 'target');
 
-    await t.test('routes are unique and use the established leadership permission', () => {
+    await t.test('routes are unique', () => {
         const stack = (app.router || app._router).stack;
         for (const [method, routePath] of [
             ['get', '/api/admin/growth-journey/members/:youthId'],
@@ -272,6 +280,50 @@ test('leadership-controlled Growth Journey phase advancement', { concurrency: fa
         const progress = await get(
             database,
             `SELECT progress.* FROM growth_phase_progress progress
+             JOIN growth_journey_phases phase ON phase.id = progress.phase_id
+             WHERE progress.youth_id = ? AND phase.phase_key = 'encounter'`,
+            [target.youthId]
+        );
+        assert.equal(progress.status, 'ready');
+    });
+
+    await t.test('review and advancement enforce the exact permission matrix', async () => {
+        const forgedAuthority = {
+            permissions: ['access_discipleship', 'edit_entries'],
+            roles: ['Discipleship Admin'],
+            is_admin: true
+        };
+        const forgedHeaders = {
+            'X-User-Permissions': 'access_discipleship,edit_entries',
+            'X-Admin': 'true'
+        };
+
+        assert.equal((await request(app, `${reviewPath}?permissions=access_discipleship`, {
+            cookie: editorCookie,
+            body: forgedAuthority,
+            headers: forgedHeaders
+        })).status, 403);
+        assert.equal((await request(app, `${completePath}?permissions=access_discipleship`, {
+            method: 'POST',
+            cookie: editorCookie,
+            body: forgedAuthority,
+            headers: forgedHeaders
+        })).status, 403);
+
+        const review = await request(app, reviewPath, { cookie: reviewerCookie });
+        assert.equal(review.status, 200);
+        assert.equal(review.json.member.id, target.youthId);
+        assert.equal((await request(app, completePath, {
+            method: 'POST',
+            cookie: reviewerCookie,
+            body: { ...forgedAuthority, edit_entries: true },
+            headers: forgedHeaders
+        })).status, 403);
+
+        assert.equal((await request(app, reviewPath, { cookie: leaderCookie })).status, 200);
+        const progress = await get(
+            database,
+            `SELECT progress.status FROM growth_phase_progress progress
              JOIN growth_journey_phases phase ON phase.id = progress.phase_id
              WHERE progress.youth_id = ? AND phase.phase_key = 'encounter'`,
             [target.youthId]
@@ -458,13 +510,26 @@ test('leadership-controlled Growth Journey phase advancement', { concurrency: fa
         assert.equal(progress.completion_basis, 'leadership_approved');
     });
 
-    await t.test('database permission revocation is immediate for read and completion', async () => {
-        await run(database, 'UPDATE users SET permissions = ? WHERE id = ?', ['[]', leader.userId]);
+    await t.test('revoking either canonical permission takes effect immediately', async () => {
         const forged = {
             cookie: leaderCookie,
-            body: { permissions: ['edit_entries'], is_admin: true },
-            headers: { 'X-User-Permissions': 'edit_entries', 'X-Admin': 'true' }
+            body: { permissions: ['access_discipleship', 'edit_entries'], is_admin: true },
+            headers: { 'X-User-Permissions': 'access_discipleship,edit_entries', 'X-Admin': 'true' }
         };
+
+        await run(
+            database,
+            'UPDATE users SET permissions = ? WHERE id = ?',
+            [JSON.stringify(['access_discipleship']), leader.userId]
+        );
+        assert.equal((await request(app, reviewPath, forged)).status, 200);
+        assert.equal((await request(app, completePath, { ...forged, method: 'POST' })).status, 403);
+
+        await run(
+            database,
+            'UPDATE users SET permissions = ? WHERE id = ?',
+            [JSON.stringify(['edit_entries']), leader.userId]
+        );
         assert.equal((await request(app, reviewPath, forged)).status, 403);
         assert.equal((await request(app, completePath, { ...forged, method: 'POST' })).status, 403);
     });

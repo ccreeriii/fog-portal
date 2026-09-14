@@ -1,12 +1,20 @@
 (function growthJourneyLeadershipModule(root) {
     'use strict';
 
-    const REQUIRED_PERMISSION = 'edit_entries';
+    const REVIEW_PERMISSION = 'access_discipleship';
+    const ADVANCEMENT_PERMISSION = 'edit_entries';
 
-    function hasLeadershipPermission() {
+    function hasReviewPermission() {
         return Boolean(
             root.hasPerm &&
-            root.hasPerm(REQUIRED_PERMISSION)
+            root.hasPerm(REVIEW_PERMISSION)
+        );
+    }
+
+    function hasAdvancementPermission() {
+        return Boolean(
+            hasReviewPermission() &&
+            root.hasPerm(ADVANCEMENT_PERMISSION)
         );
     }
 
@@ -31,14 +39,18 @@
         container.append(messageElement);
     }
 
-    function buildReviewModel(member, journey) {
+    function buildReviewModel(member, journey, canMutate = hasAdvancementPermission()) {
         const currentPhase = journey && journey.currentPhase
             ? journey.currentPhase
             : null;
         const nextTitle = journey && journey.nextPhase
             ? journey.nextPhase.title
             : null;
-        const canAdvance = Boolean(currentPhase && currentPhase.status === 'ready');
+        const canAdvance = Boolean(
+            canMutate &&
+            currentPhase &&
+            currentPhase.status === 'ready'
+        );
 
         return {
             member,
@@ -53,7 +65,11 @@
 
     async function advanceCurrentPhase(container, member, journey) {
         const currentPhase = journey && journey.currentPhase;
-        if (!currentPhase || currentPhase.status !== 'ready') return;
+        if (
+            !hasAdvancementPermission() ||
+            !currentPhase ||
+            currentPhase.status !== 'ready'
+        ) return;
 
         const nextTitle = journey.nextPhase && journey.nextPhase.title;
         const actionLabel = nextTitle
@@ -161,7 +177,7 @@
     }
 
     async function mountLeadershipJourneyReview(youthId) {
-        if (!hasLeadershipPermission()) return;
+        if (!hasReviewPermission()) return;
 
         const normalizedYouthId = Number(youthId);
         if (!Number.isSafeInteger(normalizedYouthId) || normalizedYouthId <= 0) return;
@@ -218,7 +234,8 @@
     }
 
     const publicApi = Object.freeze({
-        hasLeadershipPermission,
+        hasReviewPermission,
+        hasAdvancementPermission,
         buildReviewModel,
         renderJourneyReview,
         mountLeadershipJourneyReview

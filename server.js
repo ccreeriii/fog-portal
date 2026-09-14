@@ -7792,7 +7792,7 @@ app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
 
 app.get(
     '/api/admin/growth-journey/members/:youthId',
-    requirePermission('edit_entries'),
+    requirePermission('access_discipleship'),
     async (req, res) => {
         const youthId = normalizeCanonicalId(req.params.youthId);
         if (!youthId) {
@@ -7834,7 +7834,7 @@ app.get(
 
 app.post(
     '/api/admin/growth-journey/members/:youthId/phases/:phaseKey/complete',
-    requirePermission('edit_entries'),
+    requireAllPermissions(['access_discipleship', 'edit_entries']),
     async (req, res) => {
         try {
             const result = await GrowthJourney.completeReadyPhase(
