@@ -433,7 +433,7 @@ test('UI introduces neither event-name inference nor direct Growth Evidence crea
 });
 
 test('new mapping asset is loaded after app.js and cached under a fresh shell revision', () => {
-    assert.ok(index.indexOf('/js/growth-event-mapping-ui.js?v=1') > index.indexOf('/js/app.js?v=13.3'));
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v24'/);
-    assert.match(serviceWorker, /'\/js\/growth-event-mapping-ui\.js\?v=1'/);
+    assert.ok(index.indexOf('/js/growth-event-mapping-ui.js?v=2') > index.indexOf('/js/app.js?v=13.3'));
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v25'/);
+    assert.match(serviceWorker, /'\/js\/growth-event-mapping-ui\.js\?v=2'/);
 });

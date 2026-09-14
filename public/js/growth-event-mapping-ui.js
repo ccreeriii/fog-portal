@@ -331,7 +331,32 @@
         const content = element('growthEventMappingContent');
         if (content) content.style.display = 'none';
         const modal = element('growthEventMappingModal');
-        if (modal) modal.classList.add('active');
+        if (modal) {
+            // Secondary modal must escape any ancestor stacking context created
+            // by the Event editor. Move it to the document body before opening.
+            const doc = root.document || (typeof document !== 'undefined' ? document : null);
+            const body = doc && doc.body;
+
+            if (
+                body &&
+                typeof body.appendChild === 'function' &&
+                modal.parentElement !== body
+            ) {
+                body.appendChild(modal);
+            }
+
+            // In real browsers use !important; test harnesses may expose
+            // a plain style object, so retain a safe fallback.
+            if (modal.style && typeof modal.style.setProperty === 'function') {
+                modal.style.setProperty('position', 'fixed', 'important');
+                modal.style.setProperty('z-index', '2147483647', 'important');
+            } else if (modal.style) {
+                modal.style.position = 'fixed';
+                modal.style.zIndex = '2147483647';
+            }
+
+            modal.classList.add('active');
+        }
         const seriesManager = element('growthSeriesManager');
         if (seriesManager) seriesManager.style.display = 'none';
         setStatus('Loading Growth Journey configuration…');
