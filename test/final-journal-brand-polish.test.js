@@ -75,8 +75,8 @@ test('Growth Journey palette is aligned to the same orange family', () => {
 });
 
 test('brand and journal assets publish through a fresh PWA cache', () => {
-    assert.match(index, /community-features\.css\?v=2/);
-    assert.match(index, /community-feature-polish\.js\?v=2/);
+    assert.match(index, /community-features\.css\?v=3/);
+    assert.match(index, /community-feature-polish\.js\?v=3/);
     assert.match(index, /journey-dashboard\.css\?v=4/);
-    assert.match(sw, /fog-portal-v31/);
+    assert.match(sw, /fog-portal-v32/);
 });

@@ -86,15 +86,15 @@ test('shell keeps canonical navigation and existing Events controls while adding
         'editEventModal', 'growthEventMappingModal']) {
         assert.match(index, new RegExp(`id="${id}"`));
     }
-    assert.match(index, /\/css\/community-features\.css\?v=2/);
-    assert.match(index, /\/js\/community-feature-polish\.js\?v=2/);
-    assert.match(sw, /const CACHE_NAME = 'fog-portal-v31'/);
-    assert.match(sw, /'\/css\/community-features\.css\?v=2'/);
-    assert.match(sw, /'\/js\/community-feature-polish\.js\?v=2'/);
+    assert.match(index, /\/css\/community-features\.css\?v=3/);
+    assert.match(index, /\/js\/community-feature-polish\.js\?v=3/);
+    assert.match(sw, /const CACHE_NAME = 'fog-portal-v32'/);
+    assert.match(sw, /'\/css\/community-features\.css\?v=3'/);
+    assert.match(sw, /'\/js\/community-feature-polish\.js\?v=3'/);
     assert.doesNotMatch(source, /growth[_/-]evidence|prayerHabit|member_milestones|sendEmail|pushToUser/i);
 });
 
-test('Prayer Wall defaults to Wall, renders safe compact cards 10 per page, and has one canonical fetch', async () => {
+test('Prayer Wall defaults to Wall in List view, renders 10 safe compact rows, and has one canonical fetch', async () => {
     const prayers = Array.from({ length: 12 }, (_, index) => ({
         id: index + 1, title: index ? `Request ${index}` : '<img src=x onerror=alert(1)>',
         request: 'A long prayer request '.repeat(15), is_anonymous: index === 0 ? 1 : 0,
@@ -109,19 +109,23 @@ test('Prayer Wall defaults to Wall, renders safe compact cards 10 per page, and 
     assert.equal(elements.prayerWallTabButton.attributes['aria-selected'], 'true');
     await Promise.all([discipleship.loadPrayers(), discipleship.loadPrayers()]);
     assert.equal(count, 1);
-    assert.equal(elements.prayerWallContainer.children.filter(node => node.tagName === 'ARTICLE').length, 10);
+    const prayerRows = () => walk(elements.prayerWallContainer).filter(node =>
+        node.tagName === 'ARTICLE' &&
+        String(node.className || '').includes('feature-list-row--prayer')
+    );
+    assert.equal(prayerRows().length, 10);
     assert.ok(findText(elements.prayerWallContainer, '<img src=x onerror=alert(1)>'));
-    const firstCard = elements.prayerWallContainer.children[0];
+    const firstCard = prayerRows()[0];
     assert.ok(walk(firstCard).some(node => node.textContent.startsWith('Anonymous ·')));
-    const expand = findText(firstCard, 'Read More');
+    const expand = findText(firstCard, 'View');
     expand.click();
-    assert.equal(findText(firstCard, 'Show Less').attributes['aria-expanded'], 'true');
+    assert.equal(findText(firstCard, 'Hide').attributes['aria-expanded'], 'true');
     findText(firstCard, 'Pray for This').click();
     findText(firstCard, 'Edit').click();
     assert.deepEqual(calls.prayer, [1, 'edit:1']);
     await Promise.resolve();
     findText(elements.prayerWallContainer, 'Next').click();
-    assert.equal(elements.prayerWallContainer.children.filter(node => node.tagName === 'ARTICLE').length, 2);
+    assert.equal(prayerRows().length, 2);
     elements.prayerSubmitTabButton.click();
     assert.equal(elements.prayerSubmitPanel.hidden, false);
     assert.equal(elements.prayerWallPanel.hidden, true);
