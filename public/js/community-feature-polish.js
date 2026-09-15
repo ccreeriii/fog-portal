@@ -312,3 +312,508 @@
         };
     }
 })(typeof window !== 'undefined' ? window : globalThis);
+
+// ============================================================
+// FINAL PRIVATE JOURNAL POLISH
+// Late canonical presentation layer. Journal authorization remains
+// server-owned; this layer changes presentation only.
+// ============================================================
+(function installPrivateJournalPolish(root) {
+    'use strict';
+
+    const document = root.document;
+    const discipleship = root.V2Discipleship;
+
+    if (!document || !discipleship || root.__privateJournalPolishInstalled) return;
+    root.__privateJournalPolishInstalled = true;
+
+    const state = {
+        entries: [],
+        page: 1,
+        generation: 0,
+        request: null
+    };
+
+    let selectJournalTab = () => {};
+
+    function byId(id) {
+        return document.getElementById(id);
+    }
+
+    function memberId() {
+        const id = Number(root.currentMember && root.currentMember.id);
+        return Number.isSafeInteger(id) && id > 0 ? id : null;
+    }
+
+    function isAuthenticated() {
+        return root.koinoniaAuthStatus === 'authenticated' &&
+            !root.isGuestMode &&
+            memberId() !== null;
+    }
+
+    function appendText(parent, tag, value, className) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        node.textContent = value == null ? '' : String(value);
+        parent.appendChild(node);
+        return node;
+    }
+
+    function action(parent, label, callback, className = 'btn btn-outline btn-sm') {
+        const button = appendText(parent, 'button', label, className);
+        button.type = 'button';
+        button.addEventListener('click', callback);
+        return button;
+    }
+
+    function preview(value, limit = 145) {
+        const text = String(value || '').trim();
+        return text.length > limit
+            ? `${text.slice(0, limit).trimEnd()}…`
+            : text;
+    }
+
+    function showState(container, message, isError = false) {
+        if (!container) return;
+
+        container.replaceChildren();
+
+        const status = appendText(
+            container,
+            'div',
+            message,
+            `feature-state${isError ? ' feature-state--error' : ''}`
+        );
+
+        status.setAttribute('role', isError ? 'alert' : 'status');
+    }
+
+    function setupJournalShell() {
+        const form = byId('journalForm');
+        const list = byId('journalsContainer');
+
+        if (!form || !list) return false;
+
+        const host = form.closest('.card') || form.parentElement;
+        if (!host) return false;
+
+        if (host.dataset.journalPolished === 'true') return true;
+        host.dataset.journalPolished = 'true';
+        host.classList.add('journal-feature-shell');
+
+        for (const heading of host.querySelectorAll('h1,h2,h3')) {
+            if (heading.textContent.trim() === 'Private Journal') {
+                heading.hidden = true;
+                break;
+            }
+        }
+
+        const intro = document.createElement('section');
+        intro.id = 'journalFeatureIntro';
+        intro.className = 'feature-intro feature-intro--journal';
+        intro.setAttribute('aria-labelledby', 'journalFeatureTitle');
+
+        const icon = appendText(
+            intro,
+            'div',
+            '✦',
+            'feature-intro__icon'
+        );
+        icon.setAttribute('aria-hidden', 'true');
+
+        const copy = document.createElement('div');
+
+        appendText(
+            copy,
+            'p',
+            'Private Journal · Private to you',
+            'feature-intro__eyebrow'
+        );
+
+        const title = appendText(
+            copy,
+            'h2',
+            'Pause. Reflect. Grow.'
+        );
+        title.id = 'journalFeatureTitle';
+
+        appendText(
+            copy,
+            'p',
+            'A personal space to notice what God is doing, remember prayers and lessons, and reflect on your growth.'
+        );
+
+        const privacy = appendText(
+            copy,
+            'p',
+            '🔒 Only you can view your journal entries.',
+            'feature-intro__privacy'
+        );
+        privacy.setAttribute('role', 'note');
+
+        intro.appendChild(copy);
+
+        const tabs = document.createElement('div');
+        tabs.className = 'feature-tabs';
+        tabs.setAttribute('role', 'tablist');
+        tabs.setAttribute('aria-label', 'Private Journal');
+
+        const listButton = appendText(
+            tabs,
+            'button',
+            'My Journal',
+            'feature-tab'
+        );
+        listButton.id = 'myJournalTabButton';
+        listButton.type = 'button';
+        listButton.setAttribute('role', 'tab');
+
+        const createButton = appendText(
+            tabs,
+            'button',
+            'New Entry',
+            'feature-tab'
+        );
+        createButton.id = 'newJournalTabButton';
+        createButton.type = 'button';
+        createButton.setAttribute('role', 'tab');
+
+        const listPanel = document.createElement('section');
+        listPanel.id = 'myJournalPanel';
+        listPanel.className = 'feature-panel';
+        listPanel.setAttribute('role', 'tabpanel');
+        listPanel.setAttribute('aria-labelledby', listButton.id);
+
+        const createPanel = document.createElement('section');
+        createPanel.id = 'newJournalPanel';
+        createPanel.className = 'feature-panel';
+        createPanel.setAttribute('role', 'tabpanel');
+        createPanel.setAttribute('aria-labelledby', createButton.id);
+
+        listPanel.appendChild(list);
+        createPanel.appendChild(form);
+
+        form.classList.add('journal-form-polished');
+
+        host.prepend(intro, tabs, listPanel, createPanel);
+
+        const buttons = [listButton, createButton];
+        const panels = [listPanel, createPanel];
+
+        selectJournalTab = index => {
+            buttons.forEach((button, position) => {
+                const active = position === index;
+
+                button.classList.toggle('active', active);
+                button.setAttribute(
+                    'aria-selected',
+                    active ? 'true' : 'false'
+                );
+                button.tabIndex = active ? 0 : -1;
+
+                panels[position].hidden = !active;
+            });
+        };
+
+        buttons.forEach((button, index) => {
+            button.addEventListener(
+                'click',
+                () => selectJournalTab(index)
+            );
+
+            button.addEventListener('keydown', event => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+                    return;
+                }
+
+                event.preventDefault();
+
+                const next =
+                    event.key === 'Home'
+                        ? 0
+                        : event.key === 'End'
+                            ? 1
+                            : 1 - index;
+
+                selectJournalTab(next);
+                buttons[next].focus();
+            });
+        });
+
+        selectJournalTab(0);
+        return true;
+    }
+
+    function journalCard(entry) {
+        const card = document.createElement('article');
+        card.className = 'feature-card feature-card--journal';
+
+        appendText(
+            card,
+            'h3',
+            entry.title || 'Journal entry',
+            'feature-card__title'
+        );
+
+        const metadata = [
+            entry.created_at || null,
+            entry.framework || null,
+            entry.mood || null
+        ].filter(Boolean).join(' · ');
+
+        if (metadata) {
+            appendText(
+                card,
+                'p',
+                metadata,
+                'feature-card__meta'
+            );
+        }
+
+        const rawContent = String(entry.content || '');
+
+        appendText(
+            card,
+            'p',
+            preview(rawContent),
+            'feature-card__preview'
+        );
+
+        const details = appendText(
+            card,
+            'p',
+            rawContent,
+            'feature-card__details'
+        );
+
+        details.hidden = true;
+        details.id = `journalDetails-${entry.id}`;
+
+        const actions = document.createElement('div');
+        actions.className = 'feature-card__actions';
+
+        if (preview(rawContent) !== rawContent.trim()) {
+            const expand = action(actions, 'Read More', () => {
+                details.hidden = !details.hidden;
+
+                expand.textContent =
+                    details.hidden ? 'Read More' : 'Show Less';
+
+                expand.setAttribute(
+                    'aria-expanded',
+                    details.hidden ? 'false' : 'true'
+                );
+            });
+
+            expand.setAttribute('aria-expanded', 'false');
+            expand.setAttribute('aria-controls', details.id);
+        }
+
+        if (typeof discipleship.openEditJournalModal === 'function') {
+            action(
+                actions,
+                'Edit',
+                () => discipleship.openEditJournalModal(entry.id)
+            );
+        }
+
+        if (typeof discipleship.deleteJournal === 'function') {
+            action(
+                actions,
+                'Delete',
+                () => discipleship.deleteJournal(entry.id),
+                'btn btn-outline btn-sm journal-delete-action'
+            );
+        }
+
+        card.appendChild(actions);
+        return card;
+    }
+
+    function renderEntries() {
+        const container = byId('journalsContainer');
+        if (!container) return;
+
+        if (!state.entries.length) {
+            showState(
+                container,
+                'No journal entries yet. Your reflections will appear here.'
+            );
+            return;
+        }
+
+        const totalPages = Math.ceil(state.entries.length / 10);
+        state.page = Math.min(
+            Math.max(state.page, 1),
+            totalPages
+        );
+
+        container.replaceChildren();
+
+        const start = (state.page - 1) * 10;
+
+        state.entries
+            .slice(start, start + 10)
+            .forEach(entry => container.appendChild(journalCard(entry)));
+
+        if (totalPages <= 1) return;
+
+        const controls = document.createElement('nav');
+        controls.className = 'feature-pagination';
+        controls.setAttribute('aria-label', 'Journal pages');
+
+        const previous = action(
+            controls,
+            'Previous',
+            () => {
+                state.page -= 1;
+                renderEntries();
+            }
+        );
+
+        previous.disabled = state.page <= 1;
+
+        appendText(
+            controls,
+            'span',
+            `Page ${state.page} of ${totalPages}`
+        );
+
+        const next = action(
+            controls,
+            'Next',
+            () => {
+                state.page += 1;
+                renderEntries();
+            }
+        );
+
+        next.disabled = state.page >= totalPages;
+
+        container.appendChild(controls);
+    }
+
+    discipleship.loadJournals =
+        function loadCanonicalJournalList() {
+            setupJournalShell();
+
+            const container = byId('journalsContainer');
+            if (!container) return Promise.resolve();
+
+            if (!isAuthenticated()) {
+                showState(
+                    container,
+                    'Sign in to view your private journal.',
+                    true
+                );
+                return Promise.resolve();
+            }
+
+            const ownerId = memberId();
+            const previous = state.request;
+
+            if (
+                previous &&
+                previous.memberId === ownerId &&
+                previous.pending
+            ) {
+                return previous.promise;
+            }
+
+            const generation = ++state.generation;
+
+            const request = {
+                memberId: ownerId,
+                pending: true
+            };
+
+            state.request = request;
+
+            showState(container, 'Loading journal…');
+
+            request.promise = (async () => {
+                try {
+                    const response = await root.fetch(
+                        `/api/journals/${ownerId}`,
+                        {
+                            headers: {
+                                Accept: 'application/json'
+                            }
+                        }
+                    );
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const entries = await response.json();
+
+                    if (!Array.isArray(entries)) {
+                        throw new Error(
+                            'Invalid Journal response'
+                        );
+                    }
+
+                    if (
+                        generation !== state.generation ||
+                        !isAuthenticated() ||
+                        ownerId !== memberId()
+                    ) {
+                        return;
+                    }
+
+                    state.entries = entries;
+                    state.page = 1;
+
+                    discipleship.journalsData = entries;
+
+                    selectJournalTab(0);
+                    renderEntries();
+                } catch (error) {
+                    if (
+                        generation === state.generation &&
+                        isAuthenticated() &&
+                        ownerId === memberId()
+                    ) {
+                        showState(
+                            container,
+                            'Unable to load journal entries.',
+                            true
+                        );
+                    }
+                } finally {
+                    request.pending = false;
+                }
+            })();
+
+            return request.promise;
+        };
+
+    setupJournalShell();
+
+    const previousSwitchGrowthSubTab =
+        root.switchGrowthSubTab;
+
+    if (typeof previousSwitchGrowthSubTab === 'function') {
+        root.switchGrowthSubTab =
+            function activatePolishedJournal(
+                subTabName,
+                ...args
+            ) {
+                const result =
+                    previousSwitchGrowthSubTab.call(
+                        this,
+                        subTabName,
+                        ...args
+                    );
+
+                if (subTabName === 'Journal') {
+                    setupJournalShell();
+                    selectJournalTab(0);
+                    void discipleship.loadJournals();
+                }
+
+                return result;
+            };
+    }
+})(typeof window !== 'undefined' ? window : globalThis);

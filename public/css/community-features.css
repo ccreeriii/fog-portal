@@ -11,9 +11,34 @@
     color: var(--text-main);
 }
 
-.feature-intro--prayer { --feature-accent: #8f5a2a; --feature-surface: #fff8ef; }
-.feature-intro--groups { --feature-accent: #8a4f3f; --feature-surface: #fff8f4; }
-.feature-intro--events { --feature-accent: #a94d12; --feature-surface: #fff7ef; }
+:root {
+    --fog-brand-orange: #FF6B00;
+    --fog-brand-orange-strong: #C84F00;
+    --fog-brand-orange-deep: #A83D00;
+    --fog-brand-orange-soft: #FFF1E6;
+    --fog-brand-orange-mist: #FFF8F2;
+    --fog-brand-gold: #F6A63A;
+}
+
+.feature-intro--prayer,
+.feature-intro--journal,
+.feature-intro--groups,
+.feature-intro--events {
+    --feature-accent: var(--fog-brand-orange-strong);
+    --feature-surface: var(--fog-brand-orange-mist);
+}
+
+.feature-intro--journal {
+    --feature-surface: #FFF6ED;
+}
+
+.feature-intro--groups {
+    --feature-surface: #FFF7F0;
+}
+
+.feature-intro--events {
+    --feature-surface: #FFF4E8;
+}
 
 .feature-intro__icon {
     display: grid;
@@ -75,8 +100,8 @@
 
 .feature-tab.active {
     border-color: var(--primary);
-    background: #fff3e8;
-    color: #9a430b;
+    background: var(--fog-brand-orange-soft);
+    color: var(--fog-brand-orange-strong);
 }
 
 .feature-tab:focus-visible,
@@ -168,4 +193,73 @@
     .feature-tab { padding-inline: 5px; font-size: 0.82rem; }
     .feature-pagination { gap: 6px; }
     .feature-pagination button { padding-inline: 8px; }
+}
+
+
+/* ============================================================
+   FINAL FOG BRAND + JOURNAL POLISH
+   ============================================================ */
+
+.feature-intro {
+    border-color: #F1D8C5;
+    box-shadow: 0 3px 14px rgba(255, 107, 0, 0.045);
+}
+
+.feature-intro__privacy {
+    margin-top: 7px !important;
+    color: #8A4A24 !important;
+    font-size: 0.78rem !important;
+    font-weight: 650;
+}
+
+.feature-card--prayer,
+.feature-card--journal,
+.feature-card--groups {
+    border-color: #EFDCCF;
+}
+
+.journal-feature-shell {
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.journal-feature-shell > h2[hidden] {
+    display: none !important;
+}
+
+.journal-feature-shell #journalsContainer {
+    margin-top: 0 !important;
+}
+
+.journal-form-polished {
+    margin: 0;
+    padding: 16px;
+    border: 1px solid #EFDCCF;
+    border-radius: 15px;
+    background: #FFF;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.035);
+}
+
+.journal-form-polished .form-control:focus {
+    border-color: var(--fog-brand-orange);
+    box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.10);
+}
+
+.journal-delete-action {
+    color: #B42318;
+    border-color: #F3C7C4;
+}
+
+#prayerTab .feature-intro,
+#journalTab .feature-intro,
+#eventsTab .feature-intro {
+    margin-bottom: 14px;
+}
+
+@media (max-width: 480px) {
+    .journal-form-polished {
+        padding: 14px;
+    }
 }

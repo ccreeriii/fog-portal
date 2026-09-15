@@ -86,11 +86,11 @@ test('shell keeps canonical navigation and existing Events controls while adding
         'editEventModal', 'growthEventMappingModal']) {
         assert.match(index, new RegExp(`id="${id}"`));
     }
-    assert.match(index, /\/css\/community-features\.css\?v=1/);
-    assert.match(index, /\/js\/community-feature-polish\.js\?v=1/);
-    assert.match(sw, /const CACHE_NAME = 'fog-portal-v30'/);
-    assert.match(sw, /'\/css\/community-features\.css\?v=1'/);
-    assert.match(sw, /'\/js\/community-feature-polish\.js\?v=1'/);
+    assert.match(index, /\/css\/community-features\.css\?v=2/);
+    assert.match(index, /\/js\/community-feature-polish\.js\?v=2/);
+    assert.match(sw, /const CACHE_NAME = 'fog-portal-v31'/);
+    assert.match(sw, /'\/css\/community-features\.css\?v=2'/);
+    assert.match(sw, /'\/js\/community-feature-polish\.js\?v=2'/);
     assert.doesNotMatch(source, /growth[_/-]evidence|prayerHabit|member_milestones|sendEmail|pushToUser/i);
 });
 

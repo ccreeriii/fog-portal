@@ -1,11 +1,11 @@
 .journey-home {
-    --journey-ink: #25332d;
-    --journey-muted: #66756e;
-    --journey-green: #176b4d;
-    --journey-green-soft: #e8f4ee;
-    --journey-amber: #b86018;
-    --journey-amber-soft: #fff2dc;
-    --journey-border: #e2e8e4;
+    --journey-ink: #2F241F;
+    --journey-muted: #75665E;
+    --journey-green: #C84F00;
+    --journey-green-soft: #FFF1E6;
+    --journey-amber: #FF6B00;
+    --journey-amber-soft: #FFF4E8;
+    --journey-border: #EFDCCF;
     width: min(100%, 920px);
     margin: 0 auto;
     padding: 0 16px calc(96px + env(safe-area-inset-bottom));
@@ -72,7 +72,7 @@
     border: 0;
     background:
         radial-gradient(circle at 92% 8%, rgba(255, 214, 143, 0.34), transparent 33%),
-        linear-gradient(145deg, #205c47 0%, #174b3a 58%, #713c20 130%);
+        linear-gradient(145deg, #F97316 0%, #D95700 58%, #A83D00 130%);
 }
 
 .journey-prayer::after {
@@ -185,7 +185,7 @@
     border: 0;
     border-radius: 12px;
     background: #fff;
-    color: #174b3a;
+    color: #B84300;
     font: inherit;
     font-size: 0.9rem;
     font-weight: 850;
@@ -202,7 +202,7 @@
 
 .journey-action[disabled] {
     background: rgba(255, 255, 255, 0.72);
-    color: #3f6557;
+    color: #8A5A3D;
     cursor: default;
 }
 
@@ -274,10 +274,10 @@
     height: 27px;
     margin: 0 auto 5px;
     place-items: center;
-    border: 1px solid #d6ddd9;
+    border: 1px solid #E7D5C9;
     border-radius: 50%;
-    background: #f4f6f5;
-    color: #748078;
+    background: #FFF8F2;
+    color: #8B7467;
     font-size: 0.67rem;
     font-weight: 850;
 }
@@ -285,7 +285,7 @@
 .journey-phase__name {
     display: block;
     overflow: hidden;
-    color: #77827c;
+    color: #806D62;
     font-size: clamp(0.54rem, 1.8vw, 0.66rem);
     font-weight: 750;
     text-overflow: ellipsis;
@@ -321,7 +321,7 @@
     padding: 14px;
     border-left: 4px solid var(--journey-amber);
     border-radius: 12px;
-    background: #fff9ef;
+    background: #FFF7F0;
 }
 
 .journey-invitation strong,
@@ -367,7 +367,7 @@
     padding: 10px;
     border: 1px solid var(--journey-border);
     border-radius: 14px;
-    background: #fbfcfb;
+    background: #FFFDFC;
     color: inherit;
     font: inherit;
     text-align: left;
@@ -424,7 +424,7 @@
     padding: 10px 6px;
     border: 1px solid var(--journey-border);
     border-radius: 13px;
-    background: #fbfcfb;
+    background: #FFFDFC;
     color: var(--journey-ink);
     font: inherit;
     font-size: 0.75rem;
