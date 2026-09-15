@@ -141,26 +141,62 @@
         ['home', '🏠', 'Home'],
         ['growth', '🌱', 'Growth'],
         ['prayer', '🙏', 'Prayer'],
-        ['events', '📅', 'Events'],
         ['journal', '📖', 'Journal'],
         ['groups', '👥', 'Groups'],
+        ['events', '📅', 'Events'],
+        ['arcade', '🎯', 'FOG Arcade'],
         ['menu', '☰', 'Menu']
     ]);
 
     function activeDestination(context) {
-        if (['home', 'growth', 'prayer', 'events', 'journal', 'groups', 'menu'].includes(context)) return context;
+        if (['home', 'growth', 'prayer', 'journal', 'groups', 'events', 'arcade', 'menu'].includes(context)) return context;
         if (context === 'pulseDashboardTab') return 'home';
         if (context === 'eventsTab' || context === 'preregPublicTab') return 'events';
+        if (context === 'arcadeTab') return 'arcade';
         if (context === 'discipleshipTab') return 'growth';
         return '';
     }
 
-    function navigateBottom(destination) {
+    async function navigateBottom(destination) {
         if (destination === 'home') return root.switchTab('pulseDashboardTab');
         if (destination === 'events') return root.switchTab('eventsTab');
-        if (destination === 'menu') return root.openSidebar();
-        const subTabs = { growth: 'Home', prayer: 'Prayer', journal: 'Journal', groups: 'Groups' };
-        return root.switchTab('discipleshipTab', subTabs[destination]);
+        if (destination === 'arcade') return root.switchTab('arcadeTab');
+        if (destination === 'menu') {
+            root.renderBottomNav('menu');
+            return root.openSidebar();
+        }
+
+        const growthDestinations = {
+            growth: 'Home',
+            prayer: 'Prayer',
+            journal: 'Journal',
+            groups: 'Groups'
+        };
+
+        const subTabName = growthDestinations[destination];
+        if (!subTabName) return undefined;
+
+        /*
+         * Historical app.js wrappers reset discipleshipTab to Growth Home
+         * on a 50 ms timer. Open the parent tab first, then select the
+         * requested canonical dashboard after that legacy reset has settled.
+         */
+        await root.switchTab('discipleshipTab');
+
+        return new Promise(resolve => {
+            const schedule = typeof root.setTimeout === 'function'
+                ? root.setTimeout.bind(root)
+                : setTimeout;
+
+            schedule(() => {
+                const result = typeof root.switchGrowthSubTab === 'function'
+                    ? root.switchGrowthSubTab(subTabName)
+                    : undefined;
+
+                root.renderBottomNav(destination);
+                resolve(result);
+            }, 100);
+        });
     }
 
     root.renderBottomNav = function renderCanonicalBottomNav(context) {

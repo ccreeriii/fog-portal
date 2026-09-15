@@ -118,21 +118,25 @@
         #growthEventMappingModal { position: fixed !important; z-index: 10020 !important; }
         .bottom-nav--canonical {
             display: grid !important;
-            grid-template-columns: repeat(7, minmax(0, 1fr));
+            grid-template-columns: repeat(8, minmax(0, 1fr));
             align-items: stretch;
         }
         .bottom-nav--canonical .bottom-nav-btn {
             min-width: 0;
-            padding: 9px 1px;
-            font-size: clamp(0.58rem, 2.35vw, 0.75rem);
-            line-height: 1.1;
+            padding: 8px 0;
+            font-size: clamp(0.50rem, 1.95vw, 0.70rem);
+            line-height: 1.05;
         }
-        .bottom-nav--canonical .bottom-nav-btn > span:first-child { font-size: 1.15rem; }
+        .bottom-nav--canonical .bottom-nav-btn > span:first-child { font-size: 1.05rem; }
         .bottom-nav--canonical .bottom-nav-label {
-            display: block;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 2.1em;
             max-width: 100%;
             overflow: hidden;
-            text-overflow: ellipsis;
+            text-align: center;
+            line-height: 1.05;
         }
         .log-filters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px; }
         .log-filters .form-control { flex:1 1 150px; }
@@ -3335,6 +3339,6 @@
         };
     </script>
     <script src="/js/journey-dashboard.js?v=4"></script>
-    <script src="/js/postlaunch-hotfix.js?v=1"></script>
+    <script src="/js/postlaunch-hotfix.js?v=2"></script>
 </body>
 </html>

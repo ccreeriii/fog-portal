@@ -161,14 +161,14 @@ test('event modal lifecycle clears stale inline display and backdrop state acros
     assert.equal(elements.editEventModal.classList.contains('active'), true);
 });
 
-test('authenticated bottom navigation has exactly the seven canonical destinations', () => {
+test('authenticated bottom navigation has exactly the eight canonical destinations', () => {
     const { root, elements, navigation } = createHarness();
     root.renderBottomNav('eventsTab');
     assert.deepEqual(
         elements.bottomNav.children.map(button => button.children[1].textContent),
-        ['Home', 'Growth', 'Prayer', 'Events', 'Journal', 'Groups', 'Menu']
+        ['Home', 'Growth', 'Prayer', 'Journal', 'Groups', 'Events', 'FOG Arcade', 'Menu']
     );
-    assert.equal(elements.bottomNav.children.length, 7);
+    assert.equal(elements.bottomNav.children.length, 8);
     assert.equal(elements.bottomNav.children.some(button => /Paths|Inbox/.test(button.textContent)), false);
     const events = elements.bottomNav.children.find(button => button.dataset.destination === 'events');
     events.listeners.click();
@@ -213,14 +213,14 @@ test('post-launch asset and dependent revisions are cached coherently and load l
     const app = index.indexOf('/js/app.js?v=13.3');
     const mapping = index.indexOf('/js/growth-event-mapping-ui.js?v=3');
     const journey = index.indexOf('/js/journey-dashboard.js?v=4');
-    const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=1');
+    const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=2');
     assert.ok(app < mapping && mapping < journey && journey < hotfix);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v26'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v27'/);
     for (const asset of [
         '/js/app.js?v=13.3',
         '/js/growth-event-mapping-ui.js?v=3',
         '/js/journey-dashboard.js?v=4',
-        '/js/postlaunch-hotfix.js?v=1'
+        '/js/postlaunch-hotfix.js?v=2'
     ]) assert.ok(serviceWorker.includes(`'${asset}'`));
     assert.doesNotMatch(mappingSource, /2147483647|appendChild\(modal\)/);
 });
