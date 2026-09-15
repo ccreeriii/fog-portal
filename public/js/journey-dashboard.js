@@ -356,7 +356,7 @@
             document,
             card,
             'Your Growth Journey',
-            model.current ? `Current Stage: ${model.current.title}` : 'Walking together',
+            model.current ? `Your Journey Now: ${model.current.title}` : 'Walking together',
             'journeyGrowthTitle',
             model.current
                 ? ({

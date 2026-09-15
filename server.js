@@ -1305,6 +1305,40 @@ function requireResourceOwnerOrAllPermissions(resourceType, permissions, getReso
     );
 }
 
+function loadGroupIdForResource(resourceType, resourceId) {
+    const queries = {
+        prayer: 'SELECT group_id FROM prayer_requests WHERE id = ?',
+        thread: 'SELECT group_id FROM group_threads WHERE id = ?',
+        reply: `SELECT t.group_id FROM group_thread_replies r JOIN group_threads t ON t.id = r.thread_id WHERE r.id = ?`,
+        chat: 'SELECT group_id FROM small_group_chats WHERE id = ?',
+        memory: 'SELECT group_id FROM group_memories WHERE id = ?',
+        session: 'SELECT group_id FROM group_sessions WHERE id = ?'
+    };
+    const id = normalizeCanonicalId(resourceId);
+    if (!queries[resourceType] || !id) return Promise.resolve(null);
+    return new Promise((resolve, reject) => db.get(queries[resourceType], [id], (err, row) =>
+        err ? reject(err) : resolve(normalizeCanonicalId(row && row.group_id))));
+}
+
+function requireGroupAccess(getGroupId = req => req.params.id, managementPermissions = null) {
+    return (req, res, next) => authorizeRequest(req, res, next, async auth => {
+        const groupId = normalizeCanonicalId(await getGroupId(req));
+        const youthId = normalizeCanonicalId(auth && auth.youthId);
+        if (!groupId || (!normalizeCanonicalId(auth && auth.userId) && !youthId)) return false;
+        const group = await new Promise((resolve, reject) => db.get(
+            `SELECT g.leader_id,
+                    (SELECT status FROM small_group_members WHERE group_id = g.id AND youth_id = ?) AS member_status
+             FROM small_groups g WHERE g.id = ?`, [youthId, groupId],
+            (err, row) => err ? reject(err) : resolve(row || null)));
+        if (!group) return false;
+        if (isCanonicalSelf(auth, group.leader_id)) return true;
+        if (managementPermissions) return managementPermissions.every(permission =>
+            authorizationHasPermission(auth, permission));
+        return (youthId && group.member_status === 'Approved') ||
+            authorizationHasPermission(auth, 'access_discipleship');
+    });
+}
+
 function requireMinistryMemberDeleteAccess(req, res, next) {
     return authorizeRequest(req, res, next, async auth => {
         const mappingId = normalizeCanonicalId(req.params.mapping_id);
@@ -2091,7 +2125,7 @@ app.post('/api/admin/trigger-prayer-pals', requirePermission('edit_entries'), as
 });
 
 // [KOINONIA PATCH V107] PENDING MEMBER REQUESTS FIX ONLY
-app.get('/api/small-groups/:id/roster-status', (req, res) => {
+app.get('/api/small-groups/:id/roster-status', requireGroupAccess(), (req, res) => {
     if(typeof db !== 'undefined') {
         db.all("SELECT y.id, y.name, y.profile_picture, sgm.status, (SELECT MAX(created_at) FROM activity_logs WHERE username = y.qr_code) as last_active FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ? ORDER BY sgm.status DESC, y.name ASC", [req.params.id], (err, rows) => {
             res.json(rows || []);
@@ -2134,9 +2168,14 @@ app.use((req, res, next) => {
 // V112: THE PERFECTED ROUTER (POST-BODY-PARSER)
 // ==========================================
 
-app.post('/api/small-groups/react-v2', (req, res) => {
+app.post('/api/small-groups/react-v2', requireGroupAccess(req => {
+    const type = req.body && req.body.type;
+    return loadGroupIdForResource(type === 'chat' ? 'chat' : type === 'prayer' ? 'prayer' :
+        type === 'memory' ? 'memory' : '', req.body && req.body.id);
+}), (req, res) => {
     try {
-        const { type, id, emoji, user_name } = req.body;
+        const { type, id, emoji } = req.body;
+        const user_name = req.auth.member && req.auth.member.name;
         if (!type || !id || !emoji || !user_name) return res.status(400).json({success: false, error: 'Missing body parameters'});
         
         let table = type === 'chat' ? 'small_group_chats' : (type === 'prayer' ? 'prayer_requests' : (type === 'memory' ? 'group_memories' : ''));
@@ -2176,7 +2215,7 @@ app.post('/api/small-groups/react-v2', (req, res) => {
     } catch (err) { res.status(500).json({success: false, error: err.message}); }
 });
 
-app.get('/api/small-groups/:id/chat', (req, res) => {
+app.get('/api/small-groups/:id/chat', requireGroupAccess(), (req, res) => {
     const lastId = parseInt(req.query.last_id) || 0;
     db.all(`SELECT c.id, c.message, c.reactions, c.created_at, y.name, y.profile_picture FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? AND c.id > ? ORDER BY c.id ASC`, [req.params.id, lastId], (err, rows) => {
         if (err) return res.status(500).json({error: err.message});
@@ -2184,7 +2223,7 @@ app.get('/api/small-groups/:id/chat', (req, res) => {
     });
 });
 
-app.get('/api/small-groups/:id/memories', (req, res) => {
+app.get('/api/small-groups/:id/memories', requireGroupAccess(), (req, res) => {
     db.all(`SELECT m.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_memories m LEFT JOIN youth y ON m.youth_id = y.id WHERE m.group_id = ? ORDER BY m.created_at DESC LIMIT 50`, [req.params.id], (err, rows) => { 
         if (err) return res.status(500).json({error: err.message});
         res.json(rows || []); 
@@ -5256,31 +5295,54 @@ app.put('/api/youth/:id/permissions', requireStrongAdmin, (req, res) => {
 
 app.get('/api/activity-logs', requirePermission('access_activity'), (req, res) => {
     db.all(
-        `SELECT
+        `WITH ResolvedActors AS (
+         SELECT
             a.id,
+            CASE WHEN INSTR(COALESCE(a.username, ''), '@') > 0
+                 THEN '[email identifier]'
+                 ELSE NULLIF(TRIM(a.username), '')
+            END AS actor_identifier,
             COALESCE(
-                NULLIF(TRIM(y.name), ''),
+                NULLIF(TRIM(qr_member.name), ''),
+                NULLIF(TRIM(account_member.name), ''),
+                NULLIF(TRIM(id_member.name), ''),
+                NULLIF(TRIM(email_member.name), ''),
                 CASE
-                    WHEN INSTR(COALESCE(a.username, ''), '@') = 0
-                    THEN NULLIF(TRIM(a.username), '')
+                    WHEN a.username IN ('System', 'Anonymous') THEN a.username
+                    WHEN a.username LIKE 'FOG-%' OR a.username LIKE 'Member %' THEN 'Member'
+                    ELSE 'System'
                 END,
                 'System'
-            ) AS username,
+            ) AS actor_display_name,
             a.action,
             a.details,
             a.created_at
          FROM activity_logs a
+         LEFT JOIN youth qr_member ON qr_member.qr_code = a.username
          LEFT JOIN (
-             SELECT LOWER(TRIM(username)) AS login_key, MIN(youth_id) AS youth_id
+             SELECT LOWER(TRIM(username)) AS login_key, MIN(youth_id) AS youth_id,
+                    COUNT(DISTINCT youth_id) AS member_count
              FROM users
-             WHERE youth_id IS NOT NULL AND INSTR(username, '@') > 0
+             WHERE youth_id IS NOT NULL AND NULLIF(TRIM(username), '') IS NOT NULL
              GROUP BY LOWER(TRIM(username))
-             HAVING COUNT(DISTINCT youth_id) = 1
-         ) u ON u.login_key = LOWER(TRIM(a.username))
+         ) account ON account.login_key = LOWER(TRIM(a.username))
+         LEFT JOIN youth account_member ON account_member.id = account.youth_id
+            AND account.member_count = 1
+         LEFT JOIN youth id_member ON a.username = 'Member ' || id_member.id
+         LEFT JOIN (
+             SELECT LOWER(TRIM(email)) AS email_key, MIN(id) AS youth_id
+             FROM youth
+             WHERE NULLIF(TRIM(email), '') IS NOT NULL
+             GROUP BY LOWER(TRIM(email))
+             HAVING COUNT(*) = 1
+         ) email_account ON email_account.email_key = LOWER(TRIM(a.username))
             AND INSTR(COALESCE(a.username, ''), '@') > 0
-         LEFT JOIN youth y
-           ON y.id = u.youth_id
-         ORDER BY a.id DESC`,
+            AND account.login_key IS NULL
+         LEFT JOIN youth email_member ON email_member.id = email_account.youth_id
+         )
+         SELECT id, actor_identifier, actor_display_name,
+                actor_display_name AS username, action, details, created_at
+         FROM ResolvedActors ORDER BY id DESC`,
         [],
         (err, rows) => {
             if (err) return res.status(500).json({ error: 'Unable to load audit logs.' });
@@ -6233,55 +6295,123 @@ app.delete('/api/discipleship/pathways/:id', requireAllPermissions(['access_disc
 app.get('/api/discipleship/member-progress/:youth_id', (req, res) => { db.all(`SELECT p.id as pathway_id, p.title, m.status, m.completed_at, m.notes as pastoral_notes FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, rows) => { res.json(rows); }); });
 app.get('/api/discipleship/analytics/stages', (req, res) => { db.all(`WITH UserMaxStep AS (SELECT youth_id, MAX(pathway_id) as max_path_id FROM member_milestones WHERE status = 'Completed' OR status = 'In Progress' GROUP BY youth_id) SELECT p.title, COUNT(u.youth_id) as user_count FROM discipleship_pathways p LEFT JOIN UserMaxStep u ON p.id = u.max_path_id GROUP BY p.id, p.title ORDER BY p.step_order ASC`, [], (err, stepRows) => { db.get(`SELECT COUNT(*) as total FROM youth`, [], (err, youthRow) => { const totalYouth = youthRow ? youthRow.total : 0; let assignedYouth = 0; stepRows.forEach(r => assignedYouth += r.user_count); res.json({ stages: stepRows, unassigned: totalYouth - assignedYouth > 0 ? totalYouth - assignedYouth : 0 }); }); }); });
 
-// NEW JOURNAL API (WITH DAILY POINTS)
-app.get('/api/journals/:youth_id', (req, res) => { db.all(`SELECT * FROM private_journals WHERE youth_id = ? ORDER BY created_at DESC`, [req.params.youth_id], (err, rows) => { res.json(rows); }); });
-app.post('/api/journals', (req, res) => {
-    db.run(`INSERT INTO private_journals (youth_id, title, content, mood, created_at) VALUES (?, ?, ?, ?, ?)`, [req.body.youth_id, req.body.title, req.body.content, req.body.mood, getManilaTime()], function(err) {
+// NEW JOURNAL API (WITH DAILY POINTS) — OWNER ONLY
+app.get('/api/journals/:youth_id', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youthId || !isCanonicalSelf(req.auth, req.params.youth_id)) return sendForbidden(res);
+    db.all(`SELECT * FROM private_journals WHERE youth_id = ? ORDER BY created_at DESC, id DESC`,
+        [youthId], (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Unable to load journal entries.' });
+            res.json(rows || []);
+        });
+});
+app.post('/api/journals', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youthId) return sendForbidden(res);
+    db.run(`INSERT INTO private_journals (youth_id, title, content, mood, created_at) VALUES (?, ?, ?, ?, ?)`, [youthId, req.body.title, req.body.content, req.body.mood, getManilaTime()], function(err) {
+        if (err) return res.status(500).json({ error: 'Unable to save journal entry.' });
         const today = getManilaTime().split(' ')[0];
-        db.get(`SELECT id FROM point_transactions WHERE youth_id = ? AND game_name = 'Daily Journal' AND created_at LIKE ?`, [req.body.youth_id, today + '%'], (err, row) => {
+        db.get(`SELECT id FROM point_transactions WHERE youth_id = ? AND game_name = 'Daily Journal' AND created_at LIKE ?`, [youthId, today + '%'], (err, row) => {
             if (!row) {
                 db.get(`SELECT value FROM app_settings WHERE key = 'journal_points'`, [], (err, s) => {
                     const pts = parseInt(s ? s.value : '10') || 0;
-                    if (pts > 0) awardPoints(req.body.youth_id, 'growth', pts, 'System', 'Daily Journal');
+                    if (pts > 0) awardPoints(youthId, 'growth', pts, 'System', 'Daily Journal');
                 });
             }
         });
         res.json({ success: true });
     });
 });
-app.put('/api/journals/:id', (req, res) => { db.run(`UPDATE private_journals SET title = ?, mood = ?, content = ? WHERE id = ?`, [req.body.title, req.body.mood, req.body.content, req.params.id], function(err) { res.json({ success: true }); }); });
-app.delete('/api/journals/:id', requireResourceOwnerOrAllPermissions('journal', ['delete_entries']), (req, res) => { db.run(`DELETE FROM private_journals WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); });
+app.put('/api/journals/:id', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    const entryId = normalizeCanonicalId(req.params.id);
+    if (!youthId) return sendForbidden(res);
+    if (!entryId) return res.status(404).json({ error: 'Journal entry not found.' });
+    db.run(`UPDATE private_journals SET title = ?, mood = ?, content = ? WHERE id = ? AND youth_id = ?`,
+        [req.body.title, req.body.mood, req.body.content, entryId, youthId], function(err) {
+            if (err) return res.status(500).json({ error: 'Unable to update journal entry.' });
+            if (!this.changes) return res.status(404).json({ error: 'Journal entry not found.' });
+            res.json({ success: true });
+        });
+});
+app.delete('/api/journals/:id', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    const entryId = normalizeCanonicalId(req.params.id);
+    if (!youthId) return sendForbidden(res);
+    if (!entryId) return res.status(404).json({ error: 'Journal entry not found.' });
+    db.run(`DELETE FROM private_journals WHERE id = ? AND youth_id = ?`, [entryId, youthId], function(err) {
+        if (err) return res.status(500).json({ error: 'Unable to delete journal entry.' });
+        if (!this.changes) return res.status(404).json({ error: 'Journal entry not found.' });
+        res.json({ success: true });
+    });
+});
 
 // NEW PRAYER API (WITH DAILY POINTS)
-app.get('/api/prayers', (req, res) => { db.all(`SELECT p.*, y.name as author_name FROM prayer_requests p LEFT JOIN youth y ON p.youth_id = y.id ORDER BY p.created_at DESC`, [], (err, rows) => { res.json(rows); }); });
-app.post('/api/prayers', (req, res) => {
-    db.run(`INSERT INTO prayer_requests (youth_id, title, request, is_anonymous, created_at) VALUES (?, ?, ?, ?, ?)`, [req.body.youth_id, req.body.title, req.body.request, req.body.is_anonymous ? 1 : 0, getManilaTime()], function(err) {
+app.get('/api/prayers', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const youthId = normalizeCanonicalId(auth && auth.youthId);
+    db.all(
+        `SELECT p.id, p.title, p.request, p.is_anonymous, p.created_at,
+                CASE WHEN p.youth_id = ? THEN p.youth_id ELSE NULL END AS youth_id,
+                CASE WHEN p.is_anonymous = 1 THEN 'Anonymous'
+                     ELSE COALESCE(NULLIF(TRIM(y.name), ''), 'Member') END AS author_name,
+                CASE WHEN p.youth_id = ? THEN 1 ELSE 0 END AS is_owner,
+                (SELECT COUNT(*) FROM prayer_intercessions i WHERE i.prayer_id = p.id) AS prayer_count
+         FROM prayer_requests p
+         LEFT JOIN youth y ON y.id = p.youth_id
+         WHERE p.group_id IS NULL
+         ORDER BY p.created_at DESC, p.id DESC`,
+        [youthId, youthId],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Unable to load prayer requests.' });
+            return res.json(rows || []);
+        }
+    );
+});
+app.post('/api/prayers', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youthId) return sendForbidden(res);
+    db.run(`INSERT INTO prayer_requests (youth_id, title, request, is_anonymous, created_at) VALUES (?, ?, ?, ?, ?)`, [youthId, req.body.title, req.body.request, req.body.is_anonymous ? 1 : 0, getManilaTime()], function(err) {
+        if (err) return res.status(500).json({ error: 'Unable to submit prayer request.' });
         const today = getManilaTime().split(' ')[0];
-        db.get(`SELECT id FROM point_transactions WHERE youth_id = ? AND game_name = 'Daily Prayer' AND created_at LIKE ?`, [req.body.youth_id, today + '%'], (err, row) => {
+        db.get(`SELECT id FROM point_transactions WHERE youth_id = ? AND game_name = 'Daily Prayer' AND created_at LIKE ?`, [youthId, today + '%'], (err, row) => {
             if (!row) {
                 db.get(`SELECT value FROM app_settings WHERE key = 'prayer_points'`, [], (err, s) => {
                     const pts = parseInt(s ? s.value : '5') || 0;
-                    if (pts > 0) awardPoints(req.body.youth_id, 'growth', pts, 'System', 'Daily Prayer');
+                    if (pts > 0) awardPoints(youthId, 'growth', pts, 'System', 'Daily Prayer');
                 });
             }
         });
         res.json({ success: true });
     });
 });
-app.put('/api/prayers/:id', (req, res) => { db.run(`UPDATE prayer_requests SET title = ?, request = ?, is_anonymous = ? WHERE id = ?`, [req.body.title, req.body.request, req.body.is_anonymous ? 1 : 0, req.params.id], function(err) { res.json({ success: true }); }); });
-app.post('/api/prayers/:id/intercede', (req, res) => { db.run(`INSERT OR IGNORE INTO prayer_intercessions (prayer_id, youth_id, prayed_at) VALUES (?, ?, ?)`, [req.params.id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
+app.put('/api/prayers/:id', requireResourceOwnerOrAllPermissions('prayer', ['edit_entries']), (req, res) => { db.run(`UPDATE prayer_requests SET title = ?, request = ?, is_anonymous = ? WHERE id = ?`, [req.body.title, req.body.request, req.body.is_anonymous ? 1 : 0, req.params.id], function(err) { if (err) return res.status(500).json({ error: 'Unable to update prayer request.' }); res.json({ success: true }); }); });
+app.post('/api/prayers/:id/intercede', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youthId) return sendForbidden(res);
+    db.run(`INSERT OR IGNORE INTO prayer_intercessions (prayer_id, youth_id, prayed_at) VALUES (?, ?, ?)`, [req.params.id, youthId, getManilaTime()], function(err) {
+        if (err) return res.status(500).json({ error: 'Unable to record intercession.' });
+        res.json({ success: true });
+    });
+});
 
 // NEW SMALL GROUPS API (WITH POINTS)
 
 
-app.get('/api/small-groups/:id/prayers', (req, res) => {
-    db.all(`SELECT p.*, y.name as author_name FROM prayer_requests p JOIN youth y ON p.youth_id = y.id WHERE p.group_id = ? ORDER BY p.created_at DESC`, [req.params.id], (err, rows) => {
+app.get('/api/small-groups/:id/prayers', requireGroupAccess(), (req, res) => {
+    db.all(`SELECT p.id, p.title, p.request, p.is_anonymous, p.is_answered, p.created_at,
+                   CASE WHEN p.is_anonymous = 1 THEN 'Anonymous'
+                        ELSE COALESCE(NULLIF(TRIM(y.name), ''), 'Member') END AS author_name
+            FROM prayer_requests p LEFT JOIN youth y ON p.youth_id = y.id
+            WHERE p.group_id = ? ORDER BY p.created_at DESC, p.id DESC`, [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load group prayers.' });
         res.json(rows || []);
     });
 });
 
-app.post('/api/small-groups/:id/prayers', (req, res) => {
-    const { youth_id, title, request, is_anonymous } = req.body;
+app.post('/api/small-groups/:id/prayers', requireGroupAccess(), (req, res) => {
+    const youth_id = normalizeCanonicalId(req.auth && req.auth.youthId);
+    const { title, request, is_anonymous } = req.body;
     db.run(`INSERT INTO prayer_requests (group_id, youth_id, title, request, is_anonymous, created_at) VALUES (?, ?, ?, ?, ?, ?)`, 
     [req.params.id, youth_id, title, request, is_anonymous ? 1 : 0, getManilaTime()], function(err) {
         if(err) return res.status(500).json({error: err.message});
@@ -6289,30 +6419,46 @@ app.post('/api/small-groups/:id/prayers', (req, res) => {
     });
 });
 
-app.post('/api/small-groups/prayers/:prayer_id/intercede', (req, res) => {
-    const { youth_id, author_id, group_name } = req.body;
-    db.run(`INSERT OR IGNORE INTO prayer_intercessions (prayer_id, youth_id, prayed_at) VALUES (?, ?, ?)`, [req.params.prayer_id, youth_id, getManilaTime()], function(err) {
-        // Only send push if it's a new intercession AND you aren't clicking your own prayer
-        if (this.changes > 0 && author_id !== youth_id) {
-            pushToUser(author_id, "🙏 Someone prayed for you!", `Someone in ${group_name || 'your group'} just prayed for your request.`);
-        }
-        res.json({success: true});
-    });
-});
-
-app.put('/api/small-groups/prayers/:prayer_id/answered', (req, res) => {
-    const { group_id, group_name, title } = req.body;
-    db.run(`UPDATE prayer_requests SET is_answered = 1 WHERE id = ?`, [req.params.prayer_id], function(err) {
-        if(err) return res.status(500).json({error: err.message});
-        // Notify the whole group of the Praise Report!
-        db.all(`SELECT youth_id FROM small_group_members WHERE group_id = ?`, [group_id], (err, members) => {
-            if(members) members.forEach(m => pushToUser(m.youth_id, "🎉 Praise Report!", `A prayer in ${group_name} was just answered: ${title}`));
+app.post('/api/small-groups/prayers/:prayer_id/intercede', requireGroupAccess(req =>
+    loadGroupIdForResource('prayer', req.params.prayer_id)), (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    db.get(`SELECT p.youth_id AS author_id, g.name AS group_name
+            FROM prayer_requests p JOIN small_groups g ON g.id = p.group_id WHERE p.id = ?`,
+        [req.params.prayer_id], (lookupError, prayer) => {
+            if (lookupError || !prayer) return res.status(404).json({ error: 'Prayer request not found.' });
+            db.run(`INSERT OR IGNORE INTO prayer_intercessions (prayer_id, youth_id, prayed_at) VALUES (?, ?, ?)`,
+                [req.params.prayer_id, youthId, getManilaTime()], function(err) {
+                    if (err) return res.status(500).json({ error: 'Unable to record intercession.' });
+                    if (this.changes > 0 && normalizeCanonicalId(prayer.author_id) !== youthId) {
+                        pushToUser(prayer.author_id, "🙏 Someone prayed for you!",
+                            `Someone in ${prayer.group_name || 'your group'} just prayed for your request.`);
+                    }
+                    res.json({ success: true });
+                });
         });
-        res.json({success: true});
-    });
 });
 
-app.get('/api/small-groups/:id/roster-status', (req, res) => {
+app.put('/api/small-groups/prayers/:prayer_id/answered', requireGroupAccess(req =>
+    loadGroupIdForResource('prayer', req.params.prayer_id), ['access_discipleship', 'edit_entries']), (req, res) => {
+    db.get(`SELECT p.group_id, p.title, g.name AS group_name
+            FROM prayer_requests p JOIN small_groups g ON g.id = p.group_id WHERE p.id = ?`,
+        [req.params.prayer_id], (lookupError, prayer) => {
+            if (lookupError || !prayer) return res.status(404).json({ error: 'Prayer request not found.' });
+            db.run(`UPDATE prayer_requests SET is_answered = 1 WHERE id = ? AND group_id = ?`,
+                [req.params.prayer_id, prayer.group_id], function(err) {
+                    if (err) return res.status(500).json({ error: 'Unable to mark prayer answered.' });
+                    db.all(`SELECT youth_id FROM small_group_members WHERE group_id = ? AND status = 'Approved'`,
+                        [prayer.group_id], (memberError, members) => {
+                            if (!memberError && members) members.forEach(member =>
+                                pushToUser(member.youth_id, "🎉 Praise Report!",
+                                    `A prayer in ${prayer.group_name} was just answered: ${prayer.title}`));
+                        });
+                    res.json({ success: true });
+                });
+        });
+});
+
+app.get('/api/small-groups/:id/roster-status', requireGroupAccess(), (req, res) => {
     // Fetches group members and calculates their 'last active' status using activity_logs
     db.all(`SELECT y.id, y.name, y.profile_picture, 
             (SELECT MAX(created_at) FROM activity_logs WHERE username = y.qr_code) as last_active 
@@ -6323,40 +6469,56 @@ app.get('/api/small-groups/:id/roster-status', (req, res) => {
     });
 });
 
-app.get('/api/small-groups/:id/recent-chat', (req, res) => {
+app.get('/api/small-groups/:id/recent-chat', requireGroupAccess(), (req, res) => {
     db.get(`SELECT c.message, y.name FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? ORDER BY c.id DESC LIMIT 1`, [req.params.id], (err, row) => {
         res.json(row || null);
     });
 });
 
-app.get('/api/small-groups', (req, res) => {
-    const youthId = req.query.youth_id || 0;
-    db.all(`SELECT g.*, y.name as leader_name, 
+app.get('/api/small-groups', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const youthId = normalizeCanonicalId(auth && auth.youthId);
+    const canManage = auth && authorizationHasPermission(auth, 'access_discipleship') ? 1 : 0;
+    db.all(`SELECT g.*, y.name as leader_name,
         (SELECT COUNT(*) FROM small_group_members WHERE group_id = g.id AND status='Approved') as member_count,
-        (SELECT status FROM small_group_members WHERE group_id = g.id AND youth_id = ?) as user_status 
-        FROM small_groups g LEFT JOIN youth y ON g.leader_id = y.id ORDER BY g.name ASC`, [youthId], (err, rows) => { 
-        res.json(rows || []); 
-    }); 
+        (SELECT status FROM small_group_members WHERE group_id = g.id AND youth_id = ?) as user_status
+        FROM small_groups g LEFT JOIN youth y ON g.leader_id = y.id
+        WHERE COALESCE(g.privacy_level, 'Open') != 'Invite-Only'
+           OR g.leader_id = ?
+           OR EXISTS (SELECT 1 FROM small_group_members m WHERE m.group_id = g.id AND m.youth_id = ?)
+           OR ? = 1
+        ORDER BY g.name ASC`, [youthId, youthId, youthId, canManage], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load groups.' });
+        res.json(rows || []);
+    });
 });
-app.post('/api/small-groups', (req, res) => { db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, points, logo, privacy_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, getManilaTime()], function(err) { res.json({ success: true }); }); });
+app.post('/api/small-groups', requireAllPermissions(['access_discipleship', 'add_entries']), (req, res) => {
+    db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, points, logo, privacy_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue,
+            req.body.points || 20, req.body.logo || null, req.body.privacy_level || 'Open', getManilaTime()],
+        function(err) {
+            if (err) return res.status(500).json({ error: 'Unable to create group.' });
+            res.json({ success: true });
+        });
+});
 
 // [KOINONIA PATCH] UPDATE CAMPFIRE PRIVACY
-app.patch('/api/small-groups/:id/privacy', (req, res) => {
+app.patch('/api/small-groups/:id/privacy', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'edit_entries']), (req, res) => {
     db.run('UPDATE small_groups SET privacy_level = ? WHERE id = ?', [req.body.privacy_level, req.params.id], function(err) {
         res.json({success: !err, error: err ? err.message : null});
     });
 });
-app.put('/api/small-groups/:id', (req, res) => { db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=?, points=?, logo=?, privacy_level=? WHERE id=?`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, req.body.privacy_level || 'Open', req.params.id], function(err) { res.json({ success: true }); }); });
-app.delete('/api/small-groups/:id', requireResourceOwnerOrAllPermissions('smallGroup', ['delete_entries']), (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
+app.put('/api/small-groups/:id', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'edit_entries']), (req, res) => { db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=?, points=?, logo=?, privacy_level=? WHERE id=?`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, req.body.privacy_level || 'Open', req.params.id], function(err) { res.json({ success: true }); }); });
+app.delete('/api/small-groups/:id', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
 
 
-app.get('/api/small-groups/:id/sessions', (req, res) => {
+app.get('/api/small-groups/:id/sessions', requireGroupAccess(), (req, res) => {
     db.all(`SELECT * FROM group_sessions WHERE group_id = ? ORDER BY scheduled_at DESC`, [req.params.id], (err, rows) => {
         res.json(rows || []);
     });
 });
 
-app.post('/api/small-groups/:id/sessions', (req, res) => {
+app.post('/api/small-groups/:id/sessions', requireGroupAccess(req => req.params.id, ['access_discipleship', 'add_entries']), (req, res) => {
     const { title, scheduled_at, meet_link } = req.body;
     db.run(`INSERT INTO group_sessions (group_id, title, scheduled_at, meet_link, created_at) VALUES (?, ?, ?, ?, ?)`, 
         [req.params.id, title, scheduled_at, meet_link, getManilaTime()], function(err) {
@@ -6365,27 +6527,30 @@ app.post('/api/small-groups/:id/sessions', (req, res) => {
     });
 });
 
-app.put('/api/small-groups/sessions/:session_id', (req, res) => {
+app.put('/api/small-groups/sessions/:session_id', requireGroupAccess(req =>
+    loadGroupIdForResource('session', req.params.session_id), ['access_discipleship', 'edit_entries']), (req, res) => {
     db.run(`UPDATE group_sessions SET recording_url = ? WHERE id = ?`, [req.body.recording_url, req.params.session_id], function(err) {
         res.json({ success: true });
     });
 });
 
-app.delete('/api/small-groups/sessions/:session_id', requireResourceOwnerOrAllPermissions('groupSession', ['delete_entries'], req => req.params.session_id), (req, res) => {
+app.delete('/api/small-groups/sessions/:session_id', requireGroupAccess(req =>
+    loadGroupIdForResource('session', req.params.session_id), ['access_discipleship', 'delete_entries']), (req, res) => {
     db.run(`DELETE FROM group_sessions WHERE id = ?`, [req.params.session_id], function(err) {
         res.json({ success: true });
     });
 });
 
-app.get('/api/small-groups/:id/chat', (req, res) => {
+app.get('/api/small-groups/:id/chat', requireGroupAccess(), (req, res) => {
     const lastId = parseInt(req.query.last_id) || 0;
     db.all(`SELECT c.id, c.message, c.reactions, c.created_at, y.name, y.profile_picture FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? AND c.id > ? ORDER BY c.id ASC`, [req.params.id, lastId], (err, rows) => {
         res.json(rows || []);
     });
 });
 
-app.post('/api/small-groups/:id/chat', (req, res) => {
-    const { youth_id, message } = req.body;
+app.post('/api/small-groups/:id/chat', requireGroupAccess(), (req, res) => {
+    const youth_id = normalizeCanonicalId(req.auth && req.auth.youthId);
+    const { message } = req.body;
     db.run(`INSERT INTO small_group_chats (group_id, youth_id, message, created_at) VALUES (?, ?, ?, ?)`, [req.params.id, youth_id, message, getManilaTime()], function(err) {
         if(err) return res.status(500).json({ error: err.message });
         res.json({ success: true, id: this.lastID });
@@ -6393,8 +6558,9 @@ app.post('/api/small-groups/:id/chat', (req, res) => {
 });
 
 
-app.post('/api/small-groups/:id/join', (req, res) => {
-    const { youth_id } = req.body;
+app.post('/api/small-groups/:id/join', requireAuth, (req, res) => {
+    const youth_id = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youth_id) return sendForbidden(res);
     db.get(`SELECT privacy_level, points FROM small_groups WHERE id = ?`, [req.params.id], (err, grp) => {
         if(!grp) return res.status(404).json({error: "Group not found."});
         if(grp.privacy_level === 'Invite-Only') return res.status(403).json({error: "This group is invite-only."});
@@ -6409,7 +6575,7 @@ app.post('/api/small-groups/:id/join', (req, res) => {
     });
 });
 
-app.post('/api/small-groups/:id/members/:youth_id/status', requireResourceOwnerOrAllPermissions('smallGroup', ['delete_entries'], req => req.params.id), (req, res) => {
+app.post('/api/small-groups/:id/members/:youth_id/status', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'delete_entries'], req => req.params.id), (req, res) => {
     const { status } = req.body;
     if (status === 'Denied') {
         db.run(`DELETE FROM small_group_members WHERE group_id = ? AND youth_id = ?`, [req.params.id, req.params.youth_id], () => res.json({success:true}));
@@ -6418,7 +6584,7 @@ app.post('/api/small-groups/:id/members/:youth_id/status', requireResourceOwnerO
     }
 });
 
-app.post('/api/small-groups/:id/invite', (req, res) => {
+app.post('/api/small-groups/:id/invite', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'add_entries']), (req, res) => {
     db.run(`INSERT INTO small_group_members (group_id, youth_id, joined_at, status) VALUES (?, ?, ?, 'Approved')`, 
     [req.params.id, req.body.youth_id, getManilaTime()], function(err) {
         if(err) return res.status(400).json({error: "User is already in group."});
@@ -6426,7 +6592,7 @@ app.post('/api/small-groups/:id/invite', (req, res) => {
     });
 });
 
-app.get('/api/small-groups/:id/roster-status', (req, res) => {
+app.get('/api/small-groups/:id/roster-status', requireGroupAccess(), (req, res) => {
     db.all(`SELECT y.id, y.name, y.profile_picture, sgm.status,
             (SELECT MAX(created_at) FROM activity_logs WHERE username = y.qr_code) as last_active 
             FROM small_group_members sgm 
@@ -6523,25 +6689,34 @@ app.get('/api/liturgical/today', (req, res) => {
         });
     }).on("error", () => res.json({ season: "ordinary", colour: "green", daily_gospel: dailyGospel }));
 });
-app.get('/api/small-groups/:id/threads', (req, res) => {
+app.get('/api/small-groups/:id/threads', requireGroupAccess(), (req, res) => {
     db.all(`SELECT t.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture, (SELECT COUNT(*) FROM group_thread_replies WHERE thread_id = t.id) as reply_count FROM group_threads t LEFT JOIN youth y ON t.youth_id = y.id WHERE t.group_id = ? ORDER BY t.created_at DESC`, [req.params.id], (err, rows) => { res.json(rows || []); });
 });
-app.post('/api/small-groups/:id/threads', (req, res) => {
-    db.run(`INSERT INTO group_threads (group_id, youth_id, title, content, created_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.title, req.body.content, getManilaTime()], function(err) { res.json({success: true}); });
+app.post('/api/small-groups/:id/threads', requireGroupAccess(), (req, res) => {
+    db.run(`INSERT INTO group_threads (group_id, youth_id, title, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [req.params.id, req.auth.youthId, req.body.title, req.body.content, getManilaTime()],
+        function(err) { if (err) return res.status(500).json({ error: 'Unable to post thread.' }); res.json({success: true}); });
 });
-app.get('/api/small-groups/threads/:thread_id/replies', (req, res) => {
+app.get('/api/small-groups/threads/:thread_id/replies', requireGroupAccess(req =>
+    loadGroupIdForResource('thread', req.params.thread_id)), (req, res) => {
     db.all(`SELECT r.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_thread_replies r LEFT JOIN youth y ON r.youth_id = y.id WHERE r.thread_id = ? ORDER BY r.created_at ASC`, [req.params.thread_id], (err, rows) => { res.json(rows || []); });
 });
-app.post('/api/small-groups/threads/:thread_id/replies', (req, res) => {
-    db.run(`INSERT INTO group_thread_replies (thread_id, youth_id, reply_text, created_at) VALUES (?, ?, ?, ?)`, [req.params.thread_id, req.body.youth_id, req.body.reply_text, getManilaTime()], function(err) { res.json({success: true}); });
+app.post('/api/small-groups/threads/:thread_id/replies', requireGroupAccess(req =>
+    loadGroupIdForResource('thread', req.params.thread_id)), (req, res) => {
+    db.run(`INSERT INTO group_thread_replies (thread_id, youth_id, reply_text, created_at) VALUES (?, ?, ?, ?)`,
+        [req.params.thread_id, req.auth.youthId, req.body.reply_text, getManilaTime()],
+        function(err) { if (err) return res.status(500).json({ error: 'Unable to post reply.' }); res.json({success: true}); });
 });
-app.get('/api/small-groups/:id/memories', (req, res) => {
+app.get('/api/small-groups/:id/memories', requireGroupAccess(), (req, res) => {
     db.all(`SELECT m.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_memories m LEFT JOIN youth y ON m.youth_id = y.id WHERE m.group_id = ? ORDER BY m.created_at DESC LIMIT 50`, [req.params.id], (err, rows) => { res.json(rows || []); });
 });
-app.post('/api/small-groups/:id/memories', (req, res) => {
-    db.run(`INSERT INTO group_memories (group_id, youth_id, image_data, caption, created_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.image_data, req.body.caption, getManilaTime()], function(err) { res.json({success: true}); });
+app.post('/api/small-groups/:id/memories', requireGroupAccess(), (req, res) => {
+    db.run(`INSERT INTO group_memories (group_id, youth_id, image_data, caption, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [req.params.id, req.auth.youthId, req.body.image_data, req.body.caption, getManilaTime()],
+        function(err) { if (err) return res.status(500).json({ error: 'Unable to post memory.' }); res.json({success: true}); });
 });
-app.post('/api/small-groups/chat/:chat_id/react', (req, res) => {
+app.post('/api/small-groups/chat/:chat_id/react', requireGroupAccess(req =>
+    loadGroupIdForResource('chat', req.params.chat_id)), (req, res) => {
     db.get(`SELECT reactions FROM small_group_chats WHERE id = ?`, [req.params.chat_id], (err, row) => {
         if(!row) return res.json({success: false});
         let reactions = {}; try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
@@ -6551,8 +6726,13 @@ app.post('/api/small-groups/chat/:chat_id/react', (req, res) => {
 });
 
 
-app.post('/api/small-groups/react-v2', (req, res) => {
-    const { type, id, emoji, user_name } = req.body;
+app.post('/api/small-groups/react-v2', requireGroupAccess(req => {
+    const type = req.body && req.body.type;
+    return loadGroupIdForResource(type === 'chat' ? 'chat' : type === 'prayer' ? 'prayer' :
+        type === 'memory' ? 'memory' : '', req.body && req.body.id);
+}), (req, res) => {
+    const { type, id, emoji } = req.body;
+    const user_name = req.auth.member && req.auth.member.name;
     let table = '';
     if(type === 'chat') table = 'small_group_chats';
     else if(type === 'prayer') table = 'prayer_requests';

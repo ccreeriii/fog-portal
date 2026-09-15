@@ -21,6 +21,13 @@ const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 const growthJourney = fs.readFileSync(path.join(root, 'lib', 'growth-journey.js'), 'utf8');
 const appSource = fs.readFileSync(path.join(root, 'public', 'js', 'app.js'), 'utf8');
 
+test('Home Journey uses pastoral member wording without renaming canonical phases', () => {
+    assert.match(dashboardSource, /Your Journey Now: \$\{model\.current\.title\}/);
+    assert.doesNotMatch(dashboardSource, /Current Stage: \$\{model\.current\.title\}/);
+    assert.deepEqual(Dashboard.PHASES.map(phase => phase.title),
+        ['Encounter', 'Belong', 'Commit', 'Discern', 'Form', 'Serve', 'Be Sent']);
+});
+
 function routeBlock(marker, nextMarker) {
     const start = server.indexOf(marker);
     assert.notEqual(start, -1, `Missing route marker ${marker}`);
@@ -203,7 +210,7 @@ test('Home information architecture and final runtime module are ordered and foc
     const connected = index.indexOf('id="journeyConnectedCard"');
     assert.ok(prayer > 0 && prayer < growth && growth < events && events < connected);
 
-    const finalModule = index.indexOf('/js/journey-dashboard.js?v=4');
+    const finalModule = index.indexOf('/js/journey-dashboard.js?v=5');
     const historicalDashboard = index.indexOf('id="dashboardReorderEngine"');
     assert.ok(finalModule > historicalDashboard);
     assert.match(index, /id="headerNotificationBell"/);
@@ -225,11 +232,11 @@ test('Home information architecture and final runtime module are ordered and foc
 });
 
 test('mobile dashboard assets advance the explicit PWA cache coherently', () => {
-    assert.match(index, /\/css\/journey-dashboard\.css\?v=2/);
-    assert.match(index, /\/js\/journey-dashboard\.js\?v=4/);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v28'/);
-    assert.match(serviceWorker, /'\/css\/journey-dashboard\.css\?v=2'/);
-    assert.match(serviceWorker, /'\/js\/journey-dashboard\.js\?v=4'/);
+    assert.match(index, /\/css\/journey-dashboard\.css\?v=3/);
+    assert.match(index, /\/js\/journey-dashboard\.js\?v=5/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v30'/);
+    assert.match(serviceWorker, /'\/css\/journey-dashboard\.css\?v=3'/);
+    assert.match(serviceWorker, /'\/js\/journey-dashboard\.js\?v=5'/);
     assert.match(dashboardStyles, /env\(safe-area-inset-bottom\)/);
     assert.match(dashboardStyles, /#mainHeader[\s\S]*env\(safe-area-inset-top\)/);
     assert.match(dashboardStyles, /\.journey-home__welcome[\s\S]*position:\s*static/);

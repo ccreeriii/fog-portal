@@ -2802,3 +2802,546 @@ window.submitThreadReply = async function(e) {
         }
     } catch(err) { console.error(err); }
 };
+// ============================================================
+// CAMPFIRE STORED-XSS RELEASE HARDENING
+// Final late overrides for member-authored Campfire content.
+// Keep historical implementations intact; these definitions win at runtime.
+// ============================================================
+(() => {
+    'use strict';
+
+    const allowedReactions = new Set(['👍', '❤️', '😂', '🙏', '🔥']);
+    const threadViewData = new Map();
+
+    function escapeHTML(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[char]);
+    }
+
+    function safeId(value) {
+        const id = Number(value);
+        return Number.isSafeInteger(id) && id > 0 ? id : null;
+    }
+
+    function safeImageSrc(value) {
+        const src = String(value || '').trim();
+        if (!src) return '';
+
+        if (/^https?:\/\//i.test(src)) return src;
+        if (/^blob:/i.test(src)) return src;
+        if (/^\/(?!\/)/.test(src)) return src;
+        if (/^\.\.?\//.test(src)) return src;
+        if (/^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(src)) return src;
+
+        return '';
+    }
+
+    function safeDatePart(value) {
+        return escapeHTML(String(value || '').split(' ')[0] || '');
+    }
+
+    function safeTimePart(value) {
+        const parts = String(value || '').split(' ');
+        return escapeHTML(parts[1] || parts[0] || '');
+    }
+
+    function safeAvatarHtml(src, name, size = 24) {
+        const safeSrc = safeImageSrc(src);
+        if (safeSrc) {
+            return `<img src="${escapeHTML(safeSrc)}" alt="" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;">`;
+        }
+
+        const first = escapeHTML((String(name || 'M').trim().charAt(0) || 'M').toUpperCase());
+        return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:#CBD5E1;display:flex;align-items:center;justify-content:center;font-size:${Math.max(10, Math.round(size * 0.34))}px;color:#FFF;font-weight:bold;">${first}</div>`;
+    }
+
+    function renderMessageWithYoutube(value) {
+        let safe = escapeHTML(value);
+
+        const youtubeRegex =
+            /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{6,20})/g;
+
+        safe = safe.replace(youtubeRegex, (match, videoId) => {
+            const safeVideoId = encodeURIComponent(videoId);
+            return `<div style="margin-top:8px;border-radius:8px;overflow:hidden;position:relative;padding-bottom:56.25%;height:0;width:100%;min-width:200px;"><iframe src="https://www.youtube.com/embed/${safeVideoId}" title="YouTube video" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" loading="lazy" allowfullscreen></iframe></div>`;
+        });
+
+        return safe;
+    }
+
+    window.__campfireSecurity = Object.freeze({
+        escapeHTML,
+        safeImageSrc
+    });
+
+    // --------------------------------------------------------
+    // Safe Group Prayer renderer
+    // --------------------------------------------------------
+    window.loadGroupPrayers = async function loadGroupPrayersSafe() {
+        if (!window.currentDashboardGroupId) return;
+
+        const container = document.getElementById('dashPrayersList');
+        if (!container) return;
+
+        try {
+            const response = await fetch(
+                `/api/small-groups/${window.currentDashboardGroupId}/prayers`,
+                { headers: { Accept: 'application/json' } }
+            );
+
+            if (!response.ok) throw new Error('Unable to load group prayers');
+
+            const prayers = await response.json();
+
+            if (!Array.isArray(prayers) || prayers.length === 0) {
+                container.innerHTML =
+                    '<p style="text-align:center;color:var(--text-muted);font-size:0.9rem;margin-top:20px;">No prayers shared yet. Be the first!</p>';
+                return;
+            }
+
+            container.innerHTML = prayers.map(prayer => {
+                const id = safeId(prayer.id);
+                const author = prayer.is_anonymous
+                    ? 'Anonymous'
+                    : escapeHTML(prayer.author_name || 'Unknown');
+
+                const action = id
+                    ? `<button class="btn btn-outline btn-sm" onclick="intercedeGroupPrayer(${id})">🙏 I prayed for this</button>`
+                    : '';
+
+                return `
+                    <div style="background:#FFF;padding:15px;border-radius:8px;border:1px solid #E2E8F0;margin-bottom:12px;box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="margin-bottom:8px;">
+                            <strong style="color:#8B5CF6;font-size:1.05rem;">${escapeHTML(prayer.title || 'Prayer request')}</strong>
+                            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">Requested by ${author} • ${safeDatePart(prayer.created_at)}</div>
+                        </div>
+                        <p style="font-size:0.9rem;color:var(--text-main);white-space:pre-wrap;margin-bottom:12px;">${escapeHTML(prayer.request || '')}</p>
+                        <div style="display:flex;justify-content:flex-end;">${action}</div>
+                    </div>`;
+            }).join('');
+        } catch (error) {
+            console.error('Failed to load group prayers', error);
+            container.innerHTML =
+                '<p style="text-align:center;color:var(--danger);">Unable to load group prayers.</p>';
+        }
+    };
+
+    // --------------------------------------------------------
+    // Safe Campfire chat renderer.
+    // Member text is escaped BEFORE trusted YouTube markup is added.
+    // --------------------------------------------------------
+    window.loadGroupChat = async function loadGroupChatSafe() {
+        if (!window.currentDashboardGroupId) return;
+
+        const container = document.getElementById('groupChatMessages');
+        if (!container) return;
+
+        try {
+            const response = await fetch(
+                `/api/small-groups/${window.currentDashboardGroupId}/chat?last_id=0`,
+                { headers: { Accept: 'application/json' } }
+            );
+
+            if (!response.ok) throw new Error('Unable to load Campfire chat');
+
+            const messages = await response.json();
+
+            if (!Array.isArray(messages) || messages.length === 0) {
+                container.innerHTML =
+                    '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;margin-top:20px;">Welcome to your group\'s private campfire. 🔥</p>';
+                return;
+            }
+
+            window.chatReactionsMap = window.chatReactionsMap || {};
+
+            container.innerHTML = messages.map(message => {
+                const id = safeId(message.id);
+                if (!id) return '';
+
+                const rawName = String(message.name || 'Member');
+                const displayName = escapeHTML(rawName);
+                const isMe =
+                    typeof currentMember !== 'undefined' &&
+                    currentMember &&
+                    rawName === String(currentMember.name || '');
+
+                const align = isMe ? 'flex-end' : 'flex-start';
+                const bg = isMe ? 'var(--primary)' : '#E2E8F0';
+                const color = isMe ? '#FFF' : 'var(--text-main)';
+                const borderR = isMe
+                    ? '12px 12px 2px 12px'
+                    : '12px 12px 12px 2px';
+
+                const avatar = safeAvatarHtml(
+                    message.profile_picture,
+                    rawName,
+                    24
+                );
+
+                const parsedMessage =
+                    renderMessageWithYoutube(message.message || '');
+
+                let reactionsHtml = '';
+
+                try {
+                    const reactions = JSON.parse(message.reactions || '{}');
+                    window.chatReactionsMap[id] = reactions;
+
+                    let total = 0;
+                    const summary = [];
+
+                    for (const emoji of Object.keys(reactions)) {
+                        if (!allowedReactions.has(emoji)) continue;
+
+                        const rawCount = reactions[emoji];
+                        const count = Array.isArray(rawCount)
+                            ? rawCount.length
+                            : Math.max(0, Number(rawCount) || 0);
+
+                        if (count > 0) {
+                            total += count;
+                            summary.push(emoji);
+                        }
+                    }
+
+                    if (total > 0) {
+                        reactionsHtml = `
+                            <div onclick="showReactionList(${id}, 'chat')" style="display:flex;cursor:pointer;align-items:center;gap:4px;background:#FFF;border:1px solid var(--border-color);border-radius:12px;padding:2px 6px;font-size:0.75rem;position:absolute;bottom:-12px;${isMe ? 'right:10px;' : 'left:10px;'}box-shadow:0 2px 4px rgba(0,0,0,0.05);color:var(--text-main);z-index:10;">
+                                ${summary.slice(0, 3).join('')}
+                                <span style="color:var(--text-muted);font-weight:bold;margin-left:2px;">${total}</span>
+                            </div>`;
+                    }
+                } catch (_) {
+                    window.chatReactionsMap[id] = {};
+                }
+
+                return `
+                    <div style="display:flex;flex-direction:column;align-items:${align};margin-bottom:18px;position:relative;">
+                        ${!isMe
+                            ? `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;font-size:0.75rem;color:var(--text-muted);">${avatar} ${displayName}</div>`
+                            : ''}
+                        <div style="display:flex;align-items:center;flex-direction:${isMe ? 'row-reverse' : 'row'};gap:5px;width:100%;justify-content:flex-start;">
+                            <div style="background:${bg};color:${color};padding:10px 14px;border-radius:${borderR};max-width:85%;font-size:0.95rem;line-height:1.4;position:relative;word-wrap:break-word;white-space:pre-wrap;">
+                                ${parsedMessage}
+                                ${reactionsHtml}
+                            </div>
+                            <div style="position:relative;">
+                                <span style="cursor:pointer;opacity:0.5;font-size:0.9rem;margin:0 5px;" onclick="toggleReactionPicker('chat_${id}')" title="React">😀</span>
+                                <div id="reactPicker_chat_${id}" style="display:none;position:absolute;bottom:100%;${isMe ? 'right:0;' : 'left:0;'}background:#FFF;border:1px solid var(--border-color);border-radius:20px;padding:6px 12px;box-shadow:0 4px 15px rgba(0,0,0,0.15);z-index:100;gap:10px;white-space:nowrap;margin-bottom:5px;">
+                                    <span style="cursor:pointer;font-size:1.3rem;" onclick="submitChatReaction(${id}, '👍')">👍</span>
+                                    <span style="cursor:pointer;font-size:1.3rem;" onclick="submitChatReaction(${id}, '❤️')">❤️</span>
+                                    <span style="cursor:pointer;font-size:1.3rem;" onclick="submitChatReaction(${id}, '😂')">😂</span>
+                                    <span style="cursor:pointer;font-size:1.3rem;" onclick="submitChatReaction(${id}, '🙏')">🙏</span>
+                                    <span style="cursor:pointer;font-size:1.3rem;" onclick="submitChatReaction(${id}, '🔥')">🔥</span>
+                                </div>
+                            </div>
+                        </div>
+                        <small style="font-size:0.65rem;color:var(--text-muted);margin-top:4px;">${safeTimePart(message.created_at)}</small>
+                    </div>`;
+            }).join('');
+
+            container.scrollTop = container.scrollHeight;
+        } catch (error) {
+            console.error('Failed to load Campfire chat', error);
+            container.innerHTML =
+                '<p style="text-align:center;color:var(--danger);">Unable to load Campfire chat.</p>';
+        }
+    };
+
+    // --------------------------------------------------------
+    // Safe Group Members renderer
+    // --------------------------------------------------------
+    window.loadGroupMembers = async function loadGroupMembersSafe() {
+        if (!window.currentDashboardGroupId) return;
+
+        let tab = document.getElementById('dashTabMembers');
+        let container = document.getElementById('dashMembersList');
+
+        if (tab && !container) {
+            tab.innerHTML =
+                '<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:15px;font-weight:bold;">🟢 Online Today | ⚪ Offline</p><div id="dashMembersList"></div>';
+            container = document.getElementById('dashMembersList');
+        }
+
+        if (!container) return;
+
+        container.innerHTML =
+            '<p style="text-align:center;color:var(--text-muted);">Loading members...</p>';
+
+        try {
+            const response = await fetch(
+                `/api/small-groups/${window.currentDashboardGroupId}/roster-status`,
+                { headers: { Accept: 'application/json' } }
+            );
+
+            if (!response.ok) throw new Error('Unable to load members');
+
+            const members = await response.json();
+
+            if (!Array.isArray(members) || members.length === 0) {
+                container.innerHTML =
+                    '<p style="text-align:center;color:var(--text-muted);">No members found.</p>';
+                return;
+            }
+
+            const today = new Date().toLocaleDateString(
+                'en-US',
+                { timeZone: 'Asia/Manila' }
+            );
+
+            container.innerHTML = members.map(member => {
+                const name = String(member.name || 'Member');
+                const safeName = escapeHTML(name);
+                const avatar = safeAvatarHtml(
+                    member.profile_picture,
+                    name,
+                    36
+                );
+
+                let isOnline = false;
+                if (member.last_active) {
+                    const active = new Date(member.last_active);
+                    if (!Number.isNaN(active.getTime())) {
+                        isOnline =
+                            active.toLocaleDateString(
+                                'en-US',
+                                { timeZone: 'Asia/Manila' }
+                            ) === today;
+                    }
+                }
+
+                const pending = member.status === 'Pending'
+                    ? '<span style="font-size:0.7rem;background:#FEF3C7;color:#D97706;padding:4px 8px;border-radius:6px;font-weight:bold;margin-left:6px;">Pending</span>'
+                    : '';
+
+                return `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 15px;border-bottom:1px solid var(--border-color);background:#FFF;border-radius:10px;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="display:flex;gap:12px;align-items:center;">
+                            ${avatar}
+                            <div>
+                                <strong style="color:var(--text-main);font-size:0.95rem;">${safeName}</strong>
+                                ${pending}
+                                <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">
+                                    ${isOnline ? '🟢 Online Today' : '⚪ Offline'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('');
+        } catch (error) {
+            console.error('Failed to load members', error);
+            container.innerHTML =
+                '<p style="text-align:center;color:var(--danger);">Failed to load members.</p>';
+        }
+    };
+
+    // --------------------------------------------------------
+    // Safe Deep Dive list. Never put member-authored strings
+    // into an inline event-handler attribute.
+    // --------------------------------------------------------
+    window.loadGroupThreads = async function loadGroupThreadsSafe() {
+        if (!window.currentDashboardGroupId) return;
+
+        let tab = document.getElementById('dashTabDeepDive');
+        let container = document.getElementById('dashThreadsList');
+        let createSection = document.getElementById('dashCreateThreadSection');
+
+        if (tab && (!container || !createSection)) {
+            tab.innerHTML = `
+                <div id="dashCreateThreadSection" style="background:#FFF;padding:20px;border-radius:12px;border:1px solid var(--border-color);margin-bottom:20px;box-shadow:0 4px 10px rgba(0,0,0,0.03);">
+                    <h3 style="margin-top:0;color:var(--primary);font-size:1.15rem;margin-bottom:12px;border:none;padding:0;">Create New Topic</h3>
+                    <input type="text" id="threadTitle" class="form-control" placeholder="Discussion Title" style="margin-bottom:12px;">
+                    <textarea id="threadContent" class="form-control" rows="3" placeholder="What's on your mind?"></textarea>
+                    <button class="btn btn-primary" style="width:100%;margin-top:12px;font-weight:bold;border-radius:8px;" onclick="window.submitGroupThread(event)">Post Topic</button>
+                </div>
+                <div id="dashThreadsList"></div>`;
+
+            container = document.getElementById('dashThreadsList');
+        }
+
+        if (!container) return;
+
+        container.innerHTML =
+            '<p style="text-align:center;color:var(--text-muted);">Loading topics...</p>';
+
+        try {
+            const response = await fetch(
+                `/api/small-groups/${window.currentDashboardGroupId}/threads`,
+                { headers: { Accept: 'application/json' } }
+            );
+
+            if (!response.ok) throw new Error('Unable to load discussions');
+
+            const threads = await response.json();
+            threadViewData.clear();
+
+            if (!Array.isArray(threads) || threads.length === 0) {
+                container.innerHTML =
+                    '<div style="text-align:center;padding:30px;background:#F8FAFC;border-radius:12px;border:1px dashed #CBD5E1;"><span style="font-size:2rem;">📖</span><p style="color:var(--text-muted);font-size:0.95rem;margin-top:10px;">No discussions started yet. Be the first to spark a deep dive!</p></div>';
+                return;
+            }
+
+            container.innerHTML = threads.map(thread => {
+                const id = safeId(thread.id);
+                if (!id) return '';
+
+                threadViewData.set(id, {
+                    id,
+                    title: String(thread.title || ''),
+                    content: String(thread.content || ''),
+                    author: String(thread.author_name || 'Member'),
+                    date: String(thread.created_at || ''),
+                    avatar: String(thread.profile_picture || '')
+                });
+
+                const replyCount =
+                    Math.max(0, Number(thread.reply_count) || 0);
+
+                return `
+                    <div role="button" tabindex="0"
+                         style="background:#FFF;padding:15px;border-radius:12px;border:1px solid var(--border-color);margin-bottom:12px;cursor:pointer;box-shadow:0 4px 6px rgba(0,0,0,0.02);"
+                         onclick="openThreadViewById(${id})"
+                         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openThreadViewById(${id});}">
+                        <h3 style="color:var(--primary);font-size:1.1rem;margin:0 0 6px 0;border:none;padding:0;">${escapeHTML(thread.title || 'Discussion')}</h3>
+                        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px 0;">Started by ${escapeHTML(thread.author_name || 'Member')} • ${safeDatePart(thread.created_at)}</p>
+                        <div style="display:flex;justify-content:flex-end;">
+                            <span style="font-size:0.8rem;background:rgba(255,107,0,0.1);color:var(--primary);padding:4px 10px;border-radius:12px;font-weight:bold;">💬 ${replyCount} Replies</span>
+                        </div>
+                    </div>`;
+            }).join('');
+        } catch (error) {
+            console.error('Failed to load discussions', error);
+            container.innerHTML =
+                '<p style="text-align:center;color:var(--danger);">Failed to load discussions.</p>';
+        }
+    };
+
+    window.openThreadViewById = function openThreadViewById(id) {
+        const safeThreadId = safeId(id);
+        const thread = safeThreadId
+            ? threadViewData.get(safeThreadId)
+            : null;
+
+        if (!thread) return;
+
+        return window.openThreadView(
+            thread.id,
+            thread.title,
+            thread.content,
+            thread.author,
+            thread.date,
+            thread.avatar
+        );
+    };
+
+    // --------------------------------------------------------
+    // Safe thread viewer / reply renderer
+    // --------------------------------------------------------
+    window.openThreadView = async function openThreadViewSafe(
+        threadId,
+        title,
+        content,
+        author,
+        date,
+        avatar
+    ) {
+        const safeThreadId = safeId(threadId);
+        if (!safeThreadId) return;
+
+        const modal = document.getElementById('groupThreadModal');
+        if (!modal) return;
+
+        const titleNode = document.getElementById('viewThreadTitle');
+        const authorNode = document.getElementById('viewThreadAuthor');
+        const dateNode = document.getElementById('viewThreadDate');
+        const contentNode = document.getElementById('viewThreadContent');
+        const replyId = document.getElementById('replyThreadId');
+        const avatarNode = document.getElementById('viewThreadAvatar');
+
+        if (titleNode) titleNode.textContent = String(title || '');
+        if (authorNode) authorNode.textContent = String(author || 'Member');
+        if (dateNode) dateNode.textContent = String(date || '');
+        if (contentNode) contentNode.textContent = String(content || '');
+        if (replyId) replyId.value = safeThreadId;
+
+        if (avatarNode) {
+            avatarNode.replaceChildren();
+
+            const safeSrc = safeImageSrc(avatar);
+
+            if (safeSrc) {
+                const image = document.createElement('img');
+                image.src = safeSrc;
+                image.alt = '';
+                image.style.width = '100%';
+                image.style.height = '100%';
+                image.style.borderRadius = '50%';
+                image.style.objectFit = 'cover';
+                avatarNode.appendChild(image);
+            } else {
+                avatarNode.textContent =
+                    (String(author || 'M').trim().charAt(0) || 'M').toUpperCase();
+            }
+        }
+
+        const dashboard = document.getElementById('groupDashboardModal');
+        if (dashboard) dashboard.style.display = 'none';
+
+        modal.style.display = 'block';
+
+        const repliesContainer =
+            document.getElementById('threadRepliesList');
+
+        if (!repliesContainer) return;
+
+        repliesContainer.innerHTML =
+            '<p style="text-align:center;color:var(--text-muted);">Loading replies...</p>';
+
+        try {
+            const response = await fetch(
+                `/api/small-groups/threads/${safeThreadId}/replies`,
+                { headers: { Accept: 'application/json' } }
+            );
+
+            if (!response.ok) throw new Error('Unable to load replies');
+
+            const replies = await response.json();
+
+            if (!Array.isArray(replies) || replies.length === 0) {
+                repliesContainer.innerHTML =
+                    '<p style="text-align:center;color:var(--text-muted);font-size:0.9rem;">Be the first to reply!</p>';
+                return;
+            }
+
+            repliesContainer.innerHTML = replies.map(reply => {
+                const authorName =
+                    String(reply.author_name || 'Member');
+
+                const avatarHtml = safeAvatarHtml(
+                    reply.profile_picture,
+                    authorName,
+                    28
+                );
+
+                return `
+                    <div style="background:#F8FAFC;padding:15px;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:10px;">
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+                            ${avatarHtml}
+                            <strong style="font-size:0.9rem;color:var(--text-main);">${escapeHTML(authorName)}</strong>
+                            <span style="font-size:0.75rem;color:var(--text-muted);">${safeDatePart(reply.created_at)}</span>
+                        </div>
+                        <p style="font-size:0.95rem;color:var(--text-main);margin:0;line-height:1.5;white-space:pre-wrap;">${escapeHTML(reply.reply_text || '')}</p>
+                    </div>`;
+            }).join('');
+        } catch (error) {
+            console.error('Failed to load replies', error);
+            repliesContainer.innerHTML =
+                '<p style="text-align:center;color:var(--danger);">Unable to load replies.</p>';
+        }
+    };
+})();

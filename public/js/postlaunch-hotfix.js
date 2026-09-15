@@ -17,7 +17,8 @@
         attendancePage: 1,
         activityPage: 1,
         logLoads: Object.create(null),
-        logGeneration: 0
+        logGeneration: 0,
+        bellRefresh: null
     };
 
     function byId(id) {
@@ -61,10 +62,12 @@
     function refreshHeaderProfile(memberOverride) {
         const button = byId('headerProfileAvatar');
         if (!button) return;
+        const bell = byId('headerNotificationBell');
         const authenticated = root.koinoniaAuthStatus === 'authenticated' && !root.isGuestMode &&
             !(document.body && document.body.classList.contains('koinonia-offline-readonly'));
         if (document.body) document.body.classList.toggle('koinonia-authenticated-header', authenticated);
         button.hidden = !authenticated;
+        if (bell) bell.style.display = authenticated ? 'grid' : 'none';
         if (!authenticated) return;
         const canonical = root.currentMember && typeof root.currentMember === 'object'
             ? root.currentMember
@@ -118,6 +121,33 @@
         }
     });
 
+    const previousRefreshNotificationBell = root.refreshNotificationBell;
+    if (typeof previousRefreshNotificationBell === 'function') {
+        root.refreshNotificationBell = function refreshBellOncePerTransition(...args) {
+            const memberId = normalizeId(root.currentMember && root.currentMember.id);
+            const recent = state.bellRefresh;
+            if (recent && recent.memberId === memberId &&
+                (recent.pending || Date.now() - recent.startedAt < 500)) return recent.promise;
+            const entry = { memberId, startedAt: Date.now(), pending: true };
+            entry.promise = Promise.resolve()
+                .then(() => previousRefreshNotificationBell.apply(this, args))
+                .then(result => {
+                    if (root.koinoniaAuthStatus === 'authenticated' && !root.isGuestMode &&
+                        !(document.body && document.body.classList.contains('koinonia-offline-readonly'))) {
+                        const bell = byId('headerNotificationBell');
+                        if (bell) bell.style.display = 'grid';
+                    }
+                    return result;
+                });
+            state.bellRefresh = entry;
+            entry.promise.then(
+                () => { entry.pending = false; },
+                () => { entry.pending = false; }
+            );
+            return entry.promise;
+        };
+    }
+
     const previousPersistIdentity = root.persistAuthenticatedIdentity;
     if (typeof previousPersistIdentity === 'function') {
         root.persistAuthenticatedIdentity = function persistIdentityWithHeader(...args) {
@@ -125,6 +155,12 @@
             const result = previousPersistIdentity.apply(this, args);
             if (previousId !== normalizeId(root.currentMember && root.currentMember.id)) invalidateLogIdentity();
             refreshHeaderProfile();
+            if (previousId !== normalizeId(root.currentMember && root.currentMember.id) &&
+                root.koinoniaAuthStatus === 'authenticated' && !root.isGuestMode &&
+                !(document.body && document.body.classList.contains('koinonia-offline-readonly')) &&
+                typeof root.refreshNotificationBell === 'function') {
+                void root.refreshNotificationBell().catch(() => null);
+            }
             return result;
         };
     }
@@ -133,6 +169,7 @@
         root.clearAuthenticatedClientState = function clearIdentityWithHeader(...args) {
             const result = previousClearIdentity.apply(this, args);
             invalidateLogIdentity();
+            state.bellRefresh = null;
             refreshHeaderProfile();
             return result;
         };
@@ -142,6 +179,7 @@
         root.enterOfflineReadonlyIdentity = function offlineIdentityWithoutHeaderAvatar(...args) {
             const result = previousOfflineIdentity.apply(this, args);
             invalidateLogIdentity();
+            state.bellRefresh = null;
             refreshHeaderProfile();
             return result;
         };
@@ -858,7 +896,7 @@
     root.filterActivityLogs = function filterActivityLogs() {
         const query = String(byId('activitySearchInput')?.value || '').trim().toLowerCase();
         state.filteredActivityLogs = state.activityLogs.filter(item =>
-            (`${item.username || ''} ${item.action || ''} ${item.details || ''}`).toLowerCase().includes(query)
+            (`${item.actor_display_name || item.username || ''} ${item.actor_identifier || ''} ${item.action || ''} ${item.details || ''}`).toLowerCase().includes(query)
         );
         state.activityPage = 1;
         renderActivityPage();
@@ -866,7 +904,7 @@
 
     function renderActivityPage() {
         renderPagedLogTable('activity', byId('activityLogsContainer'), [
-            { label: 'Actor', value: item => item.username || 'System' },
+            { label: 'Actor', value: item => item.actor_display_name || item.username || 'System' },
             { label: 'Action', value: item => item.action || '' },
             { label: 'Details', value: item => item.details || '' },
             { label: 'Timestamp', value: item => item.created_at || 'Timestamp unavailable' }
@@ -880,6 +918,11 @@
     refreshHeaderProfile();
     Promise.resolve(root.authReady).catch(() => null).finally(() => {
         refreshHeaderProfile();
+        if (root.koinoniaAuthStatus === 'authenticated' && !root.isGuestMode &&
+            !(document.body && document.body.classList.contains('koinonia-offline-readonly')) &&
+            typeof root.refreshNotificationBell === 'function') {
+            void root.refreshNotificationBell().catch(() => null);
+        }
         const eventId = normalizeId(new URL(root.location.href).searchParams.get('event'));
         if (eventId && state.preregEventId !== eventId) {
             root.launchPublicPrereg(eventId, { updateHistory: false });

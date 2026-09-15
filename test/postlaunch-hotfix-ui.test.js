@@ -134,9 +134,9 @@ function createHarness(fetchImplementation = async () => response([]), options =
     const root = {
         document,
         fetch: fetchImplementation,
-        authReady: Promise.resolve(),
-        isGuestMode: false,
-        koinoniaAuthStatus: 'unauthenticated',
+        authReady: options.authReady || Promise.resolve(),
+        isGuestMode: options.isGuestMode || false,
+        koinoniaAuthStatus: options.initialAuth ? 'authenticated' : 'unauthenticated',
         location: { href: 'http://isolated.test/', origin: 'http://isolated.test', pathname: '/', search: '', hash: '' },
         history: { pushState: (...args) => history.push(args) },
         addEventListener(type, listener, capture = false) {
@@ -163,9 +163,11 @@ function createHarness(fetchImplementation = async () => response([]), options =
             elements.editEventModal.classList.add('active');
         },
         closeEditEventModal: () => elements.editEventModal.classList.remove('active'),
-        currentMember: null,
-        currentUser: null,
+        currentMember: options.initialAuth ? options.initialAuth.member : null,
+        currentUser: options.initialAuth ? options.initialAuth.username : null,
         hasPerm: () => false,
+        bellRefreshCalls: 0,
+        refreshNotificationBell() { root.bellRefreshCalls += 1; return Promise.resolve(0); },
         persistAuthenticatedIdentity(identity) {
             root.currentMember = identity.member;
             root.currentUser = identity.username;
@@ -264,13 +266,48 @@ test('authenticated header avatar uses a safe profile identity and opens profile
     assert.equal(document.body.classList.contains('koinonia-authenticated-header'), false);
 });
 
+test('notification bell appears on login beside the avatar and lifecycle refresh is idempotent', async () => {
+    for (const account of [
+        { username: 'MEMBER-LOGIN', member: { id: 1, name: 'Member One' } },
+        { username: 'ADMIN-LOGIN', member: { id: 2, name: 'Leader Two' } }
+    ]) {
+        const { root, elements } = createHarness();
+        root.koinoniaAuthStatus = 'authenticated';
+        root.persistAuthenticatedIdentity(account);
+        assert.equal(elements.headerNotificationBell.style.display, 'grid');
+        assert.equal(elements.headerProfileAvatar.hidden, false);
+        await new Promise(resolve => setImmediate(resolve));
+        await root.refreshNotificationBell();
+        await root.refreshNotificationBell();
+        assert.equal(root.bellRefreshCalls, 1);
+    }
+    const restored = createHarness(undefined, {
+        initialAuth: { username: 'RESTORED', member: { id: 3, name: 'Restored Member' } }
+    });
+    assert.equal(restored.elements.headerNotificationBell.style.display, 'grid');
+    assert.equal(restored.elements.headerProfileAvatar.hidden, false);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(restored.root.bellRefreshCalls, 1);
+    const guest = createHarness(undefined, { isGuestMode: true });
+    assert.equal(guest.elements.headerNotificationBell.style.display, 'none');
+    assert.equal(guest.elements.headerProfileAvatar.hidden, true);
+    assert.equal(guest.root.bellRefreshCalls, 0);
+    const offline = createHarness();
+    offline.document.body.classList.add('koinonia-offline-readonly');
+    offline.root.koinoniaAuthStatus = 'authenticated';
+    offline.root.persistAuthenticatedIdentity({ username: 'OFFLINE', member: { id: 4, name: 'Offline Member' } });
+    assert.equal(offline.elements.headerNotificationBell.style.display, 'none');
+    assert.equal(offline.elements.headerProfileAvatar.hidden, true);
+});
+
 test('late canonical tab activation loads each authorized log once despite legacy duplicate hooks', async () => {
     const calls = [];
     const fixtures = {
         '/api/admin/community-intents-v2': [],
         '/api/admin/ministry-logs-v36': [],
         '/api/attendance/logs': [{ id: 1, member_name: 'Ada', event_name: 'Gathering', checked_in_at: '2026-09-15 10:00:00', is_walkin: 1 }],
-        '/api/activity-logs': [{ id: 1, username: 'Ada', action: 'LOGIN', details: 'Signed in', created_at: '2026-09-15 11:00:00' }]
+        '/api/activity-logs': [{ id: 1, username: 'FOG-MEMBER-102', actor_identifier: 'FOG-MEMBER-102',
+            actor_display_name: 'Ada Full Name', action: 'LOGIN', details: 'Signed in', created_at: '2026-09-15 11:00:00' }]
     };
     const { root, elements } = createHarness(async url => {
         calls.push(url);
@@ -294,6 +331,7 @@ test('late canonical tab activation loads each authorized log once despite legac
     await root.switchTab('activityLogsTab');
     assert.equal(elements.activityLogsContainer.children[0].tagName, 'TABLE');
     assert.equal(elements.activityLogsContainer.children[0].children[1].children.length, 1);
+    assert.equal(elements.activityLogsContainer.children[0].children[1].children[0].children[0].textContent, 'Ada Full Name');
     for (const url of Object.keys(fixtures)) {
         assert.equal(calls.filter(call => call === url).length, 1, `${url} loads once`);
     }
@@ -357,7 +395,7 @@ test('pre-registration renders immediately and ignores a stale event response', 
 test('shell retires legacy Paths UI, keeps canonical Journey and preserves Notification Center', () => {
     assert.doesNotMatch(index, /id="growthSubMilestones"|id="pathwaysListContainer"|id="btnSubAdminPathways"|id="subTabAdminPathways"|id="nextStepContainer"/);
     assert.match(index, /id="journeyGrowthCard"/);
-    assert.match(journeySource, /Current Stage: \$\{model\.current\.title\}/);
+    assert.match(journeySource, /Your Journey Now: \$\{model\.current\.title\}/);
     assert.match(index, /id="headerNotificationBell"/);
     assert.match(source, /subTabName === 'Milestones' \? 'Home'/);
     assert.match(source, /V2Discipleship\.updateMilestone = \(\) => false/);
@@ -367,15 +405,18 @@ test('shell retires legacy Paths UI, keeps canonical Journey and preserves Notif
 test('post-launch asset and dependent revisions are cached coherently and load last', () => {
     const app = index.indexOf('/js/app.js?v=13.3');
     const mapping = index.indexOf('/js/growth-event-mapping-ui.js?v=3');
-    const journey = index.indexOf('/js/journey-dashboard.js?v=4');
-    const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=3');
-    assert.ok(app < mapping && mapping < journey && journey < hotfix);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v28'/);
+    const journey = index.indexOf('/js/journey-dashboard.js?v=5');
+    const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=4');
+    const community = index.indexOf('/js/community-feature-polish.js?v=1');
+    assert.ok(app < mapping && mapping < journey && journey < hotfix && hotfix < community);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v30'/);
     for (const asset of [
         '/js/app.js?v=13.3',
         '/js/growth-event-mapping-ui.js?v=3',
-        '/js/journey-dashboard.js?v=4',
-        '/js/postlaunch-hotfix.js?v=3'
+        '/js/journey-dashboard.js?v=5',
+        '/js/postlaunch-hotfix.js?v=4',
+        '/js/community-feature-polish.js?v=1',
+        '/css/community-features.css?v=1'
     ]) assert.ok(serviceWorker.includes(`'${asset}'`));
     assert.doesNotMatch(mappingSource, /2147483647|appendChild\(modal\)/);
 });
