@@ -147,6 +147,17 @@
         .log-card small { color:var(--text-muted); }
         .log-card p { margin:4px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }
         .log-pagination { display:flex; align-items:center; justify-content:center; gap:12px; margin-top:14px; }
+        body.koinonia-authenticated-header #hamburgerBtn { display:none !important; }
+        #headerProfileAvatar[hidden] { display:none !important; }
+        #headerProfileAvatar {
+            display:grid; place-items:center; width:44px; height:44px; min-width:44px;
+            padding:4px; border:0; border-radius:50%; background:transparent; cursor:pointer;
+        }
+        #headerProfileAvatar .header-profile-avatar-face {
+            display:grid; place-items:center; width:36px; height:36px; border-radius:50%;
+            overflow:hidden; background:var(--primary); color:#fff; font-weight:800;
+        }
+        #headerProfileAvatar .header-profile-avatar-face img { width:100%; height:100%; object-fit:cover; }
     </style>
     <style>
         body.koinonia-offline-readonly .tab-content:not(#pulseDashboardTab):not(#profileTab),
@@ -315,6 +326,9 @@
                       style="display:none;position:absolute;top:1px;right:0;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#DC2626;color:#FFF;font-size:0.68rem;font-weight:800;line-height:18px;text-align:center;border:2px solid #FFF;">0</span>
             </button>
             <button id="hamburgerBtn" class="hamburger-btn" onclick="openSidebar()" aria-label="Open navigation menu" title="Menu" style="display: none;min-width:44px;min-height:44px;">☰</button>
+            <button id="headerProfileAvatar" type="button" aria-label="My Profile" title="My Profile" hidden>
+                <span class="header-profile-avatar-face" aria-hidden="true">U</span>
+            </button>
         </div>
     </div>
 </header>
@@ -3339,6 +3353,6 @@
         };
     </script>
     <script src="/js/journey-dashboard.js?v=4"></script>
-    <script src="/js/postlaunch-hotfix.js?v=2"></script>
+    <script src="/js/postlaunch-hotfix.js?v=3"></script>
 </body>
 </html>

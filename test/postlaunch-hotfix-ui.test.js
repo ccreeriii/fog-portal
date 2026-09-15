@@ -43,17 +43,34 @@ class FakeElement {
     }
 
     append(...nodes) {
-        this.children.push(...nodes);
+        for (const node of nodes) {
+            node.parentElement = this;
+            this.children.push(node);
+        }
     }
 
     appendChild(node) {
+        node.parentElement = this;
         this.children.push(node);
         return node;
     }
 
     replaceChildren(...nodes) {
         this.children = [...nodes];
+        nodes.forEach(node => { node.parentElement = this; });
         this.textContent = '';
+    }
+
+    querySelector(selector) {
+        if (!selector.startsWith('.')) return null;
+        const className = selector.slice(1);
+        return this.children.find(child => child.classList.contains(className)) || null;
+    }
+
+    remove() {
+        if (this.parentElement) {
+            this.parentElement.children = this.parentElement.children.filter(child => child !== this);
+        }
     }
 
     addEventListener(type, listener) {
@@ -79,13 +96,23 @@ function response(json, status = 200) {
     return { ok: status >= 200 && status < 300, status, json: async () => json };
 }
 
-function createHarness(fetchImplementation = async () => response([])) {
+function createHarness(fetchImplementation = async () => response([]), options = {}) {
     const ids = [
         'bottomNav', 'eventAnalyticsModal', 'editEventModal', 'growthEventMappingModal',
         'mainContainer', 'membershipAdminTab', 'mainHeader', 'preregPublicTitle', 'preregPublicInfo',
-        'preregPublicBottomBanner'
+        'preregPublicBottomBanner', 'headerProfileAvatar', 'headerNotificationBell', 'hamburgerBtn',
+        'profileTab', 'attendanceTab', 'activityLogsTab', 'attendanceLogsContainer',
+        'activityLogsContainer', 'communityIntentsList', 'ministryIntentsLogList',
+        'subTabMemCommunity', 'subTabMemMinistry', 'btnSubMemCommunity', 'btnSubMemMinistry',
+        'commFilterName', 'commFilterStart', 'commFilterEnd',
+        'minLogFilterName', 'minLogFilterStart', 'minLogFilterEnd',
+        'attendanceSearchInput', 'activitySearchInput'
     ];
     const elements = Object.fromEntries(ids.map(id => [id, new FakeElement('div', id)]));
+    const face = new FakeElement('span');
+    face.className = 'header-profile-avatar-face';
+    elements.headerProfileAvatar.appendChild(face);
+    elements.headerProfileAvatar.hidden = true;
     for (const id of ['eventAnalyticsModal', 'editEventModal', 'growthEventMappingModal']) {
         elements[id].classList.add('modal');
     }
@@ -110,13 +137,19 @@ function createHarness(fetchImplementation = async () => response([])) {
         authReady: Promise.resolve(),
         isGuestMode: false,
         koinoniaAuthStatus: 'unauthenticated',
-        location: { href: 'http://isolated.test/', pathname: '/', search: '', hash: '' },
+        location: { href: 'http://isolated.test/', origin: 'http://isolated.test', pathname: '/', search: '', hash: '' },
         history: { pushState: (...args) => history.push(args) },
         addEventListener(type, listener, capture = false) {
             (listeners[type] ||= []).push({ listener, capture });
         },
         renderBottomNav() {},
-        switchTab: async (tab, subTab) => { navigation.push([tab, subTab]); },
+        switchTab: async (tab, subTab) => {
+            navigation.push([tab, subTab]);
+            if (elements[tab]) elements[tab].classList.add('active');
+            if (options.legacyLoadOnSwitch && typeof root[options.legacyLoadOnSwitch[tab]] === 'function') {
+                root[options.legacyLoadOnSwitch[tab]]();
+            }
+        },
         switchGrowthSubTab() {},
         openSidebar() { navigation.push(['menu']); },
         showPreregStep(step) { navigation.push(['prereg-step', step]); },
@@ -129,7 +162,21 @@ function createHarness(fetchImplementation = async () => response([])) {
             elements.editEventModal.style.display = 'none';
             elements.editEventModal.classList.add('active');
         },
-        closeEditEventModal: () => elements.editEventModal.classList.remove('active')
+        closeEditEventModal: () => elements.editEventModal.classList.remove('active'),
+        currentMember: null,
+        currentUser: null,
+        hasPerm: () => false,
+        persistAuthenticatedIdentity(identity) {
+            root.currentMember = identity.member;
+            root.currentUser = identity.username;
+            return identity;
+        },
+        clearAuthenticatedClientState() {
+            root.currentMember = null;
+            root.currentUser = null;
+            root.koinoniaAuthStatus = 'unauthenticated';
+        },
+        populateProfileTab() {}
     };
     vm.runInNewContext(source, { window: root, globalThis: root, URL, Promise, Set, console });
     return { root, document, elements, listeners, navigation, history };
@@ -175,6 +222,114 @@ test('authenticated bottom navigation has exactly the eight canonical destinatio
     assert.deepEqual(navigation.at(-1), ['eventsTab', undefined]);
 });
 
+test('authenticated header avatar uses a safe profile identity and opens profile without changing the bell or bottom Menu', async () => {
+    const { root, document, elements, navigation } = createHarness();
+    assert.match(index, /id="headerNotificationBell"/);
+    assert.match(index, /id="headerProfileAvatar"[^>]*aria-label="My Profile"/);
+    assert.match(index, /body\.koinonia-authenticated-header #hamburgerBtn \{ display:none !important; \}/);
+    root.koinoniaAuthStatus = 'authenticated';
+    root.persistAuthenticatedIdentity({ username: 'ada@invalid.test', member: { id: 1, name: 'Ada Member' } });
+    const face = elements.headerProfileAvatar.querySelector('.header-profile-avatar-face');
+    assert.equal(elements.headerProfileAvatar.hidden, false);
+    assert.equal(face.textContent, 'A');
+    assert.equal(document.body.classList.contains('koinonia-authenticated-header'), true);
+    elements.headerProfileAvatar.listeners.click();
+    assert.deepEqual(navigation.at(-1), ['profileTab', undefined]);
+
+    root.populateProfileTab({ id: 1, name: 'Ada Member', profile_picture: 'data:image/png;base64,AAAA' });
+    assert.equal(face.children[0].src, 'data:image/png;base64,AAAA');
+    root.populateProfileTab({ id: 1, name: 'Ada Member', profile_picture: 'javascript:alert(1)' });
+    assert.equal(face.children.length, 0);
+    assert.equal(face.textContent, 'A');
+
+    root.persistAuthenticatedIdentity({ username: 'account@invalid.test', member: { id: 1, name: '' } });
+    assert.equal(face.textContent, 'U');
+    root.persistAuthenticatedIdentity({ username: 'BernardAccount', member: { id: 1, name: '' } });
+    assert.equal(face.textContent, 'B');
+
+    root.isGuestMode = true;
+    await root.switchTab('profileTab');
+    assert.equal(elements.headerProfileAvatar.hidden, true);
+    const calls = navigation.length;
+    elements.headerProfileAvatar.listeners.click();
+    assert.equal(navigation.length, calls);
+    assert.equal(document.body.classList.contains('koinonia-authenticated-header'), false);
+    root.renderBottomNav('eventsTab');
+    assert.equal(elements.bottomNav.children.some(button => button.dataset.destination === 'menu'), false);
+    root.isGuestMode = false;
+    root.koinoniaAuthStatus = 'offline-readonly';
+    document.body.classList.add('koinonia-offline-readonly');
+    await root.switchTab('profileTab');
+    assert.equal(elements.headerProfileAvatar.hidden, true);
+    assert.equal(document.body.classList.contains('koinonia-authenticated-header'), false);
+});
+
+test('late canonical tab activation loads each authorized log once despite legacy duplicate hooks', async () => {
+    const calls = [];
+    const fixtures = {
+        '/api/admin/community-intents-v2': [],
+        '/api/admin/ministry-logs-v36': [],
+        '/api/attendance/logs': [{ id: 1, member_name: 'Ada', event_name: 'Gathering', checked_in_at: '2026-09-15 10:00:00', is_walkin: 1 }],
+        '/api/activity-logs': [{ id: 1, username: 'Ada', action: 'LOGIN', details: 'Signed in', created_at: '2026-09-15 11:00:00' }]
+    };
+    const { root, elements } = createHarness(async url => {
+        calls.push(url);
+        return response(fixtures[url]);
+    }, { legacyLoadOnSwitch: {
+        membershipAdminTab: 'loadMembershipAdminData',
+        attendanceTab: 'loadAttendanceLogs',
+        activityLogsTab: 'loadActivityLogs'
+    } });
+    root.koinoniaAuthStatus = 'authenticated';
+    root.hasPerm = () => true;
+    root.persistAuthenticatedIdentity({ username: 'Ada', member: { id: 1, name: 'Ada' } });
+    await root.switchTab('membershipAdminTab');
+    assert.equal(elements.subTabMemCommunity.hidden, false);
+    assert.equal(elements.subTabMemMinistry.hidden, true);
+    assert.equal(elements.communityIntentsList.children[0].textContent, 'No Community Intent logs yet.');
+    assert.equal(elements.ministryIntentsLogList.children[0].textContent, 'No ministry history logs yet.');
+    await root.switchTab('attendanceTab');
+    assert.equal(elements.attendanceLogsContainer.children[0].tagName, 'TABLE');
+    assert.equal(elements.attendanceLogsContainer.children[0].children[1].children.length, 1);
+    await root.switchTab('activityLogsTab');
+    assert.equal(elements.activityLogsContainer.children[0].tagName, 'TABLE');
+    assert.equal(elements.activityLogsContainer.children[0].children[1].children.length, 1);
+    for (const url of Object.keys(fixtures)) {
+        assert.equal(calls.filter(call => call === url).length, 1, `${url} loads once`);
+    }
+});
+
+test('late log activation fails closed and reports a safe server error without exposing history', async () => {
+    let requests = 0;
+    const { root, elements } = createHarness(async () => { requests += 1; return response([], 403); });
+    root.koinoniaAuthStatus = 'authenticated';
+    root.hasPerm = () => false;
+    await root.switchTab('activityLogsTab');
+    assert.equal(requests, 0);
+    assert.match(elements.activityLogsContainer.children[0].textContent, /do not have permission/);
+    root.hasPerm = () => true;
+    await root.switchTab('attendanceTab');
+    assert.equal(requests, 1);
+    assert.match(elements.attendanceLogsContainer.children[0].textContent, /do not have permission/);
+});
+
+test('a late attendance response cannot repopulate a log after sign-out', async () => {
+    const pending = deferred();
+    let requests = 0;
+    const { root, elements } = createHarness(() => { requests += 1; return pending.promise; });
+    root.koinoniaAuthStatus = 'authenticated';
+    root.hasPerm = () => true;
+    root.persistAuthenticatedIdentity({ username: 'Ada', member: { id: 1, name: 'Ada' } });
+    const navigation = root.switchTab('attendanceTab');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(requests, 1);
+    root.clearAuthenticatedClientState();
+    pending.resolve(response([{ id: 1, member_name: 'Ada', event_name: 'Gathering' }]));
+    await navigation;
+    assert.equal(elements.attendanceLogsContainer.children.length, 0);
+    assert.equal(elements.headerProfileAvatar.hidden, true);
+});
+
 test('pre-registration renders immediately and ignores a stale event response', async () => {
     const pending = Array.from({ length: 6 }, deferred);
     let callIndex = 0;
@@ -213,14 +368,14 @@ test('post-launch asset and dependent revisions are cached coherently and load l
     const app = index.indexOf('/js/app.js?v=13.3');
     const mapping = index.indexOf('/js/growth-event-mapping-ui.js?v=3');
     const journey = index.indexOf('/js/journey-dashboard.js?v=4');
-    const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=2');
+    const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=3');
     assert.ok(app < mapping && mapping < journey && journey < hotfix);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v27'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v28'/);
     for (const asset of [
         '/js/app.js?v=13.3',
         '/js/growth-event-mapping-ui.js?v=3',
         '/js/journey-dashboard.js?v=4',
-        '/js/postlaunch-hotfix.js?v=2'
+        '/js/postlaunch-hotfix.js?v=3'
     ]) assert.ok(serviceWorker.includes(`'${asset}'`));
     assert.doesNotMatch(mappingSource, /2147483647|appendChild\(modal\)/);
 });

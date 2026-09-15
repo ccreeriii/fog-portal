@@ -15,7 +15,9 @@
         filteredAttendanceLogs: [],
         filteredActivityLogs: [],
         attendancePage: 1,
-        activityPage: 1
+        activityPage: 1,
+        logLoads: Object.create(null),
+        logGeneration: 0
     };
 
     function byId(id) {
@@ -30,6 +32,127 @@
     function normalizeId(value) {
         const number = Number(value);
         return Number.isSafeInteger(number) && number > 0 ? number : null;
+    }
+
+    function avatarInitial(member) {
+        const candidates = [member && member.name, root.currentUser];
+        for (const candidate of candidates) {
+            if (typeof candidate !== 'string' || candidate.includes('@')) continue;
+            const letter = candidate.trim().match(/\p{L}/u);
+            if (letter) return letter[0].toUpperCase();
+        }
+        return 'U';
+    }
+
+    function safeAvatarPicture(value) {
+        if (typeof value !== 'string' || !value.trim()) return null;
+        const picture = value.trim();
+        if (/^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(picture)) return picture;
+        try {
+            const url = new URL(picture, root.location.href);
+            return /^https?:$/.test(url.protocol) && url.origin === root.location.origin
+                ? url.href
+                : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function refreshHeaderProfile(memberOverride) {
+        const button = byId('headerProfileAvatar');
+        if (!button) return;
+        const authenticated = root.koinoniaAuthStatus === 'authenticated' && !root.isGuestMode &&
+            !(document.body && document.body.classList.contains('koinonia-offline-readonly'));
+        if (document.body) document.body.classList.toggle('koinonia-authenticated-header', authenticated);
+        button.hidden = !authenticated;
+        if (!authenticated) return;
+        const canonical = root.currentMember && typeof root.currentMember === 'object'
+            ? root.currentMember
+            : null;
+        const member = memberOverride && normalizeId(memberOverride.id) &&
+            normalizeId(memberOverride.id) === normalizeId(canonical && canonical.id)
+            ? memberOverride
+            : canonical;
+        const face = button.querySelector('.header-profile-avatar-face');
+        if (!face) return;
+        face.replaceChildren();
+        const picture = safeAvatarPicture(member && member.profile_picture);
+        if (picture) {
+            const image = document.createElement('img');
+            image.src = picture;
+            image.alt = '';
+            image.addEventListener('error', () => {
+                image.remove();
+                face.textContent = avatarInitial(member);
+            }, { once: true });
+            face.appendChild(image);
+        } else {
+            face.textContent = avatarInitial(member);
+        }
+    }
+
+    function invalidateLogIdentity() {
+        ++state.logGeneration;
+        state.logLoads = Object.create(null);
+        state.communityIntents = [];
+        state.ministryLogs = [];
+        state.attendanceLogs = [];
+        state.activityLogs = [];
+        root.cachedCommunityIntents = [];
+        root.cachedMinistryLogs = [];
+        try {
+            cachedAttendanceLogs = [];
+            cachedActivityLogs = [];
+        } catch (error) { /* app.js owns these bindings */ }
+        for (const id of ['communityIntentsList', 'ministryIntentsLogList',
+            'attendanceLogsContainer', 'activityLogsContainer']) {
+            const container = byId(id);
+            if (container) container.replaceChildren();
+        }
+    }
+
+    const profileButton = byId('headerProfileAvatar');
+    if (profileButton) profileButton.addEventListener('click', () => {
+        if (root.koinoniaAuthStatus === 'authenticated' && !root.isGuestMode) {
+            root.switchTab('profileTab');
+        }
+    });
+
+    const previousPersistIdentity = root.persistAuthenticatedIdentity;
+    if (typeof previousPersistIdentity === 'function') {
+        root.persistAuthenticatedIdentity = function persistIdentityWithHeader(...args) {
+            const previousId = normalizeId(root.currentMember && root.currentMember.id);
+            const result = previousPersistIdentity.apply(this, args);
+            if (previousId !== normalizeId(root.currentMember && root.currentMember.id)) invalidateLogIdentity();
+            refreshHeaderProfile();
+            return result;
+        };
+    }
+    const previousClearIdentity = root.clearAuthenticatedClientState;
+    if (typeof previousClearIdentity === 'function') {
+        root.clearAuthenticatedClientState = function clearIdentityWithHeader(...args) {
+            const result = previousClearIdentity.apply(this, args);
+            invalidateLogIdentity();
+            refreshHeaderProfile();
+            return result;
+        };
+    }
+    const previousOfflineIdentity = root.enterOfflineReadonlyIdentity;
+    if (typeof previousOfflineIdentity === 'function') {
+        root.enterOfflineReadonlyIdentity = function offlineIdentityWithoutHeaderAvatar(...args) {
+            const result = previousOfflineIdentity.apply(this, args);
+            invalidateLogIdentity();
+            refreshHeaderProfile();
+            return result;
+        };
+    }
+    const previousPopulateProfile = root.populateProfileTab;
+    if (typeof previousPopulateProfile === 'function') {
+        root.populateProfileTab = function populateProfileWithHeader(member, ...args) {
+            const result = previousPopulateProfile.call(this, member, ...args);
+            refreshHeaderProfile(member);
+            return result;
+        };
     }
 
     function activeModals() {
@@ -260,6 +383,18 @@
         } else {
             root.renderBottomNav(tabId);
         }
+        refreshHeaderProfile();
+        const target = byId(tabId);
+        if (!target || !target.classList.contains('active')) return result;
+        if (tabId === 'membershipAdminTab') {
+            ensureMembershipAdminTab();
+            showMembershipSubTab('community');
+            await root.loadMembershipAdminData();
+        } else if (tabId === 'attendanceTab') {
+            await root.loadAttendanceLogs();
+        } else if (tabId === 'activityLogsTab') {
+            await root.loadActivityLogs();
+        }
         return result;
     };
 
@@ -398,12 +533,17 @@
     }
 
     function ensureMembershipAdminTab() {
-        if (byId('membershipAdminTab') || !byId('mainContainer')) return;
-        const tab = document.createElement('div');
-        tab.id = 'membershipAdminTab';
-        tab.className = 'tab-content';
+        if (!byId('mainContainer')) return;
+        let tab = byId('membershipAdminTab');
+        if (!tab) {
+            tab = document.createElement('div');
+            tab.id = 'membershipAdminTab';
+            tab.className = 'tab-content';
+            byId('mainContainer').appendChild(tab);
+        }
+        if (tab.dataset.canonicalLogShell === 'true') return;
         tab.innerHTML = '<div class="sub-nav"><button id="btnSubMemCommunity" class="sub-nav-btn active" type="button">🕊️ Community Intents</button><button id="btnSubMemMinistry" class="sub-nav-btn" type="button">🔥 Ministry Logs</button></div><section id="subTabMemCommunity" class="mem-sub-tab"><div class="card"><h2>🕊️ Community Intent Logs</h2><div class="log-filters"><input type="text" id="commFilterName" class="form-control" placeholder="Search name…"><input type="date" id="commFilterStart" class="form-control" title="Start date"><input type="date" id="commFilterEnd" class="form-control" title="End date"></div><div id="communityIntentsList"></div></div></section><section id="subTabMemMinistry" class="mem-sub-tab" hidden><div class="card"><h2>🔥 Ministry Logs</h2><div class="log-filters"><input type="text" id="minLogFilterName" class="form-control" placeholder="Search member or ministry…"><input type="date" id="minLogFilterStart" class="form-control" title="Start date"><input type="date" id="minLogFilterEnd" class="form-control" title="End date"></div><div id="ministryIntentsLogList"></div></div></section>';
-        byId('mainContainer').appendChild(tab);
+        tab.dataset.canonicalLogShell = 'true';
         byId('btnSubMemCommunity').addEventListener('click', () => root.switchMemSubTab('community'));
         byId('btnSubMemMinistry').addEventListener('click', () => root.switchMemSubTab('ministry'));
         for (const id of ['commFilterName', 'commFilterStart', 'commFilterEnd']) {
@@ -414,46 +554,102 @@
         }
     }
 
-    root.switchMemSubTab = function switchMemSubTab(tab) {
+    function showMembershipSubTab(tab) {
         ensureMembershipAdminTab();
         const community = tab !== 'ministry';
         byId('subTabMemCommunity').hidden = !community;
         byId('subTabMemMinistry').hidden = community;
         byId('btnSubMemCommunity').classList.toggle('active', community);
         byId('btnSubMemMinistry').classList.toggle('active', !community);
-        root.loadMembershipAdminData();
+    }
+
+    root.switchMemSubTab = function switchMemSubTab(tab) {
+        showMembershipSubTab(tab);
+        return root.loadMembershipAdminData();
     };
+
+    function permissionState(kind) {
+        const permission = kind === 'membership' ? 'edit_entries'
+            : kind === 'attendance' ? 'access_attendance' : 'access_activity';
+        if (root.koinoniaAuthStatus !== 'authenticated' || root.isGuestMode) return 'signin';
+        return typeof root.hasPerm === 'function' && root.hasPerm(permission) ? 'allowed' : 'forbidden';
+    }
+
+    function loadDeniedState(container, kind) {
+        const message = permissionState(kind) === 'signin'
+            ? 'Please sign in to view these logs.'
+            : 'You do not have permission to view these logs.';
+        emptyState(container, message, true);
+    }
+
+    function singleFlightLogLoad(kind, task) {
+        const previous = state.logLoads[kind];
+        if (previous && (previous.pending || Date.now() - previous.startedAt < 250)) {
+            return previous.promise;
+        }
+        const entry = { startedAt: Date.now(), pending: true };
+        entry.promise = Promise.resolve().then(task);
+        state.logLoads[kind] = entry;
+        entry.promise.then(
+            () => { entry.pending = false; },
+            () => { entry.pending = false; }
+        );
+        return entry.promise;
+    }
 
     async function fetchArray(url, label) {
         const response = await root.fetch(url, { headers: { Accept: 'application/json' } });
-        if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
+        if (!response.ok) {
+            const error = new Error(`${label} returned HTTP ${response.status}`);
+            error.status = response.status;
+            throw error;
+        }
         const payload = await response.json();
         if (!Array.isArray(payload)) throw new Error(`${label} returned an invalid response`);
         return payload;
     }
 
-    root.loadMembershipAdminData = async function loadMembershipAdminData() {
+    root.loadMembershipAdminData = function loadMembershipAdminData() {
         ensureMembershipAdminTab();
-        emptyState(byId('communityIntentsList'), 'Loading Community Intent logs…');
-        emptyState(byId('ministryIntentsLogList'), 'Loading ministry logs…');
-        const [community, ministry] = await Promise.allSettled([
-            fetchArray('/api/admin/community-intents-v2', 'Community Intent logs'),
-            fetchArray('/api/admin/ministry-logs-v36', 'Ministry logs')
-        ]);
-        if (community.status === 'fulfilled') {
-            state.communityIntents = community.value;
-            root.cachedCommunityIntents = community.value;
-            root.filterCommunityLogs();
-        } else {
-            emptyState(byId('communityIntentsList'), 'Unable to load Community Intent logs.', true);
+        if (permissionState('membership') !== 'allowed') {
+            state.communityIntents = [];
+            state.ministryLogs = [];
+            loadDeniedState(byId('communityIntentsList'), 'membership');
+            loadDeniedState(byId('ministryIntentsLogList'), 'membership');
+            return Promise.resolve();
         }
-        if (ministry.status === 'fulfilled') {
-            state.ministryLogs = ministry.value;
-            root.cachedMinistryLogs = ministry.value;
-            root.filterMinistryLogs();
-        } else {
-            emptyState(byId('ministryIntentsLogList'), 'Unable to load ministry logs.', true);
-        }
+        return singleFlightLogLoad('membership', async () => {
+            const generation = state.logGeneration;
+            state.communityIntents = [];
+            state.ministryLogs = [];
+            emptyState(byId('communityIntentsList'), 'Loading Community Intent logs…');
+            emptyState(byId('ministryIntentsLogList'), 'Loading ministry logs…');
+            const [community, ministry] = await Promise.allSettled([
+                fetchArray('/api/admin/community-intents-v2', 'Community Intent logs'),
+                fetchArray('/api/admin/ministry-logs-v36', 'Ministry logs')
+            ]);
+            if (generation !== state.logGeneration || permissionState('membership') !== 'allowed') return;
+            if (community.status === 'fulfilled') {
+                state.communityIntents = community.value;
+                root.cachedCommunityIntents = community.value;
+                root.filterCommunityLogs();
+            } else {
+                emptyState(byId('communityIntentsList'),
+                    community.reason && community.reason.status === 401 ? 'Please sign in to view Community Intent logs.'
+                        : community.reason && community.reason.status === 403 ? 'You do not have permission to view Community Intent logs.'
+                            : 'Unable to load Community Intent logs.', true);
+            }
+            if (ministry.status === 'fulfilled') {
+                state.ministryLogs = ministry.value;
+                root.cachedMinistryLogs = ministry.value;
+                root.filterMinistryLogs();
+            } else {
+                emptyState(byId('ministryIntentsLogList'),
+                    ministry.reason && ministry.reason.status === 401 ? 'Please sign in to view ministry history logs.'
+                        : ministry.reason && ministry.reason.status === 403 ? 'You do not have permission to view ministry history logs.'
+                            : 'Unable to load ministry logs.', true);
+            }
+        });
     };
 
     function dateMatches(value, start, end) {
@@ -474,7 +670,8 @@
 
     root.renderCommunityIntents = function renderCommunityIntents(items) {
         const container = byId('communityIntentsList');
-        if (!items.length) return emptyState(container, 'No Community Intent logs match this filter.');
+        if (!items.length) return emptyState(container,
+            state.communityIntents.length ? 'No Community Intent logs match this filter.' : 'No Community Intent logs yet.');
         container.replaceChildren();
         for (const item of items) {
             const card = document.createElement('article');
@@ -508,7 +705,8 @@
 
     root.renderMinistryLogs = function renderMinistryLogs(items) {
         const container = byId('ministryIntentsLogList');
-        if (!items.length) return emptyState(container, 'No ministry logs match this filter.');
+        if (!items.length) return emptyState(container,
+            state.ministryLogs.length ? 'No ministry logs match this filter.' : 'No ministry history logs yet.');
         container.replaceChildren();
         for (const item of items) {
             const card = document.createElement('article');
@@ -594,16 +792,31 @@
         ], state.filteredAttendanceLogs, 'No event attendance logs match this filter.');
     }
 
-    root.loadAttendanceLogs = async function loadAttendanceLogs() {
+    root.loadAttendanceLogs = function loadAttendanceLogs() {
         const container = byId('attendanceLogsContainer');
-        emptyState(container, 'Loading event attendance…');
-        try {
-            state.attendanceLogs = await fetchArray('/api/attendance/logs', 'Attendance logs');
-            try { cachedAttendanceLogs = state.attendanceLogs; } catch (error) { /* app.js owns this binding */ }
-            root.filterAttendanceLogs();
-        } catch (error) {
-            emptyState(container, 'Unable to load event attendance logs.', true);
+        if (permissionState('attendance') !== 'allowed') {
+            state.attendanceLogs = [];
+            loadDeniedState(container, 'attendance');
+            return Promise.resolve();
         }
+        return singleFlightLogLoad('attendance', async () => {
+            const generation = state.logGeneration;
+            state.attendanceLogs = [];
+            emptyState(container, 'Loading event attendance…');
+            try {
+                const logs = await fetchArray('/api/attendance/logs', 'Attendance logs');
+                if (generation !== state.logGeneration || permissionState('attendance') !== 'allowed') return;
+                state.attendanceLogs = logs;
+                try { cachedAttendanceLogs = state.attendanceLogs; } catch (error) { /* app.js owns this binding */ }
+                root.filterAttendanceLogs();
+            } catch (error) {
+                if (generation !== state.logGeneration) return;
+                emptyState(container,
+                    error.status === 401 ? 'Please sign in to view event attendance logs.'
+                        : error.status === 403 ? 'You do not have permission to view event attendance logs.'
+                            : 'Unable to load event attendance logs.', true);
+            }
+        });
     };
 
     root.filterAttendanceLogs = function filterAttendanceLogs() {
@@ -615,16 +828,31 @@
         renderAttendancePage();
     };
 
-    root.loadActivityLogs = async function loadActivityLogs() {
+    root.loadActivityLogs = function loadActivityLogs() {
         const container = byId('activityLogsContainer');
-        emptyState(container, 'Loading audit history…');
-        try {
-            state.activityLogs = await fetchArray('/api/activity-logs', 'Audit logs');
-            try { cachedActivityLogs = state.activityLogs; } catch (error) { /* app.js owns this binding */ }
-            root.filterActivityLogs();
-        } catch (error) {
-            emptyState(container, 'Unable to load audit logs.', true);
+        if (permissionState('activity') !== 'allowed') {
+            state.activityLogs = [];
+            loadDeniedState(container, 'activity');
+            return Promise.resolve();
         }
+        return singleFlightLogLoad('activity', async () => {
+            const generation = state.logGeneration;
+            state.activityLogs = [];
+            emptyState(container, 'Loading audit history…');
+            try {
+                const logs = await fetchArray('/api/activity-logs', 'Audit logs');
+                if (generation !== state.logGeneration || permissionState('activity') !== 'allowed') return;
+                state.activityLogs = logs;
+                try { cachedActivityLogs = state.activityLogs; } catch (error) { /* app.js owns this binding */ }
+                root.filterActivityLogs();
+            } catch (error) {
+                if (generation !== state.logGeneration) return;
+                emptyState(container,
+                    error.status === 401 ? 'Please sign in to view audit logs.'
+                        : error.status === 403 ? 'You do not have permission to view audit logs.'
+                            : 'Unable to load audit logs.', true);
+            }
+        });
     };
 
     root.filterActivityLogs = function filterActivityLogs() {
@@ -649,7 +877,9 @@
     if (!root.isGuestMode && root.koinoniaAuthStatus === 'authenticated') {
         root.renderBottomNav('pulseDashboardTab');
     }
+    refreshHeaderProfile();
     Promise.resolve(root.authReady).catch(() => null).finally(() => {
+        refreshHeaderProfile();
         const eventId = normalizeId(new URL(root.location.href).searchParams.get('event'));
         if (eventId && state.preregEventId !== eventId) {
             root.launchPublicPrereg(eventId, { updateHistory: false });
