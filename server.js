@@ -1323,6 +1323,7 @@ function requireMinistryMemberDeleteAccess(req, res, next) {
         });
 
         if (!target || normalizeCanonicalId(target.ministry_id) !== ministryId) return false;
+        req.ministryMemberTarget = target;
 
         const canAccessMinistries = authorizationHasPermission(auth, 'access_ministries');
         const canDeleteEntries = authorizationHasPermission(auth, 'delete_entries');
@@ -1347,6 +1348,22 @@ function getCanonicalAuditActor(req) {
     if (!auth) return null;
     if (typeof auth.username === 'string' && auth.username) return auth.username;
     if (auth.member && typeof auth.member.name === 'string' && auth.member.name) return auth.member.name;
+    return auth.youthId === null ? null : `Member ${auth.youthId}`;
+}
+
+function getCanonicalDisplayActor(req) {
+    const auth = req && req.auth;
+    if (!auth) return null;
+    if (auth.member && typeof auth.member.name === 'string' && auth.member.name.trim()) {
+        return auth.member.name.trim();
+    }
+    if (
+        typeof auth.username === 'string' &&
+        auth.username.trim() &&
+        !auth.username.includes('@')
+    ) {
+        return auth.username.trim();
+    }
     return auth.youthId === null ? null : `Member ${auth.youthId}`;
 }
 
@@ -5237,7 +5254,40 @@ app.put('/api/youth/:id/permissions', requireStrongAdmin, (req, res) => {
     });
 });
 
-app.get('/api/activity-logs', (req, res) => { db.all(`SELECT * FROM activity_logs ORDER BY id DESC`, [], (err, rows) => { res.json(rows); }); });
+app.get('/api/activity-logs', requirePermission('access_activity'), (req, res) => {
+    db.all(
+        `SELECT
+            a.id,
+            COALESCE(
+                NULLIF(TRIM(y.name), ''),
+                CASE
+                    WHEN INSTR(COALESCE(a.username, ''), '@') = 0
+                    THEN NULLIF(TRIM(a.username), '')
+                END,
+                'System'
+            ) AS username,
+            a.action,
+            a.details,
+            a.created_at
+         FROM activity_logs a
+         LEFT JOIN (
+             SELECT LOWER(TRIM(username)) AS login_key, MIN(youth_id) AS youth_id
+             FROM users
+             WHERE youth_id IS NOT NULL AND INSTR(username, '@') > 0
+             GROUP BY LOWER(TRIM(username))
+             HAVING COUNT(DISTINCT youth_id) = 1
+         ) u ON u.login_key = LOWER(TRIM(a.username))
+            AND INSTR(COALESCE(a.username, ''), '@') > 0
+         LEFT JOIN youth y
+           ON y.id = u.youth_id
+         ORDER BY a.id DESC`,
+        [],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Unable to load audit logs.' });
+            return res.json(rows || []);
+        }
+    );
+});
 app.get('/api/youth', async (req, res) => {
     const auth = await loadOptionalAuthorizationContext(req);
     const sql = auth
@@ -5540,7 +5590,28 @@ app.post('/api/checkin', requirePermission('access_checkin'), (req, res) => {
     });
 });
 
-app.get('/api/attendance/logs', requirePermission('access_attendance'), (req, res) => { db.all(`SELECT a.id, a.checked_in_at, a.is_walkin, y.name as member_name, e.name as event_name, a.youth_id, a.event_id FROM attendance a JOIN youth y ON a.youth_id = y.id JOIN events e ON a.event_id = e.id ORDER BY a.checked_in_at DESC`, [], (err, rows) => { res.json(rows); }); });
+app.get('/api/attendance/logs', requirePermission('access_attendance'), (req, res) => {
+    db.all(
+        `SELECT
+            a.id,
+            a.checked_in_at,
+            a.is_walkin,
+            COALESCE(NULLIF(TRIM(y.name), ''), 'Unknown member (ID ' || a.youth_id || ')') AS member_name,
+            COALESCE(NULLIF(TRIM(e.name), ''), 'Unknown event (ID ' || a.event_id || ')') AS event_name,
+            a.youth_id,
+            a.event_id,
+            CASE WHEN y.id IS NULL OR e.id IS NULL THEN 1 ELSE 0 END AS has_missing_reference
+         FROM attendance a
+         LEFT JOIN youth y ON a.youth_id = y.id
+         LEFT JOIN events e ON a.event_id = e.id
+         ORDER BY a.checked_in_at DESC, a.id DESC`,
+        [],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Unable to load attendance logs.' });
+            return res.json(rows || []);
+        }
+    );
+});
 app.put('/api/attendance/:id', requireAllPermissions(['access_attendance', 'edit_entries']), (req, res) => { db.run(`UPDATE attendance SET checked_in_at = ?, is_walkin = ? WHERE id = ?`, [req.body.checked_in_at, req.body.is_walkin ? 1 : 0, req.params.id], function (err) { res.json({ updated: this.changes }); }); });
 app.delete('/api/attendance/:id', requireAllPermissions(['access_attendance', 'delete_entries']), (req, res) => { db.run(`DELETE FROM attendance WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
 
@@ -6023,12 +6094,79 @@ app.get('/api/ministries', async (req, res) => {
         res.json((rows || []).map(sanitizeMinistry));
     });
 });
-app.post('/api/ministries', (req, res) => { db.run(`INSERT INTO ministries (name, description, logo, created_at) VALUES (?, ?, ?, ?)`, [req.body.name, req.body.description, req.body.logo, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
-app.put('/api/ministries/:id', (req, res) => { let sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ? WHERE id = ?`; let params = [req.body.name, req.body.description, req.body.restricted_notes, req.params.id]; if (req.body.logo !== undefined) { sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ?, logo = ? WHERE id = ?`; params = [req.body.name, req.body.description, req.body.restricted_notes, req.body.logo, req.params.id]; } db.run(sql, params, function(err) { res.json({ success: true }); }); });
+app.post('/api/ministries', requireAllPermissions(['access_ministries', 'add_entries']), (req, res) => { db.run(`INSERT INTO ministries (name, description, logo, created_at) VALUES (?, ?, ?, ?)`, [req.body.name, req.body.description, req.body.logo, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
+app.put('/api/ministries/:id', requireAllPermissions(['access_ministries', 'edit_entries']), (req, res) => { let sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ? WHERE id = ?`; let params = [req.body.name, req.body.description, req.body.restricted_notes, req.params.id]; if (req.body.logo !== undefined) { sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ?, logo = ? WHERE id = ?`; params = [req.body.name, req.body.description, req.body.restricted_notes, req.body.logo, req.params.id]; } db.run(sql, params, function(err) { res.json({ success: true }); }); });
 app.delete('/api/ministries/:id', requireAllPermissions(['access_ministries', 'delete_entries']), (req, res) => { db.run(`DELETE FROM ministries WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM ministry_members WHERE ministry_id = ?`, [req.params.id]); res.json({ success: true }); }); });
 app.get('/api/ministries/:id/members', requireAuth, (req, res) => { db.all(`SELECT mm.id as mapping_id, mm.role, mm.sub_role, mm.assigned_at, y.id, y.name, y.profile_picture FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
-app.post('/api/ministries/:id/members', (req, res) => { db.run(`INSERT INTO ministry_members (ministry_id, youth_id, role, sub_role, assigned_at) VALUES (?, ?, ?, ?, ?)`, [req.params.id, req.body.youth_id, req.body.role, req.body.sub_role, getManilaTime()], function(err) { res.json({ success: true }); }); });
-app.put('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => { db.run(`UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?`, [req.body.role, req.body.sub_role, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
+app.post('/api/ministries/:id/members', requireAllPermissions(['access_ministries', 'add_entries']), (req, res) => {
+    const ministryId = normalizeCanonicalId(req.params.id);
+    const youthId = normalizeCanonicalId(req.body && req.body.youth_id);
+    const role = typeof req.body.role === 'string' && req.body.role.trim() ? req.body.role.trim() : 'Member';
+    const subRole = typeof req.body.sub_role === 'string' ? req.body.sub_role.trim() : '';
+    if (!ministryId || !youthId) return res.status(400).json({ error: 'Invalid ministry assignment.' });
+    const actor = getCanonicalDisplayActor(req) || 'Authorized leader';
+    const timestamp = getManilaTime();
+    db.run(
+        `INSERT INTO ministry_members (ministry_id, youth_id, role, sub_role, assigned_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [ministryId, youthId, role, subRole, timestamp],
+        function(err) {
+            if (err) return res.status(400).json({ error: 'Unable to add ministry member.' });
+            const mappingId = this.lastID;
+            db.run(
+                `INSERT INTO ministry_role_history
+                    (ministry_id, youth_id, role, actor, timestamp, intent_message)
+                 VALUES (?, ?, ?, ?, ?, 'Assigned directly by authorized leadership.')`,
+                [ministryId, youthId, role, actor, timestamp],
+                historyErr => {
+                    if (historyErr) {
+                        return db.run('DELETE FROM ministry_members WHERE id = ?', [mappingId], () => {
+                            res.status(500).json({ error: 'Unable to record ministry assignment history.' });
+                        });
+                    }
+                    logActivity(actor, 'MINISTRY_MEMBER_ASSIGNED', `Assigned Member ID ${youthId} to Ministry ID ${ministryId}`);
+                    return res.json({ success: true, id: mappingId });
+                }
+            );
+        }
+    );
+});
+app.put('/api/ministries/:ministry_id/members/:mapping_id', requireAllPermissions(['access_ministries', 'edit_entries']), (req, res) => {
+    const ministryId = normalizeCanonicalId(req.params.ministry_id);
+    const mappingId = normalizeCanonicalId(req.params.mapping_id);
+    const role = typeof req.body.role === 'string' ? req.body.role.trim() : '';
+    const subRole = typeof req.body.sub_role === 'string' ? req.body.sub_role.trim() : '';
+    if (!ministryId || !mappingId || !role) return res.status(400).json({ error: 'Invalid ministry role update.' });
+    const actor = getCanonicalDisplayActor(req) || 'Authorized leader';
+    db.get(
+        'SELECT youth_id, role FROM ministry_members WHERE id = ? AND ministry_id = ?',
+        [mappingId, ministryId],
+        (lookupErr, member) => {
+            if (lookupErr) return res.status(500).json({ error: 'Unable to load ministry membership.' });
+            if (!member) return res.status(404).json({ error: 'Ministry membership not found.' });
+            const timestamp = getManilaTime();
+            db.run(
+                'UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ? AND ministry_id = ?',
+                [role, subRole, mappingId, ministryId],
+                updateErr => {
+                    if (updateErr) return res.status(500).json({ error: 'Unable to update ministry role.' });
+                    db.run(
+                        `INSERT INTO ministry_role_history
+                            (ministry_id, youth_id, role, actor, timestamp, intent_message)
+                         VALUES (?, ?, ?, ?, ?, ?)`,
+                        [ministryId, member.youth_id, role, actor, timestamp,
+                            `Previous role '${member.role || 'None'}' updated to '${role}'`],
+                        historyErr => {
+                            if (historyErr) return res.status(500).json({ error: 'Role updated but its history could not be recorded.' });
+                            logActivity(actor, 'MINISTRY_ROLE_UPDATED', `Updated Ministry ID ${ministryId} membership ID ${mappingId}`);
+                            return res.json({ success: true });
+                        }
+                    );
+                }
+            );
+        }
+    );
+});
 app.delete('/api/ministries/:ministry_id/members/:mapping_id', requireMinistryMemberDeleteAccess, (req, res) => {
     let sql = `DELETE FROM ministry_members WHERE id = ? AND ministry_id = ?`;
     if (req.ministryMemberDeleteMode === 'pending') sql += ` AND role = 'Applicant'`;
@@ -6036,7 +6174,21 @@ app.delete('/api/ministries/:ministry_id/members/:mapping_id', requireMinistryMe
     db.run(sql, [req.params.mapping_id, req.params.ministry_id], function(err) {
         if (err) return res.status(500).json({ error: 'Unable to remove ministry membership.' });
         if (this.changes === 0) return sendForbidden(res);
-        return res.json({ success: true });
+        const target = req.ministryMemberTarget || {};
+        const actor = getCanonicalDisplayActor(req) || 'Authorized member';
+        const timestamp = getManilaTime();
+        return db.run(
+            `INSERT INTO ministry_role_history
+                (ministry_id, youth_id, role, actor, timestamp, intent_message)
+             VALUES (?, ?, 'Removed', ?, ?, ?)`,
+            [req.params.ministry_id, target.youth_id, actor, timestamp,
+                `Removed ministry membership previously recorded as '${target.role || 'Unspecified'}'`],
+            historyErr => {
+                if (historyErr) return res.status(500).json({ error: 'Membership removed but its history could not be recorded.' });
+                logActivity(actor, 'MINISTRY_MEMBER_REMOVED', `Removed Ministry ID ${req.params.ministry_id} membership ID ${req.params.mapping_id}`);
+                return res.json({ success: true });
+            }
+        );
     });
 });
 app.get('/api/youth/:id/ministries', (req, res) => { db.all(`SELECT mm.id as mapping_id, m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at, mm.is_priority FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
@@ -6066,24 +6218,18 @@ app.delete('/api/blockouts/:id', requireResourceOwnerOrAllPermissions('blockout'
 
 // NEW DISCIPLESHIP API (WITH POINTS)
 app.get('/api/discipleship/next-step/:youth_id', (req, res) => { db.all(`SELECT p.*, m.status as member_status, m.completed_at FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, steps) => { let nextStep = steps.find(s => s.member_status !== 'Completed'); if (!nextStep && steps?.length || 0 > 0) nextStep = steps[steps?.length || 0 - 1]; res.json({ nextStep, allSteps: steps }); }); });
-app.post('/api/discipleship/milestones', (req, res) => {
-    db.get(`SELECT status FROM member_milestones WHERE youth_id = ? AND pathway_id = ?`, [req.body.youth_id, req.body.pathway_id], (err, row) => {
-        const alreadyCompleted = row && row.status === 'Completed';
-        const newlyCompleted = req.body.status === 'Completed';
-        db.run(`INSERT INTO member_milestones (youth_id, pathway_id, status, completed_at, notes) VALUES (?, ?, ?, ?, ?) ON CONFLICT(youth_id, pathway_id) DO UPDATE SET status = excluded.status, completed_at = excluded.completed_at, notes = excluded.notes`, [req.body.youth_id, req.body.pathway_id, req.body.status, newlyCompleted ? getManilaTime() : null, req.body.notes], function(err) {
-            if (newlyCompleted && !alreadyCompleted) {
-                db.get(`SELECT title, points FROM discipleship_pathways WHERE id = ?`, [req.body.pathway_id], (err2, path) => {
-                    if (path) awardPoints(req.body.youth_id, 'growth', path.points || 50, req.body.actor || 'System', `Milestone: ${path.title}`);
-                });
-            }
-            res.json({ success: true });
-        });
+function retireLegacyPathwayMutation(req, res) {
+    return res.status(410).json({
+        success: false,
+        error: 'Legacy Paths and Milestones are read-only. Use the canonical Growth Journey.'
     });
-});
+}
+
+app.post('/api/discipleship/milestones', requireAuth, retireLegacyPathwayMutation);
 app.get('/api/discipleship/pathways', (req, res) => { db.all(`SELECT * FROM discipleship_pathways ORDER BY step_order ASC`, [], (err, rows) => { res.json(rows); }); });
-app.post('/api/discipleship/pathways', (req, res) => { db.run(`INSERT INTO discipleship_pathways (title, description, step_order, points, created_at) VALUES (?, ?, ?, ?, ?)`, [req.body.title, req.body.description, req.body.step_order, req.body.points || 50, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
-app.put('/api/discipleship/pathways/:id', (req, res) => { db.run(`UPDATE discipleship_pathways SET title=?, description=?, step_order=?, points=? WHERE id=?`, [req.body.title, req.body.description, req.body.step_order, req.body.points || 50, req.params.id], function(err) { res.json({ success: true }); }); });
-app.delete('/api/discipleship/pathways/:id', requireAllPermissions(['access_discipleship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM discipleship_pathways WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM member_milestones WHERE pathway_id=?`, [req.params.id]); res.json({ success: true }); }); });
+app.post('/api/discipleship/pathways', requireAllPermissions(['access_discipleship', 'edit_entries']), retireLegacyPathwayMutation);
+app.put('/api/discipleship/pathways/:id', requireAllPermissions(['access_discipleship', 'edit_entries']), retireLegacyPathwayMutation);
+app.delete('/api/discipleship/pathways/:id', requireAllPermissions(['access_discipleship', 'delete_entries']), retireLegacyPathwayMutation);
 app.get('/api/discipleship/member-progress/:youth_id', (req, res) => { db.all(`SELECT p.id as pathway_id, p.title, m.status, m.completed_at, m.notes as pastoral_notes FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, rows) => { res.json(rows); }); });
 app.get('/api/discipleship/analytics/stages', (req, res) => { db.all(`WITH UserMaxStep AS (SELECT youth_id, MAX(pathway_id) as max_path_id FROM member_milestones WHERE status = 'Completed' OR status = 'In Progress' GROUP BY youth_id) SELECT p.title, COUNT(u.youth_id) as user_count FROM discipleship_pathways p LEFT JOIN UserMaxStep u ON p.id = u.max_path_id GROUP BY p.id, p.title ORDER BY p.step_order ASC`, [], (err, stepRows) => { db.get(`SELECT COUNT(*) as total FROM youth`, [], (err, youthRow) => { const totalYouth = youthRow ? youthRow.total : 0; let assignedYouth = 0; stepRows.forEach(r => assignedYouth += r.user_count); res.json({ stages: stepRows, unassigned: totalYouth - assignedYouth > 0 ? totalYouth - assignedYouth : 0 }); }); }); });
 
@@ -7151,7 +7297,7 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
             : '';
 
     const actor =
-        getCanonicalAuditActor(req) ||
+        getCanonicalDisplayActor(req) ||
         'Authenticated Communications User';
 
     if (
@@ -7483,14 +7629,29 @@ app.get('/api/communications/history', requirePermission('access_communications'
 
     db.all(
         `SELECT
-            id,
-            title,
-            target_audience AS target,
-            message,
-            author AS sender,
-            created_at
-         FROM announcements
-         ORDER BY created_at DESC`,
+            a.id,
+            a.title,
+            a.target_audience AS target,
+            a.message,
+            COALESCE(
+                NULLIF(TRIM(y.name), ''),
+                CASE WHEN INSTR(COALESCE(a.author, ''), '@') = 0
+                     THEN NULLIF(TRIM(a.author), '') END,
+                'FOG Leadership'
+            ) AS sender,
+            a.created_at
+         FROM announcements a
+         LEFT JOIN (
+             SELECT LOWER(TRIM(username)) AS login_key, MIN(youth_id) AS youth_id
+             FROM users
+             WHERE youth_id IS NOT NULL AND INSTR(username, '@') > 0
+             GROUP BY LOWER(TRIM(username))
+             HAVING COUNT(DISTINCT youth_id) = 1
+         ) u ON u.login_key = LOWER(TRIM(a.author))
+            AND INSTR(COALESCE(a.author, ''), '@') > 0
+         LEFT JOIN youth y
+           ON y.id = u.youth_id
+         ORDER BY a.created_at DESC`,
         [],
         (err, rows) => {
             if (err) {
@@ -7521,14 +7682,29 @@ app.get('/api/communications/inbox', requireAuth, (req, res) => {
     if (isStrongAdmin(req.auth)) {
         return db.all(
             `SELECT
-                id AS notification_id,
-                title,
-                message,
-                author,
-                created_at,
+                a.id AS notification_id,
+                a.title,
+                a.message,
+                COALESCE(
+                    NULLIF(TRIM(y.name), ''),
+                    CASE WHEN INSTR(COALESCE(a.author, ''), '@') = 0
+                         THEN NULLIF(TRIM(a.author), '') END,
+                    'FOG Leadership'
+                ) AS author,
+                a.created_at,
                 0 AS is_read
-             FROM announcements
-             ORDER BY created_at DESC
+             FROM announcements a
+             LEFT JOIN (
+                 SELECT LOWER(TRIM(username)) AS login_key, MIN(youth_id) AS youth_id
+                 FROM users
+                 WHERE youth_id IS NOT NULL AND INSTR(username, '@') > 0
+                 GROUP BY LOWER(TRIM(username))
+                 HAVING COUNT(DISTINCT youth_id) = 1
+             ) u ON u.login_key = LOWER(TRIM(a.author))
+                AND INSTR(COALESCE(a.author, ''), '@') > 0
+             LEFT JOIN youth y
+               ON y.id = u.youth_id
+             ORDER BY a.created_at DESC
              LIMIT 50`,
             [],
             (err, rows) => {
@@ -7568,11 +7744,26 @@ app.get('/api/communications/inbox', requireAuth, (req, res) => {
             n.is_read,
             a.title,
             a.message,
-            a.author,
+            COALESCE(
+                NULLIF(TRIM(sender_youth.name), ''),
+                CASE WHEN INSTR(COALESCE(a.author, ''), '@') = 0
+                     THEN NULLIF(TRIM(a.author), '') END,
+                'FOG Leadership'
+            ) AS author,
             a.created_at
          FROM user_notifications n
          JOIN announcements a
            ON n.announcement_id = a.id
+         LEFT JOIN (
+             SELECT LOWER(TRIM(username)) AS login_key, MIN(youth_id) AS youth_id
+             FROM users
+             WHERE youth_id IS NOT NULL AND INSTR(username, '@') > 0
+             GROUP BY LOWER(TRIM(username))
+             HAVING COUNT(DISTINCT youth_id) = 1
+         ) sender_user ON sender_user.login_key = LOWER(TRIM(a.author))
+            AND INSTR(COALESCE(a.author, ''), '@') > 0
+         LEFT JOIN youth sender_youth
+           ON sender_youth.id = sender_user.youth_id
          WHERE n.youth_id = ?
          ORDER BY a.created_at DESC
          LIMIT 50`,
@@ -8599,11 +8790,17 @@ app.get('/api/admin/community-intents-v2', requirePermission('edit_entries'), (r
                    COALESCE(
                        (SELECT MAX(e.occurred_at) FROM growth_evidence e
                         WHERE e.youth_id = youth.id AND e.evidence_type = 'membership_intent'),
+                       (SELECT MAX(a.created_at) FROM activity_logs a
+                        WHERE a.action = 'COMMITMENT_PLEDGE'
+                          AND a.details LIKE 'Member ID ' || youth.id || ' expressed intent%'),
                        commitment_date
                    ) AS intent_recorded_at
             FROM youth
             WHERE commitment_intent IS NOT NULL
-            ORDER BY intent_recorded_at DESC`, [], (err, rows) => { res.json(rows || []); });
+            ORDER BY intent_recorded_at DESC, id DESC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load Community Intent logs.' });
+        return res.json(rows || []);
+    });
 });
 
 app.post('/api/admin/community-intents-v2/:id/approve', requirePermission('edit_entries'), (req, res) => {
@@ -8625,8 +8822,9 @@ app.get('/api/youth-v2/:id/tier', requireSelfOr('edit_entries', req => req.param
 
 
 // --- V32: MINISTRY ROLE HISTORY LOGGING ---
-app.put('/api/ministries-v2/:id/members/:mappingId', (req, res) => {
-    const { role, sub_role, actor } = req.body;
+app.put('/api/ministries-v2/:id/members/:mappingId', requireAllPermissions(['access_ministries', 'edit_entries']), (req, res) => {
+    const { role, sub_role } = req.body;
+    const actor = getCanonicalDisplayActor(req) || 'Authorized leader';
     db.get("SELECT youth_id FROM ministry_members WHERE id = ?", [req.params.mappingId], (err, row) => {
         if(!row) return res.json({success:false, error: 'Mapping not found'});
         
@@ -8638,7 +8836,7 @@ app.put('/api/ministries-v2/:id/members/:mappingId', (req, res) => {
         db.run("UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?", [role, sub_role || '', req.params.mappingId], () => {
             // 2. Insert into Historical Ledger
             db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
-                [req.params.id, youthId, role, actor || 'Admin', timeNow, logMsg], () => {
+                [req.params.id, youthId, role, actor, timeNow, logMsg], () => {
                     res.json({success:true});
             });
         });
@@ -8655,8 +8853,9 @@ app.get('/api/admin/ministry-logs-v3', requirePermission('edit_entries'), (req, 
 
 
 // --- V34: BULLETPROOF MINISTRY ROLE LOGGING ---
-app.put('/api/ministries-v34/:id/members/:mappingId', (req, res) => {
-    const { role, sub_role, actor } = req.body;
+app.put('/api/ministries-v34/:id/members/:mappingId', requireAllPermissions(['access_ministries', 'edit_entries']), (req, res) => {
+    const { role, sub_role } = req.body;
+    const actor = getCanonicalDisplayActor(req) || 'Authorized leader';
     db.get("SELECT youth_id FROM ministry_members WHERE id = ?", [req.params.mappingId], (err, row) => {
         if(!row) return res.status(404).json({error: 'Not found'});
         const timeNow = typeof getManilaTime === 'function' ? getManilaTime() : new Date().toISOString();
@@ -8665,9 +8864,9 @@ app.put('/api/ministries-v34/:id/members/:mappingId', (req, res) => {
         db.run("UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?", [role, sub_role || '', req.params.mappingId], function(err) {
             if(err) return res.status(500).json({error: err.message});
             db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
-                [req.params.id, row.youth_id, role, actor || 'Admin', timeNow, logMsg], () => {
+                [req.params.id, row.youth_id, role, actor, timeNow, logMsg], () => {
                     if (role === 'Integration Period' || role === 'Member') {
-                        awardPoints(row.youth_id, 'growth', 50, actor || 'Admin', 'Ministry Advancement: ' + role);
+                        awardPoints(row.youth_id, 'growth', 50, actor, 'Ministry Advancement: ' + role);
                     }
                     res.json({success: true});
             });
@@ -8685,13 +8884,20 @@ app.get('/api/admin/ministry-logs-v34', requirePermission('edit_entries'), (req,
 
 
 // --- V36: PRECISION ROLE LOGGING ---
-app.put('/api/ministries-v36/:id/members/:mappingId', (req, res) => {
-    const { role, sub_role, actor } = req.body;
-    db.get("SELECT youth_id, role as old_role FROM ministry_members WHERE id = ?", [req.params.mappingId], (err, row) => {
-        if(!row) return res.status(404).json({error: 'Not found'});
+app.put('/api/ministries-v36/:id/members/:mappingId', requireAllPermissions(['access_ministries', 'edit_entries']), (req, res) => {
+    const { role, sub_role } = req.body;
+    const ministryId = normalizeCanonicalId(req.params.id);
+    const mappingId = normalizeCanonicalId(req.params.mappingId);
+    if (!ministryId || !mappingId || typeof role !== 'string' || !role.trim()) {
+        return res.status(400).json({ error: 'Invalid ministry role update.' });
+    }
+    const actor = getCanonicalDisplayActor(req) || 'Authorized leader';
+    db.get("SELECT youth_id, ministry_id, role as old_role FROM ministry_members WHERE id = ?", [mappingId], (err, row) => {
+        if (err) return res.status(500).json({ error: 'Unable to load ministry membership.' });
+        if(!row || Number(row.ministry_id) !== ministryId) return res.status(404).json({error: 'Not found'});
         
         // Generate precise readable timestamp
-        const timeNow = new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' });
+        const timeNow = getManilaTime();
         
         // Format precision log message
         let logMsg = `Previous role '${row.old_role || 'None'}' updated to '${role}'`;
@@ -8699,13 +8905,15 @@ app.put('/api/ministries-v36/:id/members/:mappingId', (req, res) => {
             logMsg = `Application Accepted for Integration Period (Previous: ${row.old_role || 'Applicant'})`;
         }
         
-        db.run("UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?", [role, sub_role || '', req.params.mappingId], function(err) {
-            if(err) return res.status(500).json({error: err.message});
+        db.run("UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ? AND ministry_id = ?", [role.trim(), sub_role || '', mappingId, ministryId], function(err) {
+            if(err) return res.status(500).json({error: 'Unable to update ministry role.'});
             db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
-                [req.params.id, row.youth_id, role, actor || 'Admin', timeNow, logMsg], () => {
+                [ministryId, row.youth_id, role.trim(), actor, timeNow, logMsg], historyErr => {
+                    if (historyErr) return res.status(500).json({ error: 'Role updated but its history could not be recorded.' });
                     if (role === 'Integration Period' || role === 'Member') {
-                        awardPoints(row.youth_id, 'growth', 50, actor || 'Admin', 'Ministry Advancement: ' + role);
+                        awardPoints(row.youth_id, 'growth', 50, actor, 'Ministry Advancement: ' + role);
                     }
+                    logActivity(actor, 'MINISTRY_ROLE_UPDATED', `Updated Ministry ID ${ministryId} membership ID ${mappingId}`);
                     res.json({success: true});
             });
         });
@@ -8713,11 +8921,16 @@ app.put('/api/ministries-v36/:id/members/:mappingId', (req, res) => {
 });
 
 app.get('/api/admin/ministry-logs-v36', requirePermission('edit_entries'), (req, res) => {
-    db.all(`SELECT h.*, y.name as applicant_name, m.name as ministry_name
+    db.all(`SELECT h.*,
+                   COALESCE(NULLIF(TRIM(y.name), ''), 'Unknown member (ID ' || h.youth_id || ')') as applicant_name,
+                   COALESCE(NULLIF(TRIM(m.name), ''), 'Unknown ministry (ID ' || h.ministry_id || ')') as ministry_name
             FROM ministry_role_history h
-            JOIN youth y ON h.youth_id = y.id
-            JOIN ministries m ON h.ministry_id = m.id
-            ORDER BY h.id DESC`, [], (err, rows) => { res.json(rows || []); });
+            LEFT JOIN youth y ON h.youth_id = y.id
+            LEFT JOIN ministries m ON h.ministry_id = m.id
+            ORDER BY h.id DESC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load ministry history.' });
+        return res.json(rows || []);
+    });
 });
 
 
@@ -8735,22 +8948,56 @@ app.put('/api/youth-v37/profile/:id', requireSelfOr('edit_entries', req => req.p
     });
 });
 
-app.post('/api/ministries-v37/priority/:mappingId', (req, res) => {
-    db.run("UPDATE ministry_members SET is_priority = 0 WHERE youth_id = ?", [req.body.youth_id], () => {
-        db.run("UPDATE ministry_members SET is_priority = 1 WHERE id = ?", [req.params.mappingId], () => {
-            res.json({success: true});
+function handleMinistryPriority(req, res) {
+    const mappingId = normalizeCanonicalId(req.params.mappingId || req.params.mapping_id);
+    if (!mappingId) return res.status(400).json({ error: 'Invalid ministry membership.' });
+    db.get('SELECT youth_id FROM ministry_members WHERE id = ?', [mappingId], (lookupErr, mapping) => {
+        if (lookupErr) return res.status(500).json({ error: 'Unable to load ministry membership.' });
+        if (!mapping) return res.status(404).json({ error: 'Ministry membership not found.' });
+        db.serialize(() => {
+            db.run('UPDATE ministry_members SET is_priority = 0 WHERE youth_id = ?', [mapping.youth_id]);
+            db.run('UPDATE ministry_members SET is_priority = 1 WHERE id = ? AND youth_id = ?', [mappingId, mapping.youth_id], function(updateErr) {
+                if (updateErr) return res.status(500).json({ error: 'Unable to update priority ministry.' });
+                return res.json({ success: true });
+            });
         });
     });
-});
+}
 
-app.post('/api/ministries/:id/apply', (req, res) => {
-    const { youth_id, intent_message, actor } = req.body;
-    if (!youth_id) return res.status(400).json({ error: 'Session error. Please log out and log in again.' });
+app.post(
+    '/api/ministries-v37/priority/:mappingId',
+    requireResourceOwnerOrAllPermissions('ministryMember', ['access_ministries', 'edit_entries'], req => req.params.mappingId),
+    handleMinistryPriority
+);
+
+app.post('/api/ministries/:id/apply', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.body && req.body.youth_id);
+    const authenticatedYouthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    const ministryId = normalizeCanonicalId(req.params.id);
+    const intentMessage = typeof req.body.intent_message === 'string' ? req.body.intent_message.trim() : '';
+    if (!youthId || !ministryId) return res.status(400).json({ error: 'Session error. Please log out and log in again.' });
+    if (!authenticatedYouthId || youthId !== authenticatedYouthId) return sendForbidden(res);
+    const actor = getCanonicalDisplayActor(req) || `Member ${youthId}`;
+    const timestamp = getManilaTime();
     db.run(`INSERT INTO ministry_members (ministry_id, youth_id, role, intent_message, assigned_at) VALUES (?, ?, 'Applicant', ?, ?)`,
-    [req.params.id, youth_id, intent_message, getManilaTime()], function(err) {
+    [ministryId, youthId, intentMessage, timestamp], function(err) {
         if (err) return res.status(400).json({ error: 'Already applied or belong to this ministry.' });
-        logActivity(actor, 'MINISTRY_APPLY', `Member ID ${youth_id} submitted intent for Ministry ID ${req.params.id}`);
-        res.json({ success: true });
+        const mappingId = this.lastID;
+        db.run(
+            `INSERT INTO ministry_role_history
+                (ministry_id, youth_id, role, actor, timestamp, intent_message)
+             VALUES (?, ?, 'Applicant', ?, ?, ?)`,
+            [ministryId, youthId, actor, timestamp, intentMessage || 'Ministry interest submitted.'],
+            historyErr => {
+                if (historyErr) {
+                    return db.run('DELETE FROM ministry_members WHERE id = ?', [mappingId], () => {
+                        res.status(500).json({ error: 'Unable to record ministry application history.' });
+                    });
+                }
+                logActivity(actor, 'MINISTRY_APPLY', `Member ID ${youthId} submitted intent for Ministry ID ${ministryId}`);
+                return res.json({ success: true });
+            }
+        );
     });
 });
 
@@ -8760,12 +9007,11 @@ app.get('/api/ministries/applications/pending', requirePermission('access_minist
             WHERE mm.role = 'Applicant' ORDER BY mm.assigned_at DESC`, [], (err, rows) => { res.json(rows || []); });
 });
 
-app.put('/api/ministries/members/:mapping_id/priority', (req, res) => {
-    db.serialize(() => {
-        db.run(`UPDATE ministry_members SET is_priority = 0 WHERE youth_id = ?`, [req.body.youth_id]);
-        db.run(`UPDATE ministry_members SET is_priority = 1 WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); });
-    });
-});
+app.put(
+    '/api/ministries/members/:mapping_id/priority',
+    requireResourceOwnerOrAllPermissions('ministryMember', ['access_ministries', 'edit_entries'], req => req.params.mapping_id),
+    handleMinistryPriority
+);
 
 // ==========================================
 // V120: BULLETPROOF FAITH QUEST ENDPOINTS

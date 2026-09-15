@@ -72,8 +72,10 @@ test(
 
         assert.match(
             route,
-            /getCanonicalAuditActor\(req\)/
+            /getCanonicalDisplayActor\(req\)/
         );
+
+        assert.doesNotMatch(route, /author\s*:\s*body\./);
 
         assert.doesNotMatch(
             route,

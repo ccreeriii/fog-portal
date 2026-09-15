@@ -114,7 +114,35 @@
     <style>
         .bottom-nav { z-index: 90 !important; }
         .modal { z-index: 9999 !important; }
-        #growthEventMappingModal { position: fixed !important; z-index: 2147483647 !important; }
+        #eventAnalyticsModal, #editEventModal { z-index: 10000 !important; }
+        #growthEventMappingModal { position: fixed !important; z-index: 10020 !important; }
+        .bottom-nav--canonical {
+            display: grid !important;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            align-items: stretch;
+        }
+        .bottom-nav--canonical .bottom-nav-btn {
+            min-width: 0;
+            padding: 9px 1px;
+            font-size: clamp(0.58rem, 2.35vw, 0.75rem);
+            line-height: 1.1;
+        }
+        .bottom-nav--canonical .bottom-nav-btn > span:first-child { font-size: 1.15rem; }
+        .bottom-nav--canonical .bottom-nav-label {
+            display: block;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .log-filters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px; }
+        .log-filters .form-control { flex:1 1 150px; }
+        .log-state { padding:20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-color); border-radius:8px; }
+        .log-state--error { color:var(--danger); border-color:var(--danger); }
+        .log-card { display:grid; gap:6px; padding:15px; margin-bottom:10px; border:1px solid var(--border-color); border-left:4px solid var(--primary); border-radius:8px; background:var(--bg-light); }
+        .log-card--ministry { border-left-color:#F59E0B; }
+        .log-card small { color:var(--text-muted); }
+        .log-card p { margin:4px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+        .log-pagination { display:flex; align-items:center; justify-content:center; gap:12px; margin-top:14px; }
     </style>
     <style>
         body.koinonia-offline-readonly .tab-content:not(#pulseDashboardTab):not(#profileTab),
@@ -843,29 +871,11 @@
 
     <div id="discipleshipAdminTab" class="tab-content">
         <div class="sub-nav">
-            <button id="btnSubAdminAnalytics" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('analytics')">📊 Analytics</button>
-            <button id="btnSubAdminPathways" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('pathways')">🗺️ Pathway Builder</button>
-            <button id="btnSubAdminGroups" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('groups')">🔥 Fire Circles</button>
+            <button id="btnSubAdminGroups" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('groups')">🔥 Fire Circles</button>
             <button id="btnSubAdminGamification" class="sub-nav-btn" onclick="V6Gamification.switchAdminTab('gamification')">🎯 Gamification</button>
             <button id="btnSubAdminHabits" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('habits')">📖 Daily Habits</button>
         </div>
-        <div id="subTabAdminAnalytics" class="discipleship-admin-sub-tab active">
-            <div class="card"><h2>Congregation Spiritual Stages</h2><div class="chart-wrapper"><canvas id="spiritualStagesChart"></canvas></div></div>
-        </div>
-        <div id="subTabAdminPathways" class="discipleship-admin-sub-tab" style="display:none;">
-            <div class="card">
-                <h2>Create New Discipleship Milestone</h2>
-                <form id="createPathwayForm" onsubmit="V2Discipleship.createPathway(event)">
-                    <div class="form-group"><label>Milestone Title *</label><input type="text" id="pathCreateTitle" class="form-control" required></div>
-                    <div class="form-group"><label>Description *</label><textarea id="pathCreateDesc" class="form-control" rows="2" required></textarea></div>
-                    <div class="form-group"><label>Step Order (Number) *</label><input type="number" id="pathCreateOrder" class="form-control" required></div>
-                    <div class="form-group"><label>Points Awarded (Growth XP) *</label><input type="number" id="pathCreatePoints" class="form-control" value="50" required></div>
-                    <button type="submit" class="btn btn-primary" style="width:100%;">Create Milestone</button>
-                </form>
-            </div>
-            <div class="card"><h2>Active Pathways</h2><div id="adminPathwaysList"></div></div>
-        </div>
-        <div id="subTabAdminGroups" class="discipleship-admin-sub-tab" style="display:none;">
+        <div id="subTabAdminGroups" class="discipleship-admin-sub-tab active">
             <div class="card">
                 <h2>Create New Campfire</h2>
                 <form id="createSmallGroupForm" onsubmit="V2Discipleship.createSmallGroup(event)">
@@ -956,7 +966,6 @@
                 </div>
             </div>
             <div id="verseOfDayContainer"></div>
-            <div id="nextStepContainer"></div>
             <div class="card" style="border-top: 4px solid #059669;">
                 <h2 style="color: #047857;">🌱 Spiritual Growth</h2>
                 <div class="sub-nav" style="margin-bottom: 15px;">
@@ -992,7 +1001,6 @@
                 <div id="gamTabLeaderboard" style="display: none;"><div id="gamLeaderboardList"></div></div>
             </div>
         </div>
-        <div id="growthSubMilestones" class="growth-sub-tab"><div class="card"><h2>Milestones</h2><div id="pathwaysListContainer"></div></div></div>
         <div id="growthSubJournal" class="growth-sub-tab">
             <div class="card">
                 <h2>Private Journal</h2>
@@ -1723,7 +1731,7 @@
 <script src="/js/offline-data.js?v=12.2"></script>
 <script src="/js/legal-acceptance.js?v=1"></script>
 <script src="/js/app.js?v=13.3"></script>
-<script src="/js/growth-event-mapping-ui.js?v=2"></script>
+<script src="/js/growth-event-mapping-ui.js?v=3"></script>
 <script src="/js/growth-journey-leadership.js?v=3"></script>
 <script src="/js/watchtower.js?v=1"></script>
 <script src="/js/v2-discipleship.js?v=12.2"></script>
@@ -3326,6 +3334,7 @@
             modal.style.display = 'flex';
         };
     </script>
-    <script src="/js/journey-dashboard.js?v=3"></script>
+    <script src="/js/journey-dashboard.js?v=4"></script>
+    <script src="/js/postlaunch-hotfix.js?v=1"></script>
 </body>
 </html>

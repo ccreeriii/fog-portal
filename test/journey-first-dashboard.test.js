@@ -203,7 +203,7 @@ test('Home information architecture and final runtime module are ordered and foc
     const connected = index.indexOf('id="journeyConnectedCard"');
     assert.ok(prayer > 0 && prayer < growth && growth < events && events < connected);
 
-    const finalModule = index.indexOf('/js/journey-dashboard.js?v=3');
+    const finalModule = index.indexOf('/js/journey-dashboard.js?v=4');
     const historicalDashboard = index.indexOf('id="dashboardReorderEngine"');
     assert.ok(finalModule > historicalDashboard);
     assert.match(index, /id="headerNotificationBell"/);
@@ -226,10 +226,10 @@ test('Home information architecture and final runtime module are ordered and foc
 
 test('mobile dashboard assets advance the explicit PWA cache coherently', () => {
     assert.match(index, /\/css\/journey-dashboard\.css\?v=2/);
-    assert.match(index, /\/js\/journey-dashboard\.js\?v=3/);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v25'/);
+    assert.match(index, /\/js\/journey-dashboard\.js\?v=4/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v26'/);
     assert.match(serviceWorker, /'\/css\/journey-dashboard\.css\?v=2'/);
-    assert.match(serviceWorker, /'\/js\/journey-dashboard\.js\?v=3'/);
+    assert.match(serviceWorker, /'\/js\/journey-dashboard\.js\?v=4'/);
     assert.match(dashboardStyles, /env\(safe-area-inset-bottom\)/);
     assert.match(dashboardStyles, /#mainHeader[\s\S]*env\(safe-area-inset-top\)/);
     assert.match(dashboardStyles, /\.journey-home__welcome[\s\S]*position:\s*static/);

@@ -1,0 +1,622 @@
+(function installPostlaunchHotfix(root) {
+    'use strict';
+
+    const document = root.document;
+    if (!document || root.__postlaunchHotfixInstalled) return;
+    root.__postlaunchHotfixInstalled = true;
+
+    const state = {
+        preregGeneration: 0,
+        preregEventId: null,
+        communityIntents: [],
+        ministryLogs: [],
+        attendanceLogs: [],
+        activityLogs: [],
+        filteredAttendanceLogs: [],
+        filteredActivityLogs: [],
+        attendancePage: 1,
+        activityPage: 1
+    };
+
+    function byId(id) {
+        return document.getElementById(id);
+    }
+
+    function setText(id, value) {
+        const target = byId(id);
+        if (target) target.textContent = value == null ? '' : String(value);
+    }
+
+    function normalizeId(value) {
+        const number = Number(value);
+        return Number.isSafeInteger(number) && number > 0 ? number : null;
+    }
+
+    function activeModals() {
+        return Array.from(document.querySelectorAll('.modal.active'));
+    }
+
+    function syncModalPageState() {
+        if (activeModals().length > 0) return;
+        if (document.body && document.body.classList) document.body.classList.remove('modal-open');
+        if (document.body && document.body.style) {
+            document.body.style.overflow = '';
+            document.body.style.pointerEvents = '';
+            document.body.style.touchAction = '';
+        }
+        const bottomNav = byId('bottomNav');
+        if (bottomNav && bottomNav.style) bottomNav.style.pointerEvents = '';
+    }
+
+    function openModal(target) {
+        const modal = typeof target === 'string' ? byId(target) : target;
+        if (!modal) return false;
+        modal.style.display = '';
+        modal.style.pointerEvents = '';
+        modal.removeAttribute('aria-hidden');
+        modal.classList.add('active');
+        return true;
+    }
+
+    function closeModal(target) {
+        const modal = typeof target === 'string' ? byId(target) : target;
+        if (!modal) return false;
+        modal.classList.remove('active');
+        modal.style.display = '';
+        modal.style.pointerEvents = '';
+        modal.setAttribute('aria-hidden', 'true');
+        syncModalPageState();
+        return true;
+    }
+
+    root.__portalOpenModal = openModal;
+    root.__portalCloseModal = closeModal;
+
+    function wrapModalOpen(functionName, modalId) {
+        const original = root[functionName];
+        if (typeof original !== 'function') return;
+        root[functionName] = async function postlaunchModalOpen(...args) {
+            const modal = byId(modalId);
+            if (modal) {
+                modal.style.display = '';
+                modal.style.pointerEvents = '';
+            }
+            const result = await original.apply(this, args);
+            if (modal && modal.classList.contains('active')) openModal(modal);
+            return result;
+        };
+    }
+
+    function wrapModalClose(functionName, modalId) {
+        const original = root[functionName];
+        root[functionName] = function postlaunchModalClose(...args) {
+            const result = typeof original === 'function' ? original.apply(this, args) : undefined;
+            closeModal(modalId);
+            return result;
+        };
+    }
+
+    wrapModalOpen('openAnalyticsModal', 'eventAnalyticsModal');
+    wrapModalOpen('openEditEventModal', 'editEventModal');
+    wrapModalClose('closeAnalyticsModal', 'eventAnalyticsModal');
+    wrapModalClose('closeEditEventModal', 'editEventModal');
+
+    root.addEventListener('click', event => {
+        const modal = event.target;
+        if (!modal || !modal.classList || !modal.classList.contains('modal')) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (modal.id === 'growthEventMappingModal' && typeof root.closeGrowthEventMapping === 'function') {
+            root.closeGrowthEventMapping();
+        } else if (modal.id === 'editEventModal') {
+            root.closeEditEventModal();
+        } else if (modal.id === 'eventAnalyticsModal') {
+            root.closeAnalyticsModal();
+        } else if (modal.id === 'viewProfileModal' && typeof root.closeViewProfileModal === 'function') {
+            root.closeViewProfileModal();
+            syncModalPageState();
+        } else {
+            closeModal(modal);
+        }
+    }, true);
+
+    root.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        const modals = activeModals();
+        const modal = modals[modals.length - 1];
+        if (!modal) return;
+        if (modal.id === 'growthEventMappingModal' && typeof root.closeGrowthEventMapping === 'function') {
+            root.closeGrowthEventMapping();
+        } else if (modal.id === 'editEventModal') {
+            root.closeEditEventModal();
+        } else if (modal.id === 'eventAnalyticsModal') {
+            root.closeAnalyticsModal();
+        } else {
+            closeModal(modal);
+        }
+    });
+
+    const previousRenderBottomNav = root.renderBottomNav;
+    const navItems = Object.freeze([
+        ['home', '🏠', 'Home'],
+        ['growth', '🌱', 'Growth'],
+        ['prayer', '🙏', 'Prayer'],
+        ['events', '📅', 'Events'],
+        ['journal', '📖', 'Journal'],
+        ['groups', '👥', 'Groups'],
+        ['menu', '☰', 'Menu']
+    ]);
+
+    function activeDestination(context) {
+        if (['home', 'growth', 'prayer', 'events', 'journal', 'groups', 'menu'].includes(context)) return context;
+        if (context === 'pulseDashboardTab') return 'home';
+        if (context === 'eventsTab' || context === 'preregPublicTab') return 'events';
+        if (context === 'discipleshipTab') return 'growth';
+        return '';
+    }
+
+    function navigateBottom(destination) {
+        if (destination === 'home') return root.switchTab('pulseDashboardTab');
+        if (destination === 'events') return root.switchTab('eventsTab');
+        if (destination === 'menu') return root.openSidebar();
+        const subTabs = { growth: 'Home', prayer: 'Prayer', journal: 'Journal', groups: 'Groups' };
+        return root.switchTab('discipleshipTab', subTabs[destination]);
+    }
+
+    root.renderBottomNav = function renderCanonicalBottomNav(context) {
+        if (root.isGuestMode || context === 'guest') {
+            if (typeof previousRenderBottomNav === 'function') previousRenderBottomNav(context);
+            return;
+        }
+        const nav = byId('bottomNav');
+        if (!nav) return;
+        nav.replaceChildren();
+        nav.classList.add('bottom-nav--canonical');
+        const selected = activeDestination(context);
+        for (const [destination, icon, label] of navItems) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'bottom-nav-btn';
+            button.dataset.destination = destination;
+            button.setAttribute('aria-label', label);
+            if (destination === selected) {
+                button.classList.add('active');
+                button.setAttribute('aria-current', 'page');
+            }
+            const iconElement = document.createElement('span');
+            iconElement.setAttribute('aria-hidden', 'true');
+            iconElement.textContent = icon;
+            const labelElement = document.createElement('span');
+            labelElement.className = 'bottom-nav-label';
+            labelElement.textContent = label;
+            button.append(iconElement, labelElement);
+            button.addEventListener('click', () => navigateBottom(destination));
+            nav.appendChild(button);
+        }
+    };
+
+    const previousSwitchGrowthSubTab = root.switchGrowthSubTab;
+    root.switchGrowthSubTab = function switchCanonicalGrowthSubTab(subTabName) {
+        const normalized = subTabName === 'Milestones' ? 'Home' : subTabName;
+        const result = typeof previousSwitchGrowthSubTab === 'function'
+            ? previousSwitchGrowthSubTab(normalized)
+            : undefined;
+        const destinations = { Home: 'growth', Prayer: 'prayer', Journal: 'journal', Groups: 'groups' };
+        root.renderBottomNav(destinations[normalized] || 'growth');
+        return result;
+    };
+
+    if (root.V2Discipleship) {
+        root.V2Discipleship.loadPathways = async () => [];
+        root.V2Discipleship.loadNextStep = async () => null;
+        root.V2Discipleship.updateMilestone = () => false;
+        root.V2Discipleship.renderChart = async () => null;
+    }
+
+    const previousSwitchTab = root.switchTab;
+    root.switchTab = async function switchTabWithCanonicalNav(tabId, subTabId) {
+        const result = typeof previousSwitchTab === 'function'
+            ? await previousSwitchTab(tabId, subTabId)
+            : undefined;
+        if (tabId === 'discipleshipTab') {
+            const destination = { Home: 'growth', Prayer: 'prayer', Journal: 'journal', Groups: 'groups' }[subTabId || 'Home'];
+            root.renderBottomNav(destination || 'growth');
+        } else {
+            root.renderBottomNav(tabId);
+        }
+        return result;
+    };
+
+    function applyEventDetail(event, generation) {
+        if (generation !== state.preregGeneration || !event) return;
+        setText('preregPublicTitle', event.prereg_title || event.name || 'Event Pre-Registration');
+        setText(
+            'preregPublicInfo',
+            event.prereg_info || `Date: ${event.event_date || 'TBA'} | Venue: ${event.venue || 'TBA'}`
+        );
+        if (typeof root.loadPreregHeroMedia === 'function') root.loadPreregHeroMedia(event);
+        const bottomBanner = byId('preregPublicBottomBanner');
+        if (!bottomBanner) return;
+        bottomBanner.onload = null;
+        bottomBanner.onerror = null;
+        if (event.prereg_bottom_banner_url) {
+            bottomBanner.src = event.prereg_bottom_banner_url;
+            bottomBanner.style.display = 'block';
+            bottomBanner.onerror = () => {
+                bottomBanner.removeAttribute('src');
+                bottomBanner.style.display = 'none';
+            };
+        } else {
+            bottomBanner.removeAttribute('src');
+            bottomBanner.style.display = 'none';
+        }
+        try { currentPreregEventDetail = event; } catch (error) { /* app.js owns this binding */ }
+    }
+
+    async function readJson(url) {
+        const response = await root.fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+    }
+
+    root.launchPublicPrereg = async function launchPublicPrereg(eventId, options = {}) {
+        const normalizedEventId = normalizeId(eventId);
+        if (!normalizedEventId) return false;
+        const generation = ++state.preregGeneration;
+        state.preregEventId = normalizedEventId;
+        try {
+            currentPreregEventId = normalizedEventId;
+            currentPreregEventDetail = null;
+        } catch (error) { /* app.js owns these bindings */ }
+
+        const main = byId('mainContainer');
+        if (main) main.style.display = 'block';
+        setText('preregPublicTitle', 'Loading event…');
+        setText('preregPublicInfo', 'Preparing pre-registration. You can continue as soon as the event details load.');
+        if (typeof root.showPreregStep === 'function') root.showPreregStep(1);
+        await root.switchTab('preregPublicTab');
+
+        if (options.updateHistory !== false && root.history && root.location) {
+            const url = new URL(root.location.href);
+            url.searchParams.set('event', String(normalizedEventId));
+            url.searchParams.delete('play');
+            url.searchParams.delete('read');
+            root.history.pushState({ preregEventId: normalizedEventId }, '', url.pathname + url.search + url.hash);
+        }
+
+        const eventPromise = readJson(`/api/events/${normalizedEventId}`);
+        const preregPromise = readJson(`/api/events/${normalizedEventId}/preregs`);
+        let needsYouth = true;
+        try { needsYouth = !Array.isArray(youthData) || youthData.length === 0; } catch (error) { /* load below */ }
+        const youthPromise = needsYouth ? readJson('/api/youth') : Promise.resolve(null);
+        const [eventResult, preregResult, youthResult] = await Promise.allSettled([
+            eventPromise,
+            preregPromise,
+            youthPromise
+        ]);
+        if (generation !== state.preregGeneration) return false;
+
+        if (eventResult.status === 'fulfilled') {
+            applyEventDetail(eventResult.value, generation);
+        } else {
+            setText('preregPublicTitle', 'Event Pre-Registration');
+            setText('preregPublicInfo', 'Event details could not be loaded. Please try again.');
+        }
+        try {
+            currentPreRegYouthIds = new Set(
+                preregResult.status === 'fulfilled' && Array.isArray(preregResult.value)
+                    ? preregResult.value.map(Number)
+                    : []
+            );
+            if (youthResult.status === 'fulfilled' && Array.isArray(youthResult.value)) youthData = youthResult.value;
+        } catch (error) { /* app.js owns these bindings */ }
+        return eventResult.status === 'fulfilled';
+    };
+
+    root.closePublicPrereg = function closePublicPrereg() {
+        ++state.preregGeneration;
+        state.preregEventId = null;
+        try {
+            currentPreregEventId = null;
+            currentPreregEventDetail = null;
+        } catch (error) { /* app.js owns these bindings */ }
+        if (root.history && root.location) {
+            const url = new URL(root.location.href);
+            url.searchParams.delete('event');
+            root.history.pushState(null, '', url.pathname + url.search + url.hash);
+        }
+        const header = byId('mainHeader');
+        if (header) header.style.display = 'block';
+        if (root.koinoniaAuthStatus === 'authenticated') {
+            root.switchTab('eventsTab');
+            if (typeof root.loadEvents === 'function') root.loadEvents();
+        } else if (typeof root.renderUnauthenticatedShell === 'function') {
+            root.renderUnauthenticatedShell();
+        } else {
+            root.switchTab('loginTab');
+        }
+    };
+
+    root.addEventListener('popstate', () => {
+        const eventId = normalizeId(new URL(root.location.href).searchParams.get('event'));
+        if (eventId) root.launchPublicPrereg(eventId, { updateHistory: false });
+        else if (state.preregEventId && root.koinoniaAuthStatus === 'authenticated') root.switchTab('eventsTab');
+    });
+
+    function emptyState(container, message, isError = false) {
+        if (!container) return;
+        container.replaceChildren();
+        const status = document.createElement('div');
+        status.className = `log-state${isError ? ' log-state--error' : ''}`;
+        status.setAttribute('role', isError ? 'alert' : 'status');
+        status.textContent = message;
+        container.appendChild(status);
+    }
+
+    function appendText(parent, tag, text, className) {
+        const child = document.createElement(tag);
+        if (className) child.className = className;
+        child.textContent = text == null ? '' : String(text);
+        parent.appendChild(child);
+        return child;
+    }
+
+    function ensureMembershipAdminTab() {
+        if (byId('membershipAdminTab') || !byId('mainContainer')) return;
+        const tab = document.createElement('div');
+        tab.id = 'membershipAdminTab';
+        tab.className = 'tab-content';
+        tab.innerHTML = '<div class="sub-nav"><button id="btnSubMemCommunity" class="sub-nav-btn active" type="button">🕊️ Community Intents</button><button id="btnSubMemMinistry" class="sub-nav-btn" type="button">🔥 Ministry Logs</button></div><section id="subTabMemCommunity" class="mem-sub-tab"><div class="card"><h2>🕊️ Community Intent Logs</h2><div class="log-filters"><input type="text" id="commFilterName" class="form-control" placeholder="Search name…"><input type="date" id="commFilterStart" class="form-control" title="Start date"><input type="date" id="commFilterEnd" class="form-control" title="End date"></div><div id="communityIntentsList"></div></div></section><section id="subTabMemMinistry" class="mem-sub-tab" hidden><div class="card"><h2>🔥 Ministry Logs</h2><div class="log-filters"><input type="text" id="minLogFilterName" class="form-control" placeholder="Search member or ministry…"><input type="date" id="minLogFilterStart" class="form-control" title="Start date"><input type="date" id="minLogFilterEnd" class="form-control" title="End date"></div><div id="ministryIntentsLogList"></div></div></section>';
+        byId('mainContainer').appendChild(tab);
+        byId('btnSubMemCommunity').addEventListener('click', () => root.switchMemSubTab('community'));
+        byId('btnSubMemMinistry').addEventListener('click', () => root.switchMemSubTab('ministry'));
+        for (const id of ['commFilterName', 'commFilterStart', 'commFilterEnd']) {
+            byId(id).addEventListener('input', () => root.filterCommunityLogs());
+        }
+        for (const id of ['minLogFilterName', 'minLogFilterStart', 'minLogFilterEnd']) {
+            byId(id).addEventListener('input', () => root.filterMinistryLogs());
+        }
+    }
+
+    root.switchMemSubTab = function switchMemSubTab(tab) {
+        ensureMembershipAdminTab();
+        const community = tab !== 'ministry';
+        byId('subTabMemCommunity').hidden = !community;
+        byId('subTabMemMinistry').hidden = community;
+        byId('btnSubMemCommunity').classList.toggle('active', community);
+        byId('btnSubMemMinistry').classList.toggle('active', !community);
+        root.loadMembershipAdminData();
+    };
+
+    async function fetchArray(url, label) {
+        const response = await root.fetch(url, { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
+        const payload = await response.json();
+        if (!Array.isArray(payload)) throw new Error(`${label} returned an invalid response`);
+        return payload;
+    }
+
+    root.loadMembershipAdminData = async function loadMembershipAdminData() {
+        ensureMembershipAdminTab();
+        emptyState(byId('communityIntentsList'), 'Loading Community Intent logs…');
+        emptyState(byId('ministryIntentsLogList'), 'Loading ministry logs…');
+        const [community, ministry] = await Promise.allSettled([
+            fetchArray('/api/admin/community-intents-v2', 'Community Intent logs'),
+            fetchArray('/api/admin/ministry-logs-v36', 'Ministry logs')
+        ]);
+        if (community.status === 'fulfilled') {
+            state.communityIntents = community.value;
+            root.cachedCommunityIntents = community.value;
+            root.filterCommunityLogs();
+        } else {
+            emptyState(byId('communityIntentsList'), 'Unable to load Community Intent logs.', true);
+        }
+        if (ministry.status === 'fulfilled') {
+            state.ministryLogs = ministry.value;
+            root.cachedMinistryLogs = ministry.value;
+            root.filterMinistryLogs();
+        } else {
+            emptyState(byId('ministryIntentsLogList'), 'Unable to load ministry logs.', true);
+        }
+    };
+
+    function dateMatches(value, start, end) {
+        const date = String(value || '').slice(0, 10);
+        if (!date && (start || end)) return false;
+        return (!start || date >= start) && (!end || date <= end);
+    }
+
+    root.filterCommunityLogs = function filterCommunityLogs() {
+        const query = String(byId('commFilterName')?.value || '').trim().toLowerCase();
+        const start = byId('commFilterStart')?.value || '';
+        const end = byId('commFilterEnd')?.value || '';
+        root.renderCommunityIntents(state.communityIntents.filter(item =>
+            String(item.name || '').toLowerCase().includes(query) &&
+            dateMatches(item.intent_recorded_at, start, end)
+        ));
+    };
+
+    root.renderCommunityIntents = function renderCommunityIntents(items) {
+        const container = byId('communityIntentsList');
+        if (!items.length) return emptyState(container, 'No Community Intent logs match this filter.');
+        container.replaceChildren();
+        for (const item of items) {
+            const card = document.createElement('article');
+            card.className = 'log-card log-card--community';
+            appendText(card, 'strong', item.name || `Member ${item.id}`);
+            appendText(card, 'small', `Intent recorded: ${item.intent_recorded_at || 'Timestamp unavailable'}`);
+            if (item.commitment_accepted_at) {
+                appendText(card, 'small', `Accepted: ${item.commitment_accepted_at} by ${item.commitment_accepted_by || 'Authorized leader'}`);
+            }
+            appendText(card, 'p', item.commitment_intent || 'No reflection was recorded.');
+            const awaitingAcceptance = !item.commitment_accepted_at &&
+                !['Committed Member', 'Leader'].includes(item.account_tier);
+            if (awaitingAcceptance && typeof root.approveFullMember === 'function') {
+                const button = appendText(card, 'button', 'Accept as Committed Member', 'btn btn-primary btn-sm');
+                button.type = 'button';
+                button.addEventListener('click', () => root.approveFullMember(item.id));
+            }
+            container.appendChild(card);
+        }
+    };
+
+    root.filterMinistryLogs = function filterMinistryLogs() {
+        const query = String(byId('minLogFilterName')?.value || '').trim().toLowerCase();
+        const start = byId('minLogFilterStart')?.value || '';
+        const end = byId('minLogFilterEnd')?.value || '';
+        root.renderMinistryLogs(state.ministryLogs.filter(item =>
+            (`${item.applicant_name || ''} ${item.ministry_name || ''}`).toLowerCase().includes(query) &&
+            dateMatches(item.timestamp, start, end)
+        ));
+    };
+
+    root.renderMinistryLogs = function renderMinistryLogs(items) {
+        const container = byId('ministryIntentsLogList');
+        if (!items.length) return emptyState(container, 'No ministry logs match this filter.');
+        container.replaceChildren();
+        for (const item of items) {
+            const card = document.createElement('article');
+            card.className = 'log-card log-card--ministry';
+            appendText(card, 'strong', `${item.applicant_name || 'Unknown member'} — ${item.ministry_name || 'Unknown ministry'}`);
+            appendText(card, 'small', `${item.timestamp || 'Timestamp unavailable'} · ${item.actor || 'System'}`);
+            appendText(card, 'p', item.intent_message || `Role: ${item.role || 'Unspecified'}`);
+            container.appendChild(card);
+        }
+    };
+
+    function renderLogTable(container, columns, rows, emptyMessage) {
+        if (!rows.length) return emptyState(container, emptyMessage);
+        container.replaceChildren();
+        const table = document.createElement('table');
+        table.className = 'responsive-table';
+        const head = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        for (const column of columns) appendText(headerRow, 'th', column.label);
+        head.appendChild(headerRow);
+        const body = document.createElement('tbody');
+        for (const row of rows) {
+            const tr = document.createElement('tr');
+            for (const column of columns) {
+                const cell = document.createElement('td');
+                if (typeof column.render === 'function') column.render(cell, row);
+                else cell.textContent = column.value(row);
+                tr.appendChild(cell);
+            }
+            body.appendChild(tr);
+        }
+        table.append(head, body);
+        container.appendChild(table);
+    }
+
+    function renderPagedLogTable(kind, container, columns, rows, emptyMessage) {
+        if (!rows.length) return emptyState(container, emptyMessage);
+        const pageKey = kind === 'attendance' ? 'attendancePage' : 'activityPage';
+        const pageSize = 10;
+        const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+        state[pageKey] = Math.min(Math.max(1, state[pageKey]), pageCount);
+        const start = (state[pageKey] - 1) * pageSize;
+        renderLogTable(container, columns, rows.slice(start, start + pageSize), emptyMessage);
+        if (pageCount === 1) return;
+        const controls = document.createElement('div');
+        controls.className = 'log-pagination';
+        const previous = appendText(controls, 'button', 'Previous', 'btn btn-outline btn-sm');
+        previous.type = 'button';
+        previous.disabled = state[pageKey] === 1;
+        appendText(controls, 'span', `Page ${state[pageKey]} of ${pageCount}`);
+        const next = appendText(controls, 'button', 'Next', 'btn btn-outline btn-sm');
+        next.type = 'button';
+        next.disabled = state[pageKey] === pageCount;
+        const rerender = () => kind === 'attendance' ? renderAttendancePage() : renderActivityPage();
+        previous.addEventListener('click', () => { state[pageKey] -= 1; rerender(); });
+        next.addEventListener('click', () => { state[pageKey] += 1; rerender(); });
+        container.appendChild(controls);
+    }
+
+    function renderAttendancePage() {
+        renderPagedLogTable('attendance', byId('attendanceLogsContainer'), [
+            { label: 'Member', value: item => item.member_name || 'Unknown member' },
+            { label: 'Event', value: item => item.event_name || 'Unknown event' },
+            { label: 'Checked in', value: item => item.checked_in_at || 'Timestamp unavailable' },
+            { label: 'Type', value: item => item.is_walkin ? 'Walk-in' : 'Pre-registered' },
+            {
+                label: 'Actions',
+                render(cell, item) {
+                    if (typeof root.hasPerm === 'function' && root.hasPerm('edit_entries') &&
+                        typeof root.openEditAttendanceModal === 'function') {
+                        const edit = appendText(cell, 'button', 'Edit', 'btn btn-outline btn-sm');
+                        edit.type = 'button';
+                        edit.addEventListener('click', () => root.openEditAttendanceModal(item.id, item.checked_in_at, item.is_walkin));
+                    }
+                    if (typeof root.hasPerm === 'function' && root.hasPerm('delete_entries') &&
+                        typeof root.triggerDeleteAttendance === 'function') {
+                        const remove = appendText(cell, 'button', 'Delete', 'btn btn-danger btn-sm');
+                        remove.type = 'button';
+                        remove.addEventListener('click', () => root.triggerDeleteAttendance(item.id, item.member_name || 'Unknown member'));
+                    }
+                }
+            }
+        ], state.filteredAttendanceLogs, 'No event attendance logs match this filter.');
+    }
+
+    root.loadAttendanceLogs = async function loadAttendanceLogs() {
+        const container = byId('attendanceLogsContainer');
+        emptyState(container, 'Loading event attendance…');
+        try {
+            state.attendanceLogs = await fetchArray('/api/attendance/logs', 'Attendance logs');
+            try { cachedAttendanceLogs = state.attendanceLogs; } catch (error) { /* app.js owns this binding */ }
+            root.filterAttendanceLogs();
+        } catch (error) {
+            emptyState(container, 'Unable to load event attendance logs.', true);
+        }
+    };
+
+    root.filterAttendanceLogs = function filterAttendanceLogs() {
+        const query = String(byId('attendanceSearchInput')?.value || '').trim().toLowerCase();
+        state.filteredAttendanceLogs = state.attendanceLogs.filter(item =>
+            (`${item.member_name || ''} ${item.event_name || ''}`).toLowerCase().includes(query)
+        );
+        state.attendancePage = 1;
+        renderAttendancePage();
+    };
+
+    root.loadActivityLogs = async function loadActivityLogs() {
+        const container = byId('activityLogsContainer');
+        emptyState(container, 'Loading audit history…');
+        try {
+            state.activityLogs = await fetchArray('/api/activity-logs', 'Audit logs');
+            try { cachedActivityLogs = state.activityLogs; } catch (error) { /* app.js owns this binding */ }
+            root.filterActivityLogs();
+        } catch (error) {
+            emptyState(container, 'Unable to load audit logs.', true);
+        }
+    };
+
+    root.filterActivityLogs = function filterActivityLogs() {
+        const query = String(byId('activitySearchInput')?.value || '').trim().toLowerCase();
+        state.filteredActivityLogs = state.activityLogs.filter(item =>
+            (`${item.username || ''} ${item.action || ''} ${item.details || ''}`).toLowerCase().includes(query)
+        );
+        state.activityPage = 1;
+        renderActivityPage();
+    };
+
+    function renderActivityPage() {
+        renderPagedLogTable('activity', byId('activityLogsContainer'), [
+            { label: 'Actor', value: item => item.username || 'System' },
+            { label: 'Action', value: item => item.action || '' },
+            { label: 'Details', value: item => item.details || '' },
+            { label: 'Timestamp', value: item => item.created_at || 'Timestamp unavailable' }
+        ], state.filteredActivityLogs, 'No audit logs match this filter.');
+    }
+
+    ensureMembershipAdminTab();
+    if (!root.isGuestMode && root.koinoniaAuthStatus === 'authenticated') {
+        root.renderBottomNav('pulseDashboardTab');
+    }
+    Promise.resolve(root.authReady).catch(() => null).finally(() => {
+        const eventId = normalizeId(new URL(root.location.href).searchParams.get('event'));
+        if (eventId && state.preregEventId !== eventId) {
+            root.launchPublicPrereg(eventId, { updateHistory: false });
+        }
+    });
+})(typeof window !== 'undefined' ? window : globalThis);
