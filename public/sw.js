@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v32';
+const CACHE_NAME = 'fog-portal-v33';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -16,18 +16,18 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/v2-discipleship.js?v=12.2',
     '/js/v3-worship.js?v=12.2',
     '/js/v4-communications.js?v=12.3',
-    '/js/v6-gamification.js?v=12.2',
+    '/js/v6-gamification.js?v=12.3',
     '/js/v7-ai-assistant.js?v=12.2',
     '/js/v8-slingshot.js?v=12.2',
     '/js/v8-noahs-ark.js?v=12.2',
     '/js/v8-red-sea.js?v=12.2',
     '/js/v8-peters-leap.js?v=12.2',
     '/js/v8-jonahs-dive.js?v=12.2',
-    '/js/v9-growth-games.js?v=12.2',
+    '/js/v9-growth-games.js?v=12.3',
     '/js/v10-expansion.js?v=12.3',
     '/js/journey-dashboard.js?v=5',
     '/js/postlaunch-hotfix.js?v=4',
-    '/js/community-feature-polish.js?v=3',
+    '/js/community-feature-polish.js?v=4',
     '/manifest.json',
     '/img/logo.png'
 ];

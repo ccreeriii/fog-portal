@@ -187,14 +187,64 @@
         };
     }
 
+    function groupLogoNode(group, size = 56) {
+        const fallback = document.createElement('div');
+        fallback.textContent = '🔥';
+        fallback.setAttribute('aria-hidden', 'true');
+        fallback.setAttribute(
+            'style',
+            `width:${size}px;height:${size}px;min-width:${size}px;border-radius:12px;` +
+            'background:#FFF0E6;border:1px solid rgba(255,107,0,.18);' +
+            'display:flex;align-items:center;justify-content:center;font-size:1.65rem;overflow:hidden;'
+        );
+
+        const rawLogo = typeof group.logo === 'string' ? group.logo.trim() : '';
+        const safeLogo = rawLogo && (
+            rawLogo.startsWith('data:image/') ||
+            rawLogo.startsWith('/') ||
+            /^https?:\/\//i.test(rawLogo)
+        );
+
+        if (!safeLogo) return fallback;
+
+        const image = document.createElement('img');
+        image.src = rawLogo;
+        image.alt = `${group.name || 'Campfire'} logo`;
+        image.loading = 'lazy';
+        image.setAttribute(
+            'style',
+            `width:${size}px;height:${size}px;min-width:${size}px;border-radius:12px;` +
+            'object-fit:cover;display:block;border:1px solid rgba(255,107,0,.18);'
+        );
+
+        image.addEventListener('error', () => {
+            if (image.isConnected) image.replaceWith(fallback);
+        }, { once: true });
+
+        return image;
+    }
+
     function groupCard(group, mode) {
         const card = document.createElement('article');
         card.className = 'feature-card feature-card--groups';
-        appendText(card, 'h3', group.name || 'Campfire', 'feature-card__title');
+        const identity = document.createElement('div');
+        identity.setAttribute(
+            'style',
+            'display:flex;gap:14px;align-items:center;margin-bottom:12px;'
+        );
+        identity.appendChild(groupLogoNode(group, 56));
+
+        const identityText = document.createElement('div');
+        identityText.setAttribute('style', 'min-width:0;');
+        appendText(identityText, 'h3', group.name || 'Campfire', 'feature-card__title');
+
         const meta = [group.meeting_schedule || null, group.venue || null,
             group.leader_name ? `Led by ${group.leader_name}` : null]
             .filter(Boolean).join(' · ');
-        if (meta) appendText(card, 'p', meta, 'feature-card__meta');
+        if (meta) appendText(identityText, 'p', meta, 'feature-card__meta');
+
+        identity.appendChild(identityText);
+        card.appendChild(identity);
         const actions = document.createElement('div');
         actions.className = 'feature-card__actions';
         if (mode === 'approved') {
@@ -240,9 +290,22 @@
         for (const group of state.groups) {
             const card = document.createElement('article');
             card.className = 'feature-card';
-            appendText(card, 'h3', group.name || 'Campfire', 'feature-card__title');
-            appendText(card, 'p', `${group.leader_name || 'Leader unassigned'} · ${group.member_count || 0} members`,
+            const identity = document.createElement('div');
+            identity.setAttribute(
+            'style',
+            'display:flex;gap:14px;align-items:center;margin-bottom:12px;'
+        );
+            identity.appendChild(groupLogoNode(group, 50));
+
+            const identityText = document.createElement('div');
+            identityText.setAttribute('style', 'min-width:0;');
+            appendText(identityText, 'h3', group.name || 'Campfire', 'feature-card__title');
+            appendText(identityText, 'p',
+                `${group.leader_name || 'Leader unassigned'} · ${group.member_count || 0} members`,
                 'feature-card__meta');
+
+            identity.appendChild(identityText);
+            card.appendChild(identity);
             const actions = document.createElement('div');
             actions.className = 'feature-card__actions';
             if (typeof root.hasPerm === 'function' && root.hasPerm('edit_entries')) {

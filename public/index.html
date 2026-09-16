@@ -910,7 +910,7 @@
                         <div class="form-group" style="flex:1;"><label>Venue</label><input type="text" id="sgCreateVenue" class="form-control"></div>
                     </div>
                     <div class="form-group"><label>Privacy Level</label><select id="sgCreatePrivacy" class="form-control"><option value="Open">🌐 Open (Anyone can join)</option><option value="Approval">🔒 Approval Needed</option><option value="Invite-Only">🕵️ Secret (Invite-Only)</option></select></div>
-<div class="form-group"><label>Points Awarded on Join (Growth XP) *</label><input type="number" id="sgCreatePoints" class="form-control" value="20" required></div>
+<div class="form-group"><label>Life Points Awarded on Join *</label><input type="number" id="sgCreatePoints" class="form-control" value="20" required></div>
                     <button type="submit" class="btn btn-primary" style="width:100%;">Create Group</button>
                 </form>
             </div>
@@ -919,7 +919,7 @@
         <div id="subTabAdminHabits" class="discipleship-admin-sub-tab" style="display:none;">
             <div class="card">
                 <h2 style="color:#10B981;">📖 Daily Habit Rewards</h2>
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Set the Growth XP members earn for daily spiritual habits (awarded once per day).</p>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Set the Life Points members earn for daily spiritual habits (awarded once per day).</p>
                 <form id="habitSettingsForm" onsubmit="V2Discipleship.saveHabitSettings(event)">
                     <div style="display:flex; gap:15px;">
                         <div class="form-group" style="flex:1;">
@@ -936,14 +936,54 @@
             </div>
         </div>
 <div id="subTabAdminGamification" class="discipleship-admin-sub-tab" style="display:none;">
-            <div class="card">
-                <h2 style="color:#D97706;">Create Weekly Challenge</h2>
-                <form id="createChallengeForm" onsubmit="V6Gamification.createChallenge(event)">
-                    <div class="form-group"><label>Challenge Title *</label><input type="text" id="gamCreateTitle" class="form-control" required></div>
-                    <div class="form-group"><label>Description *</label><textarea id="gamCreateDesc" class="form-control" rows="2" required></textarea></div>
-                    <div class="form-group"><label>Growth Points *</label><input type="number" id="gamCreatePoints" class="form-control" value="50" required></div>
-                    <button type="submit" class="btn btn-primary" style="width:100%; background: #F59E0B;">Publish Challenge</button>
-                </form>
+            <div class="sub-nav" style="margin-bottom:15px;">
+                <button id="btnGamAdminList" class="sub-nav-btn active" onclick="V6Gamification.switchAdminGamificationTab('list')">📋 Weekly Challenges</button>
+                <button id="btnGamAdminCreate" class="sub-nav-btn" onclick="V6Gamification.switchAdminGamificationTab('create')">➕ Create Weekly Challenge</button>
+            </div>
+
+            <div id="gamAdminChallengesListTab">
+                <div class="card">
+                    <h2 style="color:#D97706;">Weekly Challenges</h2>
+                    <p style="color:var(--text-muted);font-size:.9rem;margin-top:-6px;">
+                        Manage the weekly challenges that encourage members to grow together in faith.
+                    </p>
+                    <div id="gamAdminChallengesList">
+                        <p style="text-align:center;color:var(--text-muted);">Loading weekly challenges…</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="gamAdminCreateTab" style="display:none;">
+                <div class="card">
+                    <h2 style="color:#D97706;">Create Weekly Challenge</h2>
+                    <form id="createChallengeForm" onsubmit="V6Gamification.createChallenge(event)">
+                        <div class="form-group"><label>Challenge Title *</label><input type="text" id="gamCreateTitle" class="form-control" required></div>
+                        <div class="form-group"><label>Description *</label><textarea id="gamCreateDesc" class="form-control" rows="3" required></textarea></div>
+                        <div class="form-group"><label>Life Points *</label><input type="number" id="gamCreatePoints" class="form-control" value="50" min="0" required></div>
+                        <button type="submit" class="btn btn-primary" style="width:100%;background:#F59E0B;">Publish Challenge</button>
+                    </form>
+                </div>
+            </div>
+
+            <div id="editWeeklyChallengeModal" class="modal">
+                <div class="modal-content" style="max-width:560px;">
+                    <span class="close-modal" onclick="V6Gamification.closeEditChallengeModal()" style="float:right;font-size:28px;cursor:pointer;">&times;</span>
+                    <h2 style="color:#D97706;">Edit Weekly Challenge</h2>
+                    <form id="editChallengeForm" onsubmit="V6Gamification.updateChallenge(event)">
+                        <input type="hidden" id="gamEditId">
+                        <div class="form-group"><label>Challenge Title *</label><input type="text" id="gamEditTitle" class="form-control" required></div>
+                        <div class="form-group"><label>Description *</label><textarea id="gamEditDesc" class="form-control" rows="3" required></textarea></div>
+                        <div class="form-group"><label>Life Points *</label><input type="number" id="gamEditPoints" class="form-control" min="0" required></div>
+                        <div class="form-group">
+                            <label>Status *</label>
+                            <select id="gamEditStatus" class="form-control" required>
+                                <option value="1">Active</option>
+                                <option value="0">Archived</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width:100%;background:#F59E0B;">Save Changes</button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
@@ -988,14 +1028,14 @@
             <div class="card" style="border-top: 4px solid #059669;">
                 <h2 style="color: #047857;">🌱 Spiritual Growth</h2>
                 <div class="sub-nav" style="margin-bottom: 15px;">
-                    <button id="btnGamTabChallenges" class="sub-nav-btn active" onclick="V6Gamification.switchTab('challenges')">🎯 Weekly Tasks</button>
+                    <button id="btnGamTabChallenges" class="sub-nav-btn active" onclick="V6Gamification.switchTab('challenges')">🎯 Weekly Challenges</button>
                     <button id="btnGamTabGames" class="sub-nav-btn" onclick="V6Gamification.switchTab('games')">🧠 Games</button>
-                    <button id="btnGamTabLeaderboard" class="sub-nav-btn" onclick="V6Gamification.switchTab('leaderboard')">🏅 Ranks</button>
+                    <button id="btnGamTabLeaderboard" class="sub-nav-btn" onclick="V6Gamification.switchTab('leaderboard')">🌿 Journey Board</button>
                 </div>
                 <div id="gamTabChallenges" style="display: block;"><div id="gamActiveChallengesList"></div></div>
                 <div id="gamTabGames" style="display: none;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Play games and earn Growth XP!</p>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Play games and earn Life Points!</p>
                         <button class="btn btn-outline btn-sm" onclick="if(window.refreshAllRanks) window.refreshAllRanks();" style="font-weight: bold;">🔄 Refresh</button>
                     </div>
                     
@@ -1017,7 +1057,12 @@
                     </div>
                     <div id="growthActiveGameArea" style="display:none; width: 100%; position: relative;"></div>
                 </div>
-                <div id="gamTabLeaderboard" style="display: none;"><div id="gamLeaderboardList"></div></div>
+                <div id="gamTabLeaderboard" style="display:none;">
+                    <p style="font-size:.88rem;color:var(--text-muted);margin:0 0 14px 0;text-align:center;">
+                        🌿 Celebrating our growth together. Life Points encourage participation and are never a measure of faith, worth, or God’s favor.
+                    </p>
+                    <div id="gamLeaderboardList"></div>
+                </div>
             </div>
         </div>
         <div id="growthSubJournal" class="growth-sub-tab">
@@ -1782,14 +1827,14 @@
 <script src="/js/v2-discipleship.js?v=12.3"></script>
 <script src="/js/v3-worship.js?v=12.2"></script>
 <script src="/js/v4-communications.js?v=12.3"></script>
-<script src="/js/v6-gamification.js?v=12.2"></script>
+<script src="/js/v6-gamification.js?v=12.3"></script>
 <script src="/js/v7-ai-assistant.js?v=12.2"></script>
 <script src="/js/v8-slingshot.js?v=12.2"></script>
 <script src="/js/v8-noahs-ark.js?v=12.2"></script>
 <script src="/js/v8-red-sea.js?v=12.2"></script>
 <script src="/js/v8-peters-leap.js?v=12.2"></script>
 <script src="/js/v8-jonahs-dive.js?v=12.2"></script>
-<script src="/js/v9-growth-games.js?v=12.2"></script>
+<script src="/js/v9-growth-games.js?v=12.3"></script>
 <script src="/js/v10-expansion.js?v=12.3"></script>
 
 
@@ -3381,6 +3426,6 @@
     </script>
     <script src="/js/journey-dashboard.js?v=5"></script>
     <script src="/js/postlaunch-hotfix.js?v=4"></script>
-    <script src="/js/community-feature-polish.js?v=3"></script>
+    <script src="/js/community-feature-polish.js?v=4"></script>
 </body>
 </html>

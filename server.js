@@ -6508,7 +6508,58 @@ app.patch('/api/small-groups/:id/privacy', requireResourceOwnerOrAllPermissions(
         res.json({success: !err, error: err ? err.message : null});
     });
 });
-app.put('/api/small-groups/:id', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'edit_entries']), (req, res) => { db.run(`UPDATE small_groups SET name=?, leader_id=?, meeting_schedule=?, venue=?, points=?, logo=?, privacy_level=? WHERE id=?`, [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue, req.body.points || 20, req.body.logo || null, req.body.privacy_level || 'Open', req.params.id], function(err) { res.json({ success: true }); }); });
+app.put(
+    '/api/small-groups/:id',
+    requireResourceOwnerOrAllPermissions(
+        'smallGroup',
+        ['access_discipleship', 'edit_entries']
+    ),
+    (req, res) => {
+        const body = req.body || {};
+        const hasLogoUpdate = Object.prototype.hasOwnProperty.call(body, 'logo');
+
+        const sql = hasLogoUpdate
+            ? `UPDATE small_groups
+               SET name=?, leader_id=?, meeting_schedule=?, venue=?,
+                   points=?, logo=?, privacy_level=?
+               WHERE id=?`
+            : `UPDATE small_groups
+               SET name=?, leader_id=?, meeting_schedule=?, venue=?,
+                   points=?, privacy_level=?
+               WHERE id=?`;
+
+        const params = hasLogoUpdate
+            ? [
+                body.name,
+                body.leader_id || null,
+                body.meeting_schedule,
+                body.venue,
+                body.points || 20,
+                body.logo || null,
+                body.privacy_level || 'Open',
+                req.params.id
+            ]
+            : [
+                body.name,
+                body.leader_id || null,
+                body.meeting_schedule,
+                body.venue,
+                body.points || 20,
+                body.privacy_level || 'Open',
+                req.params.id
+            ];
+
+        db.run(sql, params, function(err) {
+            if (err) {
+                return res.status(500).json({
+                    error: 'Unable to update Campfire.'
+                });
+            }
+
+            return res.json({ success: true });
+        });
+    }
+);
 app.delete('/api/small-groups/:id', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
 
 
@@ -8057,29 +8108,292 @@ app.get('/api/gamification/points/:youth_id', (req, res) => {
     });
 });
 app.get('/api/gamification/group-leaderboard', (req, res) => { db.all(`SELECT sg.id, sg.name, SUM(gp.points) as total_points, COUNT(DISTINCT sgm.youth_id) as member_count FROM small_groups sg JOIN small_group_members sgm ON sg.id = sgm.group_id JOIN gamification_points gp ON sgm.youth_id = gp.youth_id GROUP BY sg.id ORDER BY total_points DESC LIMIT 10`, [], (err, rows) => { res.json(rows || []); }); });
-app.get('/api/gamification/challenges', (req, res) => {
-    const youthId = req.query.youth_id;
-    db.all(`SELECT * FROM weekly_challenges WHERE is_active = 1 ORDER BY created_at DESC`, [], (err, challenges) => {
-        if (err || !challenges) return res.json([]);
-        if (!youthId) return res.json(challenges);
-        db.all(`SELECT challenge_id FROM user_challenge_logs WHERE youth_id = ?`, [youthId], (err2, logs) => {
-            const completedIds = new Set((logs || []).map(l => l.challenge_id));
-            res.json(challenges.map(c => ({ ...c, completed: completedIds.has(c.id) })));
-        });
-    });
+
+function normalizeWeeklyChallengeAdminPayload(body = {}) {
+    const title = String(body.title || '').trim();
+    const description = String(body.description || '').trim();
+    const points = Number.parseInt(body.points, 10);
+    const isActive = body.is_active === undefined
+        ? 1
+        : (Number(body.is_active) === 0 ? 0 : 1);
+
+    if (!title) return { error: 'Challenge title is required.' };
+    if (!description) return { error: 'Challenge description is required.' };
+    if (!Number.isInteger(points) || points < 0 || points > 100000) {
+        return { error: 'Life Points must be a whole number between 0 and 100000.' };
+    }
+
+    return { title, description, points, isActive };
+}
+
+app.get(
+    '/api/admin/gamification/challenges',
+    requireAllPermissions(['access_discipleship']),
+    (req, res) => {
+        db.all(
+            `SELECT id, title, description, points, is_active, created_at
+             FROM weekly_challenges
+             ORDER BY created_at DESC, id DESC`,
+            [],
+            (err, rows) => {
+                if (err) return res.status(500).json({ error: 'Unable to load weekly challenges.' });
+                return res.json(rows || []);
+            }
+        );
+    }
+);
+
+app.get('/api/gamification/challenges', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const youthId = normalizeCanonicalId(auth && auth.youthId);
+
+    db.all(
+        `SELECT * FROM weekly_challenges
+         WHERE is_active = 1
+         ORDER BY created_at DESC`,
+        [],
+        (err, challenges) => {
+            if (err) {
+                return res.status(500).json({
+                    error: 'Unable to load weekly challenges.'
+                });
+            }
+
+            if (!Array.isArray(challenges) || youthId === null) {
+                return res.json(challenges || []);
+            }
+
+            db.all(
+                `SELECT challenge_id
+                 FROM user_challenge_logs
+                 WHERE youth_id = ?`,
+                [youthId],
+                (logError, logs) => {
+                    if (logError) {
+                        return res.status(500).json({
+                            error: 'Unable to load challenge completion status.'
+                        });
+                    }
+
+                    const completedIds = new Set(
+                        (logs || []).map(log => log.challenge_id)
+                    );
+
+                    return res.json(
+                        challenges.map(challenge => ({
+                            ...challenge,
+                            completed: completedIds.has(challenge.id)
+                        }))
+                    );
+                }
+            );
+        }
+    );
 });
-app.post('/api/gamification/challenges/:id/complete', (req, res) => {
-    const { youth_id, actor } = req.body;
-    db.get(`SELECT points FROM weekly_challenges WHERE id = ? AND is_active = 1`, [req.params.id], (err, challenge) => {
-        if (!challenge) return res.status(404).json({ error: 'Challenge not found or inactive.' });
-        db.run(`INSERT INTO user_challenge_logs (youth_id, challenge_id, completed_at) VALUES (?, ?, ?)`, [youth_id, req.params.id, getManilaTime()], function(err) {
-            if (err) return res.status(400).json({ error: 'You have already completed this challenge!' });
-            awardPoints(youth_id, 'growth', challenge.points, actor || 'System', 'Weekly Challenge');
-            res.json({ success: true, pointsAwarded: challenge.points });
-        });
-    });
-});
-app.post('/api/gamification/challenges', (req, res) => { db.run(`INSERT INTO weekly_challenges (title, description, points, created_at) VALUES (?, ?, ?, ?)`, [req.body.title, req.body.description, req.body.points, getManilaTime()], function(err) { logActivity(req.body.actor, 'CREATE_CHALLENGE', `Created new challenge '${req.body.title}' for ${req.body.points} points`); res.json({ success: true, id: this.lastID }); }); });
+
+app.post(
+    '/api/gamification/challenges/:id/complete',
+    requireAuth,
+    (req, res) => {
+        const youthId = normalizeCanonicalId(
+            req.auth && req.auth.youthId
+        );
+
+        if (youthId === null) {
+            return sendForbidden(res);
+        }
+
+        const challengeId = Number.parseInt(req.params.id, 10);
+
+        if (!Number.isInteger(challengeId) || challengeId <= 0) {
+            return res.status(400).json({
+                error: 'Invalid weekly challenge.'
+            });
+        }
+
+        db.get(
+            `SELECT id, points
+             FROM weekly_challenges
+             WHERE id = ?
+               AND is_active = 1`,
+            [challengeId],
+            (err, challenge) => {
+                if (err) {
+                    return res.status(500).json({
+                        error: 'Unable to load the challenge.'
+                    });
+                }
+
+                if (!challenge) {
+                    return res.status(404).json({
+                        error: 'Challenge not found or inactive.'
+                    });
+                }
+
+                db.run(
+                    `INSERT INTO user_challenge_logs
+                        (youth_id, challenge_id, completed_at)
+                     VALUES (?, ?, ?)`,
+                    [
+                        youthId,
+                        challengeId,
+                        getManilaTime()
+                    ],
+                    function(insertError) {
+                        if (insertError) {
+                            return res.status(400).json({
+                                error: 'This challenge has already been completed.'
+                            });
+                        }
+
+                        awardPoints(
+                            youthId,
+                            'growth',
+                            challenge.points,
+                            getCanonicalAuditActor(req),
+                            'Weekly Challenge'
+                        );
+
+                        logActivity(
+                            getCanonicalAuditActor(req),
+                            'COMPLETE_WEEKLY_CHALLENGE',
+                            `Completed weekly challenge ID ${challengeId} for ${challenge.points} Life Points`
+                        );
+
+                        return res.json({
+                            success: true,
+                            pointsAwarded: challenge.points
+                        });
+                    }
+                );
+            }
+        );
+    }
+);
+
+app.post(
+    '/api/gamification/challenges',
+    requireAllPermissions(['access_discipleship', 'add_entries']),
+    (req, res) => {
+        const fields = normalizeWeeklyChallengeAdminPayload(req.body);
+
+        if (fields.error) {
+            return res.status(400).json({ error: fields.error });
+        }
+
+        db.run(
+            `INSERT INTO weekly_challenges
+                (title, description, points, is_active, created_at)
+             VALUES (?, ?, ?, 1, ?)`,
+            [fields.title, fields.description, fields.points, getManilaTime()],
+            function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Unable to create weekly challenge.' });
+                }
+
+                logActivity(
+                    getCanonicalAuditActor(req),
+                    'CREATE_CHALLENGE',
+                    `Created weekly challenge '${fields.title}' for ${fields.points} Life Points`
+                );
+
+                return res.status(201).json({
+                    success: true,
+                    id: this.lastID
+                });
+            }
+        );
+    }
+);
+
+app.put(
+    '/api/admin/gamification/challenges/:id',
+    requireAllPermissions(['access_discipleship', 'edit_entries']),
+    (req, res) => {
+        const challengeId = Number.parseInt(req.params.id, 10);
+        const fields = normalizeWeeklyChallengeAdminPayload(req.body);
+
+        if (!Number.isInteger(challengeId) || challengeId <= 0) {
+            return res.status(400).json({ error: 'Invalid weekly challenge.' });
+        }
+
+        if (fields.error) {
+            return res.status(400).json({ error: fields.error });
+        }
+
+        db.run(
+            `UPDATE weekly_challenges
+             SET title = ?, description = ?, points = ?, is_active = ?
+             WHERE id = ?`,
+            [
+                fields.title,
+                fields.description,
+                fields.points,
+                fields.isActive,
+                challengeId
+            ],
+            function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Unable to update weekly challenge.' });
+                }
+
+                if (this.changes !== 1) {
+                    return res.status(404).json({ error: 'Weekly challenge not found.' });
+                }
+
+                logActivity(
+                    getCanonicalAuditActor(req),
+                    'UPDATE_CHALLENGE',
+                    `Updated weekly challenge ID ${challengeId}`
+                );
+
+                return res.json({ success: true });
+            }
+        );
+    }
+);
+
+app.delete(
+    '/api/admin/gamification/challenges/:id',
+    requireAllPermissions(['access_discipleship', 'delete_entries']),
+    (req, res) => {
+        const challengeId = Number.parseInt(req.params.id, 10);
+
+        if (!Number.isInteger(challengeId) || challengeId <= 0) {
+            return res.status(400).json({ error: 'Invalid weekly challenge.' });
+        }
+
+        // Archive instead of hard-delete so historical completion and
+        // previously awarded Life Points remain intact.
+        db.run(
+            `UPDATE weekly_challenges
+             SET is_active = 0
+             WHERE id = ?`,
+            [challengeId],
+            function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Unable to delete weekly challenge.' });
+                }
+
+                if (this.changes !== 1) {
+                    return res.status(404).json({ error: 'Weekly challenge not found.' });
+                }
+
+                logActivity(
+                    getCanonicalAuditActor(req),
+                    'ARCHIVE_CHALLENGE',
+                    `Archived weekly challenge ID ${challengeId}`
+                );
+
+                return res.json({
+                    success: true,
+                    archived: true
+                });
+            }
+        );
+    }
+);
+
 
 app.post('/api/games/universal-submit', (req, res) => {
     const { youth_id, game_name, score, type, actor } = req.body;

@@ -165,7 +165,7 @@ window.V9GrowthGames = {
             <p style="color: #64748B; font-size: 1rem; margin-bottom: 20px;">Sprint Finished.</p>
             <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
                 <div style="font-size: 0.9rem; color: #64748B; font-weight: bold; text-transform: uppercase;">Total Earned</div>
-                <div style="font-size: 2.5rem; color: #059669; font-weight: 800;">${this.ccState.score} <span style="font-size:1.2rem;">Growth XP</span></div>
+                <div style="font-size: 2.5rem; color: #059669; font-weight: 800;">${this.ccState.score} <span style="font-size:1.2rem;">Life Points</span></div>
             </div>
             <p id="ccSubmitStatus" style="color: #F59E0B; font-weight: bold; margin-bottom: 15px;">Saving your score...</p>
             <button id="ccExitBtn" class="btn btn-primary" style="background: #059669; width: 100%; display: none;" onclick="V9GrowthGames.exitGame()">Claim & Exit to Arcade</button>
@@ -240,7 +240,7 @@ window.V9GrowthGames = {
         const body = document.getElementById('pollGameBody');
         body.innerHTML = `
             <div style="margin-bottom: 25px;">
-                <span class="badge" style="background: #F3E8FF; color: #DB2777; font-size: 0.8rem; margin-bottom: 10px;">+5 Growth XP for voting!</span>
+                <span class="badge" style="background: #F3E8FF; color: #DB2777; font-size: 0.8rem; margin-bottom: 10px;">+5 Life Points for voting!</span>
                 <h3 style="font-size: 1.4rem; color: #0F172A; margin-bottom: 10px;">${poll.question}</h3>
             </div>
             
@@ -278,7 +278,7 @@ window.V9GrowthGames = {
         }
 
         let successBanner = justVoted 
-            ? `<div style="background: #D1FAE5; color: #059669; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-weight: bold;">🎉 Vote locked! +5 Growth XP Earned!</div>` 
+            ? `<div style="background: #D1FAE5; color: #059669; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-weight: bold;">🎉 Vote locked! +5 Life Points Earned!</div>`
             : `<div style="background: #F3F4F6; color: #4B5563; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; font-size: 0.85rem;">You have already voted on today's poll.</div>`;
 
         body.innerHTML = `
@@ -369,7 +369,7 @@ window.V9GrowthGames = {
 
         document.getElementById('waiGameBody').innerHTML = `
             <div style="margin-bottom: 20px;">
-                <span class="badge badge-orange" style="font-size: 0.9rem;">Potential Reward: +${pts} Growth XP</span>
+                <span class="badge badge-orange" style="font-size: 0.9rem;">Potential Reward: +${pts} Life Points</span>
             </div>
             ${cluesHtml}
             ${moreCluesBtn}
@@ -417,7 +417,7 @@ window.V9GrowthGames = {
                 statusEl.innerText = data.error;
             } else if (isCorrect) {
                 statusEl.style.color = '#10B981';
-                statusEl.innerText = `🎉 Correct! It was ${this.waiState.question.answer}. +${data.pointsAwarded} Growth XP!`;
+                statusEl.innerText = `🎉 Correct! It was ${this.waiState.question.answer}. +${data.pointsAwarded} Life Points!`;
                 if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
                 document.getElementById('waiGuessInput').disabled = true;
             } else {
@@ -441,7 +441,7 @@ window.V9GrowthGames = {
             </div>
             <div style="background: #FFF; padding: 20px; border: 1px solid #E2E8F0; border-top: none; border-radius: 0 0 12px 12px; min-height: 300px;">
                 <h3 style="color: #DC2626; margin-bottom: 5px; text-align: center;">Small Group Leaderboard</h3>
-                <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">Every XP you earn from arcade games, checking in, and trivia helps your cell group climb the ranks!</p>
+                <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">Every Life Point you earn from arcade games, checking in, and trivia helps your cell group climb the ranks!</p>
                 <div id="cgcLeaderboardContainer" style="text-align: center;">
                     <p style="color:var(--text-muted);">Loading ranks...</p>
                 </div>
@@ -583,7 +583,7 @@ window.V9GrowthGames = {
             }
         }
         finalHtml += `</div>`;
-        finalHtml += `<p style="font-size: 0.8rem; color: #64748B; text-align: center; margin-top: 15px;">Work with your group! Correct words lock in <strong style="color:#10B981;">+10 Growth XP</strong> for you.</p>`;
+        finalHtml += `<p style="font-size: 0.8rem; color: #64748B; text-align: center; margin-top: 15px;">Work with your group! Correct words lock in <strong style="color:#10B981;">+10 Life Points</strong> for you.</p>`;
 
         document.getElementById('vcGameBody').innerHTML = finalHtml;
     },
@@ -620,7 +620,7 @@ window.V9GrowthGames = {
 
             const data = await res.json();
             if (data.success) {
-                alert(`Correct! You solved a link in the chain! +${data.pointsAwarded} Growth XP!`);
+                alert(`Correct! You solved a link in the chain! +${data.pointsAwarded} Life Points!`);
                 if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
                 // Reload the puzzle to show the locked-in green badge
                 this.loadVerseForGroup(); 
