@@ -559,7 +559,7 @@
         appendText(
             copy,
             'p',
-            'Private Journal · Private to you',
+            'Private Journal',
             'feature-intro__eyebrow'
         );
 
@@ -573,7 +573,7 @@
         appendText(
             copy,
             'p',
-            'A personal space to notice what God is doing, remember prayers and lessons, and reflect on your growth.'
+            'A private space to notice God’s work, remember prayers, and reflect on your growth.'
         );
 
         const privacy = appendText(

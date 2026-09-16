@@ -745,3 +745,2602 @@
         transition: none !important;
     }
 }
+
+
+/* =========================================================
+   PHASE 2A — PRAYER, JOURNAL & GROUPS
+   ========================================================= */
+
+
+/* ---------------------------------------------------------
+   SHARED MEMBER FEATURE CANVAS
+   --------------------------------------------------------- */
+
+#growthSubPrayer,
+#growthSubJournal,
+#growthSubGroups {
+    width: min(100%, 960px);
+    margin: 0 auto;
+    padding:
+        18px
+        clamp(10px, 2.5vw, 22px)
+        calc(108px + env(safe-area-inset-bottom));
+    color: var(--fog-premium-ink);
+    box-sizing: border-box;
+}
+
+#growthSubPrayer::before,
+#growthSubJournal::before,
+#growthSubGroups::before {
+    position: fixed;
+    z-index: -1;
+    inset: 0;
+    pointer-events: none;
+    content: "";
+    background:
+        radial-gradient(
+            circle at 8% 10%,
+            rgba(243, 164, 71, 0.09),
+            transparent 25rem
+        ),
+        radial-gradient(
+            circle at 100% 45%,
+            rgba(184, 88, 47, 0.06),
+            transparent 30rem
+        ),
+        linear-gradient(
+            180deg,
+            #FFF9F1 0%,
+            var(--fog-premium-canvas) 45%,
+            #F8EEE2 100%
+        );
+}
+
+
+/* ---------------------------------------------------------
+   SHARED FEATURE HERO
+   --------------------------------------------------------- */
+
+#growthSubPrayer .feature-intro,
+#growthSubJournal .feature-intro,
+#growthSubGroups .feature-intro {
+    position: relative;
+    isolation: isolate;
+    gap: 18px;
+    margin-bottom: 18px;
+    padding:
+        clamp(22px, 4vw, 30px);
+    overflow: hidden;
+    border:
+        1px solid var(--fog-premium-line);
+    border-radius:
+        var(--fog-premium-radius-lg);
+    background:
+        linear-gradient(
+            145deg,
+            #FFFDF9,
+            #FFF4E6
+        );
+    box-shadow:
+        var(--fog-premium-shadow);
+}
+
+#growthSubPrayer .feature-intro::before,
+#growthSubJournal .feature-intro::before,
+#growthSubGroups .feature-intro::before {
+    position: absolute;
+    z-index: -1;
+    top: -80px;
+    right: -68px;
+    width: 230px;
+    height: 230px;
+    border-radius: 50%;
+    content: "";
+}
+
+#growthSubPrayer .feature-intro__icon,
+#growthSubJournal .feature-intro__icon,
+#growthSubGroups .feature-intro__icon {
+    display: grid;
+    flex: 0 0 52px;
+    width: 52px;
+    height: 52px;
+    place-items: center;
+    border:
+        1px solid rgba(255, 255, 255, 0.36);
+    border-radius: 50%;
+    box-shadow:
+        0 10px 24px rgba(94, 49, 28, 0.13),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    font-size: 1.45rem;
+}
+
+#growthSubPrayer .feature-intro__eyebrow,
+#growthSubJournal .feature-intro__eyebrow,
+#growthSubGroups .feature-intro__eyebrow {
+    margin-bottom: 7px;
+    color: var(--fog-premium-copper);
+    font-size: 0.68rem;
+    font-weight: 850;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+}
+
+#growthSubPrayer .feature-intro h2,
+#growthSubJournal .feature-intro h2,
+#growthSubGroups .feature-intro h2 {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    color: var(--fog-premium-ink);
+    font-family: var(--fog-premium-serif);
+    font-size:
+        clamp(1.75rem, 5vw, 2.4rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.03;
+    text-wrap: balance;
+}
+
+#growthSubPrayer
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+#growthSubJournal
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+#growthSubGroups
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy) {
+    max-width: 650px;
+    margin-top: 10px;
+    color: var(--fog-premium-muted);
+    font-size: 0.93rem;
+    line-height: 1.62;
+}
+
+
+/* ---------------------------------------------------------
+   PRAYER HERO — DEEP COPPER
+   --------------------------------------------------------- */
+
+#growthSubPrayer .feature-intro--prayer {
+    border-color:
+        rgba(255, 235, 213, 0.18);
+    background:
+        radial-gradient(
+            circle at 91% 8%,
+            rgba(255, 220, 157, 0.30),
+            transparent 31%
+        ),
+        radial-gradient(
+            circle at 12% 112%,
+            rgba(255, 191, 113, 0.18),
+            transparent 37%
+        ),
+        linear-gradient(
+            145deg,
+            #D96A31 0%,
+            #B94E29 53%,
+            #87351F 112%
+        );
+    box-shadow:
+        0 22px 58px rgba(123, 56, 31, 0.23),
+        inset 0 1px 0 rgba(255,255,255,0.16);
+}
+
+#growthSubPrayer .feature-intro--prayer::before {
+    border:
+        1px solid rgba(255,255,255,0.14);
+    background:
+        radial-gradient(
+            circle,
+            rgba(255, 231, 186, 0.09),
+            transparent 68%
+        );
+    box-shadow:
+        0 0 0 26px rgba(255,255,255,0.023),
+        0 0 0 54px rgba(255,255,255,0.016);
+}
+
+#growthSubPrayer
+.feature-intro--prayer
+.feature-intro__icon {
+    background:
+        rgba(255, 255, 255, 0.12);
+    color: #FFF9F2;
+}
+
+#growthSubPrayer
+.feature-intro--prayer
+.feature-intro__eyebrow {
+    color:
+        rgba(255, 239, 216, 0.80);
+}
+
+#growthSubPrayer
+.feature-intro--prayer
+h2 {
+    color: #FFFDF9;
+}
+
+#growthSubPrayer
+.feature-intro--prayer
+p:not(.feature-intro__eyebrow) {
+    color:
+        rgba(255, 247, 238, 0.82);
+}
+
+
+/* ---------------------------------------------------------
+   JOURNAL HERO — PARCHMENT / REFLECTION
+   --------------------------------------------------------- */
+
+#growthSubJournal .feature-intro--journal {
+    background:
+        radial-gradient(
+            circle at 92% 5%,
+            rgba(231, 164, 65, 0.17),
+            transparent 32%
+        ),
+        linear-gradient(
+            145deg,
+            #FFFDF9 0%,
+            #FFF6E9 62%,
+            #F8E8D5 120%
+        );
+}
+
+#growthSubJournal
+.feature-intro--journal::before {
+    background:
+        radial-gradient(
+            circle,
+            rgba(197, 109, 62, 0.10),
+            transparent 68%
+        );
+}
+
+#growthSubJournal
+.feature-intro--journal
+.feature-intro__icon {
+    border-color:
+        rgba(184, 88, 47, 0.14);
+    background:
+        linear-gradient(
+            145deg,
+            #FCE9D4,
+            #F7DABC
+        );
+    color:
+        var(--fog-premium-copper);
+}
+
+#growthSubJournal
+.feature-intro__privacy {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    margin-top: 13px;
+    padding: 7px 11px;
+    border:
+        1px solid rgba(184, 88, 47, 0.13);
+    border-radius: 999px;
+    background:
+        rgba(255, 255, 255, 0.62);
+    color:
+        var(--fog-premium-copper-deep);
+    font-size: 0.73rem;
+    font-weight: 750;
+}
+
+
+/* ---------------------------------------------------------
+   GROUPS HERO — FELLOWSHIP / FIRE
+   --------------------------------------------------------- */
+
+#growthSubGroups .feature-intro--groups {
+    background:
+        radial-gradient(
+            circle at 88% 0%,
+            rgba(239, 107, 45, 0.15),
+            transparent 31%
+        ),
+        linear-gradient(
+            145deg,
+            #FFFDF8 0%,
+            #FFF1DF 60%,
+            #F8DFC7 120%
+        );
+}
+
+#growthSubGroups
+.feature-intro--groups::before {
+    background:
+        radial-gradient(
+            circle,
+            rgba(203, 95, 45, 0.12),
+            transparent 68%
+        );
+}
+
+#growthSubGroups
+.feature-intro--groups
+.feature-intro__icon {
+    border-color:
+        rgba(184, 88, 47, 0.14);
+    background:
+        linear-gradient(
+            145deg,
+            #F8DDC3,
+            #F3CDAA
+        );
+    color:
+        var(--fog-premium-copper);
+}
+
+
+/* ---------------------------------------------------------
+   PREMIUM SEGMENTED FEATURE TABS
+   --------------------------------------------------------- */
+
+#growthSubPrayer .feature-tabs,
+#growthSubJournal .feature-tabs,
+#growthSubGroups .feature-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 5px;
+    margin:
+        0 0 18px;
+    padding: 5px;
+    overflow-x: auto;
+    border:
+        1px solid var(--fog-premium-line);
+    border-radius: 18px;
+    background:
+        rgba(255, 250, 243, 0.88);
+    box-shadow:
+        0 7px 22px rgba(92, 53, 34, 0.055);
+    scrollbar-width: none;
+}
+
+#growthSubPrayer .feature-tabs::-webkit-scrollbar,
+#growthSubJournal .feature-tabs::-webkit-scrollbar,
+#growthSubGroups .feature-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+#growthSubPrayer .feature-tab,
+#growthSubJournal .feature-tab,
+#growthSubGroups .feature-tab {
+    min-height: 44px;
+    padding: 9px 13px;
+    border: 0;
+    border-radius: 13px;
+    background: transparent;
+    color: var(--fog-premium-muted);
+    font-size: 0.8rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+#growthSubPrayer .feature-tab.active,
+#growthSubJournal .feature-tab.active,
+#growthSubGroups .feature-tab.active {
+    background:
+        linear-gradient(
+            135deg,
+            var(--fog-premium-orange),
+            var(--fog-premium-copper)
+        );
+    box-shadow:
+        0 7px 18px rgba(184, 88, 47, 0.19);
+    color: #fff;
+}
+
+
+/* ---------------------------------------------------------
+   FEATURE PANELS
+   --------------------------------------------------------- */
+
+#growthSubPrayer .feature-panel,
+#growthSubJournal .feature-panel,
+#growthSubGroups .feature-panel {
+    position: relative;
+    border: 0;
+    background: transparent;
+}
+
+#prayerWallContainer,
+#journalsContainer,
+#smallGroupsContainer,
+#discoverGroupsContainer {
+    display: grid;
+    gap: 13px;
+}
+
+
+/* ---------------------------------------------------------
+   PRAYER + JOURNAL LIST / GRID CARDS
+   --------------------------------------------------------- */
+
+#growthSubPrayer .feature-card,
+#growthSubJournal .feature-card,
+#growthSubPrayer .feature-list-row,
+#growthSubJournal .feature-list-row {
+    position: relative;
+    overflow: hidden;
+    border:
+        1px solid var(--fog-premium-line);
+    border-radius: 22px;
+    background:
+        linear-gradient(
+            150deg,
+            rgba(255, 255, 255, 0.98),
+            rgba(255, 248, 239, 0.96)
+        );
+    box-shadow:
+        0 10px 30px rgba(92, 53, 34, 0.075);
+}
+
+#growthSubPrayer .feature-card,
+#growthSubJournal .feature-card {
+    padding: 19px;
+}
+
+#growthSubPrayer .feature-list-row,
+#growthSubJournal .feature-list-row {
+    padding: 16px 17px;
+}
+
+#growthSubPrayer .feature-card::before,
+#growthSubJournal .feature-card::before {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            circle,
+            rgba(238, 139, 70, 0.07),
+            transparent 70%
+        );
+    transform:
+        translate(35%, -40%);
+    pointer-events: none;
+    content: "";
+}
+
+#growthSubPrayer .feature-card__title,
+#growthSubJournal .feature-card__title,
+#growthSubPrayer .feature-list-row h3,
+#growthSubJournal .feature-list-row h3 {
+    color: var(--fog-premium-ink);
+    font-family:
+        var(--fog-premium-serif);
+    font-size: 1.12rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+}
+
+#growthSubPrayer .feature-card__preview,
+#growthSubJournal .feature-card__preview,
+#growthSubPrayer .feature-card__details,
+#growthSubJournal .feature-card__details {
+    color: var(--fog-premium-ink-soft);
+    line-height: 1.6;
+}
+
+#growthSubPrayer
+[class*="feature-card__meta"],
+#growthSubJournal
+[class*="feature-card__meta"],
+#growthSubPrayer
+[class*="feature-list-row__meta"],
+#growthSubJournal
+[class*="feature-list-row__meta"] {
+    color: var(--fog-premium-muted);
+    font-size: 0.72rem;
+}
+
+
+/* ---------------------------------------------------------
+   FORMS — PRAYER + JOURNAL
+   --------------------------------------------------------- */
+
+#growthSubPrayer #prayerForm,
+#growthSubJournal .journal-form-polished {
+    padding:
+        clamp(19px, 3vw, 26px);
+    border:
+        1px solid var(--fog-premium-line);
+    border-radius:
+        var(--fog-premium-radius);
+    background:
+        linear-gradient(
+            150deg,
+            #FFFDF9,
+            #FFF7ED
+        );
+    box-shadow:
+        var(--fog-premium-shadow-sm);
+}
+
+#growthSubPrayer .form-group label,
+#growthSubJournal .form-group label,
+#growthSubGroups .form-group label {
+    color: var(--fog-premium-ink-soft);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+#growthSubPrayer .form-control,
+#growthSubJournal .form-control,
+#growthSubGroups .form-control {
+    min-height: 48px;
+    border:
+        1px solid rgba(151, 91, 57, 0.20);
+    border-radius: 14px;
+    background: #FFFDF9;
+    color: var(--fog-premium-ink);
+    box-shadow:
+        inset 0 1px 2px rgba(92, 53, 34, 0.025);
+}
+
+#growthSubPrayer textarea.form-control,
+#growthSubJournal textarea.form-control,
+#growthSubGroups textarea.form-control {
+    min-height: 120px;
+    line-height: 1.55;
+}
+
+#growthSubPrayer .form-control:focus,
+#growthSubJournal .form-control:focus,
+#growthSubGroups .form-control:focus {
+    border-color:
+        rgba(239, 107, 45, 0.66);
+    outline: 0;
+    box-shadow:
+        0 0 0 4px rgba(239, 107, 45, 0.10);
+}
+
+
+/* ---------------------------------------------------------
+   FEATURE BUTTONS
+   --------------------------------------------------------- */
+
+#growthSubPrayer .btn-primary,
+#growthSubJournal .btn-primary,
+#growthSubGroups .btn-primary {
+    border: 0;
+    border-radius: 14px;
+    background:
+        linear-gradient(
+            135deg,
+            var(--fog-premium-orange),
+            var(--fog-premium-copper)
+        );
+    box-shadow:
+        0 9px 22px rgba(184, 88, 47, 0.18);
+    color: #fff;
+}
+
+#growthSubPrayer .btn-outline,
+#growthSubJournal .btn-outline,
+#growthSubGroups .btn-outline {
+    border:
+        1px solid rgba(184, 88, 47, 0.22);
+    border-radius: 14px;
+    background:
+        rgba(255, 253, 249, 0.78);
+    color:
+        var(--fog-premium-copper);
+}
+
+
+/* ---------------------------------------------------------
+   GROUP CARDS
+   Supports canonical and older rendered card shells.
+   --------------------------------------------------------- */
+
+#growthSubGroups
+:is(
+    #smallGroupsContainer,
+    #discoverGroupsContainer
+)
+:is(
+    #smallGroupsContainer,
+    #discoverGroupsContainer
+) {
+    align-items: stretch;
+}
+
+#growthSubGroups
+#smallGroupsContainer
+> .feature-card,
+#growthSubGroups
+#discoverGroupsContainer
+> .feature-card,
+#growthSubGroups
+#smallGroupsContainer
+> .card,
+#growthSubGroups
+#discoverGroupsContainer
+> .card {
+    position: relative;
+    padding: 20px;
+    overflow: hidden;
+    border:
+        1px solid var(--fog-premium-line);
+    border-radius: 22px;
+    background:
+        radial-gradient(
+            circle at 100% 0%,
+            rgba(239, 107, 45, 0.08),
+            transparent 31%
+        ),
+        linear-gradient(
+            150deg,
+            #FFFDF9,
+            #FFF5E8
+        );
+    box-shadow:
+        0 11px 30px rgba(92, 53, 34, 0.075);
+}
+
+#growthSubGroups
+:is(
+    #smallGroupsContainer,
+    #discoverGroupsContainer
+)
+h3 {
+    color:
+        var(--fog-premium-ink) !important;
+    font-family:
+        var(--fog-premium-serif);
+    font-size: 1.17rem;
+    letter-spacing: -0.015em;
+}
+
+#growthSubGroups
+:is(
+    #smallGroupsContainer,
+    #discoverGroupsContainer
+)
+p {
+    color:
+        var(--fog-premium-muted);
+    line-height: 1.55;
+}
+
+#growthSubGroups
+:is(
+    #smallGroupsContainer,
+    #discoverGroupsContainer
+)
+.badge {
+    border-radius: 999px;
+}
+
+
+/* ---------------------------------------------------------
+   EMPTY / LOADING / ERROR STATES
+   --------------------------------------------------------- */
+
+#growthSubPrayer
+:is(.feature-state, .feature-empty, .feature-loading),
+#growthSubJournal
+:is(.feature-state, .feature-empty, .feature-loading),
+#growthSubGroups
+:is(.feature-state, .feature-empty, .feature-loading) {
+    padding: 26px 18px;
+    border:
+        1px dashed rgba(151, 91, 57, 0.22);
+    border-radius: 20px;
+    background:
+        rgba(255, 250, 243, 0.70);
+    color:
+        var(--fog-premium-muted);
+    text-align: center;
+}
+
+
+/* ---------------------------------------------------------
+   RESPONSIVE PHASE 2A
+   --------------------------------------------------------- */
+
+@media (max-width: 520px) {
+    #growthSubPrayer,
+    #growthSubJournal,
+    #growthSubGroups {
+        padding:
+            14px 9px
+            calc(104px + env(safe-area-inset-bottom));
+    }
+
+    #growthSubPrayer .feature-intro,
+    #growthSubJournal .feature-intro,
+    #growthSubGroups .feature-intro {
+        padding: 20px 18px;
+        border-radius: 24px;
+    }
+
+    #growthSubPrayer .feature-intro__icon,
+    #growthSubJournal .feature-intro__icon,
+    #growthSubGroups .feature-intro__icon {
+        flex-basis: 46px;
+        width: 46px;
+        height: 46px;
+        font-size: 1.3rem;
+    }
+
+    #growthSubPrayer .feature-tabs,
+    #growthSubJournal .feature-tabs,
+    #growthSubGroups .feature-tabs {
+        border-radius: 16px;
+    }
+
+    #growthSubPrayer .feature-tab,
+    #growthSubJournal .feature-tab,
+    #growthSubGroups .feature-tab {
+        padding-inline: 9px;
+        font-size: 0.76rem;
+    }
+
+    #growthSubPrayer .feature-card,
+    #growthSubJournal .feature-card,
+    #growthSubPrayer .feature-list-row,
+    #growthSubJournal .feature-list-row {
+        border-radius: 19px;
+    }
+}
+
+@media (hover: hover) and (pointer: fine) {
+    #growthSubPrayer .feature-card,
+    #growthSubJournal .feature-card,
+    #growthSubPrayer .feature-list-row,
+    #growthSubJournal .feature-list-row,
+    #growthSubGroups
+    #smallGroupsContainer > .feature-card,
+    #growthSubGroups
+    #discoverGroupsContainer > .feature-card {
+        transition:
+            transform 180ms ease,
+            box-shadow 180ms ease,
+            border-color 180ms ease;
+    }
+
+    #growthSubPrayer .feature-card:hover,
+    #growthSubJournal .feature-card:hover,
+    #growthSubGroups
+    #smallGroupsContainer > .feature-card:hover,
+    #growthSubGroups
+    #discoverGroupsContainer > .feature-card:hover {
+        transform: translateY(-2px);
+        border-color:
+            var(--fog-premium-line-strong);
+        box-shadow:
+            var(--fog-premium-shadow);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #growthSubPrayer *,
+    #growthSubJournal *,
+    #growthSubGroups * {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+
+/* =========================================================
+   PHASE 2A REFINEMENT 1
+   Unified premium hero banners + full-bleed Home canvas
+   ========================================================= */
+
+
+/* ---------------------------------------------------------
+   HOME — FULL-BLEED PREMIUM CANVAS
+   Remove the visual white margin around the Home experience.
+   --------------------------------------------------------- */
+
+#pulseDashboardTab:has(#journeyFirstDashboard.fog-premium) {
+    position: relative;
+    isolation: isolate;
+    overflow: visible;
+    border-radius: 0;
+    background: transparent;
+}
+
+#pulseDashboardTab:has(#journeyFirstDashboard.fog-premium)::before {
+    position: fixed;
+    z-index: -1;
+    inset: 0;
+    pointer-events: none;
+    content: "";
+    background:
+        radial-gradient(
+            circle at 7% 5%,
+            rgba(243, 164, 71, 0.12),
+            transparent 28rem
+        ),
+        radial-gradient(
+            circle at 100% 28%,
+            rgba(184, 88, 47, 0.07),
+            transparent 28rem
+        ),
+        linear-gradient(
+            180deg,
+            #FFF9F1 0%,
+            var(--fog-premium-canvas) 44%,
+            #F8EEE2 100%
+        );
+}
+
+#journeyFirstDashboard.fog-premium {
+    position: relative;
+    background: transparent;
+}
+
+
+/* ---------------------------------------------------------
+   PRAYER + JOURNAL + GROUPS
+   ONE CONSISTENT FOG PREMIUM HERO SYSTEM
+
+   Photo hooks are already included.
+   Later we only need to assign:
+     --fog-prayer-banner-photo
+     --fog-journal-banner-photo
+     --fog-groups-banner-photo
+   --------------------------------------------------------- */
+
+#growthSubPrayer .feature-intro--prayer,
+#growthSubJournal .feature-intro--journal,
+#growthSubGroups .feature-intro--groups {
+    position: relative;
+    isolation: isolate;
+    min-height: 184px;
+    align-items: center;
+
+    border:
+        1px solid rgba(255, 235, 213, 0.19);
+
+    background-color:
+        #A94727;
+
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(113, 42, 22, 0.98) 0%,
+            rgba(157, 58, 29, 0.95) 42%,
+            rgba(194, 76, 36, 0.84) 68%,
+            rgba(202, 84, 39, 0.66) 100%
+        ),
+        var(--fog-banner-photo, none);
+
+    background-repeat:
+        no-repeat,
+        no-repeat;
+
+    background-size:
+        cover,
+        cover;
+
+    background-position:
+        center,
+        right center;
+
+    box-shadow:
+        0 22px 58px rgba(123, 56, 31, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+
+/* Individual future photo hooks */
+
+#growthSubPrayer .feature-intro--prayer {
+    --fog-banner-photo:
+        var(--fog-prayer-banner-photo, none);
+}
+
+#growthSubJournal .feature-intro--journal {
+    --fog-banner-photo:
+        var(--fog-journal-banner-photo, none);
+}
+
+#growthSubGroups .feature-intro--groups {
+    --fog-banner-photo:
+        var(--fog-groups-banner-photo, none);
+}
+
+
+/* ---------------------------------------------------------
+   REMOVE THE ROUND HEADER ICONS
+   --------------------------------------------------------- */
+
+#growthSubPrayer .feature-intro__icon,
+#growthSubJournal .feature-intro__icon,
+#growthSubGroups .feature-intro__icon {
+    display: none !important;
+}
+
+
+/* ---------------------------------------------------------
+   REMOVE THE LARGE DECORATIVE CIRCLE MOTIF
+   FROM THESE THREE PAGE BANNERS
+
+   Home Prayer Covenant keeps its own approved treatment.
+   --------------------------------------------------------- */
+
+#growthSubPrayer .feature-intro::before,
+#growthSubJournal .feature-intro::before,
+#growthSubGroups .feature-intro::before {
+    display: none;
+}
+
+
+/* ---------------------------------------------------------
+   HERO TYPOGRAPHY — FORCE CONSISTENT WHITE TREATMENT
+   --------------------------------------------------------- */
+
+#growthSubPrayer
+.feature-intro
+.feature-intro__eyebrow,
+#growthSubJournal
+.feature-intro
+.feature-intro__eyebrow,
+#growthSubGroups
+.feature-intro
+.feature-intro__eyebrow {
+    color:
+        rgba(255, 235, 208, 0.86) !important;
+}
+
+#growthSubPrayer
+.feature-intro
+h2,
+#growthSubJournal
+.feature-intro
+h2,
+#growthSubGroups
+.feature-intro
+h2 {
+    color: #FFFDF9 !important;
+    text-shadow:
+        0 2px 14px rgba(76, 24, 11, 0.12);
+}
+
+#growthSubPrayer
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+#growthSubJournal
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+#growthSubGroups
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy) {
+    color:
+        rgba(255, 247, 238, 0.88) !important;
+}
+
+
+/* Journal privacy notice inside dark banner */
+
+#growthSubJournal
+.feature-intro__privacy {
+    border:
+        1px solid rgba(255, 255, 255, 0.18);
+
+    background:
+        rgba(255, 255, 255, 0.11);
+
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+    color:
+        rgba(255, 249, 241, 0.92);
+
+    backdrop-filter:
+        blur(5px);
+}
+
+
+/* ---------------------------------------------------------
+   HERO TEXT WIDTH
+
+   Keeps left-side text readable when photos are enabled later.
+   --------------------------------------------------------- */
+
+#growthSubPrayer
+.feature-intro > div,
+#growthSubJournal
+.feature-intro > div,
+#growthSubGroups
+.feature-intro > div {
+    position: relative;
+    z-index: 2;
+    width: min(100%, 650px);
+}
+
+
+/* ---------------------------------------------------------
+   MOBILE HERO REFINEMENT
+   --------------------------------------------------------- */
+
+@media (max-width: 520px) {
+    #growthSubPrayer .feature-intro--prayer,
+    #growthSubJournal .feature-intro--journal,
+    #growthSubGroups .feature-intro--groups {
+        min-height: 164px;
+
+        background-image:
+            linear-gradient(
+                90deg,
+                rgba(113, 42, 22, 0.97) 0%,
+                rgba(157, 58, 29, 0.92) 58%,
+                rgba(194, 76, 36, 0.72) 100%
+            ),
+            var(--fog-banner-photo, none);
+
+        background-position:
+            center,
+            72% center;
+    }
+
+    #growthSubPrayer
+    .feature-intro > div,
+    #growthSubJournal
+    .feature-intro > div,
+    #growthSubGroups
+    .feature-intro > div {
+        width: 100%;
+    }
+}
+
+
+/* =========================================================
+   PREMIUM BANNER MANAGER — SUPER ADMIN
+   ========================================================= */
+
+.premium-banner-manager {
+    margin-top: 22px;
+    padding: clamp(18px, 3vw, 24px);
+    border:
+        1px solid var(--fog-premium-line);
+    border-radius: 22px;
+    background:
+        linear-gradient(
+            145deg,
+            #FFFDF9,
+            #FFF5E9
+        );
+    box-shadow:
+        var(--fog-premium-shadow-sm);
+}
+
+.premium-banner-manager__heading {
+    margin-bottom: 18px;
+}
+
+.premium-banner-manager__eyebrow {
+    margin: 0 0 5px;
+    color: var(--fog-premium-copper);
+    font-size: 0.69rem;
+    font-weight: 850;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+}
+
+.premium-banner-manager h3 {
+    margin: 0 0 7px;
+    color: var(--fog-premium-ink);
+    font-family: var(--fog-premium-serif);
+    font-size: 1.45rem;
+    letter-spacing: -0.025em;
+}
+
+.premium-banner-manager__heading p:last-child {
+    margin: 0;
+    color: var(--fog-premium-muted);
+    font-size: 0.85rem;
+    line-height: 1.55;
+}
+
+.premium-banner-upload {
+    margin-top: 16px;
+    padding: 16px;
+    border:
+        1px solid rgba(151, 91, 57, 0.15);
+    border-radius: 18px;
+    background:
+        rgba(255, 255, 255, 0.65);
+}
+
+.premium-banner-upload > label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--fog-premium-ink-soft);
+    font-size: 0.84rem;
+    font-weight: 850;
+}
+
+.premium-banner-help {
+    display: block;
+    margin-top: 7px;
+    color: var(--fog-premium-muted);
+    font-size: 0.72rem;
+    line-height: 1.5;
+}
+
+.premium-banner-help strong {
+    color: var(--fog-premium-copper-deep);
+}
+
+.premium-banner-preview {
+    display: block;
+    width: 100%;
+    max-height: 220px;
+    margin-top: 12px;
+    object-fit: cover;
+    object-position: center;
+    border:
+        1px solid rgba(151, 91, 57, 0.13);
+    border-radius: 14px;
+    background: #F4E9DC;
+    box-shadow:
+        0 8px 24px rgba(92, 53, 34, 0.08);
+}
+
+.premium-banner-preview[hidden] {
+    display: none !important;
+}
+
+.premium-banner-status {
+    display: block;
+    min-height: 1em;
+    margin-top: 7px;
+    color: var(--fog-premium-muted);
+    font-size: 0.7rem;
+    line-height: 1.45;
+}
+
+.premium-banner-manager__feedback {
+    min-height: 1.2em;
+    margin: 13px 0 0;
+    color: #28633B;
+    font-size: 0.79rem;
+    font-weight: 750;
+}
+
+.premium-banner-manager__feedback--error {
+    color: #A43F31;
+}
+
+@media (max-width: 520px) {
+    .premium-banner-manager {
+        padding: 16px 13px;
+        border-radius: 19px;
+    }
+
+    .premium-banner-upload {
+        padding: 13px;
+        border-radius: 16px;
+    }
+
+    .premium-banner-preview {
+        max-height: 180px;
+    }
+}
+
+
+/* =========================================================
+   PHASE 2A REFINEMENT 2 — BANNER PHOTO VISIBILITY
+
+   Keep the left side dark for live text while allowing the
+   uploaded artwork to remain clearly visible on the right.
+   ========================================================= */
+
+#growthSubPrayer .feature-intro--prayer,
+#growthSubJournal .feature-intro--journal,
+#growthSubGroups .feature-intro--groups {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(102, 35, 17, 0.99) 0%,
+            rgba(132, 43, 20, 0.96) 30%,
+            rgba(159, 53, 24, 0.86) 45%,
+            rgba(176, 63, 29, 0.62) 60%,
+            rgba(174, 63, 28, 0.32) 76%,
+            rgba(161, 55, 25, 0.12) 100%
+        ),
+        var(--fog-banner-photo, none);
+
+    /*
+       The uploaded 1600 × 700 artwork is intentionally shown
+       as a right-side feature image rather than stretched/cropped
+       across the entire wide banner.
+    */
+    background-size:
+        cover,
+        auto 100%;
+
+    background-position:
+        center,
+        right center;
+
+    background-repeat:
+        no-repeat,
+        no-repeat;
+}
+
+
+/* Gentle highlight where the artwork meets the gradient. */
+
+#growthSubPrayer .feature-intro--prayer::after,
+#growthSubJournal .feature-intro--journal::after,
+#growthSubGroups .feature-intro--groups::after {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(48%, 430px);
+    pointer-events: none;
+    content: "";
+    background:
+        linear-gradient(
+            90deg,
+            rgba(255, 214, 166, 0),
+            rgba(255, 221, 178, 0.035) 52%,
+            rgba(255, 239, 215, 0.08) 100%
+        );
+}
+
+
+/* Keep all live heading content above both image layers. */
+
+#growthSubPrayer .feature-intro > *,
+#growthSubJournal .feature-intro > *,
+#growthSubGroups .feature-intro > * {
+    position: relative;
+    z-index: 2;
+}
+
+
+/* Mobile keeps more of the artwork visible. */
+
+@media (max-width: 520px) {
+    #growthSubPrayer .feature-intro--prayer,
+    #growthSubJournal .feature-intro--journal,
+    #growthSubGroups .feature-intro--groups {
+        background-image:
+            linear-gradient(
+                90deg,
+                rgba(102, 35, 17, 0.98) 0%,
+                rgba(139, 47, 21, 0.93) 38%,
+                rgba(168, 59, 26, 0.69) 60%,
+                rgba(168, 60, 27, 0.28) 82%,
+                rgba(160, 55, 25, 0.10) 100%
+            ),
+            var(--fog-banner-photo, none);
+
+        background-size:
+            cover,
+            auto 100%;
+
+        background-position:
+            center,
+            right center;
+    }
+}
+
+
+/* =========================================================
+   PHASE 2A REFINEMENT 3 — STRICT BANNER IMAGE ISOLATION
+
+   Each page owns exactly one persistent image variable.
+   No shared photo value may bleed between Prayer, Journal,
+   and Groups.
+   ========================================================= */
+
+#growthSubPrayer .feature-intro--prayer {
+    --fog-banner-photo:
+        var(--fog-prayer-banner-photo, none) !important;
+}
+
+#growthSubJournal .feature-intro--journal {
+    --fog-banner-photo:
+        var(--fog-journal-banner-photo, none) !important;
+}
+
+#growthSubGroups .feature-intro--groups {
+    --fog-banner-photo:
+        var(--fog-groups-banner-photo, none) !important;
+}
+
+
+/*
+ * Explicit final background declarations.
+ *
+ * These intentionally appear at the end of fog-premium.css so
+ * older Phase 2A experimental banner declarations cannot make
+ * one page inherit another page's image.
+ */
+
+#growthSubPrayer .feature-intro--prayer {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(102, 35, 17, 0.99) 0%,
+            rgba(132, 43, 20, 0.96) 30%,
+            rgba(159, 53, 24, 0.86) 45%,
+            rgba(176, 63, 29, 0.62) 60%,
+            rgba(174, 63, 28, 0.32) 76%,
+            rgba(161, 55, 25, 0.12) 100%
+        ),
+        var(--fog-prayer-banner-photo, none) !important;
+}
+
+#growthSubJournal .feature-intro--journal {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(102, 35, 17, 0.99) 0%,
+            rgba(132, 43, 20, 0.96) 30%,
+            rgba(159, 53, 24, 0.86) 45%,
+            rgba(176, 63, 29, 0.62) 60%,
+            rgba(174, 63, 28, 0.32) 76%,
+            rgba(161, 55, 25, 0.12) 100%
+        ),
+        var(--fog-journal-banner-photo, none) !important;
+}
+
+#growthSubGroups .feature-intro--groups {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(102, 35, 17, 0.99) 0%,
+            rgba(132, 43, 20, 0.96) 30%,
+            rgba(159, 53, 24, 0.86) 45%,
+            rgba(176, 63, 29, 0.62) 60%,
+            rgba(174, 63, 28, 0.32) 76%,
+            rgba(161, 55, 25, 0.12) 100%
+        ),
+        var(--fog-groups-banner-photo, none) !important;
+}
+
+
+#growthSubPrayer .feature-intro--prayer,
+#growthSubJournal .feature-intro--journal,
+#growthSubGroups .feature-intro--groups {
+    background-size:
+        cover,
+        auto 100% !important;
+
+    background-position:
+        center,
+        right center !important;
+
+    background-repeat:
+        no-repeat,
+        no-repeat !important;
+}
+
+
+@media (max-width: 520px) {
+    #growthSubPrayer .feature-intro--prayer {
+        background-image:
+            linear-gradient(
+                90deg,
+                rgba(102, 35, 17, 0.98) 0%,
+                rgba(139, 47, 21, 0.93) 38%,
+                rgba(168, 59, 26, 0.69) 60%,
+                rgba(168, 60, 27, 0.28) 82%,
+                rgba(160, 55, 25, 0.10) 100%
+            ),
+            var(--fog-prayer-banner-photo, none) !important;
+    }
+
+    #growthSubJournal .feature-intro--journal {
+        background-image:
+            linear-gradient(
+                90deg,
+                rgba(102, 35, 17, 0.98) 0%,
+                rgba(139, 47, 21, 0.93) 38%,
+                rgba(168, 59, 26, 0.69) 60%,
+                rgba(168, 60, 27, 0.28) 82%,
+                rgba(160, 55, 25, 0.10) 100%
+            ),
+            var(--fog-journal-banner-photo, none) !important;
+    }
+
+    #growthSubGroups .feature-intro--groups {
+        background-image:
+            linear-gradient(
+                90deg,
+                rgba(102, 35, 17, 0.98) 0%,
+                rgba(139, 47, 21, 0.93) 38%,
+                rgba(168, 59, 26, 0.69) 60%,
+                rgba(168, 60, 27, 0.28) 82%,
+                rgba(160, 55, 25, 0.10) 100%
+            ),
+            var(--fog-groups-banner-photo, none) !important;
+    }
+}
+
+
+/* =========================================================
+   PHASE 2A JOURNAL PRIVACY CONTRAST
+   ========================================================= */
+
+#growthSubJournal
+.feature-intro--journal
+.feature-intro__privacy {
+    color:
+        rgba(255, 255, 255, 0.97) !important;
+
+    background:
+        rgba(255, 255, 255, 0.12) !important;
+
+    border-color:
+        rgba(255, 255, 255, 0.28) !important;
+
+    text-shadow:
+        0 1px 3px rgba(58, 19, 9, 0.42);
+
+    backdrop-filter:
+        blur(5px);
+
+    -webkit-backdrop-filter:
+        blur(5px);
+}
+
+#growthSubJournal
+.feature-intro--journal
+.feature-intro__privacy * {
+    color:
+        rgba(255, 255, 255, 0.97) !important;
+}
+
+
+/* =========================================================
+   PHASE 2B SIX-PAGE PREMIUM HERO SYSTEM
+
+   Growth
+   Prayer
+   Private Journal
+   Groups
+   Events
+   FOG Arcade
+
+   Home is intentionally excluded.
+   ========================================================= */
+
+
+/* Canonical shell */
+
+#growthSubHome .feature-intro--growth,
+#growthSubPrayer .feature-intro--prayer,
+#growthSubJournal .feature-intro--journal,
+#growthSubGroups .feature-intro--groups,
+#eventsTab .feature-intro--events,
+#arcadeTab .feature-intro--arcade {
+    position: relative;
+    isolation: isolate;
+
+    display: flex;
+    align-items: center;
+
+    min-height: 184px;
+
+    padding:
+        clamp(24px, 4vw, 34px);
+
+    margin-bottom:
+        18px;
+
+    overflow:
+        hidden;
+
+    /*
+       Remove the legacy copper/brown edge visible around
+       uploaded artwork.
+    */
+    border:
+        0 !important;
+
+    outline:
+        0 !important;
+
+    border-radius:
+        22px !important;
+
+    background-color:
+        #A94727;
+
+    background-repeat:
+        no-repeat,
+        no-repeat !important;
+
+    background-size:
+        cover,
+        auto 100% !important;
+
+    background-position:
+        center,
+        right center !important;
+
+    background-origin:
+        border-box !important;
+
+    background-clip:
+        border-box !important;
+
+    /*
+       Intentionally no inset border/highlight.
+    */
+    box-shadow:
+        0 20px 52px
+        rgba(117, 47, 25, 0.20) !important;
+}
+
+
+/*
+   Retire older decorative pseudo-element edge/highlight
+   treatments on the six canonical heroes.
+*/
+
+#growthSubHome .feature-intro--growth::before,
+#growthSubHome .feature-intro--growth::after,
+#growthSubPrayer .feature-intro--prayer::before,
+#growthSubPrayer .feature-intro--prayer::after,
+#growthSubJournal .feature-intro--journal::before,
+#growthSubJournal .feature-intro--journal::after,
+#growthSubGroups .feature-intro--groups::before,
+#growthSubGroups .feature-intro--groups::after,
+#eventsTab .feature-intro--events::before,
+#eventsTab .feature-intro--events::after,
+#arcadeTab .feature-intro--arcade::before,
+#arcadeTab .feature-intro--arcade::after {
+    display:
+        none !important;
+}
+
+
+/* Growth */
+
+#growthSubHome .feature-intro--growth {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(102, 35, 17, 0.99) 0%,
+            rgba(132, 43, 20, 0.96) 30%,
+            rgba(159, 53, 24, 0.86) 45%,
+            rgba(176, 63, 29, 0.62) 60%,
+            rgba(174, 63, 28, 0.30) 76%,
+            rgba(161, 55, 25, 0.08) 100%
+        ),
+        var(
+            --fog-growth-banner-photo,
+            none
+        ) !important;
+}
+
+
+/* Prayer */
+
+#growthSubPrayer .feature-intro--prayer {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(102, 35, 17, 0.99) 0%,
+            rgba(132, 43, 20, 0.96) 30%,
+            rgba(159, 53, 24, 0.86) 45%,
+            rgba(176, 63, 29, 0.62) 60%,
+            rgba(174, 63, 28, 0.30) 76%,
+            rgba(161, 55, 25, 0.08) 100%
+        ),
+        var(
+            --fog-prayer-banner-photo,
+            none
+        ) !important;
+}
+
+
+/* Private Journal */
+
+#growthSubJournal .feature-intro--journal {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(102, 35, 17, 0.99) 0%,
+            rgba(132, 43, 20, 0.96) 30%,
+            rgba(159, 53, 24, 0.86) 45%,
+            rgba(176, 63, 29, 0.62) 60%,
+            rgba(174, 63, 28, 0.30) 76%,
+            rgba(161, 55, 25, 0.08) 100%
+        ),
+        var(
+            --fog-journal-banner-photo,
+            none
+        ) !important;
+}
+
+
+/* Groups */
+
+#growthSubGroups .feature-intro--groups {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(102, 35, 17, 0.99) 0%,
+            rgba(132, 43, 20, 0.96) 30%,
+            rgba(159, 53, 24, 0.86) 45%,
+            rgba(176, 63, 29, 0.62) 60%,
+            rgba(174, 63, 28, 0.30) 76%,
+            rgba(161, 55, 25, 0.08) 100%
+        ),
+        var(
+            --fog-groups-banner-photo,
+            none
+        ) !important;
+}
+
+
+/* Events */
+
+#eventsTab .feature-intro--events {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(102, 35, 17, 0.99) 0%,
+            rgba(132, 43, 20, 0.96) 30%,
+            rgba(159, 53, 24, 0.86) 45%,
+            rgba(176, 63, 29, 0.62) 60%,
+            rgba(174, 63, 28, 0.30) 76%,
+            rgba(161, 55, 25, 0.08) 100%
+        ),
+        var(
+            --fog-events-banner-photo,
+            none
+        ) !important;
+}
+
+
+/* FOG Arcade */
+
+#arcadeTab .feature-intro--arcade {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(102, 35, 17, 0.99) 0%,
+            rgba(132, 43, 20, 0.96) 30%,
+            rgba(159, 53, 24, 0.86) 45%,
+            rgba(176, 63, 29, 0.62) 60%,
+            rgba(174, 63, 28, 0.30) 76%,
+            rgba(161, 55, 25, 0.08) 100%
+        ),
+        var(
+            --fog-arcade-banner-photo,
+            none
+        ) !important;
+}
+
+
+/* Typography */
+
+#growthSubHome .feature-intro__eyebrow,
+#growthSubPrayer .feature-intro__eyebrow,
+#growthSubJournal .feature-intro__eyebrow,
+#growthSubGroups .feature-intro__eyebrow,
+#eventsTab .feature-intro__eyebrow,
+#arcadeTab .feature-intro__eyebrow {
+    color:
+        rgba(255, 235, 208, 0.92) !important;
+
+    font-weight:
+        800 !important;
+
+    letter-spacing:
+        0.08em;
+}
+
+
+#growthSubHome .feature-intro h2,
+#growthSubPrayer .feature-intro h2,
+#growthSubJournal .feature-intro h2,
+#growthSubGroups .feature-intro h2,
+#eventsTab .feature-intro h2,
+#arcadeTab .feature-intro h2 {
+    color:
+        #FFFDF9 !important;
+
+    text-shadow:
+        0 2px 14px
+        rgba(76, 24, 11, 0.15);
+}
+
+
+#growthSubHome
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+#growthSubPrayer
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+#growthSubJournal
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+#growthSubGroups
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+#eventsTab
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+#arcadeTab
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy) {
+    color:
+        rgba(255, 247, 238, 0.94) !important;
+}
+
+
+/*
+   Keep hero copy narrower so uploaded artwork remains
+   visible on the right.
+*/
+
+#growthSubHome .feature-intro > div,
+#growthSubPrayer .feature-intro > div,
+#growthSubJournal .feature-intro > div,
+#growthSubGroups .feature-intro > div,
+#eventsTab .feature-intro > div,
+#arcadeTab .feature-intro > div {
+    position:
+        relative;
+
+    z-index:
+        2;
+
+    width:
+        min(66%, 650px);
+
+    min-width:
+        0;
+}
+
+
+/* Remove old round icon treatment */
+
+#growthSubHome .feature-intro__icon,
+#growthSubPrayer .feature-intro__icon,
+#growthSubJournal .feature-intro__icon,
+#growthSubGroups .feature-intro__icon,
+#eventsTab .feature-intro__icon,
+#arcadeTab .feature-intro__icon {
+    display:
+        none !important;
+}
+
+
+/* Mobile */
+
+@media (max-width: 520px) {
+
+    #growthSubHome .feature-intro--growth,
+    #growthSubPrayer .feature-intro--prayer,
+    #growthSubJournal .feature-intro--journal,
+    #growthSubGroups .feature-intro--groups,
+    #eventsTab .feature-intro--events,
+    #arcadeTab .feature-intro--arcade {
+        min-height:
+            166px;
+
+        padding:
+            20px 18px;
+
+        border-radius:
+            20px !important;
+
+        background-size:
+            cover,
+            auto 100% !important;
+
+        background-position:
+            center,
+            right center !important;
+    }
+
+
+    #growthSubHome .feature-intro > div,
+    #growthSubPrayer .feature-intro > div,
+    #growthSubJournal .feature-intro > div,
+    #growthSubGroups .feature-intro > div,
+    #eventsTab .feature-intro > div,
+    #arcadeTab .feature-intro > div {
+        width:
+            68%;
+    }
+
+
+    #growthSubHome .feature-intro h2,
+    #growthSubPrayer .feature-intro h2,
+    #growthSubJournal .feature-intro h2,
+    #growthSubGroups .feature-intro h2,
+    #eventsTab .feature-intro h2,
+    #arcadeTab .feature-intro h2 {
+        line-height:
+            1.03;
+    }
+}
+
+
+/* =========================================================
+   PHASE 2C FINAL SIX-PAGE CONSISTENCY
+
+   Growth
+   Prayer
+   Private Journal
+   Groups
+   Events
+   FOG Arcade
+
+   Home remains visually independent but provides
+   the canonical warm-canvas/card language.
+   ========================================================= */
+
+
+/* ---------------------------------------------------------
+   1. COMMON WARM PAGE CANVAS
+   --------------------------------------------------------- */
+
+#discipleshipTab,
+#eventsTab,
+#arcadeTab {
+    background:
+        var(--fog-premium-canvas) !important;
+
+    color:
+        var(--fog-premium-ink);
+
+    border-radius:
+        30px;
+
+    box-sizing:
+        border-box;
+}
+
+
+/*
+   Keep all Growth sub-pages on the same available width.
+
+   Prayer / Journal / Groups previously inherited narrower
+   presentation constraints than Growth.
+*/
+
+#growthSubHome,
+#growthSubPrayer,
+#growthSubJournal,
+#growthSubGroups {
+    width:
+        100% !important;
+
+    max-width:
+        none !important;
+
+    margin-left:
+        0 !important;
+
+    margin-right:
+        0 !important;
+
+    box-sizing:
+        border-box;
+}
+
+
+/* Canonical full-width surfaces inside Prayer / Journal / Groups. */
+
+#growthSubPrayer .feature-intro,
+#growthSubPrayer .feature-tabs,
+#growthSubPrayer .feature-panel,
+
+#growthSubJournal .feature-intro,
+#growthSubJournal .feature-tabs,
+#growthSubJournal .feature-panel,
+#growthSubJournal .journal-feature-shell,
+
+#growthSubGroups .feature-intro,
+#growthSubGroups .feature-tabs,
+#growthSubGroups .feature-panel,
+#growthSubGroups #smallGroupsContainer,
+#growthSubGroups #discoverGroupsContainer {
+    width:
+        100% !important;
+
+    max-width:
+        none !important;
+
+    box-sizing:
+        border-box;
+}
+
+
+/* ---------------------------------------------------------
+   2. UNIFIED SMALLER HERO TYPOGRAPHY
+
+   The newer Growth / Events / Arcade scale was preferred.
+   Apply that scale consistently to all six banners.
+   --------------------------------------------------------- */
+
+#growthSubHome .feature-intro__eyebrow,
+#growthSubPrayer .feature-intro__eyebrow,
+#growthSubJournal .feature-intro__eyebrow,
+#growthSubGroups .feature-intro__eyebrow,
+#eventsTab .feature-intro__eyebrow,
+#arcadeTab .feature-intro__eyebrow {
+    margin:
+        0 0 7px !important;
+
+    font-size:
+        clamp(0.66rem, 1.35vw, 0.76rem) !important;
+
+    line-height:
+        1.2 !important;
+
+    letter-spacing:
+        0.085em !important;
+
+    font-weight:
+        800 !important;
+}
+
+
+#growthSubHome .feature-intro h2,
+#growthSubPrayer .feature-intro h2,
+#growthSubJournal .feature-intro h2,
+#growthSubGroups .feature-intro h2,
+#eventsTab .feature-intro h2,
+#arcadeTab .feature-intro h2 {
+    margin:
+        0 0 8px !important;
+
+    font-family:
+        var(--fog-premium-serif) !important;
+
+    font-size:
+        clamp(1.52rem, 3.25vw, 2.08rem) !important;
+
+    line-height:
+        1.04 !important;
+
+    letter-spacing:
+        -0.025em !important;
+}
+
+
+#growthSubHome
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+
+#growthSubPrayer
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+
+#growthSubJournal
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+
+#growthSubGroups
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+
+#eventsTab
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+
+#arcadeTab
+.feature-intro
+p:not(.feature-intro__eyebrow):not(.feature-intro__privacy) {
+    margin:
+        0 !important;
+
+    font-size:
+        clamp(0.84rem, 1.65vw, 0.94rem) !important;
+
+    line-height:
+        1.5 !important;
+
+    max-width:
+        38rem;
+}
+
+
+/*
+   Keep more artwork visible on the right.
+*/
+
+#growthSubHome .feature-intro > div,
+#growthSubPrayer .feature-intro > div,
+#growthSubJournal .feature-intro > div,
+#growthSubGroups .feature-intro > div,
+#eventsTab .feature-intro > div,
+#arcadeTab .feature-intro > div {
+    width:
+        min(61%, 610px) !important;
+}
+
+
+/* ---------------------------------------------------------
+   3. JOURNAL PRIVACY BADGE
+
+   Keep the privacy reassurance below the description.
+   Only the redundant "Private to you" eyebrow wording
+   has been removed.
+   --------------------------------------------------------- */
+
+#growthSubJournal .feature-intro__privacy {
+    margin-top:
+        12px !important;
+
+    width:
+        fit-content;
+
+    max-width:
+        100%;
+
+    font-size:
+        0.78rem !important;
+}
+
+
+/* ---------------------------------------------------------
+   4. PREMIUM CONTENT-CARD LANGUAGE
+   Growth / Events / FOG Arcade
+
+   Warm ivory/paper surfaces, copper borders, rounded cards,
+   and quieter depth matching Home / Prayer / Journal / Groups.
+   --------------------------------------------------------- */
+
+#growthSubHome .card,
+#growthSubHome .arcade-game-tile,
+
+#eventsTab .card,
+#eventsTab .event-card,
+
+#arcadeTab .card,
+#arcadeTab .arcade-game-tile {
+    background:
+        var(--fog-premium-paper) !important;
+
+    border:
+        1px solid var(--fog-premium-line) !important;
+
+    border-radius:
+        20px !important;
+
+    box-shadow:
+        var(--fog-premium-shadow-sm) !important;
+
+    color:
+        var(--fog-premium-ink);
+
+    overflow:
+        hidden;
+}
+
+
+/* Gentle hover depth without changing click behavior. */
+
+#growthSubHome .arcade-game-tile,
+#eventsTab .event-card,
+#arcadeTab .arcade-game-tile {
+    transition:
+        transform 160ms ease,
+        box-shadow 160ms ease,
+        border-color 160ms ease;
+}
+
+
+@media (hover: hover) {
+
+    #growthSubHome .arcade-game-tile:hover,
+    #eventsTab .event-card:hover,
+    #arcadeTab .arcade-game-tile:hover {
+        transform:
+            translateY(-2px);
+
+        border-color:
+            var(--fog-premium-line-strong) !important;
+
+        box-shadow:
+            var(--fog-premium-shadow) !important;
+    }
+}
+
+
+/* Event imagery follows the same softer card geometry. */
+
+#eventsTab .event-card-img {
+    border-radius:
+        19px 19px 0 0;
+}
+
+
+/* ---------------------------------------------------------
+   5. PREMIUM SUB-NAV / TAB LANGUAGE
+   --------------------------------------------------------- */
+
+#growthSubHome .sub-nav,
+#eventsTab .sub-nav,
+#arcadeTab .sub-nav {
+    background:
+        rgba(255, 252, 248, 0.72);
+
+    border:
+        1px solid var(--fog-premium-line);
+
+    border-radius:
+        18px;
+
+    padding:
+        6px;
+
+    box-shadow:
+        0 8px 26px rgba(92, 53, 34, 0.05);
+}
+
+
+#growthSubHome .sub-nav-btn,
+#eventsTab .sub-nav-btn,
+#arcadeTab .sub-nav-btn {
+    border-radius:
+        13px !important;
+
+    color:
+        var(--fog-premium-ink-soft);
+
+    transition:
+        background 160ms ease,
+        color 160ms ease,
+        box-shadow 160ms ease;
+}
+
+
+#growthSubHome .sub-nav-btn.active,
+#eventsTab .sub-nav-btn.active,
+#arcadeTab .sub-nav-btn.active {
+    background:
+        var(--fog-premium-cream) !important;
+
+    color:
+        var(--fog-premium-copper-deep) !important;
+
+    border-color:
+        var(--fog-premium-line-strong) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+
+/* ---------------------------------------------------------
+   6. CONTENT TYPOGRAPHY
+   --------------------------------------------------------- */
+
+#growthSubHome h2,
+#growthSubHome h3,
+#eventsTab h2,
+#eventsTab h3,
+#arcadeTab h2,
+#arcadeTab h3 {
+    color:
+        var(--fog-premium-ink);
+}
+
+
+#growthSubHome .card p,
+#growthSubHome .arcade-game-tile p,
+#eventsTab .card p,
+#eventsTab .event-card p,
+#arcadeTab .card p,
+#arcadeTab .arcade-game-tile p {
+    color:
+        var(--fog-premium-muted);
+}
+
+
+/* ---------------------------------------------------------
+   7. GRID / PANEL RHYTHM
+   --------------------------------------------------------- */
+
+#growthSubHome .arcade-grid,
+#eventsTab .events-grid,
+#eventsTab #eventsContainer,
+#arcadeTab .arcade-grid {
+    gap:
+        16px !important;
+}
+
+
+/*
+   Give functional panels the same calm warm-paper treatment,
+   without altering their display, routing, or interaction logic.
+*/
+
+#growthSubHome .gamification-sub-tab,
+#eventsTab .event-sub-tab,
+#arcadeTab .arcade-sub-tab {
+    color:
+        var(--fog-premium-ink);
+}
+
+
+/* ---------------------------------------------------------
+   8. MOBILE CONSISTENCY
+   --------------------------------------------------------- */
+
+@media (max-width: 520px) {
+
+    #discipleshipTab,
+    #eventsTab,
+    #arcadeTab {
+        border-radius:
+            22px;
+    }
+
+
+    #growthSubHome .feature-intro > div,
+    #growthSubPrayer .feature-intro > div,
+    #growthSubJournal .feature-intro > div,
+    #growthSubGroups .feature-intro > div,
+    #eventsTab .feature-intro > div,
+    #arcadeTab .feature-intro > div {
+        width:
+            66% !important;
+    }
+
+
+    #growthSubHome .feature-intro h2,
+    #growthSubPrayer .feature-intro h2,
+    #growthSubJournal .feature-intro h2,
+    #growthSubGroups .feature-intro h2,
+    #eventsTab .feature-intro h2,
+    #arcadeTab .feature-intro h2 {
+        font-size:
+            clamp(1.34rem, 6.3vw, 1.72rem) !important;
+    }
+
+
+    #growthSubHome
+    .feature-intro
+    p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+
+    #growthSubPrayer
+    .feature-intro
+    p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+
+    #growthSubJournal
+    .feature-intro
+    p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+
+    #growthSubGroups
+    .feature-intro
+    p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+
+    #eventsTab
+    .feature-intro
+    p:not(.feature-intro__eyebrow):not(.feature-intro__privacy),
+
+    #arcadeTab
+    .feature-intro
+    p:not(.feature-intro__eyebrow):not(.feature-intro__privacy) {
+        font-size:
+            0.82rem !important;
+
+        line-height:
+            1.42 !important;
+    }
+
+
+    #growthSubHome .card,
+    #growthSubHome .arcade-game-tile,
+    #eventsTab .card,
+    #eventsTab .event-card,
+    #arcadeTab .card,
+    #arcadeTab .arcade-game-tile {
+        border-radius:
+            17px !important;
+    }
+}
+
+
+/* =========================================================
+   DAILY GOSPEL — SAGE HIGHLIGHT POLISH
+
+   Growth page only.
+
+   The Gospel remains a highlighted spiritual surface while
+   using a soft sage treatment that complements the FOG
+   copper / brown / cream premium palette.
+
+   Inline legacy colors are intentionally overridden here
+   so every existing live/fallback renderer stays consistent.
+   ========================================================= */
+
+
+/* ---------------------------------------------------------
+   CARD SURFACE
+   --------------------------------------------------------- */
+
+#growthSubHome #liturgicalCard,
+#growthSubHome .lit-card {
+    position:
+        relative;
+
+    color:
+        #29483A !important;
+
+    background:
+        linear-gradient(
+            135deg,
+            #F1F7EE 0%,
+            #E4F0E1 52%,
+            #F6F2E7 100%
+        ) !important;
+
+    border:
+        1px solid rgba(89, 120, 91, 0.22) !important;
+
+    border-radius:
+        20px !important;
+
+    box-shadow:
+        0 12px 32px rgba(76, 95, 72, 0.10) !important;
+}
+
+
+/*
+   Very subtle inner highlight.
+   Keeps the card premium without turning it bright green.
+*/
+
+#growthSubHome #liturgicalCard::before,
+#growthSubHome .lit-card::before {
+    content:
+        "";
+
+    position:
+        absolute;
+
+    inset:
+        0;
+
+    pointer-events:
+        none;
+
+    border-radius:
+        inherit;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255, 255, 255, 0.34),
+            transparent 48%
+        );
+}
+
+
+/* ---------------------------------------------------------
+   TEXT CONTRAST
+   --------------------------------------------------------- */
+
+#growthSubHome #liturgicalCard h3,
+#growthSubHome .lit-card h3 {
+    position:
+        relative;
+
+    z-index:
+        1;
+
+    color:
+        #29483A !important;
+
+    text-shadow:
+        none !important;
+}
+
+
+#growthSubHome #liturgicalCard p,
+#growthSubHome .lit-card p {
+    position:
+        relative;
+
+    z-index:
+        1;
+
+    color:
+        #50685A !important;
+
+    text-shadow:
+        none !important;
+}
+
+
+/*
+   Feast / liturgical-day text is commonly rendered as
+   a span with an inline white color.
+*/
+
+#growthSubHome #liturgicalCard span,
+#growthSubHome .lit-card span {
+    position:
+        relative;
+
+    z-index:
+        1;
+
+    color:
+        #5C7464 !important;
+
+    text-shadow:
+        none !important;
+}
+
+
+/*
+   Scripture preview deserves slightly stronger contrast.
+*/
+
+#growthSubHome #liturgicalCard em,
+#growthSubHome .lit-card em {
+    color:
+        #435D4E !important;
+}
+
+
+/* ---------------------------------------------------------
+   BUTTON ROW
+   --------------------------------------------------------- */
+
+#growthSubHome #liturgicalCard .btn,
+#growthSubHome .lit-card .btn {
+    position:
+        relative;
+
+    z-index:
+        1;
+
+    min-height:
+        40px;
+
+    border-radius:
+        10px !important;
+
+    box-shadow:
+        0 5px 14px rgba(67, 79, 63, 0.09) !important;
+}
+
+
+/*
+   FULL READINGS
+
+   Ivory surface + copper text keeps this action connected
+   visually to the main FOG premium brand.
+*/
+
+#growthSubHome
+#liturgicalCard
+button[onclick*="openLiturgicalReadings"],
+
+#growthSubHome
+.lit-card
+button[onclick*="openLiturgicalReadings"] {
+    background:
+        #FFFDF8 !important;
+
+    color:
+        #C45528 !important;
+
+    border:
+        1px solid rgba(184, 88, 47, 0.18) !important;
+
+    font-weight:
+        800 !important;
+}
+
+
+/*
+   REFLECT
+
+   Soft sage button gives this spiritual action its own
+   emphasis while staying within the warm premium palette.
+*/
+
+#growthSubHome
+#liturgicalCard
+button[onclick*="Journal"],
+
+#growthSubHome
+.lit-card
+button[onclick*="Journal"] {
+    background:
+        #D6E6D2 !important;
+
+    color:
+        #315A43 !important;
+
+    border:
+        1px solid rgba(73, 111, 79, 0.24) !important;
+
+    font-weight:
+        800 !important;
+
+    text-shadow:
+        none !important;
+}
+
+
+/* Desktop hover polish only. */
+
+@media (hover: hover) {
+
+    #growthSubHome
+    #liturgicalCard
+    button[onclick*="openLiturgicalReadings"]:hover,
+
+    #growthSubHome
+    .lit-card
+    button[onclick*="openLiturgicalReadings"]:hover {
+        background:
+            #FFF7EB !important;
+
+        border-color:
+            rgba(184, 88, 47, 0.30) !important;
+    }
+
+
+    #growthSubHome
+    #liturgicalCard
+    button[onclick*="Journal"]:hover,
+
+    #growthSubHome
+    .lit-card
+    button[onclick*="Journal"]:hover {
+        background:
+            #C9DEC5 !important;
+
+        border-color:
+            rgba(73, 111, 79, 0.34) !important;
+    }
+}
+
+
+/* ---------------------------------------------------------
+   MOBILE
+   --------------------------------------------------------- */
+
+@media (max-width: 520px) {
+
+    #growthSubHome #liturgicalCard,
+    #growthSubHome .lit-card {
+        border-radius:
+            18px !important;
+    }
+
+
+    #growthSubHome #liturgicalCard h3,
+    #growthSubHome .lit-card h3 {
+        font-size:
+            1.12rem !important;
+    }
+
+
+    #growthSubHome #liturgicalCard p,
+    #growthSubHome .lit-card p {
+        line-height:
+            1.48 !important;
+    }
+}

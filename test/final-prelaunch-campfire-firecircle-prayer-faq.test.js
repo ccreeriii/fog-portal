@@ -214,12 +214,12 @@ test('pre-launch PWA revisions are synchronized', () => {
 
     assert.match(
         html,
-        /\/js\/community-feature-polish\.js\?v=5/
+        /\/js\/community-feature-polish\.js\?v=7/
     );
 
     assert.match(
         sw,
-        /fog-portal-v35/
+        /fog-portal-v46/
     );
 
     assert.match(
@@ -229,6 +229,6 @@ test('pre-launch PWA revisions are synchronized', () => {
 
     assert.match(
         sw,
-        /\/js\/community-feature-polish\.js\?v=5/
+        /\/js\/community-feature-polish\.js\?v=7/
     );
 });

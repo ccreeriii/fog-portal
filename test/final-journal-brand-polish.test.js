@@ -35,7 +35,7 @@ test('Private Journal uses the canonical polished split-tab presentation', () =>
     assert.match(js, /My Journal/);
     assert.match(js, /New Entry/);
     assert.match(js, /Pause\. Reflect\. Grow\./);
-    assert.match(js, /Private to you/);
+    assert.doesNotMatch(js, /Private to you/);
     assert.match(js, /Only you can view your journal entries/);
     assert.match(js, /loadCanonicalJournalList/);
     assert.match(js, /state\.entries\s*\.slice\(start,\s*start\s*\+\s*10\)/);
@@ -76,7 +76,7 @@ test('Growth Journey palette is aligned to the same orange family', () => {
 
 test('brand and journal assets publish through a fresh PWA cache', () => {
     assert.match(index, /community-features\.css\?v=3/);
-    assert.match(index, /community-feature-polish\.js\?v=5/);
+    assert.match(index, /community-feature-polish\.js\?v=7/);
     assert.match(index, /journey-dashboard\.css\?v=4/);
-    assert.match(sw, /fog-portal-v35/);
+    assert.match(sw, /fog-portal-v46/);
 });

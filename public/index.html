@@ -27,7 +27,7 @@
     <link rel="stylesheet" href="/css/v4-styles.css?v=12.2">
     <link rel="stylesheet" href="/css/journey-dashboard.css?v=4">
     <link rel="stylesheet" href="/css/community-features.css?v=3">
-    <link rel="stylesheet" href="/css/fog-premium.css?v=1">
+    <link rel="stylesheet" href="/css/fog-premium.css?v=10">
     <style>
         .ai-chat-box { display: flex; flex-direction: column; gap: 15px; max-height: 450px; overflow-y: auto; padding: 15px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin-bottom: 15px; }
         .chat-msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; font-size: 0.95rem; line-height: 1.4; }
@@ -740,6 +740,807 @@
             </div>
             <button type="submit" class="btn btn-primary" style="width: 100%; margin-top:15px;">Upload & Apply</button>
         </form>
+
+        <section id="premiumBannerManager" class="premium-banner-manager" aria-labelledby="premiumBannerManagerTitle">
+            <div class="premium-banner-manager__heading">
+                <div>
+                    <p class="premium-banner-manager__eyebrow">Premium Portal Branding</p>
+                    <h3 id="premiumBannerManagerTitle">Page Banner Images</h3>
+                    <p>Super Admin only. These images appear behind the premium page banners while the Portal keeps the live heading and description readable above them.</p>
+                </div>
+            </div>
+
+            <form id="premiumBannerForm" onsubmit="window.handlePremiumBannerUpload(event)">
+                <div class="premium-banner-upload">
+                    <label for="premiumPrayerBannerInput">🙏 Prayer Page Banner Image</label>
+                    <input
+                        type="file"
+                        id="premiumPrayerBannerInput"
+                        class="form-control"
+                        accept="image/webp,image/jpeg,image/png"
+                    >
+                    <small class="premium-banner-help">
+                        <strong>Recommended: 1600 × 700 px (16:7).</strong>
+                        WebP preferred · JPG/PNG accepted · Keep the main subject toward the right side · Avoid text inside the image · Ideally under 500 KB.
+                    </small>
+                    <img
+                        id="premiumPrayerBannerPreview"
+                        class="premium-banner-preview"
+                        alt="Prayer Page Banner preview"
+                        hidden
+                    >
+                    <small
+                        id="premiumPrayerBannerStatus"
+                        class="premium-banner-status"
+                        role="status"
+                        aria-live="polite"
+                    ></small>
+                </div>
+
+                <div class="premium-banner-upload">
+                    <label for="premiumJournalBannerInput">📖 Private Journal Banner Image</label>
+                    <input
+                        type="file"
+                        id="premiumJournalBannerInput"
+                        class="form-control"
+                        accept="image/webp,image/jpeg,image/png"
+                    >
+                    <small class="premium-banner-help">
+                        <strong>Recommended: 1600 × 700 px (16:7).</strong>
+                        WebP preferred · JPG/PNG accepted · Keep the main subject toward the right side · Avoid text inside the image · Ideally under 500 KB.
+                    </small>
+                    <img
+                        id="premiumJournalBannerPreview"
+                        class="premium-banner-preview"
+                        alt="Private Journal Banner preview"
+                        hidden
+                    >
+                    <small
+                        id="premiumJournalBannerStatus"
+                        class="premium-banner-status"
+                        role="status"
+                        aria-live="polite"
+                    ></small>
+                </div>
+
+                <div class="premium-banner-upload">
+                    <label for="premiumGroupsBannerInput">🔥 Groups / Campfires &amp; Fire Circles Banner Image</label>
+                    <input
+                        type="file"
+                        id="premiumGroupsBannerInput"
+                        class="form-control"
+                        accept="image/webp,image/jpeg,image/png"
+                    >
+                    <small class="premium-banner-help">
+                        <strong>Recommended: 1600 × 700 px (16:7).</strong>
+                        WebP preferred · JPG/PNG accepted · Keep the main subject toward the right side · Avoid text inside the image · Ideally under 500 KB.
+                    </small>
+                    <img
+                        id="premiumGroupsBannerPreview"
+                        class="premium-banner-preview"
+                        alt="Groups, Campfires and Fire Circles Banner preview"
+                        hidden
+                    >
+                    <small
+                        id="premiumGroupsBannerStatus"
+                        class="premium-banner-status"
+                        role="status"
+                        aria-live="polite"
+                    ></small>
+                </div>
+
+                <div class="premium-banner-upload">
+                    <label for="premiumGrowthBannerInput">
+                        🌱 Growth Page Banner Image
+                    </label>
+
+                    <input
+                        type="file"
+                        id="premiumGrowthBannerInput"
+                        class="form-control"
+                        accept="image/webp,image/jpeg,image/png"
+                    >
+
+                    <small class="premium-banner-help">
+                        <strong>
+                            Recommended: 1600 × 700 px (16:7).
+                        </strong>
+                        WebP preferred · JPG/PNG accepted ·
+                        Keep the main subject toward the right side ·
+                        Avoid text inside the image ·
+                        Ideally under 500 KB.
+                    </small>
+
+                    <img
+                        id="premiumGrowthBannerPreview"
+                        class="premium-banner-preview"
+                        alt="Growth banner preview"
+                        hidden
+                    >
+
+                    <small
+                        id="premiumGrowthBannerStatus"
+                        class="premium-banner-status"
+                    >
+                        No custom banner uploaded yet.
+                        The premium gradient is currently used.
+                    </small>
+                </div>
+
+                <div class="premium-banner-upload">
+                    <label for="premiumEventsBannerInput">
+                        📅 Events Page Banner Image
+                    </label>
+
+                    <input
+                        type="file"
+                        id="premiumEventsBannerInput"
+                        class="form-control"
+                        accept="image/webp,image/jpeg,image/png"
+                    >
+
+                    <small class="premium-banner-help">
+                        <strong>
+                            Recommended: 1600 × 700 px (16:7).
+                        </strong>
+                        WebP preferred · JPG/PNG accepted ·
+                        Keep the main subject toward the right side ·
+                        Avoid text inside the image ·
+                        Ideally under 500 KB.
+                    </small>
+
+                    <img
+                        id="premiumEventsBannerPreview"
+                        class="premium-banner-preview"
+                        alt="Events banner preview"
+                        hidden
+                    >
+
+                    <small
+                        id="premiumEventsBannerStatus"
+                        class="premium-banner-status"
+                    >
+                        No custom banner uploaded yet.
+                        The premium gradient is currently used.
+                    </small>
+                </div>
+
+                <div class="premium-banner-upload">
+                    <label for="premiumArcadeBannerInput">
+                        🎯 FOG Arcade Page Banner Image
+                    </label>
+
+                    <input
+                        type="file"
+                        id="premiumArcadeBannerInput"
+                        class="form-control"
+                        accept="image/webp,image/jpeg,image/png"
+                    >
+
+                    <small class="premium-banner-help">
+                        <strong>
+                            Recommended: 1600 × 700 px (16:7).
+                        </strong>
+                        WebP preferred · JPG/PNG accepted ·
+                        Keep the main subject toward the right side ·
+                        Avoid text inside the image ·
+                        Ideally under 500 KB.
+                    </small>
+
+                    <img
+                        id="premiumArcadeBannerPreview"
+                        class="premium-banner-preview"
+                        alt="FOG Arcade banner preview"
+                        hidden
+                    >
+
+                    <small
+                        id="premiumArcadeBannerStatus"
+                        class="premium-banner-status"
+                    >
+                        No custom banner uploaded yet.
+                        The premium gradient is currently used.
+                    </small>
+                </div>
+
+
+                <p
+                    id="premiumBannerManagerFeedback"
+                    class="premium-banner-manager__feedback"
+                    role="status"
+                    aria-live="polite"
+                ></p>
+
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                    style="width:100%; margin-top:8px;"
+                >
+                    Upload Selected Page Banner
+                </button>
+            </form>
+        </section>
+
+        <script>
+        (function installPremiumBannerManager() {
+            'use strict';
+
+            const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+            const IDEAL_BYTES = 500 * 1024;
+            const ALLOWED_TYPES = new Set([
+                'image/webp',
+                'image/jpeg',
+                'image/png'
+            ]);
+
+            const definitions = {
+                prayer: {
+                    inputId: 'premiumPrayerBannerInput',
+                    previewId: 'premiumPrayerBannerPreview',
+                    statusId: 'premiumPrayerBannerStatus',
+                    cssVariable: '--fog-prayer-banner-photo'
+                },
+                journal: {
+                    inputId: 'premiumJournalBannerInput',
+                    previewId: 'premiumJournalBannerPreview',
+                    statusId: 'premiumJournalBannerStatus',
+                    cssVariable: '--fog-journal-banner-photo'
+                },
+                groups: {
+                    inputId: 'premiumGroupsBannerInput',
+                    previewId: 'premiumGroupsBannerPreview',
+                    statusId: 'premiumGroupsBannerStatus',
+                    cssVariable: '--fog-groups-banner-photo'
+                },
+
+                growth: {
+                    inputId: 'premiumGrowthBannerInput',
+                    previewId: 'premiumGrowthBannerPreview',
+                    statusId: 'premiumGrowthBannerStatus',
+                    cssVariable: '--fog-growth-banner-photo'
+                },
+                events: {
+                    inputId: 'premiumEventsBannerInput',
+                    previewId: 'premiumEventsBannerPreview',
+                    statusId: 'premiumEventsBannerStatus',
+                    cssVariable: '--fog-events-banner-photo'
+                },
+                arcade: {
+                    inputId: 'premiumArcadeBannerInput',
+                    previewId: 'premiumArcadeBannerPreview',
+                    statusId: 'premiumArcadeBannerStatus',
+                    cssVariable: '--fog-arcade-banner-photo'
+                }
+
+            };
+
+            function validServerBannerUrl(value) {
+                return typeof value === 'string' &&
+                    value.startsWith('/runtime-media/premium-banners/');
+            }
+
+            function cssUrl(value) {
+                return 'url(' + JSON.stringify(value) + ')';
+            }
+
+            function setFeedback(message, isError) {
+                const target =
+                    document.getElementById('premiumBannerManagerFeedback');
+
+                if (!target) return;
+
+                target.textContent = message || '';
+                target.classList.toggle(
+                    'premium-banner-manager__feedback--error',
+                    Boolean(isError)
+                );
+            }
+
+            function setCurrentPreview(name, url) {
+                const definition = definitions[name];
+
+                if (!definition) return;
+
+                const preview =
+                    document.getElementById(definition.previewId);
+
+                const status =
+                    document.getElementById(definition.statusId);
+
+                if (!preview) return;
+
+                if (validServerBannerUrl(url)) {
+                    preview.src = url;
+                    preview.hidden = false;
+
+                    if (status) {
+                        status.textContent = 'Current active banner';
+                    }
+                } else {
+                    preview.removeAttribute('src');
+                    preview.hidden = true;
+
+                    if (status) {
+                        status.textContent =
+                            'No custom banner uploaded yet. The premium gradient is currently used.';
+                    }
+                }
+            }
+
+            window.applyPremiumBannerPayload = function(payload) {
+                const data =
+                    payload && typeof payload === 'object'
+                        ? payload
+                        : {};
+
+                Object.entries(definitions).forEach(
+                    ([name, definition]) => {
+                        const url =
+                            typeof data[name] === 'string'
+                                ? data[name]
+                                : '';
+
+                        const value =
+                            validServerBannerUrl(url)
+                                ? cssUrl(url)
+                                : 'none';
+
+                        /*
+                         * Always write an explicit value.
+                         * Do not remove the variable, because a stale
+                         * inherited/fallback value could otherwise leak
+                         * from another premium banner.
+                         */
+                        document.documentElement.style.setProperty(
+                            definition.cssVariable,
+                            value
+                        );
+
+                        setCurrentPreview(
+                            name,
+                            validServerBannerUrl(url)
+                                ? url
+                                : ''
+                        );
+                    }
+                );
+            };
+
+            window.loadPremiumBannerSettings = async function() {
+                try {
+                    const response = await fetch(
+                        '/api/settings/premium-banners?_=' +
+                            Date.now(),
+                        {
+                            method: 'GET',
+                            cache: 'no-store',
+                            credentials: 'same-origin',
+                            headers: {
+                                Accept: 'application/json',
+                                'Cache-Control': 'no-cache'
+                            }
+                        }
+                    );
+
+                    if (!response.ok) {
+                        throw new Error(
+                            'Unable to load page banner settings.'
+                        );
+                    }
+
+                    const payload = await response.json();
+
+                    window.applyPremiumBannerPayload(
+                        payload
+                    );
+
+                    return payload;
+                } catch (error) {
+                    console.warn(
+                        '[PREMIUM BANNERS] Unable to load settings:',
+                        error
+                    );
+
+                    return null;
+                }
+            };
+
+            function fileToDataUrl(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () =>
+                        reject(
+                            new Error('Unable to read the selected image.')
+                        );
+
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            function validateFile(file) {
+                if (!file) return null;
+
+                if (!ALLOWED_TYPES.has(file.type)) {
+                    return 'Please choose a WebP, JPG/JPEG, or PNG image.';
+                }
+
+                if (file.size > MAX_UPLOAD_BYTES) {
+                    return 'Image is larger than the 2 MB upload limit.';
+                }
+
+                return null;
+            }
+
+            function formatBytes(bytes) {
+                if (!Number.isFinite(bytes)) return '';
+
+                if (bytes < 1024) {
+                    return bytes + ' B';
+                }
+
+                if (bytes < 1024 * 1024) {
+                    return Math.round(bytes / 1024) + ' KB';
+                }
+
+                return (
+                    (bytes / (1024 * 1024)).toFixed(2) +
+                    ' MB'
+                );
+            }
+
+            function attachLocalPreview(name) {
+                const definition = definitions[name];
+
+                const input =
+                    document.getElementById(definition.inputId);
+
+                const preview =
+                    document.getElementById(definition.previewId);
+
+                const status =
+                    document.getElementById(definition.statusId);
+
+                if (!input || !preview) return;
+
+                input.addEventListener('change', () => {
+                    const file =
+                        input.files && input.files[0]
+                            ? input.files[0]
+                            : null;
+
+                    if (!file) {
+                        window.loadPremiumBannerSettings();
+                        return;
+                    }
+
+                    const error = validateFile(file);
+
+                    if (error) {
+                        input.value = '';
+
+                        if (status) {
+                            status.textContent = error;
+                        }
+
+                        return;
+                    }
+
+                    const objectUrl =
+                        URL.createObjectURL(file);
+
+                    preview.src = objectUrl;
+                    preview.hidden = false;
+
+                    const image = new Image();
+
+                    image.onload = () => {
+                        if (status) {
+                            const notes = [
+                                'Selected: ' +
+                                    image.naturalWidth +
+                                    ' × ' +
+                                    image.naturalHeight +
+                                    ' px',
+                                formatBytes(file.size)
+                            ];
+
+                            if (file.size > IDEAL_BYTES) {
+                                notes.push(
+                                    'Optimization recommended: ideally under 500 KB'
+                                );
+                            }
+
+                            if (
+                                image.naturalWidth !== 1600 ||
+                                image.naturalHeight !== 700
+                            ) {
+                                notes.push(
+                                    '1600 × 700 px is the recommended design size'
+                                );
+                            }
+
+                            status.textContent =
+                                notes.join(' · ');
+                        }
+
+                        URL.revokeObjectURL(objectUrl);
+                    };
+
+                    image.onerror = () => {
+                        if (status) {
+                            status.textContent =
+                                'Preview unavailable. Please verify the selected image.';
+                        }
+                    };
+
+                    image.src = objectUrl;
+                });
+            }
+
+            window.handlePremiumBannerUpload =
+                async function(event) {
+                    if (event) {
+                        event.preventDefault();
+                    }
+
+                    const form =
+                        document.getElementById('premiumBannerForm');
+
+                    const button =
+                        form &&
+                        form.querySelector('button[type="submit"]');
+
+                    const originalText =
+                        button
+                            ? button.textContent
+                            : 'Upload Selected Page Banner';
+
+                    try {
+                        setFeedback('', false);
+
+                        if (window.authReady) {
+                            await window.authReady;
+                        }
+
+                        const selected = [];
+
+                        for (
+                            const [name, definition]
+                            of Object.entries(definitions)
+                        ) {
+                            const input =
+                                document.getElementById(
+                                    definition.inputId
+                                );
+
+                            const file =
+                                input &&
+                                input.files &&
+                                input.files[0]
+                                    ? input.files[0]
+                                    : null;
+
+                            if (file) {
+                                selected.push({
+                                    name,
+                                    definition,
+                                    file
+                                });
+                            }
+                        }
+
+                        if (selected.length === 0) {
+                            throw new Error(
+                                'Choose one page banner image to upload.'
+                            );
+                        }
+
+                        if (selected.length !== 1) {
+                            throw new Error(
+                                'For safety, upload one page banner at a time.'
+                            );
+                        }
+
+                        const selection = selected[0];
+
+                        const validationError =
+                            validateFile(selection.file);
+
+                        if (validationError) {
+                            throw new Error(validationError);
+                        }
+
+                        const image =
+                            await fileToDataUrl(selection.file);
+
+                        if (button) {
+                            button.disabled = true;
+                            button.textContent =
+                                'Uploading selected banner…';
+                        }
+
+                        const response = await fetch(
+                            '/api/settings/premium-banners',
+                            {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                headers: {
+                                    'Content-Type':
+                                        'application/json',
+                                    Accept:
+                                        'application/json'
+                                },
+                                body: JSON.stringify({
+                                    target: selection.name,
+                                    image
+                                })
+                            }
+                        );
+
+                        let result = {};
+
+                        try {
+                            result = await response.json();
+                        } catch (_) {
+                            result = {};
+                        }
+
+                        if (!response.ok) {
+                            throw new Error(
+                                result.error ||
+                                'Unable to save the selected page banner.'
+                            );
+                        }
+
+                        window.applyPremiumBannerPayload(result);
+
+                        if (form) {
+                            form.reset();
+                        }
+
+                        const persisted =
+                            await window.loadPremiumBannerSettings();
+
+                        if (!persisted) {
+                            throw new Error(
+                                'Banner saved, but verification reload failed.'
+                            );
+                        }
+
+                        if (
+                            !validServerBannerUrl(
+                                persisted[selection.name]
+                            )
+                        ) {
+                            throw new Error(
+                                'Banner save could not be verified.'
+                            );
+                        }
+
+                        const bannerLabels = {
+                            prayer: 'Prayer',
+                            journal: 'Private Journal',
+                            groups: 'Groups',
+                            growth: 'Growth',
+                            events: 'Events',
+                            arcade: 'FOG Arcade'
+                        };
+
+                        const label =
+                            bannerLabels[selection.name] ||
+                            'Selected';
+
+                        setFeedback(
+                            label +
+                            ' page banner updated and verified successfully.',
+                            false
+                        );
+                    } catch (error) {
+                        console.error(
+                            '[PREMIUM BANNERS] Upload failed:',
+                            error
+                        );
+
+                        setFeedback(
+                            error && error.message
+                                ? error.message
+                                : 'Unable to update page banner.',
+                            true
+                        );
+                    } finally {
+                        if (button) {
+                            button.disabled = false;
+                            button.textContent = originalText;
+                        }
+                    }
+                };
+
+            let premiumBannerInputsInitialized = false;
+            let premiumBannerRefreshPromise = null;
+
+            function initializePremiumBannerInputs() {
+                if (premiumBannerInputsInitialized) {
+                    return;
+                }
+
+                premiumBannerInputsInitialized = true;
+
+                Object.keys(definitions)
+                    .forEach(attachLocalPreview);
+            }
+
+            function refreshPremiumBannerSettings() {
+                if (premiumBannerRefreshPromise) {
+                    return premiumBannerRefreshPromise;
+                }
+
+                premiumBannerRefreshPromise =
+                    window.loadPremiumBannerSettings()
+                        .finally(() => {
+                            premiumBannerRefreshPromise = null;
+                        });
+
+                return premiumBannerRefreshPromise;
+            }
+
+            function initializePremiumBanners() {
+                initializePremiumBannerInputs();
+
+                /*
+                 * Restore the persisted server state immediately.
+                 */
+                refreshPremiumBannerSettings();
+
+                /*
+                 * Some Portal initialization occurs after the shell is
+                 * available. Re-apply after authReady so later startup
+                 * work cannot leave stale banner variables behind.
+                 */
+                if (
+                    window.authReady &&
+                    typeof window.authReady.then === 'function'
+                ) {
+                    Promise.resolve(window.authReady)
+                        .catch(() => null)
+                        .finally(() => {
+                            refreshPremiumBannerSettings();
+                        });
+                }
+
+                /*
+                 * One delayed reconciliation handles late UI renderers
+                 * without coupling banner persistence to Prayer,
+                 * Journal, or Groups navigation code.
+                 */
+                window.setTimeout(
+                    refreshPremiumBannerSettings,
+                    750
+                );
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener(
+                    'DOMContentLoaded',
+                    initializePremiumBanners,
+                    {
+                        once: true
+                    }
+                );
+            } else {
+                initializePremiumBanners();
+            }
+
+            window.addEventListener(
+                'pageshow',
+                () => {
+                    refreshPremiumBannerSettings();
+                }
+            );
+        })();
+        </script>
+
         <script>
         window.handleUpdateSiteImages = async function(e) {
             if(e) e.preventDefault();
@@ -840,6 +1641,24 @@
     </div>
 
     <div id="arcadeTab" class="tab-content">
+        <section
+            class="feature-intro feature-intro--arcade"
+            aria-labelledby="arcadePremiumFeatureTitle"
+        >
+            <div>
+                <p class="feature-intro__eyebrow">
+                    FOG Arcade
+                </p>
+                <h2 id="arcadePremiumFeatureTitle">
+                    Play. Learn. Grow.
+                </h2>
+                <p>
+                    Build faith, sharpen your knowledge, and earn
+                    Life Points through fun challenges.
+                </p>
+            </div>
+        </section>
+
         <div class="card arcade-hub-card" style="padding: 0; overflow: hidden; border-color: var(--primary); background: var(--card-bg);">
             <div style="padding: 15px 20px; background: linear-gradient(135deg, #FF6B00, #F59E0B); color: #FFF; display: flex; justify-content: space-between; align-items: center;">
                 <h2 style="margin:0; border:none; padding:0; color: #FFF; font-weight: 800; display:flex; align-items:center; gap:10px;"><span style="font-size: 1.5rem;">🎯</span> FOG ARCADE</h2>
@@ -1028,6 +1847,24 @@
 
     <div id="discipleshipTab" class="tab-content">
         <div id="growthSubHome" class="growth-sub-tab active">
+            <section
+                class="feature-intro feature-intro--growth"
+                aria-labelledby="growthPremiumFeatureTitle"
+            >
+                <div>
+                    <p class="feature-intro__eyebrow">
+                        Growth Journey
+                    </p>
+                    <h2 id="growthPremiumFeatureTitle">
+                        Keep Growing in Faith
+                    </h2>
+                    <p>
+                        Take your next faithful step through habits,
+                        challenges, and community.
+                    </p>
+                </div>
+            </section>
+
 
             <div id="liturgicalCard" class="card" style="display:block; transition: all 0.5s ease; border: none; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
@@ -1139,7 +1976,7 @@
         <div id="growthSubGroups" class="growth-sub-tab">
             <section class="feature-intro feature-intro--groups" aria-labelledby="groupsFeatureTitle">
                 <span class="feature-intro__icon" aria-hidden="true">◌</span>
-                <div><p class="feature-intro__eyebrow">Campfires &amp; Fire Circles · Hebrews 10:24–25</p><h2 id="groupsFeatureTitle">Life Is Better Together</h2><p>Find a smaller place to pray, share, belong, and grow with others.</p></div>
+                <div><p class="feature-intro__eyebrow">Campfires &amp; Fire Circles</p><h2 id="groupsFeatureTitle">Life Is Better Together</h2><p>Find a smaller place to pray, share, belong, and grow with others.</p></div>
             </section>
             <div class="feature-tabs" role="tablist" aria-label="Groups views">
                 <button id="myGroupsTabButton" class="feature-tab active" type="button" role="tab" aria-selected="true" aria-controls="myGroupsPanel">My Groups</button>
@@ -3535,6 +4372,6 @@
     </script>
     <script src="/js/journey-dashboard.js?v=5"></script>
     <script src="/js/postlaunch-hotfix.js?v=4"></script>
-    <script src="/js/community-feature-polish.js?v=5"></script>
+    <script src="/js/community-feature-polish.js?v=7"></script>
 </body>
 </html>

@@ -29,3 +29,7 @@ backups/
 # Runtime and operating-system artifacts
 *.log
 .DS_Store
+
+# Runtime-managed administrator uploads
+runtime-data/premium-banners/
+public/img/premium-banners/

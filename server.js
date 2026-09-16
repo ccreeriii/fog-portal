@@ -3489,6 +3489,408 @@ app.get('/apple-touch-icon.png', (req, res) => {
     if (fs.existsSync(absolutePath)) res.sendFile(absolutePath); else res.status(404).send('Icon not uploaded yet.');
 });
 
+
+/* =========================================================
+   Premium page banner settings
+   Super Admin write access; public read of static banner URLs.
+   ========================================================= */
+
+const PREMIUM_BANNER_SETTING_KEYS = Object.freeze({
+    prayer: Object.freeze({
+        settingKey: 'premium_banner_prayer',
+        basename: 'prayer-page-banner'
+    }),
+    journal: Object.freeze({
+        settingKey: 'premium_banner_journal',
+        basename: 'journal-page-banner'
+    }),
+    groups: Object.freeze({
+        settingKey: 'premium_banner_groups',
+        basename: 'groups-page-banner'
+    }),
+
+    growth: {
+        settingKey: 'premium_banner_growth',
+        basename: 'growth-page-banner'
+    },
+    events: {
+        settingKey: 'premium_banner_events',
+        basename: 'events-page-banner'
+    },
+    arcade: {
+        settingKey: 'premium_banner_arcade',
+        basename: 'arcade-page-banner'
+    }
+
+});
+
+const PREMIUM_BANNER_MAX_BYTES = 2 * 1024 * 1024;
+
+const PREMIUM_BANNER_DIRECTORY = require('path').join(
+    __dirname,
+    'runtime-data',
+    'premium-banners'
+);
+
+app.use(
+    '/runtime-media/premium-banners',
+    express.static(
+        PREMIUM_BANNER_DIRECTORY,
+        {
+            index: false,
+            dotfiles: 'deny',
+            fallthrough: true,
+            maxAge: '1h'
+        }
+    )
+);
+
+function decodePremiumBannerDataUrl(value) {
+    if (typeof value !== 'string' || !value.length) {
+        const error = new Error('Banner image payload is required.');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+
+    if (!match) {
+        const error = new Error(
+            'Banner must be a WebP, JPG/JPEG, or PNG image.'
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const mime = match[1];
+    const encoded = match[2];
+
+    let buffer;
+
+    try {
+        buffer = Buffer.from(encoded, 'base64');
+    } catch (_) {
+        const error = new Error('Banner image data is invalid.');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (!buffer.length) {
+        const error = new Error('Banner image is empty.');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (buffer.length > PREMIUM_BANNER_MAX_BYTES) {
+        const error = new Error(
+            'Banner image exceeds the 2 MB upload limit.'
+        );
+        error.statusCode = 413;
+        throw error;
+    }
+
+    const isPng =
+        buffer.length >= 8 &&
+        buffer[0] === 0x89 &&
+        buffer[1] === 0x50 &&
+        buffer[2] === 0x4E &&
+        buffer[3] === 0x47 &&
+        buffer[4] === 0x0D &&
+        buffer[5] === 0x0A &&
+        buffer[6] === 0x1A &&
+        buffer[7] === 0x0A;
+
+    const isJpeg =
+        buffer.length >= 3 &&
+        buffer[0] === 0xFF &&
+        buffer[1] === 0xD8 &&
+        buffer[2] === 0xFF;
+
+    const isWebp =
+        buffer.length >= 12 &&
+        buffer.toString('ascii', 0, 4) === 'RIFF' &&
+        buffer.toString('ascii', 8, 12) === 'WEBP';
+
+    const validMagic =
+        (mime === 'image/png' && isPng) ||
+        (mime === 'image/jpeg' && isJpeg) ||
+        (mime === 'image/webp' && isWebp);
+
+    if (!validMagic) {
+        const error = new Error(
+            'Banner file content does not match its declared image type.'
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const extension =
+        mime === 'image/png'
+            ? 'png'
+            : mime === 'image/webp'
+                ? 'webp'
+                : 'jpg';
+
+    return {
+        mime,
+        extension,
+        buffer
+    };
+}
+
+function readPremiumBannerSettings() {
+    const entries =
+        Object.entries(PREMIUM_BANNER_SETTING_KEYS);
+
+    const keys =
+        entries.map(([, definition]) =>
+            definition.settingKey
+        );
+
+    const placeholders =
+        keys.map(() => '?').join(',');
+
+    return new Promise((resolve, reject) => {
+        db.all(
+            `SELECT key, value
+             FROM app_settings
+             WHERE key IN (${placeholders})`,
+            keys,
+            (err, rows) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+
+                const byKey =
+                    new Map(
+                        (rows || []).map(row => [
+                            row.key,
+                            row.value
+                        ])
+                    );
+
+                const result = {};
+
+                for (
+                    const [name, definition]
+                    of entries
+                ) {
+                    result[name] =
+                        byKey.get(
+                            definition.settingKey
+                        ) || '';
+                }
+
+                resolve(result);
+            }
+        );
+    });
+}
+
+function persistPremiumBannerSetting(key, value) {
+    return new Promise((resolve, reject) => {
+        db.run(
+            `INSERT OR REPLACE
+             INTO app_settings (key, value)
+             VALUES (?, ?)`,
+            [key, value],
+            err => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+
+                resolve();
+            }
+        );
+    });
+}
+
+app.get(
+    '/api/settings/premium-banners',
+    async (req, res) => {
+        try {
+            const settings =
+                await readPremiumBannerSettings();
+
+            res.setHeader(
+                'Cache-Control',
+                'no-store'
+            );
+
+            res.json(settings);
+        } catch (error) {
+            console.error(
+                '[PREMIUM BANNERS] Read failed:',
+                error
+            );
+
+            res.status(500).json({
+                error:
+                    'Unable to load page banner settings.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/settings/premium-banners',
+    requireStrongAdmin,
+    async (req, res) => {
+        const body =
+            req.body &&
+            typeof req.body === 'object'
+                ? req.body
+                : {};
+
+        const allowedKeys =
+            new Set([
+                'target',
+                'image'
+            ]);
+
+        if (
+            Object.keys(body).some(
+                key => !allowedKeys.has(key)
+            )
+        ) {
+            return res.status(400).json({
+                error:
+                    'Unsupported banner upload field.'
+            });
+        }
+
+        const target =
+            typeof body.target === 'string'
+                ? body.target.trim()
+                : '';
+
+        const definition =
+            PREMIUM_BANNER_SETTING_KEYS[target];
+
+        if (!definition) {
+            return res.status(400).json({
+                error:
+                    'A valid banner target is required.'
+            });
+        }
+
+        let decoded;
+
+        try {
+            decoded =
+                decodePremiumBannerDataUrl(
+                    body.image
+                );
+        } catch (error) {
+            return res
+                .status(
+                    Number.isInteger(error.statusCode)
+                        ? error.statusCode
+                        : 400
+                )
+                .json({
+                    error:
+                        error.message ||
+                        'Invalid banner image.'
+                });
+        }
+
+        const fs = require('fs');
+        const path = require('path');
+
+        try {
+            fs.mkdirSync(
+                PREMIUM_BANNER_DIRECTORY,
+                {
+                    recursive: true
+                }
+            );
+
+            const filename =
+                `${definition.basename}.${decoded.extension}`;
+
+            const finalPath =
+                path.join(
+                    PREMIUM_BANNER_DIRECTORY,
+                    filename
+                );
+
+            const temporaryPath =
+                path.join(
+                    PREMIUM_BANNER_DIRECTORY,
+                    `.${filename}.tmp-${process.pid}-${Date.now()}`
+                );
+
+            fs.writeFileSync(
+                temporaryPath,
+                decoded.buffer,
+                {
+                    mode: 0o644
+                }
+            );
+
+            fs.renameSync(
+                temporaryPath,
+                finalPath
+            );
+
+            for (
+                const extension
+                of ['webp', 'jpg', 'png']
+            ) {
+                if (
+                    extension ===
+                    decoded.extension
+                ) {
+                    continue;
+                }
+
+                const stalePath =
+                    path.join(
+                        PREMIUM_BANNER_DIRECTORY,
+                        `${definition.basename}.${extension}`
+                    );
+
+                try {
+                    if (fs.existsSync(stalePath)) {
+                        fs.unlinkSync(stalePath);
+                    }
+                } catch (cleanupError) {
+                    console.warn(
+                        '[PREMIUM BANNERS] Stale image cleanup failed:',
+                        cleanupError
+                    );
+                }
+            }
+
+            const publicUrl =
+                `/runtime-media/premium-banners/${filename}?v=${Date.now()}`;
+
+            await persistPremiumBannerSetting(
+                definition.settingKey,
+                publicUrl
+            );
+
+            const settings =
+                await readPremiumBannerSettings();
+
+            res.json(settings);
+        } catch (error) {
+            console.error(
+                '[PREMIUM BANNERS] Save failed:',
+                error
+            );
+
+            res.status(500).json({
+                error:
+                    'Unable to save page banner image.'
+            });
+        }
+    }
+);
+
 app.post('/api/settings/images', requireStrongAdmin, (req, res) => {
     const { logo, prodIcon, stagingIcon, faithQuestThumb, faithRegBanner } = req.body;
     try {

@@ -406,7 +406,7 @@ test('active shell and cache publish the restricted Watchtower asset coherently'
     assert.match(html, /Uncovered Today/);
     assert.match(html, /value="access_prayer"/);
     assert.match(html, /\/js\/watchtower\.js\?v=1/);
-    assert.match(serviceWorker, /fog-portal-v35/);
+    assert.match(serviceWorker, /fog-portal-v46/);
     assert.match(serviceWorker, /\/js\/watchtower\.js\?v=1/);
     assert.match(watchtowerSource, /window\.hasPerm/);
     assert.match(watchtowerSource, /textContent/);

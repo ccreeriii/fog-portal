@@ -407,15 +407,15 @@ test('post-launch asset and dependent revisions are cached coherently and load l
     const mapping = index.indexOf('/js/growth-event-mapping-ui.js?v=3');
     const journey = index.indexOf('/js/journey-dashboard.js?v=5');
     const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=4');
-    const community = index.indexOf('/js/community-feature-polish.js?v=5');
+    const community = index.indexOf('/js/community-feature-polish.js?v=7');
     assert.ok(app < mapping && mapping < journey && journey < hotfix && hotfix < community);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v35'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v46'/);
     for (const asset of [
         '/js/app.js?v=13.3',
         '/js/growth-event-mapping-ui.js?v=3',
         '/js/journey-dashboard.js?v=5',
         '/js/postlaunch-hotfix.js?v=4',
-        '/js/community-feature-polish.js?v=5',
+        '/js/community-feature-polish.js?v=7',
         '/css/community-features.css?v=3'
     ]) assert.ok(serviceWorker.includes(`'${asset}'`));
     assert.doesNotMatch(mappingSource, /2147483647|appendChild\(modal\)/);
