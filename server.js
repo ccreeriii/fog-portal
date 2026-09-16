@@ -2416,7 +2416,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS private_journals (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, title TEXT, content TEXT, mood TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS prayer_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, title TEXT, request TEXT, is_anonymous INTEGER DEFAULT 0, status TEXT DEFAULT 'Open', created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS prayer_intercessions (id INTEGER PRIMARY KEY AUTOINCREMENT, prayer_id INTEGER, youth_id INTEGER, prayed_at DATETIME, UNIQUE(prayer_id, youth_id))`);
-    db.run(`CREATE TABLE IF NOT EXISTS small_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, leader_id INTEGER, meeting_schedule TEXT, venue TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS small_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, leader_id INTEGER, meeting_schedule TEXT, venue TEXT, group_type TEXT DEFAULT 'campfire', created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS group_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, title TEXT, scheduled_at DATETIME, meet_link TEXT, recording_url TEXT, notified INTEGER DEFAULT 0, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS small_group_chats (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, message TEXT, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS small_group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, joined_at DATETIME, UNIQUE(group_id, youth_id))`);
@@ -2468,6 +2468,15 @@ db.serialize(() => {
     db.run("ALTER TABLE group_memories ADD COLUMN reactions TEXT DEFAULT '{}'", ()=>{});
     
     db.run("ALTER TABLE small_groups ADD COLUMN privacy_level TEXT DEFAULT 'Open'", (err)=>{});
+    db.run("ALTER TABLE small_groups ADD COLUMN group_type TEXT DEFAULT 'campfire'", () => {});
+    db.run(
+        `UPDATE small_groups
+         SET group_type = 'campfire'
+         WHERE group_type IS NULL
+            OR TRIM(group_type) = ''
+            OR group_type NOT IN ('campfire', 'fire_circle')`,
+        () => {}
+    );
     db.run("ALTER TABLE small_group_members ADD COLUMN status TEXT DEFAULT 'Approved'", (err)=>{});
     db.run("ALTER TABLE prayer_requests ADD COLUMN group_id INTEGER", (err)=>{});
     db.run("ALTER TABLE prayer_requests ADD COLUMN is_answered INTEGER DEFAULT 0", (err)=>{});
@@ -6475,6 +6484,18 @@ app.get('/api/small-groups/:id/recent-chat', requireGroupAccess(), (req, res) =>
     });
 });
 
+const SMALL_GROUP_TYPES = new Set(['campfire', 'fire_circle']);
+
+function normalizeSmallGroupType(value) {
+    if (typeof value !== 'string') return null;
+
+    const normalized = value.trim().toLowerCase();
+
+    return SMALL_GROUP_TYPES.has(normalized)
+        ? normalized
+        : null;
+}
+
 app.get('/api/small-groups', async (req, res) => {
     const auth = await loadOptionalAuthorizationContext(req);
     const youthId = normalizeCanonicalId(auth && auth.youthId);
@@ -6493,13 +6514,48 @@ app.get('/api/small-groups', async (req, res) => {
     });
 });
 app.post('/api/small-groups', requireAllPermissions(['access_discipleship', 'add_entries']), (req, res) => {
-    db.run(`INSERT INTO small_groups (name, leader_id, meeting_schedule, venue, points, logo, privacy_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [req.body.name, req.body.leader_id || null, req.body.meeting_schedule, req.body.venue,
-            req.body.points || 20, req.body.logo || null, req.body.privacy_level || 'Open', getManilaTime()],
-        function(err) {
-            if (err) return res.status(500).json({ error: 'Unable to create group.' });
-            res.json({ success: true });
+    const body = req.body || {};
+    const requestedType = Object.prototype.hasOwnProperty.call(body, 'group_type')
+        ? body.group_type
+        : 'campfire';
+    const groupType = normalizeSmallGroupType(requestedType);
+
+    if (!groupType) {
+        return res.status(400).json({
+            error: 'Group type must be campfire or fire_circle.'
         });
+    }
+
+    db.run(
+        `INSERT INTO small_groups
+         (name, leader_id, meeting_schedule, venue, points, logo,
+          privacy_level, group_type, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            body.name,
+            body.leader_id || null,
+            body.meeting_schedule,
+            body.venue,
+            body.points || 20,
+            body.logo || null,
+            body.privacy_level || 'Open',
+            groupType,
+            getManilaTime()
+        ],
+        function(err) {
+            if (err) {
+                return res.status(500).json({
+                    error: 'Unable to create group.'
+                });
+            }
+
+            return res.json({
+                success: true,
+                id: this.lastID,
+                group_type: groupType
+            });
+        }
+    );
 });
 
 // [KOINONIA PATCH] UPDATE CAMPFIRE PRIVACY
@@ -6516,16 +6572,31 @@ app.put(
     ),
     (req, res) => {
         const body = req.body || {};
-        const hasLogoUpdate = Object.prototype.hasOwnProperty.call(body, 'logo');
+        const hasLogoUpdate =
+            Object.prototype.hasOwnProperty.call(body, 'logo');
+        const hasGroupTypeUpdate =
+            Object.prototype.hasOwnProperty.call(body, 'group_type');
+
+        const groupType = hasGroupTypeUpdate
+            ? normalizeSmallGroupType(body.group_type)
+            : null;
+
+        if (hasGroupTypeUpdate && !groupType) {
+            return res.status(400).json({
+                error: 'Group type must be campfire or fire_circle.'
+            });
+        }
 
         const sql = hasLogoUpdate
             ? `UPDATE small_groups
                SET name=?, leader_id=?, meeting_schedule=?, venue=?,
-                   points=?, logo=?, privacy_level=?
+                   points=?, logo=?, privacy_level=?,
+                   group_type=COALESCE(?, group_type, 'campfire')
                WHERE id=?`
             : `UPDATE small_groups
                SET name=?, leader_id=?, meeting_schedule=?, venue=?,
-                   points=?, privacy_level=?
+                   points=?, privacy_level=?,
+                   group_type=COALESCE(?, group_type, 'campfire')
                WHERE id=?`;
 
         const params = hasLogoUpdate
@@ -6537,6 +6608,7 @@ app.put(
                 body.points || 20,
                 body.logo || null,
                 body.privacy_level || 'Open',
+                groupType,
                 req.params.id
             ]
             : [
@@ -6546,13 +6618,20 @@ app.put(
                 body.venue,
                 body.points || 20,
                 body.privacy_level || 'Open',
+                groupType,
                 req.params.id
             ];
 
         db.run(sql, params, function(err) {
             if (err) {
                 return res.status(500).json({
-                    error: 'Unable to update Campfire.'
+                    error: 'Unable to update group.'
+                });
+            }
+
+            if (!this.changes) {
+                return res.status(404).json({
+                    error: 'Group not found.'
                 });
             }
 

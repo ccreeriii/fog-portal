@@ -209,7 +209,7 @@
 
         const image = document.createElement('img');
         image.src = rawLogo;
-        image.alt = `${group.name || 'Campfire'} logo`;
+        image.alt = `${group.name || 'Group'} logo`;
         image.loading = 'lazy';
         image.setAttribute(
             'style',
@@ -224,6 +224,52 @@
         return image;
     }
 
+    function groupTypeMeta(group) {
+        if (group && group.group_type === 'fire_circle') {
+            return {
+                label: 'Fire Circle',
+                icon: '⭕',
+                background: '#FFF7ED',
+                color: '#9A3412',
+                border: '#FED7AA'
+            };
+        }
+
+        return {
+            label: 'Campfire',
+            icon: '🔥',
+            background: '#FFF4E8',
+            color: '#A54813',
+            border: '#FFD8B7'
+        };
+    }
+
+    function groupTypeBadge(group) {
+        const meta = groupTypeMeta(group);
+        const badge = document.createElement('span');
+
+        badge.className = 'group-type-badge';
+        badge.textContent = `${meta.icon} ${meta.label}`;
+        badge.setAttribute(
+            'style',
+            [
+                'display:inline-flex',
+                'align-items:center',
+                'gap:4px',
+                'padding:4px 8px',
+                'border-radius:999px',
+                'font-size:.72rem',
+                'font-weight:750',
+                'white-space:nowrap',
+                `background:${meta.background}`,
+                `color:${meta.color}`,
+                `border:1px solid ${meta.border}`
+            ].join(';')
+        );
+
+        return badge;
+    }
+
     function groupCard(group, mode) {
         const card = document.createElement('article');
         card.className = 'feature-card feature-card--groups';
@@ -236,7 +282,19 @@
 
         const identityText = document.createElement('div');
         identityText.setAttribute('style', 'min-width:0;');
-        appendText(identityText, 'h3', group.name || 'Campfire', 'feature-card__title');
+        const titleRow = document.createElement('div');
+        titleRow.setAttribute(
+            'style',
+            'display:flex;align-items:center;gap:8px;flex-wrap:wrap;'
+        );
+        appendText(
+            titleRow,
+            'h3',
+            group.name || 'Group',
+            'feature-card__title'
+        );
+        titleRow.appendChild(groupTypeBadge(group));
+        identityText.appendChild(titleRow);
 
         const meta = [group.meeting_schedule || null, group.venue || null,
             group.leader_name ? `Led by ${group.leader_name}` : null]
@@ -299,7 +357,19 @@
 
             const identityText = document.createElement('div');
             identityText.setAttribute('style', 'min-width:0;');
-            appendText(identityText, 'h3', group.name || 'Campfire', 'feature-card__title');
+            const titleRow = document.createElement('div');
+            titleRow.setAttribute(
+                'style',
+                'display:flex;align-items:center;gap:8px;flex-wrap:wrap;'
+            );
+            appendText(
+                titleRow,
+                'h3',
+                group.name || 'Group',
+                'feature-card__title'
+            );
+            titleRow.appendChild(groupTypeBadge(group));
+            identityText.appendChild(titleRow);
             appendText(identityText, 'p',
                 `${group.leader_name || 'Leader unassigned'} · ${group.member_count || 0} members`,
                 'feature-card__meta');

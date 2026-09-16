@@ -276,7 +276,8 @@ test('FAQ API uses canonical sessions, filters on the server, and protects previ
     const administrator = await createIdentity(database, 'ADMINISTRATOR', ['access_permissions']);
     const fullAdministrator = await createIdentity(database, 'FULL', [
         'access_events', 'access_attendance', 'access_checkin', 'access_ministries',
-        'access_communications', 'access_worship', 'access_permissions'
+        'access_communications', 'access_worship', 'access_discipleship',
+        'access_permissions'
     ]);
     const strongAdministrator = await createIdentity(
         database,

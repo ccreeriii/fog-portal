@@ -890,15 +890,25 @@
 
     <div id="discipleshipAdminTab" class="tab-content">
         <div class="sub-nav">
-            <button id="btnSubAdminGroups" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('groups')">🔥 Fire Circles</button>
+            <button id="btnSubAdminGroups" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('groups')">🔥 Groups</button>
             <button id="btnSubAdminGamification" class="sub-nav-btn" onclick="V6Gamification.switchAdminTab('gamification')">🎯 Gamification</button>
             <button id="btnSubAdminHabits" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('habits')">📖 Daily Habits</button>
         </div>
         <div id="subTabAdminGroups" class="discipleship-admin-sub-tab active">
             <div class="card">
-                <h2>Create New Campfire</h2>
+                <h2>Create Group</h2>
                 <form id="createSmallGroupForm" onsubmit="V2Discipleship.createSmallGroup(event)">
                     <div class="form-group"><label>Group Name *</label><input type="text" id="sgCreateName" class="form-control" required></div>
+                    <div class="form-group">
+                        <label>Group Type *</label>
+                        <select id="sgCreateType" class="form-control" required>
+                            <option value="campfire">🔥 Campfire — Dynamic prayer &amp; sharing group</option>
+                            <option value="fire_circle">⭕ Fire Circle — Long-term discipleship group</option>
+                        </select>
+                        <small style="display:block;margin-top:6px;color:var(--text-muted);">
+                            Campfires are flexible small prayer/sharing groups. Fire Circles are stable long-term discipleship groups.
+                        </small>
+                    </div>
                     <div class="form-group"><label>Group Logo (Optional)</label><input type="file" id="sgCreateLogo" class="form-control" accept="image/*"></div>
                     <div class="form-group" style="position: relative;">
                         <label>Leader</label><input type="text" id="sgLeaderSearch" class="form-control" onkeyup="V2Discipleship.filterLeaderSearch()">
@@ -914,7 +924,13 @@
                     <button type="submit" class="btn btn-primary" style="width:100%;">Create Group</button>
                 </form>
             </div>
-            <div class="card"><h2>Active Small Groups</h2><h3 style="margin-top:20px; margin-bottom:10px;">Active Fire Circles</h3><div id="adminSmallGroupsList"></div></div>
+            <div class="card">
+                <h2>Groups</h2>
+                <p style="color:var(--text-muted);margin-top:-6px;">
+                    Manage both dynamic Campfires and long-term Fire Circles.
+                </p>
+                <div id="adminSmallGroupsList"></div>
+            </div>
         </div>
         <div id="subTabAdminHabits" class="discipleship-admin-sub-tab" style="display:none;">
             <div class="card">
@@ -1114,7 +1130,7 @@
                     <div class="form-group"><label>Title *</label><input type="text" id="prayerTitle" class="form-control" required></div>
                     <div class="form-group"><label>Request *</label><textarea id="prayerContent" class="form-control" rows="3" required></textarea></div>
                     <div class="form-group"><input type="checkbox" id="prayerAnonymous"><label for="prayerAnonymous">Anonymous</label></div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">Submit</button>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Continue to Review</button>
                 </form>
                 </div>
             </section>
@@ -1122,7 +1138,7 @@
         <div id="growthSubGroups" class="growth-sub-tab">
             <section class="feature-intro feature-intro--groups" aria-labelledby="groupsFeatureTitle">
                 <span class="feature-intro__icon" aria-hidden="true">◌</span>
-                <div><p class="feature-intro__eyebrow">Campfires · Hebrews 10:24–25</p><h2 id="groupsFeatureTitle">Life Is Better Together</h2><p>Find belonging, encouragement, and room to grow with others.</p></div>
+                <div><p class="feature-intro__eyebrow">Campfires &amp; Fire Circles · Hebrews 10:24–25</p><h2 id="groupsFeatureTitle">Life Is Better Together</h2><p>Find a smaller place to pray, share, belong, and grow with others.</p></div>
             </section>
             <div class="feature-tabs" role="tablist" aria-label="Groups views">
                 <button id="myGroupsTabButton" class="feature-tab active" type="button" role="tab" aria-selected="true" aria-controls="myGroupsPanel">My Groups</button>
@@ -1751,10 +1767,17 @@
 <div id="editSmallGroupModal" class="modal">
     <div class="modal-content">
         <span class="close-modal" onclick="V2Discipleship.closeEditSmallGroupModal()" style="float:right; font-size:28px; cursor:pointer;">&times;</span>
-        <h2>Edit Small Group</h2>
+        <h2>Edit Group</h2>
         <form onsubmit="V2Discipleship.updateSmallGroup(event)">
             <input type="hidden" id="editSgId">
             <div class="form-group"><label>Group Name *</label><input type="text" id="editSgName" class="form-control" required></div>
+            <div class="form-group">
+                <label>Group Type *</label>
+                <select id="editSgType" class="form-control" required>
+                    <option value="campfire">🔥 Campfire — Dynamic prayer &amp; sharing group</option>
+                    <option value="fire_circle">⭕ Fire Circle — Long-term discipleship group</option>
+                </select>
+            </div>
             <div class="form-group"><label>Group Logo</label><input type="file" id="editSgLogo" class="form-control" accept="image/*"></div>
 
             <div class="form-group" style="position: relative;">
@@ -1785,6 +1808,91 @@
             <div class="form-group"><label>Content *</label><textarea id="editJournalContent" class="form-control" rows="6" style="overflow-y: hidden; min-height: 150px; padding: 15px; font-size: 1rem; border-radius: 12px; resize: none;" oninput="window.autoResizeBox(this)" required></textarea></div>
             <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
         </form>
+    </div>
+</div>
+
+<div id="prayerGuidelinesModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="prayerGuidelinesTitle">
+    <div class="modal-content" style="max-width:620px;">
+        <span
+            class="close-modal"
+            onclick="V2Discipleship.closePrayerGuidelinesModal()"
+            style="float:right;font-size:28px;cursor:pointer;"
+            aria-label="Close"
+        >&times;</span>
+
+        <h2 id="prayerGuidelinesTitle">🙏 Before You Share This Prayer</h2>
+
+        <p style="color:var(--text-muted);">
+            Our Prayer Wall is a place to support one another in faith,
+            compassion, and prayer. Before posting, please make sure your
+            prayer request respects the privacy and dignity of everyone involved.
+        </p>
+
+        <ul style="line-height:1.65;padding-left:22px;">
+            <li>
+                <strong>Avoid naming or identifying another person</strong>
+                unless they have given permission to be named, or the request
+                has been approved for public sharing by the appropriate
+                ministry leadership.
+            </li>
+            <li>
+                Avoid sharing private details about another person's health,
+                family situation, relationships, personal struggles, finances,
+                or conflicts.
+            </li>
+            <li>
+                When possible, focus on the <strong>prayer intention</strong>
+                rather than the private story behind it.
+            </li>
+            <li>
+                Please make sure the request is written with kindness and
+                cannot reasonably embarrass, accuse, expose, or create
+                speculation about another person.
+            </li>
+            <li>
+                Choosing <strong>Anonymous</strong> hides your identity as the
+                person posting. It does not make names or details written
+                inside the request private.
+            </li>
+            <li>
+                For sensitive situations that need pastoral care rather than
+                public prayer, please speak directly with a Shepherd, leader,
+                or appropriate ministry member.
+            </li>
+        </ul>
+
+        <div style="padding:12px 14px;border-radius:12px;background:var(--bg-light);margin:16px 0;">
+            <strong>A helpful example:</strong><br>
+            Instead of naming someone and explaining their private situation,
+            you can write: “Please pray for a friend and their family who are
+            going through a difficult season.”
+        </div>
+
+        <p style="font-weight:600;">
+            Our goal is simple: let the Prayer Wall become a place of prayer
+            and encouragement, never a source of gossip or misunderstanding.
+        </p>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;">
+            <button
+                type="button"
+                class="btn btn-outline"
+                onclick="V2Discipleship.closePrayerGuidelinesModal()"
+                style="flex:1 1 180px;"
+            >
+                Review My Prayer
+            </button>
+
+            <button
+                id="confirmPrayerShareBtn"
+                type="button"
+                class="btn btn-primary"
+                onclick="V2Discipleship.confirmPrayerSubmission()"
+                style="flex:1 1 220px;"
+            >
+                🙏 Share Prayer Request
+            </button>
+        </div>
     </div>
 </div>
 
@@ -1824,7 +1932,7 @@
 <script src="/js/growth-event-mapping-ui.js?v=3"></script>
 <script src="/js/growth-journey-leadership.js?v=3"></script>
 <script src="/js/watchtower.js?v=1"></script>
-<script src="/js/v2-discipleship.js?v=12.3"></script>
+<script src="/js/v2-discipleship.js?v=12.4"></script>
 <script src="/js/v3-worship.js?v=12.2"></script>
 <script src="/js/v4-communications.js?v=12.3"></script>
 <script src="/js/v6-gamification.js?v=12.3"></script>
@@ -3426,6 +3534,6 @@
     </script>
     <script src="/js/journey-dashboard.js?v=5"></script>
     <script src="/js/postlaunch-hotfix.js?v=4"></script>
-    <script src="/js/community-feature-polish.js?v=4"></script>
+    <script src="/js/community-feature-polish.js?v=5"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v33';
+const CACHE_NAME = 'fog-portal-v34';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -13,7 +13,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/growth-event-mapping-ui.js?v=3',
     '/js/growth-journey-leadership.js?v=3',
     '/js/watchtower.js?v=1',
-    '/js/v2-discipleship.js?v=12.2',
+    '/js/v2-discipleship.js?v=12.4',
     '/js/v3-worship.js?v=12.2',
     '/js/v4-communications.js?v=12.3',
     '/js/v6-gamification.js?v=12.3',
@@ -27,7 +27,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/v10-expansion.js?v=12.3',
     '/js/journey-dashboard.js?v=5',
     '/js/postlaunch-hotfix.js?v=4',
-    '/js/community-feature-polish.js?v=4',
+    '/js/community-feature-polish.js?v=5',
     '/manifest.json',
     '/img/logo.png'
 ];

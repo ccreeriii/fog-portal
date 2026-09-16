@@ -176,11 +176,11 @@ test('new view layer publishes through fresh Community assets and PWA cache', ()
 
     assert.match(
         index,
-        /community-feature-polish\.js\?v=4/
+        /community-feature-polish\.js\?v=5/
     );
 
     assert.match(
         sw,
-        /fog-portal-v33/
+        /fog-portal-v34/
     );
 });

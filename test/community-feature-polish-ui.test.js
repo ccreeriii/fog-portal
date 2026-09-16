@@ -87,10 +87,10 @@ test('shell keeps canonical navigation and existing Events controls while adding
         assert.match(index, new RegExp(`id="${id}"`));
     }
     assert.match(index, /\/css\/community-features\.css\?v=3/);
-    assert.match(index, /\/js\/community-feature-polish\.js\?v=4/);
-    assert.match(sw, /const CACHE_NAME = 'fog-portal-v33'/);
+    assert.match(index, /\/js\/community-feature-polish\.js\?v=5/);
+    assert.match(sw, /const CACHE_NAME = 'fog-portal-v34'/);
     assert.match(sw, /'\/css\/community-features\.css\?v=3'/);
-    assert.match(sw, /'\/js\/community-feature-polish\.js\?v=4'/);
+    assert.match(sw, /'\/js\/community-feature-polish\.js\?v=5'/);
     assert.doesNotMatch(source, /growth[_/-]evidence|prayerHabit|member_milestones|sendEmail|pushToUser/i);
 });
 

@@ -242,12 +242,127 @@ window.V2Discipleship = {
 
     submitPrayer: async function(e) {
         e.preventDefault();
-        if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return alert("You must be logged in to post prayers.");
-        const payload = { youth_id: currentMember.id, title: document.getElementById('prayerTitle').value, request: document.getElementById('prayerContent').value, is_anonymous: document.getElementById('prayerAnonymous').checked ? 1 : 0 };
+
+        if (
+            typeof currentMember === 'undefined' ||
+            !currentMember ||
+            !currentMember.id
+        ) {
+            return alert("You must be logged in to post prayers.");
+        }
+
+        const title =
+            (document.getElementById('prayerTitle').value || '').trim();
+        const request =
+            (document.getElementById('prayerContent').value || '').trim();
+
+        if (!title || !request) {
+            return alert('Please complete the prayer title and request.');
+        }
+
+        this.pendingPrayerSubmission = {
+            title,
+            request,
+            is_anonymous:
+                document.getElementById('prayerAnonymous').checked ? 1 : 0
+        };
+
+        const modal =
+            document.getElementById('prayerGuidelinesModal');
+
+        if (!modal) {
+            return alert(
+                'Prayer review is temporarily unavailable. Please try again.'
+            );
+        }
+
+        modal.classList.add('active');
+    },
+
+    closePrayerGuidelinesModal: function() {
+        const modal =
+            document.getElementById('prayerGuidelinesModal');
+
+        if (modal) {
+            modal.classList.remove('active');
+        }
+
+        this.pendingPrayerSubmission = null;
+    },
+
+    confirmPrayerSubmission: async function() {
+        const payload = this.pendingPrayerSubmission;
+
+        if (!payload) return;
+
+        const button =
+            document.getElementById('confirmPrayerShareBtn');
+
+        if (button && button.disabled) return;
+
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Sharing…';
+        }
+
         try {
-            const res = await fetch('/api/prayers', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-            if (res.ok) { document.getElementById('prayerForm').reset(); V2Discipleship.loadPrayers(); if(window.V6Gamification) window.V6Gamification.loadMyPoints(); }
-        } catch(e) {}
+            const res = await fetch('/api/prayers', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                let message = 'Unable to share prayer request.';
+
+                try {
+                    const data = await res.json();
+                    if (data && data.error) {
+                        message = data.error;
+                    }
+                } catch (_) {}
+
+                alert(message);
+                return;
+            }
+
+            this.pendingPrayerSubmission = null;
+
+            const modal =
+                document.getElementById('prayerGuidelinesModal');
+
+            if (modal) {
+                modal.classList.remove('active');
+            }
+
+            const form =
+                document.getElementById('prayerForm');
+
+            if (form) {
+                form.reset();
+            }
+
+            await V2Discipleship.loadPrayers();
+
+            if (window.V6Gamification) {
+                window.V6Gamification.loadMyPoints();
+            }
+
+            if (typeof window.showPrayerTab === 'function') {
+                window.showPrayerTab(0);
+            }
+        } catch (error) {
+            alert(
+                'Unable to share prayer request right now. Please try again.'
+            );
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = '🙏 Share Prayer Request';
+            }
+        }
     },
 
     openEditPrayerModal: function(id) {
@@ -300,8 +415,8 @@ window.V2Discipleship = {
         let logoBase64 = null;
         if(fileInput && fileInput.files.length > 0 && typeof window.getBase64 === 'function') logoBase64 = await window.getBase64(fileInput.files[0], 400);
 
-        const payload = { name: document.getElementById('sgCreateName').value, leader_id: document.getElementById('sgCreateLeaderId').value || null, meeting_schedule: document.getElementById('sgCreateSchedule').value, venue: document.getElementById('sgCreateVenue').value, points: parseInt(document.getElementById('sgCreatePoints').value) || 20, logo: logoBase64, privacy_level: document.getElementById('sgCreatePrivacy').value };
-        window.triggerActionConfirmation(`Create Small Group '${payload.name}'?`, async () => {
+        const payload = { name: document.getElementById('sgCreateName').value, group_type: document.getElementById('sgCreateType').value, leader_id: document.getElementById('sgCreateLeaderId').value || null, meeting_schedule: document.getElementById('sgCreateSchedule').value, venue: document.getElementById('sgCreateVenue').value, points: parseInt(document.getElementById('sgCreatePoints').value) || 20, logo: logoBase64, privacy_level: document.getElementById('sgCreatePrivacy').value };
+        window.triggerActionConfirmation(`Create ${payload.group_type === 'fire_circle' ? 'Fire Circle' : 'Campfire'} '${payload.name}'?`, async () => {
             const res = await fetch('/api/small-groups', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
             if (res.ok) { document.getElementById('createSmallGroupForm').reset(); document.getElementById('sgCreateLeaderId').value = ''; V2Discipleship.loadSmallGroups(); }
         });
@@ -313,6 +428,8 @@ window.V2Discipleship = {
         const lSearch = document.getElementById('editSgLeaderSearch'); if (lSearch) lSearch.value = g.leader_name || '';
         const lId = document.getElementById('editSgLeaderId'); if (lId) lId.value = g.leader_id || ''; document.getElementById('editSgSchedule').value = g.meeting_schedule || ''; document.getElementById('editSgVenue').value = g.venue || ''; document.getElementById('editSgPoints').value = g.points !== undefined ? g.points : 20;
         document.getElementById('editSgPrivacy').value = g.privacy_level || 'Open';
+        document.getElementById('editSgType').value =
+            g.group_type === 'fire_circle' ? 'fire_circle' : 'campfire';
         document.getElementById('editSmallGroupModal').classList.add('active');
     },
 
@@ -325,18 +442,18 @@ window.V2Discipleship = {
         let logoBase64 = undefined;
         if(fileInput && fileInput.files.length > 0 && typeof window.getBase64 === 'function') logoBase64 = await window.getBase64(fileInput.files[0], 400);
 
-        const payload = { name: document.getElementById('editSgName').value, meeting_schedule: document.getElementById('editSgSchedule').value, venue: document.getElementById('editSgVenue').value, points: parseInt(document.getElementById('editSgPoints').value) || 20, privacy_level: document.getElementById('editSgPrivacy').value };
+        const payload = { name: document.getElementById('editSgName').value, group_type: document.getElementById('editSgType').value, meeting_schedule: document.getElementById('editSgSchedule').value, venue: document.getElementById('editSgVenue').value, points: parseInt(document.getElementById('editSgPoints').value) || 20, privacy_level: document.getElementById('editSgPrivacy').value };
         if(logoBase64 !== undefined) payload.logo = logoBase64;
         
         if(document.getElementById('editSgLeaderId')) payload.leader_id = document.getElementById('editSgLeaderId').value;
-        window.triggerActionConfirmation('Update this small group?', async () => {
+        window.triggerActionConfirmation('Update this group?', async () => {
             const res = await fetch(`/api/small-groups/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
             if (res.ok) { V2Discipleship.closeEditSmallGroupModal(); V2Discipleship.loadSmallGroups(); }
         });
     },
 
     deleteSmallGroup: async function(id) {
-        window.triggerActionConfirmation('Permanently delete this small group?', async () => {
+        window.triggerActionConfirmation('Permanently delete this group?', async () => {
             const res = await fetch(`/api/small-groups/${id}`, { method: 'DELETE' });
             if (res.ok) V2Discipleship.loadSmallGroups();
         });
@@ -344,7 +461,7 @@ window.V2Discipleship = {
 
     joinSmallGroup: async function(id) {
         if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return alert("You must be logged in as a member to join a group.");
-        window.triggerActionConfirmation('Request to join this Small Group?', async () => {
+        window.triggerActionConfirmation('Request to join this group?', async () => {
             const res = await fetch(`/api/small-groups/${id}/join`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ youth_id: currentMember.id }) });
             if (res.ok) { const data = await res.json(); alert(data.status === 'Pending' ? 'Your request to join has been sent to the leader for approval!' : 'You have been added to the group!'); V2Discipleship.loadSmallGroups(); if(window.V6Gamification) window.V6Gamification.loadMyPoints(); }
         });
@@ -2230,7 +2347,7 @@ window.updateGroupPrivacy = async function() {
     await fetch('/api/small-groups/' + groupId + '/privacy', {
         method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({privacy_level: newPrivacy})
     });
-    alert('Campfire privacy updated to ' + newPrivacy);
+    alert('Group privacy updated to ' + newPrivacy);
     if (V2Discipleship && V2Discipleship.loadSmallGroups) V2Discipleship.loadSmallGroups();
 };
 
@@ -2418,7 +2535,7 @@ window.updateGroupPrivacy = async function() {
     await fetch('/api/small-groups/' + groupId + '/privacy', {
         method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({privacy_level: newPrivacy})
     });
-    alert('Campfire privacy updated to ' + newPrivacy);
+    alert('Group privacy updated to ' + newPrivacy);
     if (V2Discipleship && V2Discipleship.loadSmallGroups) V2Discipleship.loadSmallGroups();
 };
 
