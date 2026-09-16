@@ -1,0 +1,747 @@
+/*
+ * Fire Of God Ministries Community Portal
+ * Premium FOG Design System — Prototype Phase 1
+ *
+ * Scope:
+ *   Home Dashboard
+ *   21-Day Prayer Covenant
+ *   Growth Journey
+ *
+ * This is deliberately presentation-only.
+ * No navigation, API, permission, authentication, legal,
+ * database, prayer, or Growth Journey logic belongs here.
+ */
+
+:root {
+    --fog-premium-canvas: #FBF3E8;
+    --fog-premium-canvas-deep: #F6E9DA;
+    --fog-premium-paper: #FFFCF8;
+    --fog-premium-paper-warm: #FFF8F0;
+    --fog-premium-cream: #FFF1DF;
+
+    --fog-premium-ink: #33241D;
+    --fog-premium-ink-soft: #5F4A3E;
+    --fog-premium-muted: #826D61;
+
+    --fog-premium-orange: #EF6B2D;
+    --fog-premium-amber: #F3A447;
+    --fog-premium-copper: #B8582F;
+    --fog-premium-copper-deep: #873C25;
+    --fog-premium-gold: #E7A441;
+
+    --fog-premium-line: rgba(151, 91, 57, 0.16);
+    --fog-premium-line-strong: rgba(151, 91, 57, 0.24);
+
+    --fog-premium-shadow-sm:
+        0 8px 24px rgba(92, 53, 34, 0.07);
+
+    --fog-premium-shadow:
+        0 18px 48px rgba(92, 53, 34, 0.10);
+
+    --fog-premium-shadow-lg:
+        0 26px 70px rgba(92, 53, 34, 0.16);
+
+    --fog-premium-radius-sm: 16px;
+    --fog-premium-radius: 24px;
+    --fog-premium-radius-lg: 30px;
+
+    --fog-premium-serif:
+        ui-serif,
+        "Iowan Old Style",
+        "Palatino Linotype",
+        "Book Antiqua",
+        Palatino,
+        Georgia,
+        Cambria,
+        serif;
+}
+
+
+/* =========================================================
+   HOME CANVAS
+   ========================================================= */
+
+#pulseDashboardTab:has(#journeyFirstDashboard.fog-premium) {
+    position: relative;
+    overflow: hidden;
+    border-radius: 30px;
+    background:
+        radial-gradient(
+            circle at 8% 2%,
+            rgba(243, 164, 71, 0.13),
+            transparent 30rem
+        ),
+        radial-gradient(
+            circle at 100% 22%,
+            rgba(184, 88, 47, 0.08),
+            transparent 26rem
+        ),
+        linear-gradient(
+            180deg,
+            #FFF9F1 0%,
+            var(--fog-premium-canvas) 42%,
+            #F9EFE3 100%
+        );
+}
+
+#journeyFirstDashboard.fog-premium {
+    --journey-ink: var(--fog-premium-ink);
+    --journey-muted: var(--fog-premium-muted);
+    --journey-green: var(--fog-premium-copper);
+    --journey-green-soft: #FBE8D9;
+    --journey-amber: var(--fog-premium-orange);
+    --journey-amber-soft: #FFF0DE;
+    --journey-border: var(--fog-premium-line);
+
+    width: min(100%, 960px);
+    padding:
+        clamp(22px, 4vw, 38px)
+        clamp(15px, 3vw, 28px)
+        calc(104px + env(safe-area-inset-bottom));
+}
+
+
+/* =========================================================
+   WELCOME / EDITORIAL HEADING
+   ========================================================= */
+
+#journeyFirstDashboard.fog-premium .journey-home__welcome {
+    position: relative;
+    padding:
+        clamp(8px, 2vw, 16px)
+        clamp(4px, 1vw, 10px)
+        clamp(24px, 4vw, 38px);
+}
+
+#journeyFirstDashboard.fog-premium .journey-home__welcome::before {
+    display: block;
+    width: 44px;
+    height: 4px;
+    margin-bottom: 16px;
+    border-radius: 999px;
+    background:
+        linear-gradient(
+            90deg,
+            var(--fog-premium-orange),
+            var(--fog-premium-gold)
+        );
+    box-shadow:
+        0 5px 18px rgba(239, 107, 45, 0.22);
+    content: "";
+}
+
+#journeyFirstDashboard.fog-premium .journey-home__eyebrow,
+#journeyFirstDashboard.fog-premium .journey-card__eyebrow {
+    color: var(--fog-premium-copper);
+    font-size: 0.7rem;
+    font-weight: 850;
+    letter-spacing: 0.14em;
+}
+
+#journeyFirstDashboard.fog-premium .journey-home__welcome h2 {
+    max-width: 780px;
+    color: var(--fog-premium-ink);
+    font-family: var(--fog-premium-serif);
+    font-size: clamp(2.15rem, 7vw, 3.35rem);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 0.98;
+    text-wrap: balance;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__welcome > p:last-child {
+    max-width: 660px;
+    margin-top: 13px;
+    color: var(--fog-premium-muted);
+    font-size: clamp(0.94rem, 2vw, 1.03rem);
+    line-height: 1.65;
+}
+
+
+/* =========================================================
+   PREMIUM CARD FOUNDATION
+   ========================================================= */
+
+#journeyFirstDashboard.fog-premium .journey-card {
+    position: relative;
+    margin-bottom: clamp(16px, 3vw, 24px);
+    padding: clamp(20px, 3vw, 30px);
+    overflow: hidden;
+    border: 1px solid var(--fog-premium-line);
+    border-radius: var(--fog-premium-radius-lg);
+    background:
+        linear-gradient(
+            155deg,
+            rgba(255, 255, 255, 0.98),
+            rgba(255, 250, 243, 0.96)
+        );
+    box-shadow: var(--fog-premium-shadow);
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-card:not(.journey-prayer)::before {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            circle,
+            rgba(243, 164, 71, 0.10),
+            transparent 70%
+        );
+    transform: translate(34%, -42%);
+    pointer-events: none;
+    content: "";
+}
+
+#journeyFirstDashboard.fog-premium .journey-card__head {
+    position: relative;
+    z-index: 2;
+    gap: 20px;
+}
+
+#journeyFirstDashboard.fog-premium .journey-card h3 {
+    color: var(--fog-premium-ink);
+    font-family: var(--fog-premium-serif);
+    font-size: clamp(1.45rem, 4vw, 1.95rem);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.08;
+    text-wrap: balance;
+}
+
+#journeyFirstDashboard.fog-premium .journey-card__copy {
+    max-width: 680px;
+    margin-top: 10px;
+    color: var(--fog-premium-muted);
+    font-size: 0.93rem;
+    line-height: 1.65;
+}
+
+
+/* =========================================================
+   21-DAY PRAYER COVENANT — HERO TREATMENT
+   ========================================================= */
+
+#journeyFirstDashboard.fog-premium .journey-prayer {
+    isolation: isolate;
+    min-height: 300px;
+    border: 1px solid rgba(255, 236, 211, 0.26);
+    color: #FFF9F4;
+    background:
+        radial-gradient(
+            circle at 88% 9%,
+            rgba(255, 221, 160, 0.34),
+            transparent 28%
+        ),
+        radial-gradient(
+            circle at 12% 110%,
+            rgba(255, 194, 115, 0.19),
+            transparent 34%
+        ),
+        linear-gradient(
+            145deg,
+            #D9682F 0%,
+            #B54C29 48%,
+            #883721 108%
+        );
+    box-shadow:
+        0 24px 60px rgba(125, 58, 31, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+#journeyFirstDashboard.fog-premium .journey-prayer::before {
+    position: absolute;
+    z-index: -1;
+    top: -66px;
+    right: -50px;
+    width: 220px;
+    height: 220px;
+    border: 1px solid rgba(255, 245, 225, 0.18);
+    border-radius: 50%;
+    box-shadow:
+        0 0 0 24px rgba(255, 255, 255, 0.025),
+        0 0 0 50px rgba(255, 255, 255, 0.018);
+    content: "";
+}
+
+#journeyFirstDashboard.fog-premium .journey-prayer::after {
+    right: auto;
+    bottom: -95px;
+    left: -72px;
+    width: 220px;
+    height: 220px;
+    border:
+        1px solid rgba(255, 255, 255, 0.09);
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-prayer .journey-card__eyebrow {
+    color: rgba(255, 241, 219, 0.80);
+}
+
+#journeyFirstDashboard.fog-premium .journey-prayer h3 {
+    color: #FFFDF9;
+    font-size: clamp(1.8rem, 5vw, 2.45rem);
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-prayer .journey-card__copy {
+    max-width: 620px;
+    color: rgba(255, 247, 239, 0.82);
+}
+
+#journeyFirstDashboard.fog-premium .journey-status-pill {
+    padding: 7px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    color: #FFF9F1;
+    font-size: 0.7rem;
+    letter-spacing: 0.02em;
+}
+
+#journeyFirstDashboard.fog-premium .journey-progress {
+    position: relative;
+    z-index: 2;
+    margin-top: 24px;
+}
+
+#journeyFirstDashboard.fog-premium .journey-progress__track {
+    height: 10px;
+    padding: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(74, 25, 12, 0.20);
+    box-sizing: border-box;
+}
+
+#journeyFirstDashboard.fog-premium .journey-progress__fill {
+    min-width: 0;
+    background:
+        linear-gradient(
+            90deg,
+            #FFE5A5,
+            #FBC878
+        );
+    box-shadow:
+        0 0 18px rgba(255, 213, 130, 0.45);
+}
+
+#journeyFirstDashboard.fog-premium .journey-progress__caption {
+    margin-top: 10px;
+    color: rgba(255, 245, 234, 0.74);
+}
+
+#journeyFirstDashboard.fog-premium .journey-rhythm {
+    position: relative;
+    z-index: 2;
+    margin-top: 22px;
+    padding: 15px 16px;
+    border:
+        1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 18px;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.11),
+            rgba(255, 255, 255, 0.055)
+        );
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+#journeyFirstDashboard.fog-premium .journey-action {
+    min-height: 50px;
+    padding: 12px 20px;
+    border-radius: 16px;
+    background:
+        linear-gradient(
+            180deg,
+            #FFFDF9,
+            #FFF3E5
+        );
+    box-shadow:
+        0 9px 24px rgba(75, 25, 12, 0.18);
+    color: #9B3F20;
+    font-size: 0.9rem;
+    font-weight: 850;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-prayer > .journey-action:not(.journey-action--secondary) {
+    margin-top: 2px;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-action--secondary {
+    border:
+        1px solid rgba(255, 255, 255, 0.30);
+    background:
+        rgba(255, 255, 255, 0.075);
+    box-shadow: none;
+    color: #FFF8EE;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-action[disabled] {
+    opacity: 0.78;
+}
+
+
+/* =========================================================
+   GROWTH JOURNEY — PILGRIMAGE TREATMENT
+   ========================================================= */
+
+#journeyFirstDashboard.fog-premium .journey-growth {
+    background:
+        radial-gradient(
+            circle at 94% 0%,
+            rgba(245, 177, 91, 0.13),
+            transparent 30%
+        ),
+        linear-gradient(
+            155deg,
+            #FFFDF9 0%,
+            #FFF8EF 58%,
+            #FBEEDF 100%
+        );
+}
+
+#journeyFirstDashboard.fog-premium .journey-phases {
+    position: relative;
+    z-index: 2;
+    gap: clamp(3px, 1vw, 8px);
+    margin: 26px 0 23px;
+}
+
+#journeyFirstDashboard.fog-premium .journey-phases::before {
+    position: absolute;
+    z-index: -1;
+    top: 17px;
+    right: 7%;
+    left: 7%;
+    height: 2px;
+    border-radius: 999px;
+    background:
+        linear-gradient(
+            90deg,
+            rgba(184, 88, 47, 0.18),
+            rgba(239, 107, 45, 0.26),
+            rgba(231, 164, 65, 0.18)
+        );
+    content: "";
+}
+
+#journeyFirstDashboard.fog-premium .journey-phase__dot {
+    width: 34px;
+    height: 34px;
+    margin-bottom: 8px;
+    border:
+        1px solid rgba(157, 96, 62, 0.22);
+    background:
+        linear-gradient(
+            145deg,
+            #FFFDF9,
+            #FAECDD
+        );
+    box-shadow:
+        0 5px 13px rgba(92, 53, 34, 0.07);
+    color: #866D60;
+    font-size: 0.68rem;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-phase[data-state="completed"] .journey-phase__dot {
+    border-color: var(--fog-premium-copper);
+    background:
+        linear-gradient(
+            145deg,
+            #CA6337,
+            #A84828
+        );
+    box-shadow:
+        0 7px 18px rgba(168, 72, 40, 0.20);
+    color: #fff;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-phase[data-state="current"] .journey-phase__dot {
+    border:
+        2px solid var(--fog-premium-orange);
+    background:
+        linear-gradient(
+            145deg,
+            #FFF9EE,
+            #FFE6C5
+        );
+    box-shadow:
+        0 0 0 5px rgba(239, 107, 45, 0.09),
+        0 8px 18px rgba(184, 88, 47, 0.16);
+    color: var(--fog-premium-copper);
+}
+
+#journeyFirstDashboard.fog-premium .journey-phase__name {
+    color: #80695D;
+    font-size:
+        clamp(0.52rem, 1.65vw, 0.67rem);
+    font-weight: 750;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-phase[data-state="current"] .journey-phase__name {
+    color: var(--fog-premium-copper);
+    font-weight: 850;
+}
+
+#journeyFirstDashboard.fog-premium .journey-invitation {
+    position: relative;
+    z-index: 2;
+    padding: 17px 18px;
+    border: 1px solid rgba(225, 148, 79, 0.20);
+    border-left:
+        4px solid var(--fog-premium-orange);
+    border-radius: 18px;
+    background:
+        linear-gradient(
+            135deg,
+            #FFF6E9,
+            #FFF9F2
+        );
+    box-shadow:
+        0 7px 22px rgba(116, 68, 42, 0.055);
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-invitation .journey-invitation__eyebrow {
+    color: var(--fog-premium-copper);
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-invitation strong {
+    color: var(--fog-premium-ink);
+    font-family: var(--fog-premium-serif);
+    font-size: 1.08rem;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-invitation span:not(.journey-invitation__eyebrow) {
+    color: var(--fog-premium-muted);
+    line-height: 1.55;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-growth .journey-action--primary {
+    min-height: 50px;
+    margin-top: 15px;
+    background:
+        linear-gradient(
+            135deg,
+            var(--fog-premium-orange),
+            var(--fog-premium-copper)
+        );
+    box-shadow:
+        0 11px 26px rgba(184, 88, 47, 0.22);
+    color: #fff;
+}
+
+
+/* =========================================================
+   EVENTS + CONNECTED CARDS — HOME SUPPORTING SURFACES
+   ========================================================= */
+
+#journeyFirstDashboard.fog-premium .journey-event,
+#journeyFirstDashboard.fog-premium .journey-shortcut {
+    border:
+        1px solid rgba(157, 96, 62, 0.14);
+    background:
+        linear-gradient(
+            145deg,
+            #FFFDF9,
+            #FFF8F0
+        );
+    box-shadow:
+        0 5px 16px rgba(92, 53, 34, 0.045);
+}
+
+#journeyFirstDashboard.fog-premium .journey-event {
+    border-radius: 18px;
+}
+
+#journeyFirstDashboard.fog-premium .journey-event__date {
+    border-radius: 13px;
+    background:
+        linear-gradient(
+            145deg,
+            #FFF0DA,
+            #FBE3C6
+        );
+    color: var(--fog-premium-copper);
+}
+
+#journeyFirstDashboard.fog-premium .journey-event__arrow {
+    color: var(--fog-premium-copper);
+}
+
+#journeyFirstDashboard.fog-premium .journey-shortcuts {
+    gap: 11px;
+    margin-top: 18px;
+}
+
+#journeyFirstDashboard.fog-premium .journey-shortcut {
+    min-height: 82px;
+    border-radius: 18px;
+    color: var(--fog-premium-ink-soft);
+}
+
+#journeyFirstDashboard.fog-premium .journey-shortcut span {
+    font-size: 1.45rem;
+}
+
+
+/* =========================================================
+   INTERACTION + MOTION
+   ========================================================= */
+
+@media (hover: hover) and (pointer: fine) {
+    #journeyFirstDashboard.fog-premium .journey-action,
+    #journeyFirstDashboard.fog-premium .journey-event,
+    #journeyFirstDashboard.fog-premium .journey-shortcut {
+        transition:
+            transform 180ms ease,
+            box-shadow 180ms ease,
+            border-color 180ms ease;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-action:not([disabled]):hover {
+        transform: translateY(-2px);
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-event:hover,
+    #journeyFirstDashboard.fog-premium
+    .journey-shortcut:hover {
+        transform: translateY(-2px);
+        border-color: var(--fog-premium-line-strong);
+        box-shadow: var(--fog-premium-shadow-sm);
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    #journeyFirstDashboard.fog-premium .journey-card {
+        animation:
+            fogPremiumCardReveal
+            480ms
+            cubic-bezier(.2, .7, .2, 1)
+            both;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-card:nth-of-type(2) {
+        animation-delay: 45ms;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-card:nth-of-type(3) {
+        animation-delay: 90ms;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-card:nth-of-type(4) {
+        animation-delay: 135ms;
+    }
+
+    @keyframes fogPremiumCardReveal {
+        from {
+            opacity: 0;
+            transform: translateY(9px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+}
+
+
+/* =========================================================
+   RESPONSIVE REFINEMENTS
+   ========================================================= */
+
+@media (min-width: 760px) {
+    #journeyFirstDashboard.fog-premium {
+        padding-top: 34px;
+    }
+
+    #journeyFirstDashboard.fog-premium .journey-prayer {
+        padding: 34px;
+    }
+}
+
+@media (max-width: 520px) {
+    #pulseDashboardTab:has(#journeyFirstDashboard.fog-premium) {
+        border-radius: 22px;
+    }
+
+    #journeyFirstDashboard.fog-premium {
+        padding:
+            20px
+            12px
+            calc(100px + env(safe-area-inset-bottom));
+    }
+
+    #journeyFirstDashboard.fog-premium .journey-card {
+        padding: 20px 18px;
+        border-radius: 24px;
+    }
+
+    #journeyFirstDashboard.fog-premium .journey-prayer {
+        min-height: 0;
+    }
+
+    #journeyFirstDashboard.fog-premium .journey-card__head {
+        gap: 12px;
+    }
+
+    #journeyFirstDashboard.fog-premium .journey-phase__dot {
+        width: 30px;
+        height: 30px;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-phases::before {
+        top: 15px;
+    }
+}
+
+@media (max-width: 390px) {
+    #journeyFirstDashboard.fog-premium .journey-phase__dot {
+        width: 27px;
+        height: 27px;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-phases::before {
+        top: 13px;
+    }
+
+    #journeyFirstDashboard.fog-premium .journey-phase__name {
+        font-size: 0.48rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #journeyFirstDashboard.fog-premium *,
+    #journeyFirstDashboard.fog-premium *::before,
+    #journeyFirstDashboard.fog-premium *::after {
+        animation: none !important;
+        scroll-behavior: auto !important;
+        transition: none !important;
+    }
+}
