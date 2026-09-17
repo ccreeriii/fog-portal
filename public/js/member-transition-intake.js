@@ -258,14 +258,16 @@
                             .trim()
                 );
 
-        if (current.length === 1) {
-            state.model
-                .reported_ministries
-                .forEach(row => {
-                    row.selected_priority =
-                        row === current[0];
-                });
-
+        /*
+         * Do not manufacture a Priority Ministry while the member
+         * is still completing a draft.
+         *
+         * A single current ministry will be treated as the reported
+         * priority by the authoritative submitIntake() domain rule.
+         * With multiple current ministries, the member must make an
+         * explicit choice using the Priority Ministry radio controls.
+         */
+        if (current.length <= 1) {
             return;
         }
 
@@ -1499,16 +1501,25 @@
             )
         );
 
-        const priority =
+        const currentMinistries =
             state.model
                 .reported_ministries
-                .find(
+                .filter(
                     row =>
-                        row
-                            .selected_priority &&
                         row.service_state ===
                             'current'
                 );
+
+        const priority =
+            currentMinistries.find(
+                row =>
+                    row.selected_priority
+            ) ||
+            (
+                currentMinistries.length === 1
+                    ? currentMinistries[0]
+                    : null
+            );
 
         review.appendChild(
             reviewRow(

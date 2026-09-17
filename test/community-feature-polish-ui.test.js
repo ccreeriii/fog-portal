@@ -88,7 +88,7 @@ test('shell keeps canonical navigation and existing Events controls while adding
     }
     assert.match(index, /\/css\/community-features\.css\?v=3/);
     assert.match(index, /\/js\/community-feature-polish\.js\?v=7/);
-    assert.match(sw, /const CACHE_NAME = 'fog-portal-v58'/);
+    assert.match(sw, /const CACHE_NAME = 'fog-portal-v59'/);
     assert.match(sw, /'\/css\/community-features\.css\?v=3'/);
     assert.match(sw, /'\/js\/community-feature-polish\.js\?v=7'/);
     assert.doesNotMatch(source, /growth[_/-]evidence|prayerHabit|member_milestones|sendEmail|pushToUser/i);

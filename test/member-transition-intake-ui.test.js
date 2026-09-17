@@ -58,7 +58,7 @@ test(
 
         assert.match(
             index,
-            /\/js\/member-transition-intake\.js\?v=3/
+            /\/js\/member-transition-intake\.js\?v=4/
         );
 
         assert.match(
@@ -68,7 +68,7 @@ test(
 
         assert.ok(
             index.indexOf(
-                '/js/member-transition-intake.js?v=3'
+                '/js/member-transition-intake.js?v=4'
             ) <
             index.indexOf(
                 '/js/journey-dashboard.js?v=7'
@@ -77,7 +77,7 @@ test(
 
         assert.match(
             sw,
-            /fog-portal-v58/
+            /fog-portal-v59/
         );
 
         assert.match(
@@ -87,7 +87,7 @@ test(
 
         assert.match(
             sw,
-            /\/js\/member-transition-intake\.js\?v=3/
+            /\/js\/member-transition-intake\.js\?v=4/
         );
 
         assert.match(
@@ -347,6 +347,37 @@ test(
         assert.match(
             ui,
             /state\.transitionMemberId\s*!==\s*memberId/
+        );
+    }
+);
+
+
+test(
+    'Adult Intake draft does not manufacture a Priority Ministry',
+    () => {
+        const ui =
+            read(
+                'public/js/member-transition-intake.js'
+            );
+
+        assert.match(
+            ui,
+            /if\s*\(\s*current\.length\s*<=\s*1\s*\)\s*\{\s*return;/
+        );
+
+        assert.doesNotMatch(
+            ui,
+            /row\.selected_priority\s*=\s*row\s*===\s*current\[0\]/
+        );
+
+        assert.match(
+            ui,
+            /current\.length\s*>\s*1[\s\S]*Please choose exactly one Priority Ministry/
+        );
+
+        assert.match(
+            ui,
+            /currentMinistries\.length\s*===\s*1/
         );
     }
 );
