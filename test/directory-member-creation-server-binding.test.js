@@ -308,3 +308,94 @@ test(
         );
     }
 );
+
+test(
+    'Directory Add Member handler safely tolerates optional fields absent from the modal',
+    () => {
+        const app =
+            read(
+                'public/js/app.js'
+            );
+
+        const index =
+            read(
+                'public/index.html'
+            );
+
+        const start =
+            app.indexOf(
+                'window.submitNewMember = async function(e) {'
+            );
+
+        const end =
+            app.indexOf(
+                'window.saveMemberEditWithConfirm = async function() {',
+                start
+            );
+
+        assert.ok(
+            start >= 0
+        );
+
+        assert.ok(
+            end > start
+        );
+
+        const region =
+            app.slice(
+                start,
+                end
+            );
+
+        /*
+         * These two legacy fields are not presently rendered
+         * in the Add Member modal. The submit handler therefore
+         * must never directly dereference .value on them.
+         */
+        assert.equal(
+            index.includes(
+                'id="addMemberSocial"'
+            ),
+            false
+        );
+
+        assert.equal(
+            index.includes(
+                'id="addMemberParents"'
+            ),
+            false
+        );
+
+        assert.ok(
+            region.includes(
+                'const readMemberField = (id) =>'
+            )
+        );
+
+        assert.ok(
+            region.includes(
+                "social_media: readMemberField('addMemberSocial')"
+            )
+        );
+
+        assert.ok(
+            region.includes(
+                "parents_name: readMemberField('addMemberParents')"
+            )
+        );
+
+        assert.equal(
+            region.includes(
+                "document.getElementById('addMemberSocial').value"
+            ),
+            false
+        );
+
+        assert.equal(
+            region.includes(
+                "document.getElementById('addMemberParents').value"
+            ),
+            false
+        );
+    }
+);

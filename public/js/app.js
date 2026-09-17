@@ -2657,11 +2657,20 @@ window.submitNewMember = async function(e) {
     let picBase64 = null;
     if (fileInput && fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
 
+    const readMemberField = (id) => {
+        const element = document.getElementById(id);
+        return element ? element.value : '';
+    };
+
     const payload = {
-        name: document.getElementById('addMemberName').value, age: document.getElementById('addMemberAge').value,
-        birthday: document.getElementById('addMemberBirthday').value, email: document.getElementById('addMemberEmail').value,
-        mobile: document.getElementById('addMemberMobile').value, social_media: document.getElementById('addMemberSocial').value,
-        parents_name: document.getElementById('addMemberParents').value, profile_picture: picBase64
+        name: readMemberField('addMemberName'),
+        age: readMemberField('addMemberAge'),
+        birthday: readMemberField('addMemberBirthday'),
+        email: readMemberField('addMemberEmail'),
+        mobile: readMemberField('addMemberMobile'),
+        social_media: readMemberField('addMemberSocial'),
+        parents_name: readMemberField('addMemberParents'),
+        profile_picture: picBase64
     };
 
     window.triggerActionConfirmation(`Register ${payload.name} into the directory?`, async () => {

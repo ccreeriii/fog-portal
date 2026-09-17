@@ -403,15 +403,15 @@ test('shell retires legacy Paths UI, keeps canonical Journey and preserves Notif
 });
 
 test('post-launch asset and dependent revisions are cached coherently and load last', () => {
-    const app = index.indexOf('/js/app.js?v=13.4');
+    const app = index.indexOf('/js/app.js?v=13.5');
     const mapping = index.indexOf('/js/growth-event-mapping-ui.js?v=3');
     const journey = index.indexOf('/js/journey-dashboard.js?v=6');
     const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=4');
     const community = index.indexOf('/js/community-feature-polish.js?v=7');
     assert.ok(app < mapping && mapping < journey && journey < hotfix && hotfix < community);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v54'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v55'/);
     for (const asset of [
-        '/js/app.js?v=13.4',
+        '/js/app.js?v=13.5',
         '/js/growth-event-mapping-ui.js?v=3',
         '/js/journey-dashboard.js?v=6',
         '/js/postlaunch-hotfix.js?v=4',

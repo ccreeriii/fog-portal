@@ -95,13 +95,13 @@ test('review model exposes advancement only for the current ready phase', () => 
 });
 
 test('leadership Journey asset is loaded and cached coherently', () => {
-    assert.match(index, /\/js\/app\.js\?v=13\.4/);
+    assert.match(index, /\/js\/app\.js\?v=13\.5/);
     assert.match(index, /\/js\/growth-journey-leadership\.js\?v=3/);
     assert.ok(
         index.indexOf('/js/growth-journey-leadership.js?v=3') >
-        index.indexOf('/js/app.js?v=13.4')
+        index.indexOf('/js/app.js?v=13.5')
     );
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v54'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v55'/);
     assert.match(serviceWorker, /'\/js\/growth-journey-leadership\.js\?v=3'/);
 });
 
