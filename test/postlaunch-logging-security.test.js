@@ -131,6 +131,19 @@ test('post-launch logging APIs preserve history and enforce canonical identities
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
     await fsp.writeFile(path.join(temporaryRoot, 'public', 'index.html'), '<!doctype html><title>Postlaunch fixture</title>');
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        )
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     database = application.db;
     assert.equal(database.filename, path.join(temporaryRoot, 'fog_community.db'));

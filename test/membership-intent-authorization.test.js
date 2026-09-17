@@ -177,6 +177,19 @@ test('membership intents enforce canonical ownership and leadership approval', {
 
     // Only the copied server is loaded; its __dirname-based database is new and
     // empty. No staging database is opened or copied into this fixture.
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        )
+    );
+
     const isolatedApplication = require(path.join(temporaryRoot, 'server.js'));
     database = isolatedApplication.db;
     assert.equal(database.filename, path.join(temporaryRoot, 'fog_community.db'));

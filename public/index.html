@@ -27,7 +27,7 @@
     <link rel="stylesheet" href="/css/v4-styles.css?v=12.2">
     <link rel="stylesheet" href="/css/journey-dashboard.css?v=4">
     <link rel="stylesheet" href="/css/community-features.css?v=3">
-    <link rel="stylesheet" href="/css/fog-premium.css?v=10">
+    <link rel="stylesheet" href="/css/fog-premium.css?v=17">
     <style>
         .ai-chat-box { display: flex; flex-direction: column; gap: 15px; max-height: 450px; overflow-y: auto; padding: 15px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin-bottom: 15px; }
         .chat-msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; font-size: 0.95rem; line-height: 1.4; }
@@ -507,9 +507,23 @@
     <div id="pulseDashboardTab" class="tab-content active">
         <main id="journeyFirstDashboard" class="journey-home fog-premium" aria-labelledby="journeyHomeGreeting">
             <header class="journey-home__welcome">
-                <p class="journey-home__eyebrow">Your community home</p>
-                <h2 id="journeyHomeGreeting">Welcome home</h2>
-                <p>Prayer, growth, and the next invitation for your journey.</p>
+                <div class="journey-home__welcome-copy">
+                    <p class="journey-home__eyebrow">Your community home</p>
+                    <h2 id="journeyHomeGreeting">Welcome home</h2>
+                    <p>Prayer, growth, and the next invitation for your journey.</p>
+                </div>
+                <div
+                    id="journeyHomePortraitFrame"
+                    class="journey-home__portrait journey-home__portrait--fallback"
+                >
+                    <img
+                        id="journeyHomePortrait"
+                        src="/img/logo.png"
+                        alt="Fire Of God Ministries logo"
+                        loading="eager"
+                        decoding="async"
+                    >
+                </div>
             </header>
 
             <section id="journeyPrayerCard" class="journey-card journey-prayer" aria-labelledby="journeyPrayerTitle" aria-live="polite">
@@ -4370,7 +4384,7 @@
             modal.style.display = 'flex';
         };
     </script>
-    <script src="/js/journey-dashboard.js?v=5"></script>
+    <script src="/js/journey-dashboard.js?v=6"></script>
     <script src="/js/postlaunch-hotfix.js?v=4"></script>
     <script src="/js/community-feature-polish.js?v=7"></script>
 </body>

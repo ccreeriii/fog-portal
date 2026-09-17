@@ -157,6 +157,19 @@ async function createIsolatedApplication() {
         )
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        )
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     const httpServer = await new Promise((resolve, reject) => {

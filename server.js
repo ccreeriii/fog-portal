@@ -9,6 +9,9 @@ const sharp = require('sharp');
 const QRCode = require('qrcode');
 const webpush = require('web-push');
 const cron = require('node-cron');
+const {
+    startScheduler: startBirthdayAgeScheduler
+} = require('./lib/birthday-age-sync');
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
 const GrowthJourney = require('./lib/growth-journey');
 const GrowthNotifications = require('./lib/growth-notifications');
@@ -2906,6 +2909,7 @@ async function startServerAfterRuntimeSchemaReady() {
         app.listen(PORT, () => { console.log(`Server running safely on Port ${PORT}`); });
         startPrayerCovenantReminderScheduler();
         startWatchtowerPrayerCoverageScheduler();
+        startBirthdayAgeSyncScheduler();
     } catch (err) {
         console.error(`[MIGRATION] Runtime database schema verification failed: ${err.message}`);
         db.close(() => process.exit(1));
@@ -7471,6 +7475,26 @@ async function dispatchCanonicalNotificationEvent(
  * default-safe server path inert and starts reminder reads only after the
  * deterministic runtime schema has been verified.
  */
+function startBirthdayAgeSyncScheduler() {
+    return startBirthdayAgeScheduler({
+        database: db,
+        cron,
+        logger: console,
+        onUpdate(change) {
+            const previous =
+                change.previousAge === null
+                    ? 'unset'
+                    : String(change.previousAge);
+
+            logActivity(
+                'System',
+                'BIRTHDAY_AGE_SYNC',
+                `Member ID ${change.youthId} age ${previous} -> ${change.newAge} on ${change.dateKey}`
+            );
+        }
+    });
+}
+
 function startPrayerCovenantReminderScheduler() {
     if (!PRAYER_COVENANT_REMINDERS_ENABLED) {
         return null;

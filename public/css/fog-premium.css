@@ -3344,3 +3344,451 @@ button[onclick*="Journal"] {
             1.48 !important;
     }
 }
+
+
+/* ============================================================
+   HOME PERSONALIZED PREMIUM HERO
+   Profile picture with FOG logo fallback
+   ============================================================ */
+
+#journeyFirstDashboard.fog-premium
+.journey-home__welcome {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: center;
+    min-height: 184px;
+    padding: clamp(24px, 4vw, 34px);
+    overflow: hidden;
+    border: 0;
+    border-radius: 22px;
+    background:
+        radial-gradient(
+            circle at 80% 12%,
+            rgba(243, 164, 71, 0.28),
+            transparent 34%
+        ),
+        linear-gradient(
+            118deg,
+            #642B1E 0%,
+            #823822 40%,
+            #A44B28 70%,
+            #BF6335 100%
+        );
+    box-shadow:
+        0 18px 44px
+        rgba(98, 49, 29, 0.18);
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__welcome::before {
+    display: none !important;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__welcome::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+        linear-gradient(
+            90deg,
+            rgba(77, 30, 20, 0.98) 0%,
+            rgba(96, 38, 23, 0.92) 43%,
+            rgba(96, 38, 23, 0.48) 65%,
+            rgba(96, 38, 23, 0.08) 82%,
+            transparent 100%
+        );
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__welcome-copy {
+    position: relative;
+    z-index: 3;
+    width: min(61%, 610px);
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__welcome
+.journey-home__eyebrow {
+    margin: 0 0 7px;
+    color: #FFE3C0;
+    font-size:
+        clamp(0.66rem, 1.35vw, 0.76rem);
+    font-weight: 800;
+    letter-spacing: 0.105em;
+    text-transform: uppercase;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__welcome h2 {
+    margin: 0;
+    color: #FFFFFF;
+    font-family:
+        var(--fog-premium-serif);
+    font-size:
+        clamp(1.52rem, 3.25vw, 2.08rem);
+    font-weight: 800;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__welcome-copy > p:last-child {
+    max-width: 520px;
+    margin: 10px 0 0;
+    color: rgba(255, 247, 236, 0.94);
+    font-size:
+        clamp(0.84rem, 1.65vw, 0.94rem);
+    line-height: 1.55;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__portrait {
+    position: absolute;
+    z-index: 0;
+    inset: 0 0 0 auto;
+    width: min(40%, 350px);
+    overflow: hidden;
+    border-radius: 0 22px 22px 0;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__portrait img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__portrait--fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        radial-gradient(
+            circle at center,
+            rgba(255, 225, 181, 0.25),
+            transparent 55%
+        ),
+        linear-gradient(
+            145deg,
+            #A54B2A,
+            #74301F
+        );
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__portrait--fallback img {
+    width: min(58%, 150px);
+    height: min(70%, 150px);
+    object-fit: contain;
+    filter:
+        drop-shadow(
+            0 10px 20px
+            rgba(47, 22, 14, 0.26)
+        );
+}
+
+@media (max-width: 520px) {
+    #journeyFirstDashboard.fog-premium
+    .journey-home__welcome {
+        min-height: 176px;
+        padding: 22px 18px;
+        border-radius: 19px;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-home__welcome-copy {
+        width: 66%;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-home__portrait {
+        width: 43%;
+        border-radius:
+            0 19px 19px 0;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-home__welcome h2 {
+        font-size:
+            clamp(1.38rem, 7vw, 1.72rem);
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-home__welcome-copy > p:last-child {
+        font-size: 0.82rem;
+        line-height: 1.45;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-home__portrait--fallback img {
+        width: 54%;
+        height: 54%;
+    }
+}
+
+
+/* ============================================================
+   HOME HERO — FINAL SPACING + IMAGE BLEND POLISH
+   Keep Home rhythm consistent with premium page spacing.
+   ============================================================ */
+
+/*
+ * The Home dashboard previously inherited excessive top
+ * breathing room below the global orange header divider.
+ * Use the compact premium-page rhythm instead.
+ */
+#journeyFirstDashboard.journey-home.fog-premium {
+    padding-top: 18px;
+}
+
+/*
+ * Maintain a consistent visual gap between the Home hero
+ * and the first dashboard card below it.
+ */
+#journeyFirstDashboard.fog-premium
+.journey-home__welcome {
+    margin-bottom: 16px;
+}
+
+/*
+ * Blend the member portrait naturally into the copper card.
+ * This removes the hard vertical edge between copy and photo
+ * and matches the soft image treatment used by premium heroes.
+ */
+#journeyFirstDashboard.fog-premium
+.journey-home__portrait::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background:
+        linear-gradient(
+            90deg,
+            rgba(96, 38, 23, 0.96) 0%,
+            rgba(96, 38, 23, 0.74) 12%,
+            rgba(96, 38, 23, 0.38) 28%,
+            rgba(96, 38, 23, 0.12) 44%,
+            rgba(96, 38, 23, 0) 62%
+        );
+}
+
+#journeyFirstDashboard.fog-premium
+.journey-home__portrait img {
+    position: relative;
+    z-index: 1;
+}
+
+/*
+ * The fallback FOG logo should remain clear and should not
+ * receive the photographic fade treatment.
+ */
+#journeyFirstDashboard.fog-premium
+.journey-home__portrait--fallback::after {
+    display: none;
+}
+
+@media (max-width: 520px) {
+    #journeyFirstDashboard.journey-home.fog-premium {
+        padding-top: 16px;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-home__welcome {
+        margin-bottom: 14px;
+    }
+
+    #journeyFirstDashboard.fog-premium
+    .journey-home__portrait::after {
+        background:
+            linear-gradient(
+                90deg,
+                rgba(96, 38, 23, 0.96) 0%,
+                rgba(96, 38, 23, 0.70) 15%,
+                rgba(96, 38, 23, 0.30) 34%,
+                rgba(96, 38, 23, 0) 64%
+            );
+    }
+}
+
+
+/* ============================================================
+   SEVEN-PAGE CANVAS + TOP-SPACING CONSISTENCY
+   Reference rhythm: Growth / Events / FOG Arcade
+   ============================================================ */
+
+/*
+ * Growth already demonstrates the desired distance from the
+ * global orange header divider to the first premium card.
+ *
+ * Home, Prayer, Journal and Groups previously added a second
+ * internal top-padding layer. Remove only that extra layer and
+ * retain the normal outer tab-content spacing.
+ */
+
+#journeyFirstDashboard.journey-home.fog-premium {
+    padding-top: 0 !important;
+}
+
+#growthSubPrayer,
+#growthSubJournal,
+#growthSubGroups {
+    padding-top: 0 !important;
+}
+
+
+/*
+ * One shared warm FOG canvas below the global header.
+ *
+ * Home and the Prayer / Journal / Groups surfaces already use
+ * this family. Extend it behind Growth, Events and FOG Arcade
+ * so the seven primary member destinations feel like one app.
+ */
+
+#discipleshipTab,
+#eventsTab,
+#arcadeTab {
+    background:
+        radial-gradient(
+            circle at 8% 2%,
+            rgba(243, 164, 71, 0.13),
+            transparent 30rem
+        ),
+        radial-gradient(
+            circle at 100% 22%,
+            rgba(184, 88, 47, 0.08),
+            transparent 26rem
+        ),
+        linear-gradient(
+            180deg,
+            var(--fog-premium-canvas) 42%,
+            var(--fog-premium-canvas-deep) 100%
+        ) !important;
+}
+
+
+/*
+ * Keep the same behavior on the mobile layouts.
+ */
+@media (max-width: 520px) {
+    #journeyFirstDashboard.journey-home.fog-premium,
+    #growthSubPrayer,
+    #growthSubJournal,
+    #growthSubGroups {
+        padding-top: 0 !important;
+    }
+}
+
+
+/* ============================================================
+   WHITE CANVAS EXPERIMENT START
+   Staging visual test only.
+   Intentionally changes only the space outside cards/heroes.
+   ============================================================ */
+
+#pulseDashboardTab:has(#journeyFirstDashboard.fog-premium),
+#discipleshipTab,
+#eventsTab,
+#arcadeTab,
+#growthSubHome,
+#growthSubPrayer,
+#growthSubJournal,
+#growthSubGroups {
+    background: #FFFFFF !important;
+}
+
+
+/*
+ * Remove ambient page-level decorative washes from the
+ * Prayer / Journal / Groups canvases while preserving
+ * every actual hero, card and panel.
+ */
+#growthSubPrayer::before,
+#growthSubJournal::before,
+#growthSubGroups::before {
+    background: none !important;
+}
+
+
+/* ============================================================
+   WHITE CANVAS EXPERIMENT END
+   ============================================================ */
+
+
+/* ============================================================
+   HOME WHITE CANVAS FIX
+   Keep Home cards/heroes intact; white only outside the cards.
+   ============================================================ */
+
+#pulseDashboardTab:has(#journeyFirstDashboard.fog-premium),
+#pulseDashboardTab:has(#journeyFirstDashboard.fog-premium)
+#journeyFirstDashboard.fog-premium {
+    background: #FFFFFF !important;
+    background-image: none !important;
+}
+
+
+/*
+ * Prevent the Home canvas itself from reintroducing
+ * any decorative beige/copper wash.
+ */
+#journeyFirstDashboard.fog-premium::before,
+#journeyFirstDashboard.fog-premium::after {
+    background: none !important;
+}
+
+
+/* ============================================================
+   AUTHENTICATED OUTERMOST WHITE CANVAS
+   Removes the legacy body/background color visible around
+   the premium member pages. Cards and heroes stay unchanged.
+   ============================================================ */
+
+body.koinonia-authenticated-header {
+    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
+    background-image: none !important;
+}
+
+
+/* ============================================================
+   ABSOLUTE WHITE APP SHELL FIX
+   White only on structural canvas layers.
+   Individual cards, heroes and panels remain untouched.
+   ============================================================ */
+
+html,
+body.koinonia-authenticated-header,
+body.koinonia-authenticated-header #mainContainer,
+body.koinonia-authenticated-header #pulseDashboardTab,
+body.koinonia-authenticated-header #journeyFirstDashboard {
+    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
+    background-image: none !important;
+}
+
+/* Remove any warm decorative shell layers */
+body.koinonia-authenticated-header #mainContainer::before,
+body.koinonia-authenticated-header #mainContainer::after,
+body.koinonia-authenticated-header #pulseDashboardTab::before,
+body.koinonia-authenticated-header #pulseDashboardTab::after,
+body.koinonia-authenticated-header #journeyFirstDashboard::before,
+body.koinonia-authenticated-header #journeyFirstDashboard::after {
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+/* Remove tinted shell shadow only — NOT card shadows */
+body.koinonia-authenticated-header #mainContainer,
+body.koinonia-authenticated-header #pulseDashboardTab,
+body.koinonia-authenticated-header #journeyFirstDashboard {
+    box-shadow: none !important;
+}

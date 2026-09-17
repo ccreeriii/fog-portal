@@ -163,6 +163,19 @@ test('Watchtower APIs use live canonical access_prayer authority and reject forg
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
     await fsp.writeFile(path.join(temporaryRoot, 'public', 'index.html'), '<!doctype html><title>Watchtower Test</title>');
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        )
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     database = application.db;
     await application.ready;
@@ -406,7 +419,7 @@ test('active shell and cache publish the restricted Watchtower asset coherently'
     assert.match(html, /Uncovered Today/);
     assert.match(html, /value="access_prayer"/);
     assert.match(html, /\/js\/watchtower\.js\?v=1/);
-    assert.match(serviceWorker, /fog-portal-v46/);
+    assert.match(serviceWorker, /fog-portal-v53/);
     assert.match(serviceWorker, /\/js\/watchtower\.js\?v=1/);
     assert.match(watchtowerSource, /window\.hasPerm/);
     assert.match(watchtowerSource, /textContent/);

@@ -522,6 +522,103 @@
                 : null;
         }
 
+        const HOME_PORTRAIT_FALLBACK =
+            '/img/logo.png';
+
+        function safeHomePortraitSource(value) {
+            if (typeof value !== 'string') {
+                return HOME_PORTRAIT_FALLBACK;
+            }
+
+            const source = value.trim();
+
+            if (!source) {
+                return HOME_PORTRAIT_FALLBACK;
+            }
+
+            if (
+                /^https?:\/\/[^\s]+$/i.test(source) ||
+                /^\/(?!\/)[^\s]*$/.test(source) ||
+                /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(source)
+            ) {
+                return source;
+            }
+
+            return HOME_PORTRAIT_FALLBACK;
+        }
+
+        function renderHomeIdentity(member) {
+            const greeting =
+                document.getElementById(
+                    'journeyHomeGreeting'
+                );
+
+            const firstName =
+                typeof member.name === 'string'
+                    ? member.name
+                        .trim()
+                        .split(/\s+/)[0]
+                    : '';
+
+            if (greeting) {
+                greeting.textContent =
+                    firstName
+                        ? `Welcome home, ${firstName}`
+                        : 'Welcome home';
+            }
+
+            const portrait =
+                document.getElementById(
+                    'journeyHomePortrait'
+                );
+
+            const frame =
+                document.getElementById(
+                    'journeyHomePortraitFrame'
+                );
+
+            if (!portrait) return;
+
+            const source =
+                safeHomePortraitSource(
+                    member.profile_picture
+                );
+
+            const fallback =
+                source ===
+                HOME_PORTRAIT_FALLBACK;
+
+            if (frame) {
+                frame.classList.toggle(
+                    'journey-home__portrait--fallback',
+                    fallback
+                );
+            }
+
+            portrait.onerror = () => {
+                portrait.onerror = null;
+                portrait.src =
+                    HOME_PORTRAIT_FALLBACK;
+                portrait.alt =
+                    'Fire Of God Ministries logo';
+
+                if (frame) {
+                    frame.classList.add(
+                        'journey-home__portrait--fallback'
+                    );
+                }
+            };
+
+            portrait.src = source;
+
+            portrait.alt =
+                fallback
+                    ? 'Fire Of God Ministries logo'
+                    : firstName
+                        ? `${firstName}'s profile picture`
+                        : 'Member profile picture';
+        }
+
         async function renderDashboard(options = {}) {
             const member = authenticatedMember();
             const dashboard = document.getElementById('journeyFirstDashboard');
@@ -531,13 +628,7 @@
             if (!force && Date.now() - state.lastLoadedAt < 5 * 60 * 1000) return null;
 
             state.loadPromise = (async () => {
-                const greeting = document.getElementById('journeyHomeGreeting');
-                if (greeting) {
-                    const firstName = typeof member.name === 'string'
-                        ? member.name.trim().split(/\s+/)[0]
-                        : '';
-                    greeting.textContent = firstName ? `Welcome home, ${firstName}` : 'Welcome home';
-                }
+                renderHomeIdentity(member);
                 renderConnected(document, window);
 
                 if (window.koinoniaAuthStatus === 'offline-readonly' || window.navigator.onLine === false) {

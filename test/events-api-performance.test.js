@@ -208,6 +208,19 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
         )
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        )
+    );
+
     const isolatedApplication = require(path.join(temporaryRoot, 'server.js'));
     await isolatedApplication.ready;
     database = isolatedApplication.db;
@@ -510,7 +523,7 @@ test('event frontend consumes list references, selected detail, and deduplicates
     assert.equal(appSource.includes('const imageResponse = await fetch(imageUrl)'), false, 'sharing does not delay native share for media');
     assert.ok(preregisterSource.includes('event.poster_url'), 'standalone prereg page uses poster_url');
     assert.equal(/event\.poster\b/.test(preregisterSource), false, 'standalone prereg page does not use embedded media');
-    assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'fog-portal-v46';"), 'new app asset has a fresh shell cache');
+    assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'fog-portal-v53';"), 'new app asset has a fresh shell cache');
     assert.ok(serviceWorkerSource.includes("if (request.method !== 'GET') return;"), 'service worker still bypasses mutations');
     assert.ok(serviceWorkerSource.includes("url.pathname.startsWith('/api/')"), 'service worker still bypasses API reads');
     assert.ok(serviceWorkerSource.includes("'/js/app.js?v=13.3'"), 'service worker caches the coordinated app version');
