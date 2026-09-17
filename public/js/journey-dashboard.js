@@ -663,6 +663,16 @@
                 renderPrayer(document, window, payload, partner, state.growthMoment);
                 state.growthMoment = null;
                 renderGrowth(document, window, payload);
+
+                if (
+                    window.MemberTransitionIntakeUI &&
+                    typeof window.MemberTransitionIntakeUI.refreshCard === 'function'
+                ) {
+                    await window.MemberTransitionIntakeUI.refreshCard({
+                        force
+                    });
+                }
+
                 renderEvents(document, window, payload);
                 state.lastLoadedAt = Date.now();
 
