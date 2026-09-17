@@ -535,3 +535,166 @@ test(
         assert.equal(history.count, 1);
     }
 );
+
+test(
+    'multiple existing Priority Ministries fail closed instead of silently healing corrupted state',
+    async t => {
+        const fixture =
+            openDatabase();
+
+        t.after(
+            fixture.close
+        );
+
+        await setup(
+            fixture.db
+        );
+
+        await run(
+            fixture.db,
+            `
+            UPDATE ministry_members
+            SET is_priority = 1
+            WHERE id = 102
+            `
+        );
+
+        await assert.rejects(
+            setPriority(
+                fixture.db,
+                102
+            ),
+            error =>
+                error &&
+                error.code ===
+                    'MULTIPLE_PRIORITY_CONFLICT'
+        );
+
+        const priorities =
+            await all(
+                fixture.db,
+                `
+                SELECT id
+                FROM ministry_members
+                WHERE youth_id = 1
+                  AND is_priority = 1
+                ORDER BY id
+                `
+            );
+
+        assert.deepEqual(
+            priorities.map(
+                row => row.id
+            ),
+            [101, 102]
+        );
+
+        const history =
+            await get(
+                fixture.db,
+                `
+                SELECT COUNT(*) AS count
+                FROM ministry_priority_history
+                `
+            );
+
+        assert.equal(
+            history.count,
+            0
+        );
+    }
+);
+
+test(
+    'any conflicting open discernment blocks Priority switch even when the newest open case matches the target ministry',
+    async t => {
+        const fixture =
+            openDatabase();
+
+        t.after(
+            fixture.close
+        );
+
+        await setup(
+            fixture.db
+        );
+
+        await run(
+            fixture.db,
+            `
+            INSERT INTO ministry_discernment_cases (
+                youth_id,
+                ministry_id,
+                source_type,
+                status,
+                intent_text,
+                priority_at_open,
+                opened_at,
+                updated_at
+            )
+            VALUES
+                (
+                    1,
+                    10,
+                    'profile',
+                    'intent_submitted',
+                    'Older open case.',
+                    1,
+                    '2026-09-01T00:00:00.000Z',
+                    '2026-09-01T00:00:00.000Z'
+                ),
+                (
+                    1,
+                    20,
+                    'profile',
+                    'intent_submitted',
+                    'Newer target-ministry case.',
+                    0,
+                    '2026-09-02T00:00:00.000Z',
+                    '2026-09-02T00:00:00.000Z'
+                )
+            `
+        );
+
+        await assert.rejects(
+            setPriority(
+                fixture.db,
+                102
+            ),
+            error =>
+                error &&
+                error.code ===
+                    'ACTIVE_DISCERNMENT_PRIORITY_CONFLICT'
+        );
+
+        const priority =
+            await get(
+                fixture.db,
+                `
+                SELECT id
+                FROM ministry_members
+                WHERE youth_id = 1
+                  AND is_priority = 1
+                `
+            );
+
+        assert.equal(
+            priority.id,
+            101
+        );
+
+        const history =
+            await get(
+                fixture.db,
+                `
+                SELECT COUNT(*) AS count
+                FROM ministry_priority_history
+                `
+            );
+
+        assert.equal(
+            history.count,
+            0
+        );
+    }
+);
