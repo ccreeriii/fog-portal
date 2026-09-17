@@ -1548,12 +1548,12 @@ app.get('/api/admin/pass-id/:id', requireStrongAdmin, (req, res) => {
 // --- V115: PUBLIC ARCADE LEADERBOARDS ---
 app.get('/api/public/arcade-leaderboards', (req, res) => {
     const queries = {
-        daily: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND date(p.created_at, 'localtime') = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        weekly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        lastWeek: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-14 days') AND p.created_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        monthly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND strftime('%Y-%m', p.created_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        allTime: "SELECT y.name, gp.arcade_xp as score FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id ORDER BY gp.arcade_xp DESC LIMIT 5",
-        topGames: "SELECT a.game_name, y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id GROUP BY a.game_name, y.name ORDER BY a.game_name, score DESC"
+        daily: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND date(p.created_at, 'localtime') = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        weekly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        lastWeek: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-14 days') AND p.created_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        monthly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND strftime('%Y-%m', p.created_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        allTime: "SELECT y.name, gp.arcade_xp as score FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' ORDER BY gp.arcade_xp DESC LIMIT 5",
+        topGames: "SELECT a.game_name, y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' GROUP BY a.game_name, y.name ORDER BY a.game_name, score DESC"
     };
     let results = {};
     let pending = Object.keys(queries).length;
@@ -3032,7 +3032,7 @@ app.get('/api/fq-leaderboard/top3', (req, res) => {
     const gameName = req.query.game || '';
     const today = new Date().toISOString().split('T')[0];
     
-    db.all(`SELECT player_name as name, MAX(score) as score, avatar FROM fq_daily_scores WHERE game_name = ? AND date_played = ? GROUP BY player_name ORDER BY score DESC LIMIT 3`, 
+    db.all(`SELECT player_name as name, MAX(score) as score, avatar FROM fq_daily_scores WHERE game_name = ? AND date_played = ? AND lower(trim(player_name)) <> 'fire of god ministries' GROUP BY player_name ORDER BY score DESC LIMIT 3`,
         [gameName, today], 
         (err, rows) => { res.json({ top3: rows || [] }); }
     );
@@ -8568,7 +8568,7 @@ app.get('/api/leaderboards/:type/:timeframe', (req, res) => {
                SUM(CASE WHEN pt.type = 'event' THEN pt.amount ELSE 0 END) as event_xp
         FROM point_transactions pt
         JOIN youth y ON pt.youth_id = y.id
-        WHERE 1=1 ${dateCondition}
+        WHERE lower(trim(y.name)) <> 'fire of god ministries' ${dateCondition}
         GROUP BY pt.youth_id
     `;
 
@@ -8591,7 +8591,7 @@ app.get('/api/leaderboards/:type/:timeframe', (req, res) => {
 
 app.get('/api/gamification/game-top/:game_name', (req, res) => {
     const gameName = req.params.game_name;
-    db.all(`SELECT y.name, y.profile_picture, MAX(pt.amount) as high_score FROM point_transactions pt JOIN youth y ON pt.youth_id = y.id WHERE pt.game_name = ? GROUP BY pt.youth_id ORDER BY high_score DESC LIMIT 3`, [gameName], (err, rows) => { res.json(rows || []); });
+    db.all(`SELECT y.name, y.profile_picture, MAX(pt.amount) as high_score FROM point_transactions pt JOIN youth y ON pt.youth_id = y.id WHERE pt.game_name = ? AND lower(trim(y.name)) <> 'fire of god ministries' GROUP BY pt.youth_id ORDER BY high_score DESC LIMIT 3`, [gameName], (err, rows) => { res.json(rows || []); });
 });
 
 app.get('/api/gamification/points/:youth_id', (req, res) => {
@@ -8612,7 +8612,7 @@ app.get('/api/gamification/points/:youth_id', (req, res) => {
         });
     });
 });
-app.get('/api/gamification/group-leaderboard', (req, res) => { db.all(`SELECT sg.id, sg.name, SUM(gp.points) as total_points, COUNT(DISTINCT sgm.youth_id) as member_count FROM small_groups sg JOIN small_group_members sgm ON sg.id = sgm.group_id JOIN gamification_points gp ON sgm.youth_id = gp.youth_id GROUP BY sg.id ORDER BY total_points DESC LIMIT 10`, [], (err, rows) => { res.json(rows || []); }); });
+app.get('/api/gamification/group-leaderboard', (req, res) => { db.all(`SELECT sg.id, sg.name, SUM(gp.points) as total_points, COUNT(DISTINCT sgm.youth_id) as member_count FROM small_groups sg JOIN small_group_members sgm ON sg.id = sgm.group_id JOIN gamification_points gp ON sgm.youth_id = gp.youth_id JOIN youth y ON sgm.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' GROUP BY sg.id ORDER BY total_points DESC LIMIT 10`, [], (err, rows) => { res.json(rows || []); }); });
 
 function normalizeWeeklyChallengeAdminPayload(body = {}) {
     const title = String(body.title || '').trim();
@@ -10034,12 +10034,12 @@ app.post('/api/settings/images-v2', requirePermission('edit_entries'), (req, res
 // 2. De-duplicated Leaderboards V2
 app.get('/api/public/arcade-leaderboards-v2', (req, res) => {
     const queries = {
-        daily: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND date(p.created_at, 'localtime') = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        weekly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        lastWeek: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-14 days') AND p.created_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        monthly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE p.type = 'arcade' AND strftime('%Y-%m', p.created_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
-        allTime: "SELECT y.name, gp.arcade_xp as score FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id ORDER BY gp.arcade_xp DESC LIMIT 5",
-        topGames: "SELECT a.game_name, y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id GROUP BY a.game_name, y.name ORDER BY a.game_name, score DESC"
+        daily: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND date(p.created_at, 'localtime') = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        weekly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        lastWeek: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-14 days') AND p.created_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        monthly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND strftime('%Y-%m', p.created_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        allTime: "SELECT y.name, gp.arcade_xp as score FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' ORDER BY gp.arcade_xp DESC LIMIT 5",
+        topGames: "SELECT a.game_name, y.name, MAX(a.score) as score FROM arcade_score_logs a JOIN youth y ON a.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' GROUP BY a.game_name, y.name ORDER BY a.game_name, score DESC"
     };
     let results = {}; let pending = Object.keys(queries).length;
     Object.keys(queries).forEach(k => {
