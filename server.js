@@ -15,6 +15,7 @@ const {
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
 const GrowthJourney = require('./lib/growth-journey');
 const MemberTransitionHttp = require('./lib/member-transition-http');
+const MemberTransitionLeadershipHttp = require('./lib/member-transition-leadership-http');
 const MinistryServiceJourney = require('./lib/ministry-service-journey');
 const GrowthNotifications = require('./lib/growth-notifications');
 const NotificationCenter = require('./lib/notification-center');
@@ -2348,6 +2349,13 @@ MemberTransitionHttp.registerMemberTransitionRoutes({
     app,
     db,
     requireAuth
+});
+
+MemberTransitionLeadershipHttp.registerMemberTransitionLeadershipRoutes({
+    app,
+    db,
+    requireAllPermissions,
+    getActorName: getCanonicalDisplayActor
 });
 let emailRecoveryPublicOrigin = null;
 let emailRecoveryOutbox = null;

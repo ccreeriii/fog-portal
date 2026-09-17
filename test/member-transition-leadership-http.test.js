@@ -888,3 +888,106 @@ test(
         );
     }
 );
+
+test(
+    'unexpected database failures return a generic 500 without exposing internal details',
+    async () => {
+        const databaseError =
+            Object.assign(
+                new Error(
+                    'sensitive sqlite implementation detail'
+                ),
+                {
+                    code:
+                        'SQLITE_ERROR'
+                }
+            );
+
+        const db = {
+            get(
+                sql,
+                params,
+                callback
+            ) {
+                callback(
+                    databaseError
+                );
+            },
+
+            all(
+                sql,
+                params,
+                callback
+            ) {
+                callback(
+                    databaseError
+                );
+            }
+        };
+
+        const {
+            routes
+        } =
+            register({
+                db
+            });
+
+        const route =
+            findRoute(
+                routes,
+                'GET',
+                '/api/admin/member-transitions'
+            );
+
+        const harness =
+            responseHarness();
+
+        await route.handlers[
+            route.handlers.length - 1
+        ](
+            {
+                auth: {
+                    userId: 7,
+                    youthId: 3,
+                    member: {
+                        name:
+                            'Growth Leader'
+                    }
+                }
+            },
+            harness.res
+        );
+
+        const response =
+            harness.result();
+
+        assert.equal(
+            response.statusCode,
+            500
+        );
+
+        assert.equal(
+            response.payload.success,
+            false
+        );
+
+        assert.equal(
+            response.payload.code,
+            'SQLITE_ERROR'
+        );
+
+        assert.equal(
+            response.payload.error,
+            'Leadership transition request failed.'
+        );
+
+        assert.equal(
+            JSON.stringify(
+                response.payload
+            ).includes(
+                'sensitive sqlite implementation detail'
+            ),
+            false
+        );
+    }
+);

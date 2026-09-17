@@ -168,7 +168,10 @@ test('Growth event administration APIs enforce permissions and explicit mapping 
                 'member-transition-http.js',
                 'member-transition-community-intent.js',
                 'ministry-service-journey.js',
-                'ministry-discernment-journey.js'
+                'ministry-discernment-journey.js',
+                'member-transition-leadership-http.js',
+                'member-transition-intake.js',
+                'member-transition-recognition.js',
             ]) {
                 await transitionDependencyFs.copyFile(
                     transitionDependencyPath.join(
