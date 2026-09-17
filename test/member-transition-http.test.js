@@ -740,7 +740,7 @@ test(
 
         assert.equal(
             registered.length,
-            6
+            9
         );
 
         for (
@@ -1301,6 +1301,272 @@ test(
         assert.equal(
             state.next_action,
             'transition_closed'
+        );
+    }
+);
+
+test(
+    'adult historical intake remains in questionnaire and review states before fresh Community confirmation',
+    async t => {
+        const fixture =
+            openDatabase();
+
+        t.after(
+            fixture.close
+        );
+
+        await setup(
+            fixture.db
+        );
+
+        const AdultIntake =
+            require(
+                '../lib/member-transition-intake'
+            );
+
+        const intake =
+            await AdultIntake
+                .createIntake(
+                    fixture.db,
+                    {
+                        youthId: 1,
+                        intakeKind:
+                            'adult_historical'
+                    }
+                );
+
+        let state =
+            await Http
+                .buildMemberTransitionState(
+                    fixture.db,
+                    1
+                );
+
+        assert.equal(
+            state.next_action,
+            'adult_intake_questionnaire'
+        );
+
+        await AdultIntake
+            .saveDraftIntake(
+                fixture.db,
+                {
+                    intakeId:
+                        intake.id,
+                    youthId: 1,
+                    serviceState:
+                        'none',
+                    answers: {
+                        connection_status:
+                            'existing_member',
+                        current_invitation:
+                            'community'
+                    },
+                    reportedMinistries:
+                        []
+                }
+            );
+
+        const draft =
+            await get(
+                fixture.db,
+                `SELECT *
+                 FROM member_transition_intakes
+                 WHERE id = ?`,
+                [intake.id]
+            );
+
+        assert.equal(
+            draft.status,
+            'draft'
+        );
+
+        assert.equal(
+            JSON.parse(
+                draft.answers_json
+            ).connection_status,
+            'existing_member'
+        );
+
+        await AdultIntake
+            .submitIntake(
+                fixture.db,
+                {
+                    intakeId:
+                        intake.id,
+                    youthId: 1,
+                    serviceState:
+                        'none',
+                    answers: {
+                        connection_status:
+                            'existing_member',
+                        current_invitation:
+                            'community',
+                        attestation_confirmed:
+                            true
+                    },
+                    reportedMinistries:
+                        [],
+                    actorName:
+                        'Historical Adult'
+                }
+            );
+
+        state =
+            await Http
+                .buildMemberTransitionState(
+                    fixture.db,
+                    1
+                );
+
+        assert.equal(
+            state.next_action,
+            'adult_intake_submitted'
+        );
+
+        const audit =
+            await get(
+                fixture.db,
+                `SELECT COUNT(*) AS count
+                 FROM activity_logs
+                 WHERE action =
+                    'MEMBER_TRANSITION_INTAKE_SUBMITTED'`
+            );
+
+        assert.equal(
+            audit.count,
+            1
+        );
+
+        await run(
+            fixture.db,
+            `UPDATE member_transition_intakes
+             SET status = 'under_review'
+             WHERE id = ?`,
+            [intake.id]
+        );
+
+        state =
+            await Http
+                .buildMemberTransitionState(
+                    fixture.db,
+                    1
+                );
+
+        assert.equal(
+            state.next_action,
+            'adult_intake_under_review'
+        );
+
+        await run(
+            fixture.db,
+            `UPDATE member_transition_intakes
+             SET status = 'approved'
+             WHERE id = ?`,
+            [intake.id]
+        );
+
+        state =
+            await Http
+                .buildMemberTransitionState(
+                    fixture.db,
+                    1
+                );
+
+        assert.equal(
+            state.next_action,
+            'adult_intake_awaiting_recognition'
+        );
+
+        await run(
+            fixture.db,
+            `UPDATE member_transition_intakes
+             SET status = 'recognized'
+             WHERE id = ?`,
+            [intake.id]
+        );
+
+        state =
+            await Http
+                .buildMemberTransitionState(
+                    fixture.db,
+                    1
+                );
+
+        assert.equal(
+            state.next_action,
+            'community_intent'
+        );
+    }
+);
+
+test(
+    'member Adult Intake routes are authenticated and self-scoped',
+    () => {
+        const source =
+            fs.readFileSync(
+                path.join(
+                    __dirname,
+                    '..',
+                    'lib',
+                    'member-transition-http.js'
+                ),
+                'utf8'
+            );
+
+        for (
+            const route
+            of [
+                '/api/member-transition/me/intake',
+                '/api/member-transition/me/intake/draft',
+                '/api/member-transition/me/intake/submit'
+            ]
+        ) {
+            assert.ok(
+                source.includes(
+                    route
+                )
+            );
+        }
+
+        const start =
+            source.indexOf(
+                'Existing Adult Member Intake'
+            );
+
+        const end =
+            source.indexOf(
+                "'/api/member-transition/me/community-intent'",
+                start
+            );
+
+        assert.ok(
+            start >= 0
+        );
+
+        assert.ok(
+            end > start
+        );
+
+        const region =
+            source.slice(
+                start,
+                end
+            );
+
+        assert.match(
+            region,
+            /req\.auth[\s\S]*?youthId/
+        );
+
+        assert.doesNotMatch(
+            region,
+            /req\.body[\s\S]{0,80}youth_id/
+        );
+
+        assert.doesNotMatch(
+            region,
+            /req\.body[\s\S]{0,80}actor/
         );
     }
 );
