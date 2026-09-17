@@ -5798,6 +5798,158 @@ app.get('/api/youth', async (req, res) => {
     });
 });
 app.get('/api/youth/:id/history', (req, res) => { db.all(`SELECT a.checked_in_at, a.is_walkin, e.name as event_name, e.event_date FROM attendance a JOIN events e ON a.event_id = e.id WHERE a.youth_id = ? ORDER BY a.checked_in_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+
+/*
+ * Canonical leadership-only Directory creation.
+ *
+ * This route intentionally does NOT:
+ * - accept a browser-supplied audit actor
+ * - record legal acceptance
+ * - start Growth Journey
+ * - set a password
+ * - queue email verification
+ *
+ * It creates one Directory identity plus one empty-permission,
+ * claimable account stub. The member personally activates that
+ * account later through the existing account-claim workflow.
+ */
+app.post(
+    '/api/admin/directory/members',
+    requireAllPermissions([
+        'access_directory',
+        'add_entries'
+    ]),
+    async (req, res) => {
+        const actorName =
+            getCanonicalDisplayActor(req);
+
+        try {
+            /*
+             * Required lazily so unrelated isolated server fixtures
+             * do not gain another startup dependency.
+             */
+            const DirectoryMemberCreation =
+                require('./lib/directory-member-creation');
+
+            const created =
+                await DirectoryMemberCreation
+                    .createDirectoryMember(
+                        db,
+                        {
+                            member:
+                                req.body || {},
+
+                            actorName,
+
+                            normalizeEmail,
+
+                            formatMemberCode:
+                                formatFogPassId,
+
+                            now:
+                                getManilaTime
+                        }
+                    );
+
+            return sendNoStoreJson(
+                res,
+                201,
+                {
+                    success: true,
+                    id:
+                        created.id,
+                    youth_id:
+                        created.youth_id,
+                    user_id:
+                        created.user_id,
+                    name:
+                        created.name,
+                    email:
+                        created.email,
+                    qr_code:
+                        created.qr_code,
+                    account_status:
+                        created.account_status,
+                    permissions:
+                        created.permissions,
+                    legal_acceptance_recorded:
+                        false,
+                    growth_started:
+                        false,
+                    email_verification_queued:
+                        false
+                }
+            );
+        } catch (error) {
+            const code =
+                error &&
+                typeof error.code === 'string'
+                    ? error.code
+                    : 'DIRECTORY_MEMBER_CREATE_FAILED';
+
+            if (
+                code ===
+                    'DIRECTORY_MEMBER_EMAIL_EXISTS'
+            ) {
+                return sendNoStoreJson(
+                    res,
+                    409,
+                    {
+                        success: false,
+                        code,
+                        error:
+                            'A member with this email already exists.'
+                    }
+                );
+            }
+
+            const badRequestCodes =
+                new Set([
+                    'DIRECTORY_MEMBER_NAME_REQUIRED',
+                    'DIRECTORY_MEMBER_INVALID_AGE',
+                    'DIRECTORY_MEMBER_INVALID_BIRTHDAY',
+                    'DIRECTORY_MEMBER_INVALID_EMAIL',
+                    'DIRECTORY_MEMBER_FIELD_TOO_LONG',
+                    'DIRECTORY_ACTOR_REQUIRED'
+                ]);
+
+            if (
+                badRequestCodes.has(code)
+            ) {
+                return sendNoStoreJson(
+                    res,
+                    400,
+                    {
+                        success: false,
+                        code,
+                        error:
+                            error &&
+                            error.message
+                                ? error.message
+                                : 'Invalid member information.'
+                    }
+                );
+            }
+
+            console.error(
+                `[DIRECTORY] Secure member creation failed code=${code}`
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    code:
+                        'DIRECTORY_MEMBER_CREATE_FAILED',
+                    error:
+                        'Unable to create the Directory member.'
+                }
+            );
+        }
+    }
+);
+
 app.post('/api/youth', async (req, res) => {
     const { name, age, email, mobile, social_media, birthday, parents_name, profile_picture, actor } = req.body;
     const normalizedEmail = email ? normalizeEmail(email) : null;

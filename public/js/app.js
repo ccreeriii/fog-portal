@@ -1472,6 +1472,19 @@ window.buildNav = function() {
     }
 };
 
+window.canCreateDirectoryMember = function() {
+    const hasCanonicalPair =
+        typeof window.hasPerm === 'function' &&
+        window.hasPerm('access_directory') &&
+        window.hasPerm('add_entries');
+
+    const isLegacySuperAdmin =
+        typeof currentUser !== 'undefined' &&
+        currentUser === 'celsocreeriii@gmail.com';
+
+    return hasCanonicalPair || isLegacySuperAdmin;
+};
+
 window.applyGranularPermissions = function() {
     const canAdd = window.hasPerm('add_entries') || currentUser === 'celsocreeriii@gmail.com';
     
@@ -1485,7 +1498,18 @@ window.applyGranularPermissions = function() {
     setDisp('btnSubMinistryCreate');
     setDisp('btnCheckinWalkin');
     setDisp('addEntryAnalyticsBtn');
-    setDisp('btnDirectoryAddMember');
+    const directoryAddButton =
+        document.getElementById('btnDirectoryAddMember');
+
+    if (directoryAddButton) {
+        directoryAddButton.style.setProperty(
+            'display',
+            window.canCreateDirectoryMember()
+                ? 'inline-flex'
+                : 'none',
+            'important'
+        );
+    }
 };
 
 let permissionAccountsCache = [];
@@ -2637,12 +2661,12 @@ window.submitNewMember = async function(e) {
         name: document.getElementById('addMemberName').value, age: document.getElementById('addMemberAge').value,
         birthday: document.getElementById('addMemberBirthday').value, email: document.getElementById('addMemberEmail').value,
         mobile: document.getElementById('addMemberMobile').value, social_media: document.getElementById('addMemberSocial').value,
-        parents_name: document.getElementById('addMemberParents').value, profile_picture: picBase64, actor: currentUser
+        parents_name: document.getElementById('addMemberParents').value, profile_picture: picBase64
     };
 
     window.triggerActionConfirmation(`Register ${payload.name} into the directory?`, async () => {
         try {
-            const res = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const res = await fetch('/api/admin/directory/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
             if (data.id) {
                 alert(`Successfully registered ${payload.name}!\nUnique Pass ID: ${data.qr_code}`);
@@ -8554,7 +8578,18 @@ window.applyGranularPermissions = function() {
     setDisp('btnSubMinistryCreate');
     setDisp('btnCheckinWalkin');
     setDisp('addEntryAnalyticsBtn');
-    setDisp('btnDirectoryAddMember');
+    const directoryAddButton =
+        document.getElementById('btnDirectoryAddMember');
+
+    if (directoryAddButton) {
+        directoryAddButton.style.setProperty(
+            'display',
+            window.canCreateDirectoryMember()
+                ? 'inline-flex'
+                : 'none',
+            'important'
+        );
+    }
 };
 
 // 2. Ensuring the Sidebar lists "Event Planner" properly
@@ -8952,7 +8987,12 @@ setInterval(() => {
     idsToUnlock.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            const shouldShow = id === 'btnSubEventCreate' ? canCreateEvent : canAdd;
+            const shouldShow =
+                id === 'btnSubEventCreate'
+                    ? canCreateEvent
+                    : id === 'btnDirectoryAddMember'
+                        ? window.canCreateDirectoryMember()
+                        : canAdd;
             if (shouldShow) {
                 if (el.style.display === 'none' || el.style.display === '') {
                     el.style.setProperty('display', 'inline-flex', 'important');
@@ -9068,7 +9108,12 @@ window.applyGranularPermissions = function() {
     targets.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            const shouldShow = id === 'btnSubEventCreate' ? canCreateEvent : canAdd;
+            const shouldShow =
+                id === 'btnSubEventCreate'
+                    ? canCreateEvent
+                    : id === 'btnDirectoryAddMember'
+                        ? window.canCreateDirectoryMember()
+                        : canAdd;
             if (shouldShow) {
                 el.style.setProperty('display', 'inline-flex', 'important');
             } else {
