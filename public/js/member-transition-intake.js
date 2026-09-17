@@ -35,6 +35,7 @@
     const state = {
         transition: null,
         transitionLoadedAt: 0,
+        transitionMemberId: null,
         intakePayload: null,
         model: null,
         step: 0,
@@ -2207,6 +2208,9 @@
                     state.transitionLoadedAt =
                         0;
 
+                    state.transitionMemberId =
+                        null;
+
                     await refreshCard({
                         force: true
                     });
@@ -2406,6 +2410,29 @@
     async function loadTransition(
         force = false
     ) {
+        const memberId =
+            Number(
+                currentMemberSafe().id
+            ) || null;
+
+        /*
+         * Never reuse one member's transition cache after
+         * another account signs in within the same browser.
+         */
+        if (
+            state.transitionMemberId !==
+            memberId
+        ) {
+            state.transition =
+                null;
+
+            state.transitionLoadedAt =
+                0;
+
+            state.transitionMemberId =
+                memberId;
+        }
+
         if (
             !force &&
             state.transition &&
@@ -2448,10 +2475,155 @@
         state.transition =
             transition;
 
+        state.transitionMemberId =
+            memberId;
+
         state.transitionLoadedAt =
             Date.now();
 
         return transition;
+    }
+
+    function transitionVisualKey(
+        transition
+    ) {
+        const nextAction =
+            transition &&
+            transition.next_action
+                ? transition.next_action
+                : 'none';
+
+        const intakeStatus =
+            transition &&
+            transition.intake &&
+            transition.intake.status
+                ? transition.intake.status
+                : 'none';
+
+        return (
+            `${nextAction}|${intakeStatus}`
+        );
+    }
+
+    function renderTransitionCallout(
+        card,
+        transition
+    ) {
+        if (
+            !card ||
+            !transition ||
+            !adultActions.has(
+                transition.next_action
+            )
+        ) {
+            return null;
+        }
+
+        const renderKey =
+            transitionVisualKey(
+                transition
+            );
+
+        const previous =
+            card.querySelector(
+                '.member-transition-callout'
+            );
+
+        /*
+         * If the visible state has not changed, leave the existing
+         * DOM completely untouched. This prevents the invitation
+         * from blinking during repeated Home/Journey refreshes.
+         */
+        if (
+            previous &&
+            previous.dataset
+                .transitionKey ===
+                renderKey
+        ) {
+            return previous;
+        }
+
+        const copy =
+            calloutCopy(
+                transition
+            );
+
+        const box =
+            el(
+                'div',
+                'member-transition-callout'
+            );
+
+        box.dataset.transitionKey =
+            renderKey;
+
+        box.appendChild(
+            el(
+                'span',
+                'member-transition-callout__eyebrow',
+                copy.eyebrow
+            )
+        );
+
+        box.appendChild(
+            el(
+                'h3',
+                '',
+                copy.title
+            )
+        );
+
+        box.appendChild(
+            el(
+                'p',
+                '',
+                copy.description
+            )
+        );
+
+        const button =
+            el(
+                'button',
+                copy.actionable
+                    ? 'btn btn-primary'
+                    : 'btn btn-outline',
+                copy.button
+            );
+
+        button.type =
+            'button';
+
+        button.disabled =
+            !copy.actionable;
+
+        if (
+            copy.actionable
+        ) {
+            button.addEventListener(
+                'click',
+                openIntake
+            );
+        }
+
+        box.appendChild(
+            button
+        );
+
+        /*
+         * Replace atomically only when the transition state really
+         * changed. Never remove first and leave a visible gap.
+         */
+        if (previous) {
+            previous.replaceWith(
+                box
+            );
+        } else {
+            card.appendChild(
+                box
+            );
+        }
+
+        return box;
     }
 
     async function refreshCard(
@@ -2462,24 +2634,60 @@
                 'journeyGrowthCard'
             );
 
-        if (!card) return null;
+        if (!card) {
+            return null;
+        }
 
-        const previous =
+        const existing =
             card.querySelector(
                 '.member-transition-callout'
             );
 
-        if (previous) {
-            previous.remove();
+        if (
+            window.koinoniaAuthStatus !==
+            'authenticated'
+        ) {
+            if (existing) {
+                existing.remove();
+            }
+
+            return null;
         }
 
+        /*
+         * journey-dashboard may have just rebuilt journeyGrowthCard.
+         * Restore the known member transition immediately from cache
+         * before any network await. This removes the flash between
+         * canonical Growth rendering and transition rendering.
+         */
+        if (
+            state.transition &&
+            state.transitionMemberId ===
+                (
+                    Number(
+                        currentMemberSafe().id
+                    ) || null
+                ) &&
+            adultActions.has(
+                state.transition
+                    .next_action
+            )
+        ) {
+            renderTransitionCallout(
+                card,
+                state.transition
+            );
+        }
+
+        /*
+         * While offline, retain the already-rendered non-mutating
+         * status instead of tearing it down.
+         */
         if (
             window.navigator.onLine ===
-                false ||
-            window.koinoniaAuthStatus !==
-                'authenticated'
+            false
         ) {
-            return null;
+            return state.transition;
         }
 
         try {
@@ -2495,84 +2703,30 @@
                     transition.next_action
                 )
             ) {
+                const stale =
+                    card.querySelector(
+                        '.member-transition-callout'
+                    );
+
+                if (stale) {
+                    stale.remove();
+                }
+
                 return transition;
             }
 
-            const copy =
-                calloutCopy(
-                    transition
-                );
-
-            const box =
-                el(
-                    'div',
-                    'member-transition-callout'
-                );
-
-            box.appendChild(
-                el(
-                    'span',
-                    'member-transition-callout__eyebrow',
-                    copy.eyebrow
-                )
-            );
-
-            box.appendChild(
-                el(
-                    'h3',
-                    '',
-                    copy.title
-                )
-            );
-
-            box.appendChild(
-                el(
-                    'p',
-                    '',
-                    copy.description
-                )
-            );
-
-            const button =
-                el(
-                    'button',
-                    copy.actionable
-                        ? 'btn btn-primary'
-                        : 'btn btn-outline',
-                    copy.button
-                );
-
-            button.type =
-                'button';
-
-            button.disabled =
-                !copy.actionable;
-
-            if (
-                copy.actionable
-            ) {
-                button.addEventListener(
-                    'click',
-                    openIntake
-                );
-            }
-
-            box.appendChild(
-                button
-            );
-
-            card.appendChild(
-                box
+            renderTransitionCallout(
+                card,
+                transition
             );
 
             return transition;
         } catch (error) {
             /*
-             * The canonical Growth Journey remains usable if
-             * transition state cannot be loaded. Do not replace
-             * it with an error card.
+             * A transient refresh failure must not make an already
+             * valid invitation blink or disappear.
              */
-            return null;
+            return state.transition;
         }
     }
 

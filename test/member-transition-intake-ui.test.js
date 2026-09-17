@@ -58,7 +58,7 @@ test(
 
         assert.match(
             index,
-            /\/js\/member-transition-intake\.js\?v=2/
+            /\/js\/member-transition-intake\.js\?v=3/
         );
 
         assert.match(
@@ -68,7 +68,7 @@ test(
 
         assert.ok(
             index.indexOf(
-                '/js/member-transition-intake.js?v=2'
+                '/js/member-transition-intake.js?v=3'
             ) <
             index.indexOf(
                 '/js/journey-dashboard.js?v=7'
@@ -77,7 +77,7 @@ test(
 
         assert.match(
             sw,
-            /fog-portal-v57/
+            /fog-portal-v58/
         );
 
         assert.match(
@@ -87,7 +87,7 @@ test(
 
         assert.match(
             sw,
-            /\/js\/member-transition-intake\.js\?v=2/
+            /\/js\/member-transition-intake\.js\?v=3/
         );
 
         assert.match(
@@ -275,6 +275,78 @@ test(
         assert.doesNotMatch(
             ui,
             /state\.transition\s*=\s*body;[\s\S]{0,120}return body;/
+        );
+    }
+);
+
+
+test(
+    'Adult Intake callout remains stable across repeated Journey refreshes',
+    () => {
+        const ui =
+            read(
+                'public/js/member-transition-intake.js'
+            );
+
+        assert.match(
+            ui,
+            /dataset\.transitionKey/
+        );
+
+        assert.match(
+            ui,
+            /previous\.replaceWith/
+        );
+
+        assert.match(
+            ui,
+            /state\.transitionMemberId/
+        );
+
+        const start =
+            ui.indexOf(
+                'async function refreshCard'
+            );
+
+        const end =
+            ui.indexOf(
+                'window.MemberTransitionIntakeUI',
+                start
+            );
+
+        assert.ok(
+            start >= 0 &&
+            end > start
+        );
+
+        const region =
+            ui.slice(
+                start,
+                end
+            );
+
+        const cachedRender =
+            region.indexOf(
+                'renderTransitionCallout'
+            );
+
+        const networkLoad =
+            region.indexOf(
+                'await loadTransition'
+            );
+
+        assert.ok(
+            cachedRender >= 0
+        );
+
+        assert.ok(
+            networkLoad > cachedRender,
+            'cached transition must render before awaiting the network'
+        );
+
+        assert.match(
+            ui,
+            /state\.transitionMemberId\s*!==\s*memberId/
         );
     }
 );
