@@ -312,3 +312,51 @@ ON ministry_priority_history (
     youth_id,
     created_at
 );
+
+
+CREATE TABLE IF NOT EXISTS member_transition_recognitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    intake_id INTEGER NOT NULL UNIQUE,
+    review_id INTEGER NOT NULL,
+    youth_id INTEGER NOT NULL,
+
+    recognized_standing TEXT NOT NULL
+        CHECK (
+            recognized_standing IN (
+                'none',
+                'formal_member',
+                'active_servant'
+            )
+        ),
+
+    completion_basis TEXT NOT NULL
+        DEFAULT 'transition_review_recognized',
+
+    recognized_phases_json TEXT NOT NULL DEFAULT '[]',
+
+    previous_journey_json TEXT NOT NULL,
+    resulting_journey_json TEXT NOT NULL,
+
+    recognized_by_user_id INTEGER,
+    recognized_by_name TEXT NOT NULL,
+
+    recognized_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    idempotency_key TEXT NOT NULL UNIQUE,
+
+    FOREIGN KEY (intake_id)
+        REFERENCES member_transition_intakes(id)
+        ON DELETE RESTRICT,
+
+    FOREIGN KEY (review_id)
+        REFERENCES member_transition_reviews(id)
+        ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS
+member_transition_recognition_member_idx
+ON member_transition_recognitions (
+    youth_id,
+    recognized_at
+);
