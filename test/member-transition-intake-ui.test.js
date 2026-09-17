@@ -58,7 +58,7 @@ test(
 
         assert.match(
             index,
-            /\/js\/member-transition-intake\.js\?v=1/
+            /\/js\/member-transition-intake\.js\?v=2/
         );
 
         assert.match(
@@ -68,7 +68,7 @@ test(
 
         assert.ok(
             index.indexOf(
-                '/js/member-transition-intake.js?v=1'
+                '/js/member-transition-intake.js?v=2'
             ) <
             index.indexOf(
                 '/js/journey-dashboard.js?v=7'
@@ -77,7 +77,7 @@ test(
 
         assert.match(
             sw,
-            /fog-portal-v56/
+            /fog-portal-v57/
         );
 
         assert.match(
@@ -87,7 +87,7 @@ test(
 
         assert.match(
             sw,
-            /\/js\/member-transition-intake\.js\?v=1/
+            /\/js\/member-transition-intake\.js\?v=2/
         );
 
         assert.match(
@@ -244,6 +244,37 @@ test(
             ui.includes(
                 'Awaiting Recognition'
             )
+        );
+    }
+);
+
+
+test(
+    'Adult Intake UI unwraps the canonical transition state envelope',
+    () => {
+        const ui =
+            read(
+                'public/js/member-transition-intake.js'
+            );
+
+        assert.match(
+            ui,
+            /body\s*&&\s*body\.state/
+        );
+
+        assert.match(
+            ui,
+            /state\.transition\s*=\s*transition/
+        );
+
+        assert.match(
+            ui,
+            /return transition;/
+        );
+
+        assert.doesNotMatch(
+            ui,
+            /state\.transition\s*=\s*body;[\s\S]{0,120}return body;/
         );
     }
 );

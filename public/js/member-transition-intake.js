@@ -2421,13 +2421,37 @@
                 TRANSITION_URL
             );
 
+        /*
+         * /api/member-transition/me returns the canonical
+         * transition state inside { success: true, state: {...} }.
+         * Accept the envelope while retaining direct-state
+         * compatibility for tests and future internal callers.
+         */
+        const transition =
+            body &&
+            body.state &&
+            typeof body.state === 'object' &&
+            !Array.isArray(body.state)
+                ? body.state
+                : body;
+
+        if (
+            !transition ||
+            typeof transition !== 'object' ||
+            Array.isArray(transition)
+        ) {
+            throw new Error(
+                'Transition state is unavailable.'
+            );
+        }
+
         state.transition =
-            body;
+            transition;
 
         state.transitionLoadedAt =
             Date.now();
 
-        return body;
+        return transition;
     }
 
     async function refreshCard(
