@@ -158,6 +158,44 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
         );
     assert.notEqual(isolatedServerSource, serverSource);
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedServerSource);
+        // Transition server dependencies required by isolated server.js fixture.
+        {
+            const transitionDependencyFs =
+                require('node:fs').promises;
+
+            const transitionDependencyPath =
+                require('node:path');
+
+            await transitionDependencyFs.mkdir(
+                transitionDependencyPath.join(
+                    temporaryRoot,
+                    'lib'
+                ),
+                {
+                    recursive: true
+                }
+            );
+
+            for (const filename of [
+                'member-transition-http.js',
+                'member-transition-community-intent.js',
+                'ministry-service-journey.js',
+                'ministry-discernment-journey.js'
+            ]) {
+                await transitionDependencyFs.copyFile(
+                    transitionDependencyPath.join(
+                        repositoryRoot,
+                        'lib',
+                        filename
+                    ),
+                    transitionDependencyPath.join(
+                        temporaryRoot,
+                        'lib',
+                        filename
+                    )
+                );
+            }
+        }
     await fsp.copyFile(
         path.join(repositoryRoot, 'lib', 'sqlite-backup.js'),
         path.join(temporaryRoot, 'lib', 'sqlite-backup.js')

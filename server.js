@@ -14,6 +14,8 @@ const {
 } = require('./lib/birthday-age-sync');
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
 const GrowthJourney = require('./lib/growth-journey');
+const MemberTransitionHttp = require('./lib/member-transition-http');
+const MinistryServiceJourney = require('./lib/ministry-service-journey');
 const GrowthNotifications = require('./lib/growth-notifications');
 const NotificationCenter = require('./lib/notification-center');
 const {
@@ -2335,6 +2337,17 @@ const accountClaimStore = createAccountClaimStore({ database: db });
 const legalAcceptanceStore = createLegalAcceptanceStore({
     database: db,
     currentPolicies: currentLegalPolicies
+});
+
+// Member Transition / Existing Member Journey.
+//
+// The legal acceptance middleware was registered earlier in server startup,
+// so these routes remain behind the Terms / Privacy gate. Binding happens
+// here because the SQLite handle must exist before the controller receives it.
+MemberTransitionHttp.registerMemberTransitionRoutes({
+    app,
+    db,
+    requireAuth
 });
 let emailRecoveryPublicOrigin = null;
 let emailRecoveryOutbox = null;
@@ -9947,20 +9960,163 @@ app.put('/api/youth-v37/profile/:id', requireSelfOr('edit_entries', req => req.p
     });
 });
 
-function handleMinistryPriority(req, res) {
-    const mappingId = normalizeCanonicalId(req.params.mappingId || req.params.mapping_id);
-    if (!mappingId) return res.status(400).json({ error: 'Invalid ministry membership.' });
-    db.get('SELECT youth_id FROM ministry_members WHERE id = ?', [mappingId], (lookupErr, mapping) => {
-        if (lookupErr) return res.status(500).json({ error: 'Unable to load ministry membership.' });
-        if (!mapping) return res.status(404).json({ error: 'Ministry membership not found.' });
-        db.serialize(() => {
-            db.run('UPDATE ministry_members SET is_priority = 0 WHERE youth_id = ?', [mapping.youth_id]);
-            db.run('UPDATE ministry_members SET is_priority = 1 WHERE id = ? AND youth_id = ?', [mappingId, mapping.youth_id], function(updateErr) {
-                if (updateErr) return res.status(500).json({ error: 'Unable to update priority ministry.' });
-                return res.json({ success: true });
-            });
+async function handleMinistryPriority(req, res) {
+    const mappingId = normalizeCanonicalId(
+        req.params.mappingId ||
+        req.params.mapping_id
+    );
+
+    if (!mappingId) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid ministry membership.'
         });
-    });
+    }
+
+    try {
+        const mapping = await new Promise(
+            (resolve, reject) => {
+                db.get(
+                    `SELECT youth_id
+                     FROM ministry_members
+                     WHERE id = ?`,
+                    [mappingId],
+                    (lookupErr, row) => {
+                        if (lookupErr) {
+                            reject(lookupErr);
+                            return;
+                        }
+
+                        resolve(row || null);
+                    }
+                );
+            }
+        );
+
+        if (!mapping) {
+            return res.status(404).json({
+                success: false,
+                error: 'Ministry membership not found.'
+            });
+        }
+
+        const actorUserId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.userId
+            );
+
+        const authenticatedYouthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        const actor =
+            getCanonicalDisplayActor(req) ||
+            getCanonicalAuditActor(req) ||
+            (
+                actorUserId
+                    ? `User ${actorUserId}`
+                    : 'Authorized actor'
+            );
+
+        const isOwner =
+            authenticatedYouthId &&
+            Number(authenticatedYouthId) ===
+                Number(mapping.youth_id);
+
+        const result =
+            await MinistryServiceJourney
+                .setPriorityMinistry(
+                    db,
+                    {
+                        youthId:
+                            mapping.youth_id,
+
+                        mappingId,
+
+                        actorUserId,
+
+                        actorName:
+                            actor,
+
+                        source:
+                            isOwner
+                                ? 'member_profile'
+                                : 'leadership_review',
+
+                        reason:
+                            isOwner
+                                ? 'Member updated Priority Ministry from profile.'
+                                : 'Authorized leadership updated Priority Ministry.'
+                    }
+                );
+
+        logActivity(
+            actor,
+            result.changed
+                ? 'MINISTRY_PRIORITY_UPDATED'
+                : 'MINISTRY_PRIORITY_CONFIRMED',
+            `Priority Ministry mapping ${mappingId} for Member ID ${mapping.youth_id}`
+        );
+
+        return res.json({
+            success: true,
+            result
+        });
+    } catch (error) {
+        const code =
+            error &&
+            typeof error.code === 'string'
+                ? error.code
+                : null;
+
+        if (
+            code === 'MINISTRY_MEMBERSHIP_NOT_FOUND'
+        ) {
+            return res.status(404).json({
+                success: false,
+                code,
+                error: error.message
+            });
+        }
+
+        if (
+            code === 'ACTIVE_DISCERNMENT_PRIORITY_CONFLICT' ||
+            code === 'MULTIPLE_PRIORITY_CONFLICT' ||
+            code === 'PRIORITY_UPDATE_CONFLICT'
+        ) {
+            return res.status(409).json({
+                success: false,
+                code,
+                error: error.message
+            });
+        }
+
+        if (
+            code === 'MINISTRY_NOT_PRIORITY_ELIGIBLE' ||
+            code === 'INVALID_PRIORITY_TARGET' ||
+            code === 'INVALID_PRIORITY_SOURCE' ||
+            code === 'ACTOR_REQUIRED'
+        ) {
+            return res.status(400).json({
+                success: false,
+                code,
+                error: error.message
+            });
+        }
+
+        console.error(
+            '[Priority Ministry] Update failed:',
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            error: 'Unable to update Priority Ministry.'
+        });
+    }
 }
 
 app.post(

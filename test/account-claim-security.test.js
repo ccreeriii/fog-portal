@@ -233,6 +233,44 @@ test('account claim HTTP foundation enforces authorization, privacy, and bounded
             'module.exports = { app, db, sessionStore, ready: applyDeterministicRuntimeMigration() };'
         );
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedSource);
+        // Transition server dependencies required by isolated server.js fixture.
+        {
+            const transitionDependencyFs =
+                require('node:fs').promises;
+
+            const transitionDependencyPath =
+                require('node:path');
+
+            await transitionDependencyFs.mkdir(
+                transitionDependencyPath.join(
+                    temporaryRoot,
+                    'lib'
+                ),
+                {
+                    recursive: true
+                }
+            );
+
+            for (const filename of [
+                'member-transition-http.js',
+                'member-transition-community-intent.js',
+                'ministry-service-journey.js',
+                'ministry-discernment-journey.js'
+            ]) {
+                await transitionDependencyFs.copyFile(
+                    transitionDependencyPath.join(
+                        repositoryRoot,
+                        'lib',
+                        filename
+                    ),
+                    transitionDependencyPath.join(
+                        temporaryRoot,
+                        'lib',
+                        filename
+                    )
+                );
+            }
+        }
     for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'legal-acceptance.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
     }
