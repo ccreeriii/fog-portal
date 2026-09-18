@@ -213,3 +213,16 @@ body.member-transition-journey-open {
         border-radius: 22px;
     }
 }
+
+/*
+ * Persistent accelerated-transition host.
+ * It intentionally sits outside journeyGrowthCard so canonical Home
+ * refreshes cannot destroy the transition DOM and cause flicker.
+ */
+.member-transition-journey-slot {
+    margin: -2px 0 16px;
+}
+
+.member-transition-journey-slot:empty {
+    display: none;
+}

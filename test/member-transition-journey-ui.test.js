@@ -174,7 +174,7 @@ test(
 
         const transition =
             index.indexOf(
-                '/js/member-transition-journey.js?v=1'
+                '/js/member-transition-journey.js?v=2'
             );
 
         const dashboard =
@@ -192,25 +192,25 @@ test(
 
         assert.ok(
             index.includes(
-                '/css/member-transition-journey.css?v=1'
+                '/css/member-transition-journey.css?v=2'
             )
         );
 
         assert.ok(
             sw.includes(
-                "fog-portal-v60"
+                "fog-portal-v61"
             )
         );
 
         assert.ok(
             sw.includes(
-                '/js/member-transition-journey.js?v=1'
+                '/js/member-transition-journey.js?v=2'
             )
         );
 
         assert.ok(
             sw.includes(
-                '/css/member-transition-journey.css?v=1'
+                '/css/member-transition-journey.css?v=2'
             )
         );
 
@@ -218,6 +218,120 @@ test(
             sw.includes(
                 '/js/journey-dashboard.js?v=8'
             )
+        );
+    }
+);
+
+test(
+    'Accelerated transition uses a persistent sibling slot outside journeyGrowthCard',
+    () => {
+        const ui =
+            read(
+                'public/js/member-transition-journey.js'
+            );
+
+        assert.ok(
+            ui.includes(
+                "memberTransitionJourneySlot"
+            )
+        );
+
+        assert.ok(
+            ui.includes(
+                "growthCard.nextSibling"
+            )
+        );
+
+        assert.ok(
+            ui.includes(
+                "parent.insertBefore"
+            )
+        );
+
+        assert.ok(
+            ui.includes(
+                "ensureTransitionSlot"
+            )
+        );
+
+        assert.ok(
+            ui.includes(
+                "renderCallout("
+            )
+        );
+
+        assert.equal(
+            /renderCallout\(\s*card\s*,\s*transition\s*\)/.test(ui),
+            false,
+            'transition callout must not be remounted inside journeyGrowthCard'
+        );
+    }
+);
+
+test(
+    'Accelerated transition refresh keeps existing DOM mounted during fetch',
+    () => {
+        const ui =
+            read(
+                'public/js/member-transition-journey.js'
+            );
+
+        const functionStart =
+            ui.indexOf(
+                'async function refreshCard'
+            );
+
+        assert.ok(
+            functionStart >= 0
+        );
+
+        const section =
+            ui.slice(
+                functionStart,
+                functionStart + 5000
+            );
+
+        const hostAt =
+            section.indexOf(
+                'ensureTransitionSlot'
+            );
+
+        const fetchAt =
+            section.indexOf(
+                'loadTransition'
+            );
+
+        assert.ok(
+            hostAt >= 0
+        );
+
+        assert.ok(
+            fetchAt > hostAt,
+            'persistent host must exist before async transition refresh'
+        );
+    }
+);
+
+test(
+    'No-flicker fix leaves canonical Journey Dashboard renderer untouched',
+    () => {
+        const dashboard =
+            read(
+                'public/js/journey-dashboard.js'
+            );
+
+        assert.equal(
+            dashboard.includes(
+                'detachGrowthJourneyExtensions'
+            ),
+            false
+        );
+
+        assert.equal(
+            dashboard.includes(
+                'restoreGrowthJourneyExtensions'
+            ),
+            false
         );
     }
 );

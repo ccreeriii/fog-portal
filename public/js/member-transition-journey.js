@@ -1491,12 +1491,75 @@
         }
     }
 
+    const TRANSITION_SLOT_ID =
+        'memberTransitionJourneySlot';
+
+    function ensureTransitionSlot(
+        growthCard
+    ) {
+        let slot =
+            document.getElementById(
+                TRANSITION_SLOT_ID
+            );
+
+        if (!slot) {
+            slot =
+                el(
+                    'div',
+                    'member-transition-journey-slot'
+                );
+
+            slot.id =
+                TRANSITION_SLOT_ID;
+        }
+
+        const parent =
+            growthCard.parentNode;
+
+        if (!parent) {
+            return null;
+        }
+
+        /*
+         * Keep the transition journey as a sibling immediately after
+         * the canonical Growth Journey card.
+         *
+         * journey-dashboard.js is allowed to clear/rebuild the
+         * contents of journeyGrowthCard. Because this slot is outside
+         * that node, the transition card remains mounted continuously
+         * and does not blink during Home refreshes.
+         */
+        if (
+            slot.parentNode !== parent ||
+            slot.previousElementSibling !==
+                growthCard
+        ) {
+            parent.insertBefore(
+                slot,
+                growthCard.nextSibling
+            );
+        }
+
+        return slot;
+    }
+
+    function removeTransitionSlot() {
+        const slot =
+            document.getElementById(
+                TRANSITION_SLOT_ID
+            );
+
+        if (slot) {
+            slot.remove();
+        }
+    }
+
     function renderCallout(
-        card,
+        host,
         transition
     ) {
         const existing =
-            card.querySelector(
+            host.querySelector(
                 '.member-transition-journey-callout'
             );
 
@@ -1507,6 +1570,15 @@
         ) {
             if (existing) {
                 existing.remove();
+            }
+
+            if (
+                host &&
+                host.id ===
+                    TRANSITION_SLOT_ID &&
+                host.childElementCount === 0
+            ) {
+                host.remove();
             }
 
             return null;
@@ -1609,7 +1681,7 @@
                 box
             );
         } else {
-            card.appendChild(
+            host.appendChild(
                 box
             );
         }
@@ -1629,21 +1701,32 @@
             return null;
         }
 
-        const existing =
-            card.querySelector(
-                '.member-transition-journey-callout'
-            );
-
         if (
             window.koinoniaAuthStatus !==
             'authenticated'
         ) {
-            if (existing) {
-                existing.remove();
-            }
-
+            removeTransitionSlot();
             return null;
         }
+
+        /*
+         * The persistent sibling slot is intentionally created before
+         * any network request. Existing rendered transition content
+         * therefore stays mounted while fresh state is being loaded.
+         */
+        const host =
+            ensureTransitionSlot(
+                card
+            );
+
+        if (!host) {
+            return null;
+        }
+
+        const existing =
+            host.querySelector(
+                '.member-transition-journey-callout'
+            );
 
         try {
             let transition =
@@ -1675,11 +1758,18 @@
                     existing.remove();
                 }
 
+                if (
+                    host.childElementCount ===
+                    0
+                ) {
+                    host.remove();
+                }
+
                 return transition;
             }
 
             renderCallout(
-                card,
+                host,
                 transition
             );
 
