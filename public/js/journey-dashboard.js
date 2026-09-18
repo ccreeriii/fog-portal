@@ -347,10 +347,56 @@
         return 'growth';
     }
 
+    /*
+     * Transition callouts are independent extensions of the canonical
+     * Growth Journey card. Preserve their live DOM nodes while the
+     * underlying Growth content refreshes so members never see the
+     * extension disappear and reappear between async refreshes.
+     *
+     * This intentionally protects both Adult Intake and the downstream
+     * Existing Member Transition journey from render flicker.
+     */
+    function detachGrowthJourneyExtensions(card) {
+        return Array
+            .from(card.children)
+            .filter(node =>
+                node &&
+                node.classList &&
+                (
+                    node.classList.contains(
+                        'member-transition-intake-callout'
+                    ) ||
+                    node.classList.contains(
+                        'member-transition-journey-callout'
+                    )
+                )
+            )
+            .map(node => {
+                node.remove();
+                return node;
+            });
+    }
+
+    function restoreGrowthJourneyExtensions(
+        card,
+        extensions
+    ) {
+        extensions.forEach(
+            node => card.appendChild(node)
+        );
+    }
+
     function renderGrowth(document, window, payload) {
         const card = document.getElementById('journeyGrowthCard');
         if (!card) return;
+
+        const preservedExtensions =
+            detachGrowthJourneyExtensions(
+                card
+            );
+
         clear(card);
+
         const model = buildJourneyModel(payload.journey || {});
         appendCardHeading(
             document,
@@ -485,6 +531,11 @@
             shortcuts.appendChild(button);
         });
         card.appendChild(shortcuts);
+
+        restoreGrowthJourneyExtensions(
+            card,
+            preservedExtensions
+        );
     }
 
     function renderError(document, message) {
