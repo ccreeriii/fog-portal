@@ -63,7 +63,7 @@ test(
 
         assert.match(
             index,
-            /\/js\/journey-dashboard\.js\?v=7/
+            /\/js\/journey-dashboard\.js\?v=8/
         );
 
         assert.ok(
@@ -71,13 +71,13 @@ test(
                 '/js/member-transition-intake.js?v=4'
             ) <
             index.indexOf(
-                '/js/journey-dashboard.js?v=7'
+                '/js/journey-dashboard.js?v=8'
             )
         );
 
         assert.match(
             sw,
-            /fog-portal-v59/
+            /fog-portal-v60/
         );
 
         assert.match(
@@ -92,7 +92,7 @@ test(
 
         assert.match(
             sw,
-            /\/js\/journey-dashboard\.js\?v=7/
+            /\/js\/journey-dashboard\.js\?v=8/
         );
 
         assert.match(

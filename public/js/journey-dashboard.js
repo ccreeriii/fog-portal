@@ -664,12 +664,27 @@
                 state.growthMoment = null;
                 renderGrowth(document, window, payload);
 
+                let memberTransitionState =
+                    null;
+
                 if (
                     window.MemberTransitionIntakeUI &&
                     typeof window.MemberTransitionIntakeUI.refreshCard === 'function'
                 ) {
-                    await window.MemberTransitionIntakeUI.refreshCard({
-                        force
+                    memberTransitionState =
+                        await window.MemberTransitionIntakeUI.refreshCard({
+                            force
+                        });
+                }
+
+                if (
+                    window.MemberTransitionJourneyUI &&
+                    typeof window.MemberTransitionJourneyUI.refreshCard === 'function'
+                ) {
+                    await window.MemberTransitionJourneyUI.refreshCard({
+                        force,
+                        transition:
+                            memberTransitionState
                     });
                 }
 
