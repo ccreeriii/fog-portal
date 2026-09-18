@@ -198,7 +198,7 @@ test(
 
         assert.ok(
             sw.includes(
-                "fog-portal-v63"
+                "fog-portal-v64"
             )
         );
 

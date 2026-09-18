@@ -244,7 +244,7 @@ test(
 
         assert.match(
             index,
-            /\/js\/ministry-discernment-leadership\.js\?v=1/
+            /\/js\/ministry-discernment-leadership\.js\?v=2/
         );
 
         assert.ok(
@@ -252,13 +252,13 @@ test(
                 '/js/member-transition-leadership.js?v=1'
             ) <
             index.indexOf(
-                '/js/ministry-discernment-leadership.js?v=1'
+                '/js/ministry-discernment-leadership.js?v=2'
             )
         );
 
         assert.match(
             sw,
-            /const CACHE_NAME = 'fog-portal-v63';/
+            /const CACHE_NAME = 'fog-portal-v64';/
         );
 
         assert.match(
@@ -268,7 +268,42 @@ test(
 
         assert.match(
             sw,
-            /\/js\/ministry-discernment-leadership\.js\?v=1/
+            /\/js\/ministry-discernment-leadership\.js\?v=2/
+        );
+    }
+);
+
+test(
+    'discernment navigation survives legacy Ministries three-tab runtime rebuild',
+    () => {
+        assert.match(
+            ui,
+            /function ensureDiscernmentButton\(\)/
+        );
+
+        assert.match(
+            ui,
+            /function installMinistrySubtabBridge\(\)/
+        );
+
+        assert.match(
+            ui,
+            /btnSubMinistryModeration/
+        );
+
+        assert.match(
+            ui,
+            /panel\.style\.display = 'none'/
+        );
+
+        assert.match(
+            ui,
+            /panel\.style\.display = 'block'/
+        );
+
+        assert.match(
+            ui,
+            /__ministryDiscernmentBridge/
         );
     }
 );

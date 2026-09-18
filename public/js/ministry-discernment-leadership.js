@@ -75,6 +75,106 @@
         );
     }
 
+    function ensureDiscernmentButton() {
+        let button =
+            byId('btnSubMinistryDiscernment');
+
+        if (button) {
+            return button;
+        }
+
+        const ministriesTab =
+            byId('ministriesTab');
+
+        const subNav =
+            ministriesTab
+                ? ministriesTab.querySelector('.sub-nav')
+                : null;
+
+        if (!subNav) {
+            return null;
+        }
+
+        button =
+            el('button', {
+                type: 'button',
+                className: 'sub-nav-btn',
+                text: '🧭 Discernment'
+            });
+
+        button.id =
+            'btnSubMinistryDiscernment';
+
+        button.style.display =
+            'none';
+
+        button.addEventListener(
+            'click',
+            () => open()
+        );
+
+        const createButton =
+            byId('btnSubMinistryCreate');
+
+        if (
+            createButton &&
+            createButton.parentNode === subNav
+        ) {
+            subNav.insertBefore(
+                button,
+                createButton
+            );
+        } else {
+            subNav.appendChild(button);
+        }
+
+        return button;
+    }
+
+    function installMinistrySubtabBridge() {
+        const legacy =
+            window.switchMinistrySubTab;
+
+        if (
+            typeof legacy !== 'function' ||
+            legacy.__ministryDiscernmentBridge === true
+        ) {
+            return;
+        }
+
+        function bridgedMinistrySubTab(tab) {
+            if (tab === 'discernment') {
+                return open();
+            }
+
+            const panel =
+                byId('subTabMinistryDiscernment');
+
+            const button =
+                byId('btnSubMinistryDiscernment');
+
+            if (panel) {
+                panel.classList.remove('active');
+                panel.style.display = 'none';
+            }
+
+            if (button) {
+                button.classList.remove('active');
+            }
+
+            return legacy.apply(
+                this,
+                arguments
+            );
+        }
+
+        bridgedMinistrySubTab
+            .__ministryDiscernmentBridge = true;
+
+        window.switchMinistrySubTab =
+            bridgedMinistrySubTab;
+    }
+
     function statusLabel(value) {
         const labels = {
             intent_submitted: 'Intent Submitted',
@@ -1117,12 +1217,14 @@
     function activatePanel() {
         document
             .querySelectorAll('.ministry-sub-tab')
-            .forEach(node =>
-                node.classList.remove('active')
-            );
+            .forEach(node => {
+                node.classList.remove('active');
+                node.style.display = 'none';
+            });
 
         [
             'btnSubMinistryList',
+            'btnSubMinistryModeration',
             'btnSubMinistryCreate',
             'btnSubMinistryDiscernment'
         ].forEach(id => {
@@ -1140,6 +1242,7 @@
 
         if (panel) {
             panel.classList.add('active');
+            panel.style.display = 'block';
         }
 
         if (button) {
@@ -1148,6 +1251,9 @@
     }
 
     async function open() {
+        ensureDiscernmentButton();
+        installMinistrySubtabBridge();
+
         if (!hasLeadershipPermission()) {
             setMessage(
                 'Ministry discernment leadership requires Ministries and Edit Entries permissions.',
@@ -1173,8 +1279,10 @@
     }
 
     function refreshPermissionVisibility() {
+        installMinistrySubtabBridge();
+
         const button =
-            byId('btnSubMinistryDiscernment');
+            ensureDiscernmentButton();
 
         if (!button) return;
 
@@ -1190,7 +1298,10 @@
         [250, 750, 1500, 3000]
             .forEach(delay => {
                 window.setTimeout(
-                    refreshPermissionVisibility,
+                    () => {
+                        installMinistrySubtabBridge();
+                        refreshPermissionVisibility();
+                    },
                     delay
                 );
             });
