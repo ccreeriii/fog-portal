@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="/css/member-transition-intake.css?v=1">
     <link rel="stylesheet" href="/css/member-transition-journey.css?v=2">
     <link rel="stylesheet" href="/css/member-transition-leadership.css?v=1">
+    <link rel="stylesheet" href="/css/ministry-discernment-leadership.css?v=1">
     <link rel="stylesheet" href="/css/community-features.css?v=3">
     <link rel="stylesheet" href="/css/fog-premium.css?v=17">
     <style>
@@ -2121,6 +2122,7 @@
         <div class="sub-nav">
             <button id="btnSubMinistryList" class="sub-nav-btn active" onclick="switchMinistrySubTab('list')">🏛️ Directory</button>
             <button id="btnSubMinistryCreate" class="sub-nav-btn" onclick="switchMinistrySubTab('create')" style="display:none;">➕ Create</button>
+            <button id="btnSubMinistryDiscernment" class="sub-nav-btn" type="button" style="display:none;" onclick="MinistryDiscernmentLeadershipUI.open()">🧭 Discernment</button>
         </div>
         <div id="subTabMinistryCreate" class="ministry-sub-tab">
             <div class="card">
@@ -2135,6 +2137,37 @@
         </div>
         <div id="subTabMinistryList" class="ministry-sub-tab active">
             <div class="card"><h2>Ministries</h2><div id="ministryListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;"></div></div>
+        </div>
+        <div id="subTabMinistryDiscernment" class="ministry-sub-tab">
+            <div class="ministry-discernment-panel">
+                <h2 class="ministry-discernment-heading">🧭 Ministry Discernment</h2>
+                <p class="ministry-discernment-intro">
+                    Walk with members through prayerful ministry discernment,
+                    consultation, optional assessment, recommendation, and completion.
+                    Discernment records do not automatically change ministry roles,
+                    Priority Ministry, Community Intent, or Growth standing.
+                </p>
+
+                <div
+                    id="ministryDiscernmentStatus"
+                    class="ministry-discernment-status"
+                    aria-live="polite"></div>
+
+                <div class="ministry-discernment-shell">
+                    <div class="ministry-discernment-panel">
+                        <h3 style="margin-top:0;">Discernment Cases</h3>
+                        <div id="ministryDiscernmentCaseList"></div>
+                    </div>
+
+                    <div
+                        id="ministryDiscernmentCaseDetail"
+                        class="ministry-discernment-panel">
+                        <div class="ministry-discernment-empty">
+                            Select a discernment case to review it.
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -4436,6 +4469,7 @@
     <script src="/js/member-transition-intake.js?v=4"></script>
     <script src="/js/member-transition-journey.js?v=2"></script>
     <script src="/js/member-transition-leadership.js?v=1"></script>
+    <script src="/js/ministry-discernment-leadership.js?v=1"></script>
     <script src="/js/journey-dashboard.js?v=8"></script>
     <script src="/js/postlaunch-hotfix.js?v=4"></script>
     <script src="/js/community-feature-polish.js?v=7"></script>
