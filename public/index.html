@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="/css/journey-dashboard.css?v=4">
     <link rel="stylesheet" href="/css/member-transition-intake.css?v=1">
     <link rel="stylesheet" href="/css/member-transition-journey.css?v=2">
+    <link rel="stylesheet" href="/css/member-transition-leadership.css?v=1">
     <link rel="stylesheet" href="/css/community-features.css?v=3">
     <link rel="stylesheet" href="/css/fog-premium.css?v=17">
     <style>
@@ -1729,6 +1730,7 @@
             <button id="btnSubAdminGroups" class="sub-nav-btn active" onclick="V2Discipleship.switchAdminSubTab('groups')">🔥 Groups</button>
             <button id="btnSubAdminGamification" class="sub-nav-btn" onclick="V6Gamification.switchAdminTab('gamification')">🎯 Gamification</button>
             <button id="btnSubAdminHabits" class="sub-nav-btn" onclick="V2Discipleship.switchAdminSubTab('habits')">📖 Daily Habits</button>
+            <button id="btnSubAdminMemberJourney" class="sub-nav-btn" type="button" style="display:none;" onclick="MemberTransitionLeadershipUI.open()">🧭 Member Journey Review</button>
         </div>
         <div id="subTabAdminGroups" class="discipleship-admin-sub-tab active">
             <div class="card">
@@ -1787,6 +1789,51 @@
                 </form>
             </div>
         </div>
+        <div
+            id="subTabAdminMemberJourney"
+            class="discipleship-admin-sub-tab"
+            style="display:none;"
+        >
+            <div class="card member-journey-review-shell">
+                <div class="member-journey-review-heading">
+                    <div>
+                        <h2>🧭 Member Journey Review</h2>
+                        <p>
+                            Review Adult Member Intake stories and recognize
+                            historical Growth standing through a separate,
+                            explicit leadership action.
+                        </p>
+                    </div>
+                </div>
+
+                <div
+                    id="memberJourneyReviewStatus"
+                    class="member-journey-review-status"
+                    aria-live="polite"
+                ></div>
+
+                <div class="member-journey-review-layout">
+                    <div
+                        id="memberJourneyReviewList"
+                        class="member-journey-review-list"
+                    >
+                        <p class="member-journey-review-empty">
+                            Open this section to load Adult Member Intakes.
+                        </p>
+                    </div>
+
+                    <div
+                        id="memberJourneyReviewDetail"
+                        class="member-journey-review-detail"
+                    >
+                        <div class="member-journey-review-empty-state">
+                            Select an Adult Member Intake to review.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
 <div id="subTabAdminGamification" class="discipleship-admin-sub-tab" style="display:none;">
             <div class="sub-nav" style="margin-bottom:15px;">
                 <button id="btnGamAdminList" class="sub-nav-btn active" onclick="V6Gamification.switchAdminGamificationTab('list')">📋 Weekly Challenges</button>
@@ -4388,6 +4435,7 @@
     </script>
     <script src="/js/member-transition-intake.js?v=4"></script>
     <script src="/js/member-transition-journey.js?v=2"></script>
+    <script src="/js/member-transition-leadership.js?v=1"></script>
     <script src="/js/journey-dashboard.js?v=8"></script>
     <script src="/js/postlaunch-hotfix.js?v=4"></script>
     <script src="/js/community-feature-polish.js?v=7"></script>
