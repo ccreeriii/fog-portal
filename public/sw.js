@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v61';
+const CACHE_NAME = 'fog-portal-v60';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -30,7 +30,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/v10-expansion.js?v=12.3',
     '/js/member-transition-intake.js?v=4',
     '/js/member-transition-journey.js?v=1',
-    '/js/journey-dashboard.js?v=9',
+    '/js/journey-dashboard.js?v=8',
     '/js/postlaunch-hotfix.js?v=4',
     '/js/community-feature-polish.js?v=7',
     '/manifest.json',

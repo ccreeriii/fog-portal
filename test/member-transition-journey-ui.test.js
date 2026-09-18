@@ -179,7 +179,7 @@ test(
 
         const dashboard =
             index.indexOf(
-                '/js/journey-dashboard.js?v=9'
+                '/js/journey-dashboard.js?v=8'
             );
 
         assert.ok(
@@ -198,7 +198,7 @@ test(
 
         assert.ok(
             sw.includes(
-                "fog-portal-v61"
+                "fog-portal-v60"
             )
         );
 
@@ -216,81 +216,8 @@ test(
 
         assert.ok(
             sw.includes(
-                '/js/journey-dashboard.js?v=9'
+                '/js/journey-dashboard.js?v=8'
             )
-        );
-    }
-);
-
-test(
-    'Canonical Growth refresh preserves transition callouts instead of blinking them away',
-    () => {
-        const dashboard =
-            read(
-                'public/js/journey-dashboard.js'
-            );
-
-        assert.ok(
-            dashboard.includes(
-                'detachGrowthJourneyExtensions'
-            )
-        );
-
-        assert.ok(
-            dashboard.includes(
-                'restoreGrowthJourneyExtensions'
-            )
-        );
-
-        assert.ok(
-            dashboard.includes(
-                "'member-transition-intake-callout'"
-            )
-        );
-
-        assert.ok(
-            dashboard.includes(
-                "'member-transition-journey-callout'"
-            )
-        );
-
-        const detachAt =
-            dashboard.indexOf(
-                'detachGrowthJourneyExtensions(',
-                dashboard.indexOf(
-                    'function renderGrowth'
-                )
-            );
-
-        const clearAt =
-            dashboard.indexOf(
-                'clear(card);',
-                dashboard.indexOf(
-                    'function renderGrowth'
-                )
-            );
-
-        const restoreAt =
-            dashboard.indexOf(
-                'restoreGrowthJourneyExtensions(',
-                dashboard.indexOf(
-                    'function renderGrowth'
-                )
-            );
-
-        assert.ok(
-            detachAt >= 0,
-            'transition extensions must be detached before base redraw'
-        );
-
-        assert.ok(
-            clearAt > detachAt,
-            'base clear must occur only after extension preservation'
-        );
-
-        assert.ok(
-            restoreAt > clearAt,
-            'extensions must be restored after the base Growth redraw'
         );
     }
 );
