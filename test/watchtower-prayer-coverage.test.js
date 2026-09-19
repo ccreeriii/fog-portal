@@ -433,7 +433,7 @@ test('normal assigned prayer winning after a claim resolves coverage without fal
     assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM growth_evidence')).count, 0);
 });
 
-test('server-derived Manila window opens at 22:00, closes at 23:00, and rolls date at Manila midnight', async t => {
+test('server-derived Manila window opens at 22:00 through 23:59 and closes at Manila midnight', async t => {
     const db = openDb();
     t.after(() => close(db));
     await createSchema(db);
@@ -442,11 +442,13 @@ test('server-derived Manila window opens at 22:00, closes at 23:00, and rolls da
     assert.equal(Watchtower.getWindowStatus(new Date('2026-09-14T13:59:59.000Z')).phase, 'before_open');
     assert.equal(Watchtower.getWindowStatus(new Date('2026-09-14T14:00:00.000Z')).open, true);
     assert.equal(Watchtower.getWindowStatus(new Date('2026-09-14T14:59:59.000Z')).open, true);
-    assert.equal(Watchtower.getWindowStatus(new Date('2026-09-14T15:00:00.000Z')).phase, 'closed');
+    assert.equal(Watchtower.getWindowStatus(new Date('2026-09-14T15:59:59.000Z')).open, true);
+    assert.equal(Watchtower.getWindowStatus(new Date('2026-09-14T14:00:00.000Z')).closes_at, '2026-09-15T00:00:00+08:00');
+    assert.equal(Watchtower.getWindowStatus(new Date('2026-09-14T16:00:00.000Z')).open, false);
     assert.equal(Watchtower.getWindowStatus(new Date('2026-09-14T16:00:00.000Z')).manila_date, '2026-09-15');
     assert.equal(Watchtower.getManilaMondayKey(new Date('2026-09-14T16:00:00.000Z')), '2026-09-14');
 
-    for (const when of ['2026-09-14T13:59:59.000Z', '2026-09-14T15:00:00.000Z']) {
+    for (const when of ['2026-09-14T13:59:59.000Z', '2026-09-14T16:00:00.000Z']) {
         await assert.rejects(
             Watchtower.claimWatchtowerMember(db, {
                 actorYouthId: 90,
@@ -458,7 +460,7 @@ test('server-derived Manila window opens at 22:00, closes at 23:00, and rolls da
     }
 });
 
-test('23:00 report snapshots mixed coverage once and notifies only canonical access_prayer recipients by Push', async t => {
+test('midnight report snapshots the preceding Manila coverage date once and notifies only canonical access_prayer recipients by Push', async t => {
     const db = openDb();
     t.after(() => close(db));
     await createSchema(db);
@@ -477,9 +479,28 @@ test('23:00 report snapshots mixed coverage once and notifies only canonical acc
         now: new Date('2026-09-14T14:11:00.000Z')
     });
 
+    const notDue =
+        await Watchtower.createDailyCoverageReport(
+            db,
+            {
+                now:
+                    new Date(
+                        '2026-09-14T15:59:59.000Z'
+                    )
+            }
+        );
+
+    assert.equal(
+        notDue.status,
+        'not_due'
+    );
+
     const dispatches = [];
     const options = {
-        now: new Date('2026-09-14T15:00:00.000Z'),
+        now:
+            new Date(
+                '2026-09-14T16:00:00.000Z'
+            ),
         notificationCenter: NotificationCenter,
         dispatchEvent: async (eventId, dispatchOptions) => {
             dispatches.push({ eventId, dispatchOptions });
@@ -487,6 +508,11 @@ test('23:00 report snapshots mixed coverage once and notifies only canonical acc
     };
     const first = await Watchtower.createDailyCoverageReport(db, options);
     const second = await Watchtower.createDailyCoverageReport(db, options);
+
+    assert.equal(
+        first.report.coverage_date,
+        '2026-09-14'
+    );
 
     assert.deepEqual({
         eligible_population: first.report.eligible_population,
@@ -541,16 +567,47 @@ test('report scheduler is disabled by default and enabled mode performs restart-
         cron: {
             schedule(expression, callback, options) {
                 scheduled += 1;
-                assert.equal(expression, '*/5 23 * * *');
+                assert.equal(expression, '*/5 0 * * *');
                 assert.equal(typeof callback, 'function');
                 assert.deepEqual(options, { scheduled: true, timezone: 'Asia/Manila' });
                 return { stop() {} };
             }
         },
-        now: () => new Date('2026-09-14T15:05:00.000Z'),
+        now: () => new Date('2026-09-14T16:05:00.000Z'),
         logger: { info() {}, error() {} }
     });
     assert.equal((await enabled.initialRun).status, 'completed');
     assert.equal(scheduled, 1);
     assert.equal((await get(db, 'SELECT COUNT(*) AS count FROM watchtower_daily_reports')).count, 1);
+
+    const duringLiveWindow =
+        await Watchtower.createDailyCoverageReport(
+            db,
+            {
+                now:
+                    new Date(
+                        '2026-09-15T14:05:00.000Z'
+                    )
+            }
+        );
+
+    assert.equal(
+        duringLiveWindow.status,
+        'not_due'
+    );
+
+    assert.equal(
+        duringLiveWindow.manila_date,
+        '2026-09-15'
+    );
+
+    assert.equal(
+        (
+            await get(
+                db,
+                'SELECT COUNT(*) AS count FROM watchtower_daily_reports'
+            )
+        ).count,
+        1
+    );
 });
