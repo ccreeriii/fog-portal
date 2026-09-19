@@ -2902,10 +2902,45 @@ async function applyDeterministicRuntimeMigration() {
     await assertRuntimeSchema();
 }
 
+async function ensurePrayerPartnerSnapshotAtStartup() {
+    try {
+        const result = await GrowthJourney.rotatePrayerPartners(
+            db,
+            {
+                force: false
+            }
+        );
+
+        console.log(
+            '[STARTUP] Prayer Partner snapshot ensure:',
+            result.status,
+            result.weekStart,
+            result.assignedCount
+        );
+
+        return result;
+    } catch (error) {
+        console.error(
+            '[STARTUP] Prayer Partner snapshot ensure failed:',
+            error
+        );
+
+        // Prayer Partner recovery must not take the whole Community Portal
+        // offline. The canonical Monday cron remains available to retry.
+        return null;
+    }
+}
+
 async function startServerAfterRuntimeSchemaReady() {
     try {
         await applyDeterministicRuntimeMigration();
         console.log('[MIGRATION] Runtime database schema verified.');
+
+        // Recover a missed Monday Prayer Partner rotation before HTTP traffic
+        // begins. rotatePrayerPartners({ force:false }) is intentionally
+        // idempotent and leaves an already-complete weekly snapshot unchanged.
+        await ensurePrayerPartnerSnapshotAtStartup();
+
         app.listen(PORT, () => { console.log(`Server running safely on Port ${PORT}`); });
         startPrayerCovenantReminderScheduler();
         startWatchtowerPrayerCoverageScheduler();
