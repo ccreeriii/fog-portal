@@ -101,7 +101,308 @@
             background:#F3E8FF;
             flex:0 0 auto;
         }
+        .prayer-monitor-panel {
+            margin-bottom:28px;
+        }
+        .prayer-monitor-intro {
+            background:#FFF7ED;
+            border:1px solid #FED7AA;
+            border-left:5px solid var(--primary);
+            border-radius:14px;
+            padding:16px;
+            margin-bottom:14px;
+        }
+        .prayer-monitor-intro h2 {
+            margin:0 0 6px;
+            color:var(--text-main);
+        }
+        .prayer-monitor-intro p {
+            margin:0;
+            color:var(--text-muted);
+            line-height:1.5;
+        }
+        .prayer-monitor-summary {
+            display:grid;
+            grid-template-columns:repeat(3, minmax(0, 1fr));
+            gap:10px;
+            margin-bottom:14px;
+        }
+        .prayer-monitor-summary-card {
+            background:#FFF;
+            border:1px solid var(--border-color);
+            border-radius:12px;
+            padding:14px;
+            min-width:0;
+        }
+        .prayer-monitor-summary-card strong {
+            display:block;
+            font-size:1.55rem;
+            line-height:1.1;
+            color:var(--text-main);
+        }
+        .prayer-monitor-summary-card span {
+            display:block;
+            margin-top:5px;
+            font-size:0.78rem;
+            color:var(--text-muted);
+            font-weight:700;
+        }
+        .prayer-monitor-controls {
+            display:grid;
+            grid-template-columns:minmax(180px, 1fr) auto;
+            gap:10px;
+            align-items:start;
+            margin-bottom:14px;
+        }
+        .prayer-monitor-filters {
+            display:flex;
+            flex-wrap:wrap;
+            gap:6px;
+        }
+        .prayer-monitor-filter {
+            border:1px solid var(--border-color);
+            background:#FFF;
+            color:var(--text-muted);
+            border-radius:999px;
+            padding:7px 10px;
+            font-size:0.78rem;
+            font-weight:700;
+            cursor:pointer;
+        }
+        .prayer-monitor-filter.active {
+            border-color:var(--primary);
+            background:#FFF7ED;
+            color:var(--primary);
+        }
+        .prayer-monitor-status {
+            background:#FFF;
+            border:1px solid var(--border-color);
+            border-radius:12px;
+            padding:13px 14px;
+            color:var(--text-muted);
+            margin-bottom:14px;
+            line-height:1.5;
+        }
+        .prayer-monitor-list {
+            display:grid;
+            gap:10px;
+        }
+        .prayer-monitor-person {
+            background:#FFF;
+            border:1px solid var(--border-color);
+            border-radius:14px;
+            padding:15px;
+        }
+        .prayer-monitor-person--issue {
+            border-color:#F59E0B;
+            background:#FFFBEB;
+        }
+        .prayer-monitor-person-header {
+            display:flex;
+            gap:12px;
+            align-items:flex-start;
+            justify-content:space-between;
+        }
+        .prayer-monitor-person-copy {
+            min-width:0;
+            flex:1;
+        }
+        .prayer-monitor-person-copy h3 {
+            margin:0 0 5px;
+            overflow-wrap:anywhere;
+        }
+        .prayer-monitor-person-copy p {
+            margin:0;
+            color:var(--text-muted);
+            font-size:0.84rem;
+            line-height:1.45;
+        }
+        .prayer-monitor-badge {
+            flex:0 0 auto;
+            border-radius:999px;
+            padding:5px 9px;
+            font-size:0.72rem;
+            font-weight:800;
+            white-space:nowrap;
+        }
+        .prayer-monitor-badge--prayed {
+            background:#DCFCE7;
+            color:#15803D;
+        }
+        .prayer-monitor-badge--waiting {
+            background:#FEF3C7;
+            color:#A16207;
+        }
+        .prayer-monitor-badge--completed {
+            background:#DBEAFE;
+            color:#1D4ED8;
+        }
+        .prayer-monitor-badge--paused {
+            background:#E5E7EB;
+            color:#4B5563;
+        }
+        .prayer-monitor-badge--issue {
+            background:#FFEDD5;
+            color:#C2410C;
+        }
+        .prayer-monitor-issue-summary {
+            margin:10px 0 0;
+            color:#9A3412;
+            font-size:0.82rem;
+            line-height:1.45;
+        }
+        .prayer-monitor-detail-button {
+            margin-top:12px;
+        }
+        .prayer-monitor-detail {
+            margin-top:14px;
+            padding-top:14px;
+            border-top:1px solid var(--border-color);
+        }
+        .prayer-monitor-detail-metrics {
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:8px;
+        }
+        .prayer-monitor-meta-row {
+            background:var(--bg-light);
+            border-radius:10px;
+            padding:10px;
+        }
+        .prayer-monitor-meta-label,
+        .prayer-monitor-meta-value {
+            display:block;
+        }
+        .prayer-monitor-meta-label {
+            color:var(--text-muted);
+            font-size:0.72rem;
+            font-weight:700;
+        }
+        .prayer-monitor-meta-value {
+            margin-top:3px;
+            color:var(--text-main);
+            font-weight:800;
+        }
+        .prayer-monitor-detail-section {
+            margin-top:16px;
+        }
+        .prayer-monitor-detail-section h4 {
+            margin:0 0 9px;
+        }
+        .prayer-monitor-day-grid {
+            display:grid;
+            grid-template-columns:repeat(3, minmax(0, 1fr));
+            gap:7px;
+        }
+        .prayer-monitor-day {
+            border:1px solid var(--border-color);
+            border-radius:9px;
+            padding:8px;
+            background:#FFF;
+        }
+        .prayer-monitor-day strong,
+        .prayer-monitor-day span {
+            display:block;
+        }
+        .prayer-monitor-day span {
+            margin-top:3px;
+            color:var(--text-muted);
+            font-size:0.72rem;
+        }
+        .prayer-monitor-day--complete {
+            border-color:#86EFAC;
+            background:#F0FDF4;
+        }
+        .prayer-monitor-pastoral-note {
+            margin:0 0 9px;
+            padding:10px;
+            border-radius:9px;
+            background:#F8FAFC;
+            color:var(--text-muted);
+            font-size:0.8rem;
+            line-height:1.5;
+        }
+        .prayer-monitor-calendar {
+            display:grid;
+            gap:5px;
+            max-height:310px;
+            overflow:auto;
+        }
+        .prayer-monitor-calendar-row {
+            display:flex;
+            justify-content:space-between;
+            gap:12px;
+            padding:8px 10px;
+            border-radius:8px;
+            background:#F8FAFC;
+            font-size:0.8rem;
+        }
+        .prayer-monitor-calendar-row strong {
+            color:var(--text-muted);
+            text-align:right;
+        }
+        .prayer-monitor-calendar-row--prayed {
+            background:#F0FDF4;
+        }
+        .prayer-monitor-calendar-row--prayed strong {
+            color:#15803D;
+        }
+        .prayer-monitor-data-review-note {
+            margin-top:12px;
+            padding:10px;
+            border-radius:9px;
+            background:#FFF7ED;
+            border:1px solid #FED7AA;
+            color:#9A3412;
+        }
+        .prayer-monitor-data-review-note p {
+            margin:5px 0 0;
+            font-size:0.8rem;
+        }
+        .prayer-monitor-empty,
+        .prayer-monitor-error {
+            margin:0;
+            padding:16px;
+            border:1px dashed var(--border-color);
+            border-radius:10px;
+            color:var(--text-muted);
+            text-align:center;
+        }
+        .prayer-monitor-error {
+            color:var(--danger);
+            border-color:var(--danger);
+        }
+        .watchtower-divider {
+            margin:26px 0 18px;
+            border:0;
+            border-top:1px solid var(--border-color);
+        }
+
+        @media (max-width:760px) {
+            .prayer-monitor-summary {
+                grid-template-columns:repeat(2, minmax(0, 1fr));
+            }
+            .prayer-monitor-controls {
+                grid-template-columns:1fr;
+            }
+        }
+
         @media (max-width:560px) {
+            .prayer-monitor-summary {
+                grid-template-columns:1fr 1fr;
+            }
+            .prayer-monitor-day-grid {
+                grid-template-columns:repeat(2, minmax(0, 1fr));
+            }
+            .prayer-monitor-person-header {
+                flex-direction:column;
+            }
+            .prayer-monitor-badge {
+                align-self:flex-start;
+            }
+            .prayer-monitor-detail-metrics {
+                grid-template-columns:1fr;
+            }
             .watchtower-member {
                 align-items:flex-start;
                 flex-wrap:wrap;
@@ -1642,10 +1943,78 @@
 
     <div id="watchtowerTab" class="tab-content" aria-labelledby="watchtowerHeading">
         <div class="watchtower-shell">
+            <section class="prayer-monitor-panel" aria-labelledby="prayerMonitorHeading">
+                <div class="prayer-monitor-intro">
+                    <h2 id="prayerMonitorHeading">🙏 21-Day Prayer Covenant Monitor</h2>
+                    <p>Pastoral leadership view of real Prayer Covenant participation and recorded prayer rhythm. Calendar gaps never reset a member’s 21-day progress.</p>
+                </div>
+
+                <div class="prayer-monitor-summary" aria-label="Prayer Covenant summary">
+                    <div class="prayer-monitor-summary-card">
+                        <strong id="prayerMonitorActiveCount">0</strong>
+                        <span>Active Participants</span>
+                    </div>
+                    <div class="prayer-monitor-summary-card">
+                        <strong id="prayerMonitorPrayedCount">0</strong>
+                        <span>Prayed Today</span>
+                    </div>
+                    <div class="prayer-monitor-summary-card">
+                        <strong id="prayerMonitorWaitingCount">0</strong>
+                        <span>Not Yet Today</span>
+                    </div>
+                    <div class="prayer-monitor-summary-card">
+                        <strong id="prayerMonitorCompletedCount">0</strong>
+                        <span>Completed Journeys</span>
+                    </div>
+                    <div class="prayer-monitor-summary-card">
+                        <strong id="prayerMonitorPausedCount">0</strong>
+                        <span>Paused</span>
+                    </div>
+                    <div class="prayer-monitor-summary-card">
+                        <strong id="prayerMonitorIssuesCount">0</strong>
+                        <span>Data Issues</span>
+                    </div>
+                </div>
+
+                <div class="prayer-monitor-controls">
+                    <label>
+                        <span class="sr-only">Search Prayer Covenant participants</span>
+                        <input
+                            id="prayerMonitorSearch"
+                            type="search"
+                            class="form-control"
+                            placeholder="Search participant name or Youth ID"
+                            autocomplete="off"
+                        >
+                    </label>
+
+                    <div class="prayer-monitor-filters" aria-label="Prayer Covenant filters">
+                        <button type="button" class="prayer-monitor-filter active" data-prayer-monitor-filter="all" aria-pressed="true">All</button>
+                        <button type="button" class="prayer-monitor-filter" data-prayer-monitor-filter="prayed_today" aria-pressed="false">Prayed Today</button>
+                        <button type="button" class="prayer-monitor-filter" data-prayer-monitor-filter="not_yet_today" aria-pressed="false">Not Yet Today</button>
+                        <button type="button" class="prayer-monitor-filter" data-prayer-monitor-filter="completed" aria-pressed="false">Completed</button>
+                        <button type="button" class="prayer-monitor-filter" data-prayer-monitor-filter="paused" aria-pressed="false">Paused</button>
+                        <button type="button" class="prayer-monitor-filter" data-prayer-monitor-filter="data_review" aria-pressed="false">Data Review</button>
+                    </div>
+                </div>
+
+                <div
+                    id="prayerMonitorStatus"
+                    class="prayer-monitor-status"
+                    role="status"
+                    aria-live="polite"
+                >Loading Prayer Covenant Monitor…</div>
+
+                <div id="prayerMonitorList" class="prayer-monitor-list"></div>
+            </section>
+
+            <hr class="watchtower-divider">
+
             <div class="watchtower-intro">
                 <h1 id="watchtowerHeading" style="margin:0 0 8px;">Watchtower</h1>
-                <p style="margin:0;">A prayer ministry fallback helping ensure participating members are covered in prayer. This is not a leaderboard or competition.</p>
+                <p style="margin:0;">A prayer ministry fallback helping ensure participating members are covered in prayer. Watchtower coverage is separate from personal Prayer Covenant completion.</p>
             </div>
+
             <section aria-labelledby="watchtowerUncoveredHeading">
                 <h2 id="watchtowerUncoveredHeading">Uncovered Today</h2>
                 <div id="watchtowerStatus" class="watchtower-status" role="status" aria-live="polite">Loading Watchtower…</div>
@@ -2784,6 +3153,7 @@
 <script src="/js/growth-event-mapping-ui.js?v=3"></script>
 <script src="/js/growth-journey-leadership.js?v=3"></script>
 <script src="/js/watchtower.js?v=1"></script>
+<script src="/js/prayer-covenant-monitor.js?v=1"></script>
 <script src="/js/v2-discipleship.js?v=12.4"></script>
 <script src="/js/v3-worship.js?v=12.2"></script>
 <script src="/js/v4-communications.js?v=12.3"></script>
