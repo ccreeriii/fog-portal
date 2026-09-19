@@ -306,7 +306,7 @@
                             : member.claim_state ===
                                 'claimed'
                                 ? 'Claimed'
-                                : 'Claim'
+                                : 'Pray for this person'
                 }
             );
 

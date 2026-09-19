@@ -390,7 +390,7 @@ test('authorized Watchtower UI renders safe claim states, empty success, and clo
     await browser.window.loadWatchtower();
     assert.equal(browser.list.children.length, 3);
     assert.match(renderedText(browser.list.children[0]), /<img src=x onerror=alert\(1\)>/);
-    assert.equal(browser.list.children[0].children.at(-1).textContent, 'Claim');
+    assert.equal(browser.list.children[0].children.at(-1).textContent, 'Pray for this person');
     assert.equal(browser.list.children[1].children.at(-1).textContent, 'Mark Prayed');
     assert.equal(browser.list.children[2].children.at(-1).disabled, true);
     assert.doesNotMatch(watchtowerSource, /\.innerHTML\s*=/);
@@ -418,9 +418,9 @@ test('active shell and cache publish the restricted Watchtower asset coherently'
     assert.match(html, /id="watchtowerTab"/);
     assert.match(html, /Uncovered Today/);
     assert.match(html, /value="access_prayer"/);
-    assert.match(html, /\/js\/watchtower\.js\?v=1/);
-    assert.match(serviceWorker, /fog-portal-v54/);
-    assert.match(serviceWorker, /\/js\/watchtower\.js\?v=1/);
+    assert.match(html, /\/js\/watchtower\.js\?v=2/);
+    assert.match(serviceWorker, /fog-portal-v58/);
+    assert.match(serviceWorker, /\/js\/watchtower\.js\?v=2/);
     assert.match(watchtowerSource, /window\.hasPerm/);
     assert.match(watchtowerSource, /textContent/);
 });

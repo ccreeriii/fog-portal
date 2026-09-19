@@ -2519,7 +2519,7 @@ db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
         }
     });
 
-    const superadminPermissions = JSON.stringify(['access_checkin', 'access_directory', 'access_events', 'access_attendance', 'access_activity', 'access_permissions', 'access_ministries', 'access_discipleship', 'access_ai', 'access_worship', 'access_communications', 'add_entries', 'edit_entries', 'delete_entries']);
+    const superadminPermissions = JSON.stringify(['access_checkin', 'access_directory', 'access_events', 'access_attendance', 'access_activity', 'access_permissions', 'access_ministries', 'access_discipleship', 'access_ai', 'access_worship', 'access_communications', 'access_prayer', 'access_prayer_journey', 'add_entries', 'edit_entries', 'delete_entries']);
     db.get(`SELECT id FROM users WHERE username = ?`, [BOOTSTRAP_STRONG_ADMIN_USERNAME], (err, existingAdmin) => {
         if (err) return console.error('Unable to verify bootstrap administrator');
         if (existingAdmin) return;
@@ -9139,7 +9139,7 @@ function sendWatchtowerError(res, error) {
 
 app.get(
     '/api/admin/prayer-covenant-monitor',
-    requirePermission('access_prayer'),
+    requirePermission('access_prayer_journey'),
     async (req, res) => {
         try {
             const monitor =
@@ -9171,7 +9171,7 @@ app.get(
 
 app.get(
     '/api/admin/prayer-covenant-monitor/:enrollmentId',
-    requirePermission('access_prayer'),
+    requirePermission('access_prayer_journey'),
     async (req, res) => {
         const enrollmentId =
             Number(req.params.enrollmentId);

@@ -441,7 +441,7 @@ test(
 );
 
 test(
-    'monitor API routes are read-only and protected by canonical access_prayer permission',
+    'monitor API routes are read-only and protected by canonical access_prayer_journey permission',
     () => {
         const serverSource =
             fs.readFileSync(
@@ -454,12 +454,12 @@ test(
 
         assert.match(
             serverSource,
-            /app\.get\(\s*'\/api\/admin\/prayer-covenant-monitor',\s*requirePermission\('access_prayer'\)/
+            /app\.get\(\s*'\/api\/admin\/prayer-covenant-monitor',\s*requirePermission\('access_prayer_journey'\)/
         );
 
         assert.match(
             serverSource,
-            /app\.get\(\s*'\/api\/admin\/prayer-covenant-monitor\/:enrollmentId',\s*requirePermission\('access_prayer'\)/
+            /app\.get\(\s*'\/api\/admin\/prayer-covenant-monitor\/:enrollmentId',\s*requirePermission\('access_prayer_journey'\)/
         );
 
         assert.match(

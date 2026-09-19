@@ -2,7 +2,7 @@
     'use strict';
 
     const PERMISSION =
-        'access_prayer';
+        'access_prayer_journey';
 
     let loading =
         false;
@@ -18,6 +18,335 @@
             window.hasPerm &&
             window.hasPerm(PERMISSION)
         );
+    }
+
+    let watchtowerView =
+        'coverage';
+
+    let journeyAuthorizationDenied =
+        false;
+
+    function canViewPrayerJourney() {
+        return Boolean(
+            isAuthorized() &&
+            !journeyAuthorizationDenied
+        );
+    }
+
+    function setMonitorVisible(visible) {
+        const panel =
+            document.getElementById(
+                'prayerMonitorPanel'
+            );
+
+        const divider =
+            document.getElementById(
+                'prayerMonitorDivider'
+            );
+
+        if (panel) {
+            panel.hidden =
+                !visible;
+        }
+
+        // The old divider is no longer needed because
+        // Coverage and Prayer Journey now live in separate tabs.
+        if (divider) {
+            divider.hidden =
+                true;
+        }
+    }
+
+    function getCoverageElements() {
+        const shell =
+            document.querySelector(
+                '.watchtower-shell'
+            );
+
+        if (!shell) {
+            return [];
+        }
+
+        return [
+            shell.querySelector(
+                '.watchtower-intro'
+            ),
+            document.getElementById(
+                'watchtowerStatus'
+            ),
+            document.getElementById(
+                'watchtowerList'
+            )
+        ].filter(Boolean);
+    }
+
+    function setCoverageVisible(visible) {
+        getCoverageElements().forEach(
+            element => {
+                element.hidden =
+                    !visible;
+            }
+        );
+    }
+
+    function clearSensitiveView() {
+        lastState =
+            null;
+
+        const list =
+            document.getElementById(
+                'prayerMonitorList'
+            );
+
+        clear(list);
+        renderSummary({});
+
+        const status =
+            document.getElementById(
+                'prayerMonitorStatus'
+            );
+
+        if (status) {
+            status.textContent =
+                '';
+        }
+    }
+
+    function syncSplitTabButtons() {
+        const coverageButton =
+            document.getElementById(
+                'watchtowerCoverageTabButton'
+            );
+
+        const journeyButton =
+            document.getElementById(
+                'prayerJourneyTabButton'
+            );
+
+        const journeyAllowed =
+            canViewPrayerJourney();
+
+        if (coverageButton) {
+            const active =
+                watchtowerView ===
+                'coverage';
+
+            coverageButton.classList.toggle(
+                'active',
+                active
+            );
+
+            coverageButton.setAttribute(
+                'aria-selected',
+                active ? 'true' : 'false'
+            );
+        }
+
+        if (journeyButton) {
+            journeyButton.hidden =
+                !journeyAllowed;
+
+            const active =
+                journeyAllowed &&
+                watchtowerView ===
+                    'journey';
+
+            journeyButton.classList.toggle(
+                'active',
+                active
+            );
+
+            journeyButton.setAttribute(
+                'aria-selected',
+                active ? 'true' : 'false'
+            );
+        }
+    }
+
+    function setWatchtowerView(view) {
+        const journeyAllowed =
+            canViewPrayerJourney();
+
+        const nextView =
+            view === 'journey' &&
+            journeyAllowed
+                ? 'journey'
+                : 'coverage';
+
+        watchtowerView =
+            nextView;
+
+        const showingJourney =
+            nextView ===
+            'journey';
+
+        setCoverageVisible(
+            !showingJourney
+        );
+
+        setMonitorVisible(
+            showingJourney
+        );
+
+        syncSplitTabButtons();
+
+        if (
+            showingJourney &&
+            journeyAllowed
+        ) {
+            bindControls();
+            void loadPrayerCovenantMonitor();
+        }
+    }
+
+    function ensureWatchtowerSplitTabs() {
+        const shell =
+            document.querySelector(
+                '.watchtower-shell'
+            );
+
+        if (!shell) {
+            return false;
+        }
+
+        let tabBar =
+            document.getElementById(
+                'watchtowerSubTabs'
+            );
+
+        if (!tabBar) {
+            tabBar =
+                document.createElement(
+                    'div'
+                );
+
+            tabBar.id =
+                'watchtowerSubTabs';
+
+            tabBar.className =
+                'watchtower-subtabs';
+
+            tabBar.setAttribute(
+                'role',
+                'tablist'
+            );
+
+            tabBar.setAttribute(
+                'aria-label',
+                'Watchtower dashboard views'
+            );
+
+            const coverageButton =
+                document.createElement(
+                    'button'
+                );
+
+            coverageButton.id =
+                'watchtowerCoverageTabButton';
+
+            coverageButton.type =
+                'button';
+
+            coverageButton.className =
+                'watchtower-subtab';
+
+            coverageButton.setAttribute(
+                'role',
+                'tab'
+            );
+
+            coverageButton.textContent =
+                'Watchtower Coverage';
+
+            coverageButton.addEventListener(
+                'click',
+                () => {
+                    setWatchtowerView(
+                        'coverage'
+                    );
+                }
+            );
+
+            const journeyButton =
+                document.createElement(
+                    'button'
+                );
+
+            journeyButton.id =
+                'prayerJourneyTabButton';
+
+            journeyButton.type =
+                'button';
+
+            journeyButton.className =
+                'watchtower-subtab';
+
+            journeyButton.setAttribute(
+                'role',
+                'tab'
+            );
+
+            journeyButton.textContent =
+                'Prayer Journey';
+
+            journeyButton.addEventListener(
+                'click',
+                () => {
+                    if (
+                        !canViewPrayerJourney()
+                    ) {
+                        return;
+                    }
+
+                    setWatchtowerView(
+                        'journey'
+                    );
+                }
+            );
+
+            tabBar.appendChild(
+                coverageButton
+            );
+
+            tabBar.appendChild(
+                journeyButton
+            );
+
+            shell.insertBefore(
+                tabBar,
+                shell.firstChild
+            );
+        }
+
+        syncSplitTabButtons();
+
+        return true;
+    }
+
+    function syncWatchtowerSplitTabs() {
+        const journeyAllowed =
+            canViewPrayerJourney();
+
+        ensureWatchtowerSplitTabs();
+
+        if (
+            !journeyAllowed &&
+            watchtowerView ===
+                'journey'
+        ) {
+            watchtowerView =
+                'coverage';
+        }
+
+        if (!journeyAllowed) {
+            clearSensitiveView();
+        }
+
+        setWatchtowerView(
+            watchtowerView
+        );
+
+        return journeyAllowed;
     }
 
     function clear(node) {
@@ -1016,7 +1345,8 @@
 
     async function loadPrayerCovenantMonitor() {
         if (
-            !isAuthorized() ||
+            !canViewPrayerJourney() ||
+            watchtowerView !== 'journey' ||
             loading
         ) {
             return;
@@ -1047,12 +1377,25 @@
 
             clear(list);
 
-            setStatus(
+            if (
                 error &&
                 error.status === 403
-                    ? 'Your Prayer leadership authorization is no longer active.'
-                    : 'Prayer Covenant Monitor could not be loaded. Please try again.'
-            );
+            ) {
+                journeyAuthorizationDenied =
+                    true;
+
+                clearSensitiveView();
+
+                ensureWatchtowerSplitTabs();
+
+                setWatchtowerView(
+                    'coverage'
+                );
+            } else {
+                setStatus(
+                    'Prayer Covenant Monitor could not be loaded. Please try again.'
+                );
+            }
         } finally {
             loading =
                 false;
@@ -1067,13 +1410,6 @@
             tabId,
             ...args
         ) {
-            if (
-                tabId === 'watchtowerTab' &&
-                !isAuthorized()
-            ) {
-                return;
-            }
-
             const result =
                 typeof originalSwitchTab ===
                 'function'
@@ -1088,7 +1424,11 @@
                 tabId ===
                 'watchtowerTab'
             ) {
-                void loadPrayerCovenantMonitor();
+                ensureWatchtowerSplitTabs();
+
+                setWatchtowerView(
+                    'coverage'
+                );
             }
 
             return result;
@@ -1100,20 +1440,11 @@
     window.addEventListener(
         'load',
         () => {
-            bindControls();
+            ensureWatchtowerSplitTabs();
 
-            const requestedTab =
-                new URLSearchParams(
-                    window.location.search
-                ).get('tab');
-
-            if (
-                requestedTab ===
-                    'watchtower' &&
-                isAuthorized()
-            ) {
-                void loadPrayerCovenantMonitor();
-            }
+            setWatchtowerView(
+                'coverage'
+            );
         }
     );
 })();

@@ -95,11 +95,11 @@ test(
 );
 
 test(
-    'Prayer Covenant Monitor client is access_prayer gated and reads only protected monitor APIs',
+    'Prayer Covenant Monitor client is access_prayer_journey gated and reads only protected monitor APIs',
     () => {
         assert.match(
             source,
-            /const PERMISSION\s*=\s*'access_prayer'/
+            /const PERMISSION\s*=\s*'access_prayer_journey'/
         );
 
         assert.match(
@@ -214,22 +214,22 @@ test(
     () => {
         assert.match(
             html,
-            /\/js\/prayer-covenant-monitor\.js\?v=1/
+            /\/js\/prayer-covenant-monitor\.js\?v=4/
         );
 
         assert.match(
             serviceWorker,
-            /fog-portal-v54/
+            /fog-portal-v58/
         );
 
         assert.match(
             serviceWorker,
-            /\/js\/prayer-covenant-monitor\.js\?v=1/
+            /\/js\/prayer-covenant-monitor\.js\?v=4/
         );
 
         assert.match(
             serviceWorker,
-            /\/js\/watchtower\.js\?v=1/
+            /\/js\/watchtower\.js\?v=2/
         );
     }
 );
