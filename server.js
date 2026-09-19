@@ -9038,6 +9038,17 @@ app.get('/api/growth-games/verse-chain', (req, res) => { const { group_id } = re
 app.post('/api/growth-games/verse-chain/submit', (req, res) => { const { youth_id, group_id, verse_id, word_index, guessed_word, actor } = req.body; if (!group_id) return res.status(400).json({error: "You must be in a small group to play this."}); db.run(`INSERT INTO brain_verse_contributions (group_id, verse_id, youth_id, word_index, guessed_word, created_at) VALUES (?, ?, ?, ?, ?, ?)`, [group_id, verse_id, youth_id, word_index, guessed_word, getManilaTime()], function(err) { if (err) return res.status(400).json({error: "Word already solved by your group!"}); awardPoints(youth_id, 'growth', 10, actor || 'System', 'Verse Chain'); res.json({ success: true, pointsAwarded: 10 }); }); });
 
 
+let prayerCovenantMonitorModule = null;
+
+function getPrayerCovenantMonitorModule() {
+    if (!prayerCovenantMonitorModule) {
+        prayerCovenantMonitorModule =
+            require('./lib/prayer-covenant-monitor');
+    }
+
+    return prayerCovenantMonitorModule;
+}
+
 let watchtowerPrayerCoverageModule = null;
 
 function getWatchtowerPrayerCoverageModule() {
@@ -9125,6 +9136,94 @@ function sendWatchtowerError(res, error) {
 
     return true;
 }
+
+app.get(
+    '/api/admin/prayer-covenant-monitor',
+    requirePermission('access_prayer'),
+    async (req, res) => {
+        try {
+            const monitor =
+                await getPrayerCovenantMonitorModule()
+                    .getMonitorSummary(db);
+
+            res.setHeader(
+                'Cache-Control',
+                'no-store, no-cache, must-revalidate, private'
+            );
+
+            return res.json({
+                success: true,
+                ...monitor
+            });
+        } catch (error) {
+            console.error(
+                '[PRAYER_COVENANT_MONITOR] summary failed'
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to load the Prayer Covenant Monitor.'
+            });
+        }
+    }
+);
+
+app.get(
+    '/api/admin/prayer-covenant-monitor/:enrollmentId',
+    requirePermission('access_prayer'),
+    async (req, res) => {
+        const enrollmentId =
+            Number(req.params.enrollmentId);
+
+        if (
+            !Number.isSafeInteger(enrollmentId) ||
+            enrollmentId <= 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid Prayer Covenant enrollment.'
+            });
+        }
+
+        try {
+            const detail =
+                await getPrayerCovenantMonitorModule()
+                    .getMonitorDetail(
+                        db,
+                        enrollmentId
+                    );
+
+            if (!detail) {
+                return res.status(404).json({
+                    success: false,
+                    error:
+                        'Prayer Covenant enrollment not found.'
+                });
+            }
+
+            res.setHeader(
+                'Cache-Control',
+                'no-store, no-cache, must-revalidate, private'
+            );
+
+            return res.json({
+                success: true,
+                ...detail
+            });
+        } catch (error) {
+            console.error(
+                '[PRAYER_COVENANT_MONITOR] detail failed'
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to load this Prayer Covenant record.'
+            });
+        }
+    }
+);
 
 app.get(
     '/api/prayer/watchtower',
