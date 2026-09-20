@@ -181,6 +181,6 @@ test('new view layer publishes through fresh Community assets and PWA cache', ()
 
     assert.match(
         sw,
-        /fog-portal-v66/
+        /fog-portal-v67/
     );
 });

@@ -202,7 +202,7 @@ test(
     'Campaign Manager publishes through a fresh coordinated PWA shell',
     () => {
         assert.ok(
-            index.indexOf('/js/community-spotlight-admin.js?v=3') >
+            index.indexOf('/js/community-spotlight-admin.js?v=4') >
             index.indexOf('/js/v4-communications.js?v=12.3')
         );
 
@@ -213,12 +213,12 @@ test(
 
         assert.match(
             serviceWorker,
-            /const CACHE_NAME = 'fog-portal-v66'/
+            /const CACHE_NAME = 'fog-portal-v67'/
         );
 
         assert.match(
             serviceWorker,
-            /'\/js\/community-spotlight-admin\.js\?v=3'/
+            /'\/js\/community-spotlight-admin\.js\?v=4'/
         );
 
         assert.match(

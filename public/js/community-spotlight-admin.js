@@ -125,34 +125,43 @@
         return error.message || fallback;
     }
 
+    async function openStandalone() {
+        if (!canRead()) {
+            init();
+            return;
+        }
+
+        init();
+
+        if (typeof root.switchTab === 'function') {
+            await root.switchTab('communitySpotlightAdminTab');
+        }
+
+        await loadCampaigns();
+    }
+
     function switchSection(section) {
-        const broadcasts = byId('communicationsBroadcastSection');
-        const campaigns = byId('communitySpotlightAdminSection');
-        const broadcastButton = byId('btnCommunicationsBroadcasts');
-        const campaignButton = byId('btnCommunicationsCampaigns');
-
-        if (!broadcasts || !campaigns) return;
-
-        const showCampaigns = section === 'campaigns';
-
-        broadcasts.style.display = showCampaigns ? 'none' : 'block';
-        campaigns.style.display = showCampaigns ? 'block' : 'none';
-
-        if (broadcastButton) {
-            broadcastButton.classList.toggle('active', !showCampaigns);
+        /*
+         * Backward-compatible adapter for older cached markup.
+         * Campaign Manager is now its own top-level Portal tab and no longer
+         * hides or modifies the Broadcast section.
+         */
+        if (section === 'campaigns') {
+            void openStandalone();
+            return;
         }
 
-        if (campaignButton) {
-            campaignButton.classList.toggle('active', showCampaigns);
-        }
+        if (section === 'broadcasts') {
+            if (typeof root.switchTab === 'function') {
+                root.switchTab('communicationsAdminTab');
+            }
 
-        if (showCampaigns) {
-            loadCampaigns();
-        } else if (
-            root.V4Communications &&
-            typeof root.V4Communications.loadHistory === 'function'
-        ) {
-            root.V4Communications.loadHistory();
+            if (
+                root.V4Communications &&
+                typeof root.V4Communications.loadHistory === 'function'
+            ) {
+                root.V4Communications.loadHistory();
+            }
         }
     }
 
@@ -1621,6 +1630,82 @@
         }
     }
 
+    function ensureStandaloneNavButton() {
+        const sidebar = byId('sidebarNav');
+        const existing =
+            byId('navCommunitySpotlightCampaignManager');
+
+        if (!sidebar) return;
+
+        if (!canRead()) {
+            if (existing) existing.remove();
+            return;
+        }
+
+        if (existing) return;
+
+        const button = document.createElement('button');
+        button.id = 'navCommunitySpotlightCampaignManager';
+        button.type = 'button';
+        button.className = 'nav-btn';
+        button.dataset.target = 'communitySpotlightAdminTab';
+        button.textContent = '✨ Campaign Manager';
+
+        button.addEventListener('click', () => {
+            void openStandalone();
+        });
+
+        const broadcastButton =
+            sidebar.querySelector(
+                '[data-target="communicationsAdminTab"]'
+            );
+
+        if (broadcastButton) {
+            broadcastButton.insertAdjacentElement(
+                'afterend',
+                button
+            );
+            return;
+        }
+
+        const logoutButton =
+            Array.from(
+                sidebar.querySelectorAll('.nav-btn')
+            ).find((candidate) =>
+                String(candidate.textContent || '')
+                    .includes('Logout')
+            );
+
+        if (logoutButton) {
+            sidebar.insertBefore(button, logoutButton);
+        } else {
+            sidebar.appendChild(button);
+        }
+    }
+
+    function installBuildNavLifecycle() {
+        const previousBuildNav = root.buildNav;
+
+        if (
+            typeof previousBuildNav !== 'function' ||
+            previousBuildNav.communitySpotlightStandaloneWrapped
+        ) {
+            return;
+        }
+
+        const wrapped = function (...args) {
+            const result =
+                previousBuildNav.apply(this, args);
+
+            ensureStandaloneNavButton();
+
+            return result;
+        };
+
+        wrapped.communitySpotlightStandaloneWrapped = true;
+        root.buildNav = wrapped;
+    }
+
     function init() {
         const section =
             byId('communitySpotlightAdminSection');
@@ -1648,8 +1733,12 @@
                 campaignTab.style.display = 'none';
             }
 
+            ensureStandaloneNavButton();
             return;
         }
+
+        section.style.display = 'block';
+        ensureStandaloneNavButton();
 
         if (campaignTab) {
             campaignTab.style.display = '';
@@ -1759,6 +1848,7 @@
 
     root.CommunitySpotlightAdmin = {
         init,
+        openStandalone,
         switchSection,
         loadCampaigns,
         openCreate,
@@ -1769,6 +1859,7 @@
     };
 
     installPermissionLifecycle();
+    installBuildNavLifecycle();
 
     document.addEventListener(
         'DOMContentLoaded',
