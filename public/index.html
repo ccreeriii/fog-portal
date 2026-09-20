@@ -25,6 +25,7 @@
     <link rel="stylesheet" href="/css/v2-styles.css?v=12.2">
     <link rel="stylesheet" href="/css/v3-styles.css?v=12.2">
     <link rel="stylesheet" href="/css/v4-styles.css?v=12.2">
+    <link rel="stylesheet" href="/css/community-spotlight-admin.css?v=1">
     <link rel="stylesheet" href="/css/journey-dashboard.css?v=4">
     <link rel="stylesheet" href="/css/community-features.css?v=3">
     <link rel="stylesheet" href="/css/fog-premium.css?v=17">
@@ -2132,18 +2133,93 @@
     </div>
 
     <div id="communicationsAdminTab" class="tab-content">
-        <div class="card">
-            <h2 style="color: #3B82F6;">📢 Broadcast Engine</h2>
-            <div class="broadcast-form-container">
-                <form id="broadcastForm" onsubmit="V4Communications.sendBroadcast(event)">
-                    <div class="form-group"><label>Target Audience *</label><select id="bcTargetSelect" class="form-control" required><option value="All">All Registered Members</option><option value="Leaders">All Leaders & Admins</option></select></div>
-                    <div class="form-group"><label>Announcement Title *</label><input type="text" id="bcTitle" class="form-control" required></div>
-                    <div class="form-group"><label>Message Body *</label><textarea id="bcMessage" class="form-control" rows="5" required></textarea></div>
-                    <button type="submit" class="btn btn-primary" style="width:100%; background: #3B82F6;">Send Broadcast</button>
-                </form>
+        <div class="sub-nav spotlight-admin-subnav" role="tablist" aria-label="Communications administration">
+            <button
+                id="btnCommunicationsBroadcasts"
+                class="sub-nav-btn active"
+                type="button"
+                onclick="CommunitySpotlightAdmin.switchSection('broadcasts')">📢 Broadcasts</button>
+            <button
+                id="btnCommunicationsCampaigns"
+                class="sub-nav-btn"
+                type="button"
+                onclick="CommunitySpotlightAdmin.switchSection('campaigns')">✨ Campaign Manager</button>
+        </div>
+
+        <div id="communicationsBroadcastSection">
+            <div class="card">
+                <h2 style="color: #3B82F6;">📢 Broadcast Engine</h2>
+                <div class="broadcast-form-container">
+                    <form id="broadcastForm" onsubmit="V4Communications.sendBroadcast(event)">
+                        <div class="form-group"><label>Target Audience *</label><select id="bcTargetSelect" class="form-control" required><option value="All">All Registered Members</option><option value="Leaders">All Leaders & Admins</option></select></div>
+                        <div class="form-group"><label>Announcement Title *</label><input type="text" id="bcTitle" class="form-control" required></div>
+                        <div class="form-group"><label>Message Body *</label><textarea id="bcMessage" class="form-control" rows="5" required></textarea></div>
+                        <button type="submit" class="btn btn-primary" style="width:100%; background: #3B82F6;">Send Broadcast</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Broadcast History</h2>
+                <div id="broadcastHistoryContainer"></div>
             </div>
         </div>
-        <div class="card"><h2>Broadcast History</h2><div id="broadcastHistoryContainer"></div></div>
+
+        <div
+            id="communitySpotlightAdminSection"
+            class="spotlight-admin-shell"
+            style="display:none;">
+            <div class="card">
+                <div class="spotlight-admin-heading">
+                    <div>
+                        <p class="spotlight-admin-kicker">Community Spotlight</p>
+                        <h2 style="color: #8A572A;">✨ Campaign Manager</h2>
+                        <p class="spotlight-admin-help">
+                            Create and manage member invitations, events, celebrations, important notices,
+                            challenges, and announcements. Campaigns remain server-authoritative and only
+                            one eligible member campaign can be selected at a time.
+                        </p>
+                    </div>
+
+                    <button
+                        id="spotlightNewCampaignBtn"
+                        type="button"
+                        class="btn btn-primary spotlight-mutation-control">＋ New Campaign</button>
+                </div>
+
+                <div
+                    id="spotlightAdminFeedback"
+                    class="spotlight-admin-feedback"
+                    role="status"
+                    aria-live="polite"></div>
+            </div>
+
+            <div class="card">
+                <div class="spotlight-admin-heading">
+                    <div>
+                        <h3>Campaigns</h3>
+                        <p class="spotlight-admin-help">
+                            Read-only Communications users can review campaigns and analytics.
+                            Creating, editing, and relaunching requires Edit Entries permission.
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="btn btn-outline btn-sm"
+                        onclick="CommunitySpotlightAdmin.loadCampaigns()">↻ Refresh</button>
+                </div>
+
+                <div
+                    id="spotlightCampaignList"
+                    class="spotlight-campaign-list"
+                    aria-live="polite">
+                    <div class="spotlight-empty">
+                        Open Campaign Manager to load campaigns.
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="discipleshipAdminTab" class="tab-content">
@@ -3213,6 +3289,7 @@
 <script src="/js/v2-discipleship.js?v=12.4"></script>
 <script src="/js/v3-worship.js?v=12.2"></script>
 <script src="/js/v4-communications.js?v=12.3"></script>
+<script src="/js/community-spotlight-admin.js?v=1"></script>
 <script src="/js/v6-gamification.js?v=12.3"></script>
 <script src="/js/v7-ai-assistant.js?v=12.2"></script>
 <script src="/js/v8-slingshot.js?v=12.2"></script>

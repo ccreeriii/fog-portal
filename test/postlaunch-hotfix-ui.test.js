@@ -409,7 +409,7 @@ test('post-launch asset and dependent revisions are cached coherently and load l
     const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=4');
     const community = index.indexOf('/js/community-feature-polish.js?v=7');
     assert.ok(app < mapping && mapping < journey && journey < hotfix && hotfix < community);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v58'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v59'/);
     for (const asset of [
         '/js/app.js?v=13.3',
         '/js/growth-event-mapping-ui.js?v=3',
