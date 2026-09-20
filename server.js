@@ -40,6 +40,11 @@ const {
     createAccountClaimStore
 } = require('./lib/account-claim-security');
 const {
+    ACCOUNT_RECOVERY_TOKEN_TTL_MS,
+    initializeAccountRecoverySchema,
+    createAccountRecoveryStore
+} = require('./lib/account-recovery-security');
+const {
     TERMS_VERSION,
     PRIVACY_VERSION,
     hasExplicitLegalAcceptance,
@@ -248,6 +253,18 @@ const accountClaimPreviewAuditLimiter = createRecoveryRateLimiter({
 });
 const accountClaimActivationLimiter = createRecoveryRateLimiter({
     namespace: 'account-claim-activation',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
+});
+const accountRecoveryPreviewLimiter = createRecoveryRateLimiter({
+    namespace: 'account-recovery-preview',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
+});
+const accountRecoveryCompletionLimiter = createRecoveryRateLimiter({
+    namespace: 'account-recovery-completion',
     windowMs: 15 * 60 * 1000,
     ipLimit: 20,
     subjectLimit: 6
@@ -552,6 +569,8 @@ const passwordLoginLimiterCleanupTimer = setInterval(() => {
     accountClaimPreviewLimiter.cleanupExpired();
     accountClaimPreviewAuditLimiter.cleanupExpired();
     accountClaimActivationLimiter.cleanupExpired();
+    accountRecoveryPreviewLimiter.cleanupExpired();
+    accountRecoveryCompletionLimiter.cleanupExpired();
     contactSupportLimiter.cleanupExpired();
 }, PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS);
 passwordLoginLimiterCleanupTimer.unref();
@@ -1471,7 +1490,9 @@ const LEGAL_GATE_ALLOWED_API_PREFIXES = Object.freeze([
     '/api/auth/reset-password',
     '/api/auth/email-verification',
     '/api/account-claim',
-    '/api/admin/account-claims'
+    '/api/admin/account-claims',
+    '/api/account-recovery',
+    '/api/admin/account-recovery'
 ]);
 
 function isLegalGateAllowedApiPath(requestPath) {
@@ -2344,6 +2365,7 @@ const db = new sqlite3.Database(databasePath, (err) => {
 
 const authTokenStore = createAuthTokenStore({ database: db });
 const accountClaimStore = createAccountClaimStore({ database: db });
+const accountRecoveryStore = createAccountRecoveryStore({ database: db });
 const legalAcceptanceStore = createLegalAcceptanceStore({
     database: db,
     currentPolicies: currentLegalPolicies
@@ -2736,6 +2758,10 @@ const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
         'created_by_user_id', 'revoked_at', 'revoked_by_user_id', 'used_at',
         'consumed_by_user_id'
     ]),
+    account_recovery_tokens: Object.freeze([
+        'id', 'youth_id', 'token_hash', 'created_at', 'expires_at',
+        'created_by_user_id', 'revoked_at', 'revoked_by_user_id', 'used_at'
+    ]),
     legal_acceptances: Object.freeze([
         'id', 'user_id', 'terms_version', 'privacy_version', 'terms_sha256',
         'privacy_sha256', 'accepted_at', 'source'
@@ -2982,6 +3008,7 @@ async function applyDeterministicRuntimeMigration() {
 
     await initializeEmailRecoverySchema(db);
     await initializeAccountClaimSchema(db);
+    await initializeAccountRecoverySchema(db);
     await initializeLegalAcceptanceSchema(db, { currentPolicies: currentLegalPolicies });
 
     /*
@@ -3299,6 +3326,14 @@ app.get(['/claim', '/claim/'], (req, res) => {
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     return res.sendFile(path.join(__dirname, 'public', 'claim', 'index.html'));
+});
+
+app.get(['/recover-account', '/recover-account/'], (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    return res.sendFile(path.join(__dirname, 'public', 'recover-account.html'));
 });
 
 app.get('/api/help/faq', async (req, res) => {
@@ -4554,6 +4589,8 @@ function setAccountClaimResponsePrivacy(req, res, next) {
 
 app.use('/api/admin/account-claims', setAccountClaimResponsePrivacy);
 app.use('/api/account-claim', setAccountClaimResponsePrivacy);
+app.use('/api/admin/account-recovery', setAccountClaimResponsePrivacy);
+app.use('/api/account-recovery', setAccountClaimResponsePrivacy);
 
 app.post('/api/admin/account-claims', requirePermission('access_permissions'), async (req, res) => {
     const youthId = normalizeCanonicalId(req.body && req.body.youth_id);
@@ -4698,6 +4735,680 @@ app.delete('/api/admin/account-claims/:youth_id', requirePermission('access_perm
         return sendNoStoreJson(res, 500, { success: false, error: 'Unable to revoke account claim.' });
     }
 });
+
+
+function requireClaimedAccountRecoveryTarget(state) {
+    if (
+        !state ||
+        state.status !== 'claimed' ||
+        !state.member ||
+        !state.account
+    ) {
+        throw Object.assign(
+            new Error('Account recovery target is not recoverable'),
+            { code: 'ACCOUNT_RECOVERY_TARGET_CONFLICT' }
+        );
+    }
+
+    return state;
+}
+
+function rejectPublicAccountRecovery(res) {
+    return sendNoStoreJson(res, 400, {
+        success: false,
+        error: 'This recovery link is invalid or no longer active.'
+    });
+}
+
+app.post(
+    '/api/admin/account-recovery',
+    requirePermission('access_permissions'),
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.body && req.body.youth_id
+            );
+
+        const actorUserId =
+            normalizeCanonicalId(
+                req.auth && req.auth.userId
+            );
+
+        if (!youthId) {
+            return sendNoStoreJson(
+                res,
+                400,
+                {
+                    success: false,
+                    error: 'A valid member ID is required.'
+                }
+            );
+        }
+
+        if (!actorUserId) {
+            return sendForbidden(res);
+        }
+
+        const publicOrigin =
+            validatePublicOrigin(
+                process.env.KOINONIA_PUBLIC_ORIGIN
+            );
+
+        if (!publicOrigin) {
+            return sendNoStoreJson(
+                res,
+                503,
+                {
+                    success: false,
+                    error: 'Account recovery issuance is unavailable.'
+                }
+            );
+        }
+
+        let issued = null;
+
+        try {
+            let validatedTarget = null;
+
+            issued =
+                await accountRecoveryStore.issue({
+                    youthId,
+                    createdByUserId:
+                        actorUserId,
+                    ttlMs:
+                        ACCOUNT_RECOVERY_TOKEN_TTL_MS,
+                    validate:
+                        async (
+                            recovery,
+                            transaction
+                        ) => {
+                            const state =
+                                await inspectAccountClaimTarget(
+                                    recovery.youthId,
+                                    transaction
+                                );
+
+                            validatedTarget =
+                                requireClaimedAccountRecoveryTarget(
+                                    state
+                                );
+                        }
+                });
+
+            if (!validatedTarget) {
+                validatedTarget =
+                    requireClaimedAccountRecoveryTarget(
+                        await inspectAccountClaimTarget(
+                            youthId
+                        )
+                    );
+            }
+
+            const recoveryUrl =
+                `${publicOrigin}/recover-account#${issued.rawToken}`;
+
+            const recoveryQrDataUrl =
+                await QRCode.toDataURL(
+                    recoveryUrl,
+                    {
+                        type: 'image/png',
+                        width: 320,
+                        margin: 2,
+                        errorCorrectionLevel:
+                            'M'
+                    }
+                );
+
+            logActivity(
+                `User ${actorUserId}`,
+                issued.replaced
+                    ? 'ACCOUNT_RECOVERY_REPLACED'
+                    : 'ACCOUNT_RECOVERY_ISSUED',
+                `${
+                    issued.replaced
+                        ? 'Replaced'
+                        : 'Issued'
+                } account recovery for Member ID ${youthId}`
+            );
+
+            return sendNoStoreJson(
+                res,
+                201,
+                {
+                    success: true,
+                    youth_id:
+                        youthId,
+                    member_name:
+                        validatedTarget.member.name,
+                    login_identifier:
+                        validatedTarget.account.username,
+                    expires_at:
+                        issued.expiresAt,
+                    recovery_url:
+                        recoveryUrl,
+                    recovery_qr_data_url:
+                        recoveryQrDataUrl
+                }
+            );
+        } catch (error) {
+            if (issued) {
+                try {
+                    await accountRecoveryStore.revoke({
+                        youthId,
+                        revokedByUserId:
+                            actorUserId
+                    });
+                } catch (revocationError) {
+                    console.error(
+                        'Unrenderable account recovery revocation failed'
+                    );
+                }
+            }
+
+            if (
+                error &&
+                error.code ===
+                    'ACCOUNT_RECOVERY_TARGET_CONFLICT'
+            ) {
+                return sendNoStoreJson(
+                    res,
+                    409,
+                    {
+                        success: false,
+                        error:
+                            'Account Recovery is available only for an already-connected member account that does not have an account conflict.'
+                    }
+                );
+            }
+
+            console.error(
+                'Account recovery issuance failed'
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    error:
+                        'Unable to issue account recovery.'
+                }
+            );
+        }
+    }
+);
+
+app.get(
+    '/api/admin/account-recovery/:youth_id',
+    requirePermission('access_permissions'),
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.params.youth_id
+            );
+
+        if (!youthId) {
+            return sendNoStoreJson(
+                res,
+                400,
+                {
+                    success: false,
+                    error: 'A valid member ID is required.'
+                }
+            );
+        }
+
+        try {
+            const target =
+                await inspectAccountClaimTarget(
+                    youthId
+                );
+
+            if (!target.member) {
+                return sendNoStoreJson(
+                    res,
+                    404,
+                    {
+                        success: false,
+                        error: 'Member not found.'
+                    }
+                );
+            }
+
+            const recovery =
+                await accountRecoveryStore.getStatus(
+                    youthId
+                );
+
+            return sendNoStoreJson(
+                res,
+                200,
+                {
+                    success: true,
+                    youth_id:
+                        youthId,
+                    account_status:
+                        target.status,
+                    recovery:
+                        recovery
+                            ? {
+                                id:
+                                    recovery.id,
+                                status:
+                                    recovery.status,
+                                created_at:
+                                    recovery.created_at,
+                                expires_at:
+                                    recovery.expires_at,
+                                created_by_user_id:
+                                    recovery.created_by_user_id,
+                                revoked_at:
+                                    recovery.revoked_at,
+                                revoked_by_user_id:
+                                    recovery.revoked_by_user_id,
+                                used_at:
+                                    recovery.used_at
+                            }
+                            : null
+                }
+            );
+        } catch (error) {
+            console.error(
+                'Account recovery status lookup failed'
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    error:
+                        'Unable to load account recovery status.'
+                }
+            );
+        }
+    }
+);
+
+app.delete(
+    '/api/admin/account-recovery/:youth_id',
+    requirePermission('access_permissions'),
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.params.youth_id
+            );
+
+        const actorUserId =
+            normalizeCanonicalId(
+                req.auth && req.auth.userId
+            );
+
+        if (!youthId) {
+            return sendNoStoreJson(
+                res,
+                400,
+                {
+                    success: false,
+                    error: 'A valid member ID is required.'
+                }
+            );
+        }
+
+        if (!actorUserId) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const result =
+                await accountRecoveryStore.revoke({
+                    youthId,
+                    revokedByUserId:
+                        actorUserId
+                });
+
+            if (result.revoked) {
+                logActivity(
+                    `User ${actorUserId}`,
+                    'ACCOUNT_RECOVERY_REVOKED',
+                    `Revoked account recovery for Member ID ${youthId}`
+                );
+            }
+
+            return sendNoStoreJson(
+                res,
+                200,
+                {
+                    success: true,
+                    revoked:
+                        result.revoked
+                }
+            );
+        } catch (error) {
+            console.error(
+                'Account recovery revocation failed'
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    error:
+                        'Unable to revoke account recovery.'
+                }
+            );
+        }
+    }
+);
+
+app.post(
+    '/api/account-recovery/preview',
+    async (req, res) => {
+        const rawToken =
+            req.body &&
+            typeof req.body.token === 'string'
+                ? req.body.token
+                : '';
+
+        const allowed =
+            accountRecoveryPreviewLimiter.check({
+                ip:
+                    getRecoveryClientAddress(
+                        req
+                    ),
+                subject:
+                    /^[A-Za-z0-9_-]{43}$/.test(
+                        rawToken
+                    )
+                        ? rawToken
+                        : null
+            });
+
+        if (!allowed) {
+            res.setHeader(
+                'Retry-After',
+                String(15 * 60)
+            );
+
+            return sendNoStoreJson(
+                res,
+                429,
+                {
+                    success: false,
+                    error:
+                        'Too many account recovery attempts. Please try again later.'
+                }
+            );
+        }
+
+        try {
+            const recovery =
+                await accountRecoveryStore.getUsable(
+                    rawToken
+                );
+
+            if (!recovery) {
+                return rejectPublicAccountRecovery(
+                    res
+                );
+            }
+
+            const target =
+                await inspectAccountClaimTarget(
+                    recovery.youthId
+                );
+
+            if (target.status !== 'claimed') {
+                return rejectPublicAccountRecovery(
+                    res
+                );
+            }
+
+            return sendNoStoreJson(
+                res,
+                200,
+                {
+                    success: true,
+                    member: {
+                        name:
+                            target.member.name
+                    },
+                    login_identifier:
+                        target.account.username,
+                    expires_at:
+                        recovery.expiresAt
+                }
+            );
+        } catch (error) {
+            console.error(
+                'Account recovery preview failed'
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    error:
+                        'Unable to preview account recovery.'
+                }
+            );
+        }
+    }
+);
+
+app.post(
+    '/api/account-recovery/complete',
+    async (req, res) => {
+        const rawToken =
+            req.body &&
+            typeof req.body.token === 'string'
+                ? req.body.token
+                : '';
+
+        const password =
+            req.body &&
+            typeof req.body.password === 'string'
+                ? req.body.password
+                : '';
+
+        const tokenIsValid =
+            /^[A-Za-z0-9_-]{43}$/.test(
+                rawToken
+            );
+
+        const passwordIsValid =
+            password.length >= 8 &&
+            password.length <= 128 &&
+            /\S/.test(password);
+
+        const allowed =
+            accountRecoveryCompletionLimiter.check({
+                ip:
+                    getRecoveryClientAddress(
+                        req
+                    ),
+                subject:
+                    tokenIsValid
+                        ? rawToken
+                        : null
+            });
+
+        if (!allowed) {
+            res.setHeader(
+                'Retry-After',
+                String(15 * 60)
+            );
+
+            return sendNoStoreJson(
+                res,
+                429,
+                {
+                    success: false,
+                    error:
+                        'Too many account recovery attempts. Please try again later.'
+                }
+            );
+        }
+
+        if (!tokenIsValid) {
+            return rejectPublicAccountRecovery(
+                res
+            );
+        }
+
+        if (!passwordIsValid) {
+            return sendNoStoreJson(
+                res,
+                400,
+                {
+                    success: false,
+                    error:
+                        'Password must be 8 to 128 characters and contain meaningful content.'
+                }
+            );
+        }
+
+        let consumed;
+
+        try {
+            consumed =
+                await accountRecoveryStore.consumeWithMutation(
+                    {
+                        rawToken
+                    },
+                    async (
+                        recovery,
+                        transaction
+                    ) => {
+                        const target =
+                            requireClaimedAccountRecoveryTarget(
+                                await inspectAccountClaimTarget(
+                                    recovery.youthId,
+                                    transaction
+                                )
+                            );
+
+                        const encodedPassword =
+                            await hashPassword(
+                                password
+                            );
+
+                        const memberUpdated =
+                            await transaction.run(
+                                `UPDATE youth
+                                 SET password = ?
+                                 WHERE id = ?`,
+                                [
+                                    encodedPassword,
+                                    target.member.id
+                                ]
+                            );
+
+                        const accountUpdated =
+                            await transaction.run(
+                                `UPDATE users
+                                 SET password = ?
+                                 WHERE id = ?
+                                   AND youth_id = ?`,
+                                [
+                                    encodedPassword,
+                                    target.account.id,
+                                    target.member.id
+                                ]
+                            );
+
+                        if (
+                            memberUpdated.changes !==
+                                1 ||
+                            accountUpdated.changes !==
+                                1
+                        ) {
+                            throw Object.assign(
+                                new Error(
+                                    'Account recovery credential update rejected'
+                                ),
+                                {
+                                    code:
+                                        'ACCOUNT_RECOVERY_TARGET_CONFLICT'
+                                }
+                            );
+                        }
+
+                        return Object.freeze({
+                            youthId:
+                                target.member.id,
+                            accountId:
+                                target.account.id,
+                            loginIdentifier:
+                                target.account.username
+                        });
+                    }
+                );
+        } catch (error) {
+            if (
+                error &&
+                typeof error.code === 'string' &&
+                error.code.startsWith(
+                    'ACCOUNT_RECOVERY_'
+                )
+            ) {
+                return rejectPublicAccountRecovery(
+                    res
+                );
+            }
+
+            console.error(
+                'Account recovery completion failed'
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    error:
+                        'Unable to recover the account safely. Please try again.'
+                }
+            );
+        }
+
+        if (!consumed) {
+            return rejectPublicAccountRecovery(
+                res
+            );
+        }
+
+        const {
+            youthId,
+            loginIdentifier
+        } = consumed.mutationResult;
+
+        invalidateSessionsForYouth(
+            sessionStore,
+            youthId
+        );
+
+        logActivity(
+            `Member ${youthId}`,
+            'ACCOUNT_RECOVERY_COMPLETED',
+            'Admin-assisted account recovery completed; password replaced and active sessions invalidated'
+        );
+
+        return sendNoStoreJson(
+            res,
+            200,
+            {
+                success: true,
+                login_identifier:
+                    loginIdentifier,
+                message:
+                    'Account recovered successfully. Sign in with your username and new password.'
+            }
+        );
+    }
+);
 
 app.post('/api/account-claim/preview', async (req, res) => {
     const clientAddress = getRecoveryClientAddress(req);

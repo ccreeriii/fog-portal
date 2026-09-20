@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v68';
+const CACHE_NAME = 'fog-portal-v69';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -12,7 +12,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/css/community-features.css?v=3',
     '/css/fog-premium.css?v=17',
     '/js/offline-data.js?v=12.2',
-    '/js/app.js?v=13.3',
+    '/js/app.js?v=13.4',
     '/js/growth-event-mapping-ui.js?v=3',
     '/js/growth-journey-leadership.js?v=3',
     '/js/watchtower.js?v=2',
@@ -101,7 +101,9 @@ self.addEventListener('fetch', (event) => {
     if (url.pathname === '/reset-password' || url.pathname.startsWith('/reset-password/')) return;
     if (url.pathname === '/verify-email' || url.pathname.startsWith('/verify-email/')) return;
     if (url.pathname === '/claim' || url.pathname.startsWith('/claim/')) return;
+    if (url.pathname === '/recover-account' || url.pathname.startsWith('/recover-account/')) return;
     if (url.pathname === '/js/claim.js' || url.pathname === '/css/claim.css') return;
+    if (url.pathname === '/js/account-recovery.js') return;
 
     if (request.mode === 'navigate') {
         event.respondWith(networkFirstNavigation(request));

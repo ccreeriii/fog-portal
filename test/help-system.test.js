@@ -295,6 +295,19 @@ test('FAQ API uses canonical sessions, filters on the server, and protects previ
         )
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'account-recovery-security.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'account-recovery-security.js'
+        )
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     database = application.db;

@@ -207,6 +207,19 @@ test('membership intents enforce canonical ownership and leadership approval', {
         )
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'account-recovery-security.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'account-recovery-security.js'
+        )
+    );
+
     const isolatedApplication = require(path.join(temporaryRoot, 'server.js'));
     database = isolatedApplication.db;
     assert.equal(database.filename, path.join(temporaryRoot, 'fog_community.db'));

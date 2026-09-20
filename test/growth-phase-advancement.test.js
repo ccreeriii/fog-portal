@@ -231,6 +231,19 @@ test('leadership-controlled Growth Journey phase advancement', { concurrency: fa
         )
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'account-recovery-security.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'account-recovery-security.js'
+        )
+    );
+
     const isolatedApplication = require(path.join(temporaryRoot, 'server.js'));
     database = isolatedApplication.db;
     await isolatedApplication.ready;

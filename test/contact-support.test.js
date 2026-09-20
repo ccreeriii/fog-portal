@@ -164,6 +164,19 @@ async function createIsolatedApplication({ outboxEnabled = true } = {}) {
         )
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'account-recovery-security.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'account-recovery-security.js'
+        )
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     const server = await new Promise((resolve, reject) => {

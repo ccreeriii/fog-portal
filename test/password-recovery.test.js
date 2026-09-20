@@ -178,7 +178,7 @@ test('forgot/reset routes preserve enumeration resistance and atomic credential 
     assert.notEqual(isolatedSource, source);
     assert.ok(isolatedSource.includes('N: 1024,'));
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedSource);
-    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'legal-acceptance.js']) {
+    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'legal-acceptance.js', 'account-recovery-security.js']) {
         await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
     }
     await fsp.writeFile(

@@ -353,7 +353,7 @@ test(
     () => {
         const app =
             index.indexOf(
-                '/js/app.js?v=13.3'
+                '/js/app.js?v=13.4'
             );
 
         const member =
@@ -373,7 +373,7 @@ test(
 
         assert.match(
             serviceWorker,
-            /const CACHE_NAME = 'fog-portal-v68'/
+            /const CACHE_NAME = 'fog-portal-v69'/
         );
 
         assert.match(

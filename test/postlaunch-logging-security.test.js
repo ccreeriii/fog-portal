@@ -161,6 +161,19 @@ test('post-launch logging APIs preserve history and enforce canonical identities
         )
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'account-recovery-security.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'account-recovery-security.js'
+        )
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     database = application.db;
     assert.equal(database.filename, path.join(temporaryRoot, 'fog_community.db'));

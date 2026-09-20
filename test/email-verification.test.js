@@ -298,6 +298,19 @@ test('verified email and pending email changes fail closed across application fl
         )
     );
 
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'account-recovery-security.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'account-recovery-security.js'
+        )
+    );
+
     const application = require(path.join(temporaryRoot, 'server.js'));
     await application.ready;
     database = application.db;

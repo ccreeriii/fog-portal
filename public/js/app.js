@@ -4313,6 +4313,7 @@ window.loadUserPermissionsList = async function() {
 };
 
 let currentIssuedAccountClaimUrl = null;
+let currentIssuedAccountRecoveryUrl = null;
 
 function getAccountClaimStatusLabel(status) {
     return ({
@@ -4358,6 +4359,80 @@ window.loadAccountClaimAdminStatus = async function(youthId) {
             revokeButton.textContent = 'Revoke Claim';
             revokeButton.addEventListener('click', () => window.revokeAccountClaim(youthId));
             actionsElement.appendChild(revokeButton);
+        }
+        if (body.account_status === 'claimed') {
+            const recoveryStatusResponse = await fetch(
+                `/api/admin/account-recovery/${youthId}`,
+                {
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                }
+            );
+
+            let recoveryStatus = null;
+
+            if (recoveryStatusResponse.ok) {
+                const recoveryStatusBody =
+                    await recoveryStatusResponse.json();
+
+                recoveryStatus =
+                    recoveryStatusBody &&
+                    recoveryStatusBody.recovery
+                        ? recoveryStatusBody.recovery.status
+                        : null;
+            }
+
+            const recoveryButton =
+                document.createElement('button');
+
+            recoveryButton.type = 'button';
+            recoveryButton.className =
+                'btn btn-primary btn-sm';
+
+            recoveryButton.textContent =
+                recoveryStatus === 'active'
+                    ? 'Replace Recovery QR / Link'
+                    : 'Generate Recovery QR / Link';
+
+            recoveryButton.addEventListener(
+                'click',
+                () =>
+                    window.issueAccountRecovery(
+                        youthId
+                    )
+            );
+
+            actionsElement.appendChild(
+                recoveryButton
+            );
+
+            if (recoveryStatus === 'active') {
+                const revokeRecoveryButton =
+                    document.createElement(
+                        'button'
+                    );
+
+                revokeRecoveryButton.type =
+                    'button';
+
+                revokeRecoveryButton.className =
+                    'btn btn-danger btn-sm';
+
+                revokeRecoveryButton.textContent =
+                    'Revoke Recovery Link';
+
+                revokeRecoveryButton.addEventListener(
+                    'click',
+                    () =>
+                        window.revokeAccountRecovery(
+                            youthId
+                        )
+                );
+
+                actionsElement.appendChild(
+                    revokeRecoveryButton
+                );
+            }
         }
     } catch (error) {
         statusElement.textContent = error.message || 'Unable to load account status.';
@@ -4418,6 +4493,175 @@ window.revokeAccountClaim = async function(youthId) {
     }
 };
 
+
+window.issueAccountRecovery = async function(youthId) {
+    const statusElement =
+        document.getElementById(
+            'accountClaimStatus'
+        );
+
+    const issuedElement =
+        document.getElementById(
+            'accountRecoveryIssued'
+        );
+
+    try {
+        const response =
+            await fetch(
+                '/api/admin/account-recovery',
+                {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {
+                        'Content-Type':
+                            'application/json'
+                    },
+                    body: JSON.stringify({
+                        youth_id:
+                            youthId
+                    })
+                }
+            );
+
+        const body =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !body.success
+        ) {
+            throw new Error(
+                body.error ||
+                'Unable to issue account recovery.'
+            );
+        }
+
+        currentIssuedAccountRecoveryUrl =
+            body.recovery_url;
+
+        document.getElementById(
+            'accountRecoveryIssuedName'
+        ).textContent =
+            body.member_name;
+
+        document.getElementById(
+            'accountRecoveryIssuedUsername'
+        ).textContent =
+            `Username: ${body.login_identifier}`;
+
+        document.getElementById(
+            'accountRecoveryIssuedExpiry'
+        ).textContent =
+            `Expires ${new Date(
+                body.expires_at
+            ).toLocaleString()}`;
+
+        document.getElementById(
+            'accountRecoveryQrImage'
+        ).src =
+            body.recovery_qr_data_url;
+
+        issuedElement.style.display =
+            'block';
+
+        await window.loadAccountClaimAdminStatus(
+            youthId
+        );
+    } catch (error) {
+        statusElement.textContent =
+            error.message ||
+            'Unable to issue account recovery.';
+    }
+};
+
+window.copyIssuedAccountRecoveryLink =
+    async function() {
+        if (
+            !currentIssuedAccountRecoveryUrl
+        ) return;
+
+        try {
+            await navigator.clipboard.writeText(
+                currentIssuedAccountRecoveryUrl
+            );
+
+            alert(
+                'Account recovery link copied.'
+            );
+        } catch (error) {
+            alert(
+                'Copy was unavailable. Generate a new recovery link if needed.'
+            );
+        }
+    };
+
+window.revokeAccountRecovery =
+    async function(youthId) {
+        const statusElement =
+            document.getElementById(
+                'accountClaimStatus'
+            );
+
+        try {
+            const response =
+                await fetch(
+                    `/api/admin/account-recovery/${youthId}`,
+                    {
+                        method: 'DELETE',
+                        credentials:
+                            'same-origin',
+                        cache: 'no-store'
+                    }
+                );
+
+            const body =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !body.success
+            ) {
+                throw new Error(
+                    body.error ||
+                    'Unable to revoke account recovery.'
+                );
+            }
+
+            currentIssuedAccountRecoveryUrl =
+                null;
+
+            const issuedElement =
+                document.getElementById(
+                    'accountRecoveryIssued'
+                );
+
+            const qrImage =
+                document.getElementById(
+                    'accountRecoveryQrImage'
+                );
+
+            if (issuedElement) {
+                issuedElement.style.display =
+                    'none';
+            }
+
+            if (qrImage) {
+                qrImage.removeAttribute(
+                    'src'
+                );
+            }
+
+            await window.loadAccountClaimAdminStatus(
+                youthId
+            );
+        } catch (error) {
+            statusElement.textContent =
+                error.message ||
+                'Unable to revoke account recovery.';
+        }
+    };
+
 window.openAssignPermissionModal = async function(id, displayName) {
     try {
         // Query the active users list to find their specific permissions rather than the youth list
@@ -4444,9 +4688,39 @@ window.openAssignPermissionModal = async function(id, displayName) {
 
         const modal = document.getElementById('assignPermissionModal');
         if(modal) modal.classList.add('active');
+
         currentIssuedAccountClaimUrl = null;
-        document.getElementById('accountClaimIssued').style.display = 'none';
-        document.getElementById('accountClaimQrImage').removeAttribute('src');
+        currentIssuedAccountRecoveryUrl = null;
+
+        document.getElementById(
+            'accountClaimIssued'
+        ).style.display = 'none';
+
+        document.getElementById(
+            'accountClaimQrImage'
+        ).removeAttribute('src');
+
+        const recoveryIssued =
+            document.getElementById(
+                'accountRecoveryIssued'
+            );
+
+        const recoveryQr =
+            document.getElementById(
+                'accountRecoveryQrImage'
+            );
+
+        if (recoveryIssued) {
+            recoveryIssued.style.display =
+                'none';
+        }
+
+        if (recoveryQr) {
+            recoveryQr.removeAttribute(
+                'src'
+            );
+        }
+
         await window.loadAccountClaimAdminStatus(id);
     } catch(e) {
         console.error(e);
@@ -4458,10 +4732,49 @@ window.closeAssignPermissionModal = function() {
     const modal = document.getElementById('assignPermissionModal');
     if(modal) modal.classList.remove('active');
     currentIssuedAccountClaimUrl = null;
-    const issuedElement = document.getElementById('accountClaimIssued');
-    const qrImage = document.getElementById('accountClaimQrImage');
-    if (issuedElement) issuedElement.style.display = 'none';
-    if (qrImage) qrImage.removeAttribute('src');
+    currentIssuedAccountRecoveryUrl = null;
+
+    const issuedElement =
+        document.getElementById(
+            'accountClaimIssued'
+        );
+
+    const qrImage =
+        document.getElementById(
+            'accountClaimQrImage'
+        );
+
+    const recoveryIssuedElement =
+        document.getElementById(
+            'accountRecoveryIssued'
+        );
+
+    const recoveryQrImage =
+        document.getElementById(
+            'accountRecoveryQrImage'
+        );
+
+    if (issuedElement) {
+        issuedElement.style.display =
+            'none';
+    }
+
+    if (qrImage) {
+        qrImage.removeAttribute(
+            'src'
+        );
+    }
+
+    if (recoveryIssuedElement) {
+        recoveryIssuedElement.style.display =
+            'none';
+    }
+
+    if (recoveryQrImage) {
+        recoveryQrImage.removeAttribute(
+            'src'
+        );
+    }
 };
 
 window.handleSavePermissionsFromModal = function() {
