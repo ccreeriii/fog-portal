@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v59';
+const CACHE_NAME = 'fog-portal-v60';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -7,6 +7,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/css/v3-styles.css?v=12.2',
     '/css/v4-styles.css?v=12.2',
     '/css/community-spotlight-admin.css?v=1',
+    '/css/community-spotlight-member.css?v=1',
     '/css/journey-dashboard.css?v=4',
     '/css/community-features.css?v=3',
     '/css/fog-premium.css?v=17',
@@ -20,6 +21,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/v3-worship.js?v=12.2',
     '/js/v4-communications.js?v=12.3',
     '/js/community-spotlight-admin.js?v=1',
+    '/js/community-spotlight-member.js?v=1',
     '/js/v6-gamification.js?v=12.3',
     '/js/v7-ai-assistant.js?v=12.2',
     '/js/v8-slingshot.js?v=12.2',

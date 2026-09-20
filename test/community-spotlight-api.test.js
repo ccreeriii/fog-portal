@@ -182,6 +182,21 @@ test(
             legalGate,
             /legal_acceptance_required:\s*true/
         );
+
+        const legalRequiredStatuses =
+            legalGate.match(
+                /sendCommunitySpotlightJson\(res,\s*428,/g
+            ) || [];
+
+        assert.equal(
+            legalRequiredStatuses.length,
+            2
+        );
+
+        assert.doesNotMatch(
+            legalGate,
+            /sendCommunitySpotlightJson\(res,\s*403,/
+        );
     }
 );
 

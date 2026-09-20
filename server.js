@@ -5646,7 +5646,7 @@ async function requireCommunitySpotlightLegalAcceptance(req, res, next) {
             await resolveLegalUserIdForLogin(req && req.auth);
 
         if (!userId) {
-            return sendCommunitySpotlightJson(res, 403, {
+            return sendCommunitySpotlightJson(res, 428, {
                 success: false,
                 error: 'Legal acceptance is required before Community Spotlight can be used.',
                 legal_acceptance_required: true,
@@ -5659,7 +5659,7 @@ async function requireCommunitySpotlightLegalAcceptance(req, res, next) {
             await legalAcceptanceStore.requiresCurrentAcceptance(userId);
 
         if (required) {
-            return sendCommunitySpotlightJson(res, 403, {
+            return sendCommunitySpotlightJson(res, 428, {
                 success: false,
                 error: 'Legal acceptance is required before Community Spotlight can be used.',
                 legal_acceptance_required: true,
