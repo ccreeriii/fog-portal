@@ -130,13 +130,10 @@ test(
 );
 
 test(
-    'Campaign Manager APIs require canonical Communications permission and legal acceptance',
+    'Campaign Manager reads and mutations enforce the canonical Communications permission matrix',
     () => {
         for (const [method, route] of [
             ['get', '/api/admin/community-spotlight/campaigns'],
-            ['post', '/api/admin/community-spotlight/campaigns'],
-            ['put', '/api/admin/community-spotlight/campaigns/:campaignId'],
-            ['post', '/api/admin/community-spotlight/campaigns/:campaignId/relaunch'],
             ['get', '/api/admin/community-spotlight/campaigns/:campaignId/analytics']
         ]) {
             const block = routeBlock(method, route);
@@ -144,6 +141,24 @@ test(
             assert.match(
                 block,
                 /requirePermission\('access_communications'\),\s*requireCommunitySpotlightLegalAcceptance/
+            );
+
+            assert.doesNotMatch(
+                block,
+                /requireAllPermissions\(\['access_communications', 'edit_entries'\]\)/
+            );
+        }
+
+        for (const [method, route] of [
+            ['post', '/api/admin/community-spotlight/campaigns'],
+            ['put', '/api/admin/community-spotlight/campaigns/:campaignId'],
+            ['post', '/api/admin/community-spotlight/campaigns/:campaignId/relaunch']
+        ]) {
+            const block = routeBlock(method, route);
+
+            assert.match(
+                block,
+                /requireAllPermissions\(\['access_communications', 'edit_entries'\]\),\s*requireCommunitySpotlightLegalAcceptance/
             );
         }
 

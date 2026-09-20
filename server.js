@@ -6215,7 +6215,7 @@ app.get(
 
 app.post(
     '/api/admin/community-spotlight/campaigns',
-    requirePermission('access_communications'),
+    requireAllPermissions(['access_communications', 'edit_entries']),
     requireCommunitySpotlightLegalAcceptance,
     async (req, res) => {
         const actor =
@@ -6258,7 +6258,7 @@ app.post(
 
 app.put(
     '/api/admin/community-spotlight/campaigns/:campaignId',
-    requirePermission('access_communications'),
+    requireAllPermissions(['access_communications', 'edit_entries']),
     requireCommunitySpotlightLegalAcceptance,
     async (req, res) => {
         const campaignId =
@@ -6321,7 +6321,7 @@ app.put(
 
 app.post(
     '/api/admin/community-spotlight/campaigns/:campaignId/relaunch',
-    requirePermission('access_communications'),
+    requireAllPermissions(['access_communications', 'edit_entries']),
     requireCommunitySpotlightLegalAcceptance,
     async (req, res) => {
         const campaignId =
