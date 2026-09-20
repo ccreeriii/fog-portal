@@ -766,3 +766,162 @@ test(
         );
     }
 );
+
+test(
+    'daily Prayer Covenant schema exposes durable send state and upgrades an older table safely',
+    async t => {
+        const db =
+            openDb();
+
+        t.after(
+            () => close(db)
+        );
+
+        await createBaseSchema(
+            db
+        );
+
+        await exec(
+            db,
+            `
+            CREATE TABLE
+                prayer_covenant_daily_pals (
+                    id INTEGER
+                        PRIMARY KEY AUTOINCREMENT,
+
+                    assignment_date TEXT
+                        NOT NULL,
+
+                    sender_youth_id INTEGER
+                        NOT NULL,
+
+                    pal_youth_id INTEGER
+                        NOT NULL,
+
+                    enrollment_id INTEGER
+                        NOT NULL,
+
+                    created_at TEXT
+                        NOT NULL
+                        DEFAULT CURRENT_TIMESTAMP,
+
+                    UNIQUE(
+                        assignment_date,
+                        sender_youth_id
+                    ),
+
+                    UNIQUE(
+                        assignment_date,
+                        pal_youth_id
+                    ),
+
+                    CHECK(
+                        sender_youth_id <>
+                        pal_youth_id
+                    )
+                );
+            `
+        );
+
+        await Daily.initializeSchema(
+            db
+        );
+
+        await Daily.initializeSchema(
+            db
+        );
+
+        const columns =
+            await all(
+                db,
+                `
+                PRAGMA table_info(
+                    prayer_covenant_daily_pals
+                )
+                `
+            );
+
+        const names =
+            new Set(
+                columns.map(
+                    row => row.name
+                )
+            );
+
+        assert.equal(
+            names.has(
+                'sent_inbox_id'
+            ),
+            true
+        );
+
+        assert.equal(
+            names.has(
+                'sent_at'
+            ),
+            true
+        );
+    }
+);
+
+test(
+    'new daily Prayer Pal assignments expose an unsent durable state',
+    async t => {
+        const db =
+            openDb();
+
+        t.after(
+            () => close(db)
+        );
+
+        await createBaseSchema(
+            db
+        );
+
+        await seedActiveMembers(
+            db,
+            [
+                31,
+                32
+            ]
+        );
+
+        await Daily.initializeSchema(
+            db
+        );
+
+        const result =
+            await Daily
+                .getOrCreateDailyPal(
+                    db,
+                    31,
+                    {
+                        now:
+                            '2026-09-20T04:00:00.000Z'
+                    }
+                );
+
+        assert.equal(
+            result.available,
+            true
+        );
+
+        assert.equal(
+            result.assignment
+                .sentInboxId,
+            null
+        );
+
+        assert.equal(
+            result.assignment
+                .sentAt,
+            null
+        );
+
+        assert.equal(
+            result.assignment
+                .prayedToday,
+            false
+        );
+    }
+);

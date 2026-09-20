@@ -65,6 +65,19 @@ async function createIsolatedApplication({ outboxEnabled = true } = {}) {
     };
 
     await fsp.mkdir(path.join(temporaryRoot, 'lib'), { recursive: true });
+
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'prayer-covenant-daily.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'prayer-covenant-daily.js'
+        )
+    );
     await fsp.copyFile(
         path.join(repositoryRoot, 'lib', 'community-spotlight.js'),
         path.join(temporaryRoot, 'lib', 'community-spotlight.js')

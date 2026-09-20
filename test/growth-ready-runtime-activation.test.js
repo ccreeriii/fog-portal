@@ -113,23 +113,47 @@ test(
 test(
     'Prayer Covenant ready evaluation uses every mutation-driven phase transition',
     () => {
-        const marker =
+        const routeStart =
             server.indexOf(
-                "'prayer_covenant_completion'"
+                "app.post('/api/prayer-pals/send'"
             );
 
         assert.ok(
-            marker >= 0
+            routeStart >= 0,
+            'Prayer Covenant send route exists'
         );
 
-        const block =
-            server.slice(
-                Math.max(0, marker - 1000),
-                marker + 1000
+        const routeEnd =
+            server.indexOf(
+                "app.post('/api/inbox/personal/:id/respond'",
+                routeStart
             );
 
-        assert.match(block, /growthJourney\.phaseTransitions/);
-        assert.match(block, /for\s*\([\s\S]*const phaseProgress[\s\S]*of phaseTransitions/);
+        assert.ok(
+            routeEnd > routeStart,
+            'Prayer Covenant route has a stable next-route boundary'
+        );
+
+        const prayerRoute =
+            server.slice(
+                routeStart,
+                routeEnd
+            );
+
+        assert.match(
+            prayerRoute,
+            /growthJourney\.phaseTransitions/
+        );
+
+        assert.match(
+            prayerRoute,
+            /for\s*\(const phaseProgress of phaseTransitions\)/
+        );
+
+        assert.match(
+            prayerRoute,
+            /processPrayerCovenantReadyNotification\(/
+        );
     }
 );
 

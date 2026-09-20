@@ -15,6 +15,7 @@ const {
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
 const GrowthJourney = require('./lib/growth-journey');
 const CommunitySpotlight = require('./lib/community-spotlight');
+const PrayerCovenantDaily = require('./lib/prayer-covenant-daily');
 const GrowthNotifications = require('./lib/growth-notifications');
 const NotificationCenter = require('./lib/notification-center');
 const {
@@ -1608,6 +1609,17 @@ const sendCustomPush = (db, webpush, youthId, title, message, urlPath) => {
     });
 };
 
+async function processPrayerCovenantReadyNotification(
+    youthId,
+    phaseProgress
+) {
+    return processJourneyReadyNotification({
+        youthId,
+        phaseProgress,
+        source: 'prayer_covenant_completion'
+    });
+}
+
 app.post('/api/prayer-pals/send', requireAuth, async (req, res) => {
     try {
         if (!req.body || !req.body.sender_id) {
@@ -1751,11 +1763,10 @@ app.post('/api/prayer-pals/send', requireAuth, async (req, res) => {
             ? growthJourney.phaseTransitions
             : [];
         for (const phaseProgress of phaseTransitions) {
-            await processJourneyReadyNotification({
-                youthId: authenticatedYouthId,
-                phaseProgress,
-                source: 'prayer_covenant_completion'
-            });
+            await processPrayerCovenantReadyNotification(
+                authenticatedYouthId,
+                phaseProgress
+            );
         }
 
         if (typeof webpush !== 'undefined') {
@@ -2972,6 +2983,13 @@ async function applyDeterministicRuntimeMigration() {
     await initializeEmailRecoverySchema(db);
     await initializeAccountClaimSchema(db);
     await initializeLegalAcceptanceSchema(db, { currentPolicies: currentLegalPolicies });
+
+    /*
+     * Covenant-only DAILY Prayer Pals are intentionally isolated from
+     * the existing Monday-keyed Prayer Partner / Watchtower snapshot.
+     */
+    await PrayerCovenantDaily.initializeSchema(db);
+
     await initializeEmailRecoveryRuntime();
     await assertRuntimeSchema();
 }
@@ -10398,6 +10416,577 @@ app.post(
                     false,
                 error:
                     'Unable to complete this prayer.'
+            });
+        }
+    }
+);
+
+
+// ==========================================
+// 21-DAY PRAYER COVENANT — DAILY PRAYER PAL
+//
+// Deliberately separate from:
+//   /api/prayer-pals/current/:youth_id
+//   /api/prayer-pals/send
+//   secret_prayer_pals
+//
+// Existing weekly Prayer Partner and Watchtower behavior remains intact.
+// ==========================================
+
+app.get(
+    '/api/prayer-covenant/daily-pal',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            Number(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (
+            !Number.isInteger(youthId) ||
+            youthId <= 0
+        ) {
+            return res.status(401).json({
+                success: false,
+                error:
+                    'Authentication required.'
+            });
+        }
+
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        try {
+            const result =
+                await PrayerCovenantDaily
+                    .getOrCreateDailyPal(
+                        db,
+                        youthId
+                    );
+
+            if (
+                !result.available ||
+                !result.assignment
+            ) {
+                return res.json({
+                    success: true,
+                    available: false,
+                    reason:
+                        result.reason,
+                    assignmentDate:
+                        result.assignmentDate,
+                    prayedToday: false,
+                    prayerPal: null
+                });
+            }
+
+            return res.json({
+                success: true,
+                available: true,
+                reason:
+                    result.reason,
+                assignmentDate:
+                    result.assignmentDate,
+                prayedToday:
+                    Boolean(
+                        result.assignment
+                            .prayedToday
+                    ),
+
+                prayerPal: {
+                    youthId:
+                        result.assignment
+                            .palYouthId,
+
+                    name:
+                        result.assignment
+                            .palName,
+
+                    profilePicture:
+                        result.assignment
+                            .palProfilePicture ||
+                        null
+                }
+            });
+        } catch (error) {
+            console.error(
+                '[PRAYER_COVENANT_DAILY] load failed',
+                error
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to load today’s Prayer Pal.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/prayer-covenant/daily-pal/send',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            Number(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (
+            !Number.isInteger(youthId) ||
+            youthId <= 0
+        ) {
+            return res.status(401).json({
+                success: false,
+                error:
+                    'Authentication required.'
+            });
+        }
+
+        const receiverId =
+            Number(
+                req.body &&
+                req.body.receiver_id
+            );
+
+        if (
+            !Number.isInteger(receiverId) ||
+            receiverId <= 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Invalid Prayer Pal.'
+            });
+        }
+
+        const message =
+            req.body &&
+            typeof req.body.message ===
+                'string'
+                ? req.body.message.trim()
+                : '';
+
+        if (!message) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Prayer message is required.'
+            });
+        }
+
+        if (message.length > 4000) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Prayer message is too long.'
+            });
+        }
+
+        try {
+            const daily =
+                await PrayerCovenantDaily
+                    .getOrCreateDailyPal(
+                        db,
+                        youthId
+                    );
+
+            if (
+                !daily.available ||
+                !daily.assignment
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    reason:
+                        daily.reason,
+                    error:
+                        daily.reason ===
+                            'not_enrolled'
+                            ? 'Join the 21-Day Prayer Covenant before sending a Covenant prayer.'
+                            : 'Today’s Prayer Pal is not available yet.'
+                });
+            }
+
+            const assignment =
+                daily.assignment;
+
+            if (
+                Number(
+                    assignment.palYouthId
+                ) !== receiverId
+            ) {
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        'Prayer can only be sent to today’s assigned Prayer Pal.'
+                });
+            }
+
+            if (
+                assignment.prayedToday
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    reason:
+                        'already_sent_today',
+                    error:
+                        'Today’s Prayer Covenant prayer has already been sent.'
+                });
+            }
+
+            const canonicalSenderName =
+                req.auth &&
+                req.auth.member &&
+                typeof req.auth.member.name ===
+                    'string' &&
+                req.auth.member.name.trim()
+                    ? req.auth.member.name.trim()
+                    : (
+                        req.auth &&
+                        typeof req.auth.username ===
+                            'string'
+                            ? req.auth.username
+                            : 'FOG Member'
+                    );
+
+            const timeNow =
+                getManilaTime();
+
+            let inboxId =
+                null;
+
+            let growthJourney =
+                null;
+
+            try {
+                growthJourney =
+                    await GrowthJourney
+                        .withPrayerRhythmMutation(
+                            db,
+                            async () => {
+                                await GrowthJourney.run(
+                                    db,
+                                    'BEGIN IMMEDIATE'
+                                );
+
+                                try {
+                                    const locked =
+                                        await GrowthJourney.get(
+                                            db,
+                                            `SELECT
+                                                id,
+                                                assignment_date,
+                                                sender_youth_id,
+                                                pal_youth_id,
+                                                enrollment_id,
+                                                sent_inbox_id,
+                                                sent_at
+                                             FROM prayer_covenant_daily_pals
+                                             WHERE id = ?
+                                               AND assignment_date = ?
+                                               AND sender_youth_id = ?
+                                             LIMIT 1`,
+                                            [
+                                                assignment.id,
+                                                daily.assignmentDate,
+                                                youthId
+                                            ]
+                                        );
+
+                                    if (!locked) {
+                                        const error =
+                                            new Error(
+                                                'Today’s Prayer Pal assignment is no longer available.'
+                                            );
+
+                                        error.code =
+                                            'DAILY_PRAYER_ASSIGNMENT_MISSING';
+
+                                        throw error;
+                                    }
+
+                                    if (
+                                        Number(
+                                            locked.pal_youth_id
+                                        ) !==
+                                        receiverId
+                                    ) {
+                                        const error =
+                                            new Error(
+                                                'Today’s Prayer Pal assignment changed.'
+                                            );
+
+                                        error.code =
+                                            'DAILY_PRAYER_RECIPIENT_CHANGED';
+
+                                        throw error;
+                                    }
+
+                                    if (
+                                        locked.sent_at
+                                    ) {
+                                        const error =
+                                            new Error(
+                                                'Today’s Prayer Covenant prayer has already been sent.'
+                                            );
+
+                                        error.code =
+                                            'DAILY_PRAYER_ALREADY_SENT';
+
+                                        throw error;
+                                    }
+
+                                    const inbox =
+                                        await GrowthJourney.run(
+                                            db,
+                                            `INSERT INTO personal_inbox (
+                                                sender_id,
+                                                receiver_id,
+                                                title,
+                                                message,
+                                                status,
+                                                created_at
+                                             ) VALUES (?, ?, ?, ?, ?, ?)`,
+                                            [
+                                                youthId,
+                                                receiverId,
+                                                '🙏 A Prayer from ' +
+                                                    canonicalSenderName,
+                                                message,
+                                                'Delivered',
+                                                timeNow
+                                            ]
+                                        );
+
+                                    inboxId =
+                                        inbox.lastID;
+
+                                    const claimed =
+                                        await GrowthJourney.run(
+                                            db,
+                                            `UPDATE prayer_covenant_daily_pals
+                                             SET sent_inbox_id = ?,
+                                                 sent_at = ?
+                                             WHERE id = ?
+                                               AND sent_at IS NULL`,
+                                            [
+                                                inboxId,
+                                                timeNow,
+                                                assignment.id
+                                            ]
+                                        );
+
+                                    if (
+                                        claimed.changes !==
+                                        1
+                                    ) {
+                                        const error =
+                                            new Error(
+                                                'Today’s Prayer Covenant prayer has already been sent.'
+                                            );
+
+                                        error.code =
+                                            'DAILY_PRAYER_ALREADY_SENT';
+
+                                        throw error;
+                                    }
+
+                                    const result =
+                                        await GrowthJourney
+                                            .recordPrayerCovenantCompletion(
+                                                db,
+                                                youthId,
+                                                {
+                                                    sourceKey:
+                                                        `personal-inbox:${inboxId}`,
+
+                                                    sourceTable:
+                                                        'personal_inbox',
+
+                                                    sourceId:
+                                                        inboxId,
+
+                                                    completedAt:
+                                                        timeNow,
+
+                                                    actor:
+                                                        req.auth.username ||
+                                                        canonicalSenderName,
+
+                                                    details: {
+                                                        prayerRecipientId:
+                                                            receiverId,
+
+                                                        dailyPrayerPalAssignmentId:
+                                                            assignment.id,
+
+                                                        assignmentDate:
+                                                            daily.assignmentDate
+                                                    },
+
+                                                    useExistingTransaction:
+                                                        true
+                                                }
+                                            );
+
+                                    await GrowthJourney.run(
+                                        db,
+                                        'COMMIT'
+                                    );
+
+                                    return result;
+                                } catch (error) {
+                                    await GrowthJourney
+                                        .run(
+                                            db,
+                                            'ROLLBACK'
+                                        )
+                                        .catch(
+                                            () => {}
+                                        );
+
+                                    throw error;
+                                }
+                            }
+                        );
+            } catch (error) {
+                if (
+                    error &&
+                    error.code ===
+                        'DAILY_PRAYER_ALREADY_SENT'
+                ) {
+                    return res.status(409).json({
+                        success: false,
+                        reason:
+                            'already_sent_today',
+                        error:
+                            'Today’s Prayer Covenant prayer has already been sent.'
+                    });
+                }
+
+                if (
+                    error &&
+                    (
+                        error.code ===
+                            'DAILY_PRAYER_ASSIGNMENT_MISSING' ||
+                        error.code ===
+                            'DAILY_PRAYER_RECIPIENT_CHANGED'
+                    )
+                ) {
+                    return res.status(409).json({
+                        success: false,
+                        reason:
+                            'assignment_changed',
+                        error:
+                            'Today’s Prayer Pal changed. Please refresh before sending.'
+                    });
+                }
+
+                console.error(
+                    '[PRAYER_COVENANT_DAILY] send transaction failed',
+                    error
+                );
+
+                return res.status(500).json({
+                    success: false,
+                    error:
+                        'Unable to send your Prayer Covenant prayer.'
+                });
+            }
+
+            /*
+             * Preserve the existing once-per-Manila-day Growth XP behavior.
+             * This is separate from canonical prayer-day completion.
+             */
+            const todayStr =
+                timeNow.split(' ')[0];
+
+            db.get(
+                `SELECT id
+                 FROM point_transactions
+                 WHERE youth_id = ?
+                   AND game_name = 'Daily Prayer Covenant'
+                   AND created_at LIKE ?`,
+                [
+                    youthId,
+                    todayStr + '%'
+                ],
+                (
+                    pointError,
+                    pointRow
+                ) => {
+                    if (
+                        !pointError &&
+                        !pointRow &&
+                        typeof awardPoints ===
+                            'function'
+                    ) {
+                        awardPoints(
+                            youthId,
+                            'growth',
+                            50,
+                            canonicalSenderName,
+                            'Daily Prayer Covenant'
+                        );
+                    }
+                }
+            );
+
+            const phaseTransitions =
+                growthJourney &&
+                Array.isArray(
+                    growthJourney
+                        .phaseTransitions
+                )
+                    ? growthJourney
+                        .phaseTransitions
+                    : [];
+
+            for (
+                const phaseProgress
+                of phaseTransitions
+            ) {
+                await processPrayerCovenantReadyNotification(
+                    youthId,
+                    phaseProgress
+                );
+            }
+
+            if (
+                typeof webpush !==
+                'undefined'
+            ) {
+                sendCustomPush(
+                    db,
+                    webpush,
+                    receiverId,
+                    '🙏 Prayer Received',
+                    'Someone in your Prayer Covenant prayed for you today.',
+                    '/?tab=inbox'
+                );
+            }
+
+            return res.json({
+                success: true,
+                assignmentDate:
+                    daily.assignmentDate,
+                prayedToday: true,
+                growthJourney
+            });
+        } catch (error) {
+            console.error(
+                '[PRAYER_COVENANT_DAILY] send failed',
+                error
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to send your Prayer Covenant prayer.'
             });
         }
     }
