@@ -219,7 +219,7 @@ test(
 
         assert.match(
             serviceWorker,
-            /fog-portal-v64/
+            /fog-portal-v65/
         );
 
         assert.match(

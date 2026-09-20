@@ -1628,13 +1628,21 @@
         const newButton =
             byId('spotlightNewCampaignBtn');
 
+        const campaignTab =
+            byId('btnCommunicationsCampaigns');
+
         if (!section) return;
 
+        /*
+         * Authentication is established asynchronously by app.js.
+         * This initializer can therefore run before hasPerm() is ready.
+         *
+         * Unauthorized state may hide the Campaign Manager tab, but an
+         * authorized re-run MUST also restore it. This keeps the UI in
+         * sync with the canonical authenticated permission state.
+         */
         if (!canRead()) {
             section.style.display = 'none';
-
-            const campaignTab =
-                byId('btnCommunicationsCampaigns');
 
             if (campaignTab) {
                 campaignTab.style.display = 'none';
@@ -1643,17 +1651,80 @@
             return;
         }
 
+        if (campaignTab) {
+            campaignTab.style.display = '';
+        }
+
         if (newButton) {
             newButton.style.display =
                 canMutate() && !offlineReadonly()
                     ? 'inline-flex'
                     : 'none';
 
-            newButton.addEventListener(
-                'click',
-                openCreate
-            );
+            /*
+             * init() intentionally may run more than once:
+             *   - DOMContentLoaded
+             *   - after authReady settles
+             *   - when Communications is opened
+             *
+             * Bind the mutation control only once.
+             */
+            if (
+                newButton.dataset.spotlightCreateBound
+                !== '1'
+            ) {
+                newButton.addEventListener(
+                    'click',
+                    openCreate
+                );
+
+                newButton.dataset.spotlightCreateBound =
+                    '1';
+            }
         }
+    }
+
+    function initAfterAuthReady() {
+        /*
+         * Preserve the immediate initialization behavior, then reconcile
+         * visibility again once the asynchronous auth bootstrap settles.
+         */
+        init();
+
+        if (
+            root.authReady &&
+            typeof root.authReady.then === 'function'
+        ) {
+            Promise.resolve(root.authReady)
+                .then(() => init())
+                .catch(() => {});
+        }
+    }
+
+    function handleCommunicationsNavigation(event) {
+        /*
+         * Login can happen after the page's initial authReady promise has
+         * already settled unauthenticated. The Communications navigation
+         * click is therefore another safe reconciliation point.
+         *
+         * Navigation buttons are generated in several Portal generations;
+         * support both data-target and inline switchTab forms.
+         */
+        const element =
+            event &&
+            event.target &&
+            typeof event.target.closest === 'function'
+                ? event.target.closest(
+                    '[data-target="communicationsAdminTab"], ' +
+                    '[onclick*="communicationsAdminTab"]'
+                )
+                : null;
+
+        if (!element) return;
+
+        Promise.resolve()
+            .then(() => init())
+            .catch(() => {});
     }
 
     root.CommunitySpotlightAdmin = {
@@ -1669,6 +1740,11 @@
 
     document.addEventListener(
         'DOMContentLoaded',
-        init
+        initAfterAuthReady
+    );
+
+    document.addEventListener(
+        'click',
+        handleCommunicationsNavigation
     );
 })(window);

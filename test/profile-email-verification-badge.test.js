@@ -147,7 +147,7 @@ test(
 
         assert.match(
             sw,
-            /fog-portal-v64/
+            /fog-portal-v65/
         );
 
         assert.match(

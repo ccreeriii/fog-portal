@@ -201,7 +201,7 @@ test(
     'Campaign Manager publishes through a fresh coordinated PWA shell',
     () => {
         assert.ok(
-            index.indexOf('/js/community-spotlight-admin.js?v=1') >
+            index.indexOf('/js/community-spotlight-admin.js?v=2') >
             index.indexOf('/js/v4-communications.js?v=12.3')
         );
 
@@ -212,12 +212,12 @@ test(
 
         assert.match(
             serviceWorker,
-            /const CACHE_NAME = 'fog-portal-v64'/
+            /const CACHE_NAME = 'fog-portal-v65'/
         );
 
         assert.match(
             serviceWorker,
-            /'\/js\/community-spotlight-admin\.js\?v=1'/
+            /'\/js\/community-spotlight-admin\.js\?v=2'/
         );
 
         assert.match(
@@ -233,6 +233,56 @@ test(
         assert.match(
             css,
             /body\.koinonia-offline-readonly/
+        );
+    }
+);
+
+require('node:test')(
+    'Campaign Manager restores visibility after asynchronous authentication',
+    () => {
+        const fs = require('node:fs');
+        const path = require('node:path');
+        const assert = require('node:assert/strict');
+
+        const source = fs.readFileSync(
+            path.join(
+                __dirname,
+                '..',
+                'public',
+                'js',
+                'community-spotlight-admin.js'
+            ),
+            'utf8'
+        );
+
+        assert.match(
+            source,
+            /campaignTab\.style\.display\s*=\s*''/
+        );
+
+        assert.match(
+            source,
+            /Promise\.resolve\(root\.authReady\)[\s\S]*?\.then\(\(\)\s*=>\s*init\(\)\)/
+        );
+
+        assert.match(
+            source,
+            /\[data-target="communicationsAdminTab"\]/
+        );
+
+        assert.match(
+            source,
+            /\[onclick\*="communicationsAdminTab"\]/
+        );
+
+        assert.match(
+            source,
+            /spotlightCreateBound/
+        );
+
+        assert.match(
+            source,
+            /'DOMContentLoaded',[\s\S]*?initAfterAuthReady/
         );
     }
 );
