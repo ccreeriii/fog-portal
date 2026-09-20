@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 
@@ -201,7 +202,7 @@ test(
     'Campaign Manager publishes through a fresh coordinated PWA shell',
     () => {
         assert.ok(
-            index.indexOf('/js/community-spotlight-admin.js?v=2') >
+            index.indexOf('/js/community-spotlight-admin.js?v=3') >
             index.indexOf('/js/v4-communications.js?v=12.3')
         );
 
@@ -212,12 +213,12 @@ test(
 
         assert.match(
             serviceWorker,
-            /const CACHE_NAME = 'fog-portal-v65'/
+            /const CACHE_NAME = 'fog-portal-v66'/
         );
 
         assert.match(
             serviceWorker,
-            /'\/js\/community-spotlight-admin\.js\?v=2'/
+            /'\/js\/community-spotlight-admin\.js\?v=3'/
         );
 
         assert.match(
@@ -237,52 +238,157 @@ test(
     }
 );
 
-require('node:test')(
-    'Campaign Manager restores visibility after asynchronous authentication',
-    () => {
-        const fs = require('node:fs');
-        const path = require('node:path');
-        const assert = require('node:assert/strict');
+function createLifecycleHarness() {
+    class FakeElement {
+        constructor(id) {
+            this.id = id;
+            this.dataset = {};
+            this.listeners = {};
+            this.style = {
+                display: '',
+                setProperty(name, value) {
+                    this[name] = value;
+                }
+            };
+            this.classList = {
+                contains: () => false,
+                toggle() {}
+            };
+        }
 
-        const source = fs.readFileSync(
-            path.join(
-                __dirname,
-                '..',
-                'public',
-                'js',
-                'community-spotlight-admin.js'
-            ),
-            'utf8'
+        addEventListener(type, listener) {
+            this.listeners[type] = listener;
+        }
+    }
+
+    const ids = [
+        'communicationsAdminTab',
+        'communicationsBroadcastSection',
+        'communitySpotlightAdminSection',
+        'btnCommunicationsBroadcasts',
+        'btnCommunicationsCampaigns',
+        'spotlightNewCampaignBtn'
+    ];
+    const elements = Object.fromEntries(
+        ids.map(id => [id, new FakeElement(id)])
+    );
+    const listeners = {};
+    const document = {
+        body: {
+            classList: {
+                contains: () => false
+            }
+        },
+        getElementById: id => elements[id] || null,
+        createElement: tag => new FakeElement(tag),
+        addEventListener(type, listener) {
+            (listeners[type] ||= []).push(listener);
+        }
+    };
+    const state = {
+        permissions: [],
+        applyPermissionsCalls: 0,
+        built: false,
+        opened: null
+    };
+    const window = {
+        document,
+        fetch: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ campaigns: [] })
+        }),
+        koinoniaAuthStatus: 'unauthenticated',
+        authReady: Promise.resolve({ authenticated: false }),
+        hasPerm(permission) {
+            return this.koinoniaAuthStatus === 'authenticated' &&
+                state.permissions.includes(permission);
+        },
+        applyGranularPermissions() {
+            state.applyPermissionsCalls += 1;
+        },
+        buildNav() {
+            state.built = true;
+        },
+        switchTab(tabId) {
+            state.opened = tabId;
+        }
+    };
+
+    vm.runInNewContext(source, {
+        window,
+        document,
+        Promise,
+        Set,
+        console,
+        setTimeout,
+        clearTimeout
+    });
+
+    return { window, elements, listeners, state };
+}
+
+test(
+    'Campaign Manager follows the canonical asynchronous authentication and permission lifecycle',
+    async () => {
+        const { window, elements, listeners, state } =
+            createLifecycleHarness();
+
+        for (const listener of listeners.DOMContentLoaded || []) {
+            listener();
+        }
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(
+            elements.btnCommunicationsCampaigns.style.display,
+            'none',
+            'the initial unauthenticated lifecycle hides Campaign Manager'
         );
 
-        assert.match(
-            source,
-            /campaignTab\.style\.display\s*=\s*''/
+        window.koinoniaAuthStatus = 'authenticated';
+        state.permissions = [
+            'access_communications',
+            'edit_entries'
+        ];
+
+        window.applyGranularPermissions();
+        window.buildNav();
+        window.switchTab('communicationsAdminTab');
+
+        assert.equal(state.applyPermissionsCalls, 1);
+        assert.equal(state.built, true);
+        assert.equal(state.opened, 'communicationsAdminTab');
+        assert.equal(
+            elements.btnCommunicationsCampaigns.style.display,
+            '',
+            'canonical permission application restores the readable sub-tab'
+        );
+        assert.equal(
+            elements.spotlightNewCampaignBtn.style.display,
+            'inline-flex',
+            'edit permission enables mutation controls'
         );
 
-        assert.match(
-            source,
-            /Promise\.resolve\(root\.authReady\)[\s\S]*?\.then\(\(\)\s*=>\s*init\(\)\)/
+        state.permissions = ['access_communications'];
+        window.applyGranularPermissions();
+        assert.equal(
+            elements.btnCommunicationsCampaigns.style.display,
+            '',
+            'read permission alone keeps Campaign Manager visible'
+        );
+        assert.equal(
+            elements.spotlightNewCampaignBtn.style.display,
+            'none',
+            'read permission alone does not enable mutation controls'
         );
 
-        assert.match(
-            source,
-            /\[data-target="communicationsAdminTab"\]/
-        );
-
-        assert.match(
-            source,
-            /\[onclick\*="communicationsAdminTab"\]/
-        );
-
-        assert.match(
-            source,
-            /spotlightCreateBound/
-        );
-
-        assert.match(
-            source,
-            /'DOMContentLoaded',[\s\S]*?initAfterAuthReady/
+        state.permissions = [];
+        window.applyGranularPermissions();
+        assert.equal(
+            elements.btnCommunicationsCampaigns.style.display,
+            'none',
+            'unauthorized users remain denied'
         );
     }
 );

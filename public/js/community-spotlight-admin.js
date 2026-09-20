@@ -1701,6 +1701,36 @@
         }
     }
 
+    function installPermissionLifecycle() {
+        const previousApplyPermissions =
+            root.applyGranularPermissions;
+
+        if (
+            typeof previousApplyPermissions !== 'function' ||
+            previousApplyPermissions.communitySpotlightWrapped
+        ) {
+            return;
+        }
+
+        const wrapped = function (...args) {
+            const result =
+                previousApplyPermissions.apply(this, args);
+
+            /*
+             * applyGranularPermissions() is the Portal's canonical
+             * post-authentication UI reconciliation point. Keep Campaign
+             * Manager visibility and mutation controls synchronized there
+             * instead of depending on incidental navigation timing.
+             */
+            init();
+
+            return result;
+        };
+
+        wrapped.communitySpotlightWrapped = true;
+        root.applyGranularPermissions = wrapped;
+    }
+
     function handleCommunicationsNavigation(event) {
         /*
          * Login can happen after the page's initial authReady promise has
@@ -1737,6 +1767,8 @@
         relaunchCampaign,
         _state: state
     };
+
+    installPermissionLifecycle();
 
     document.addEventListener(
         'DOMContentLoaded',

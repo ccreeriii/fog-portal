@@ -78,5 +78,5 @@ test('brand and journal assets publish through a fresh PWA cache', () => {
     assert.match(index, /community-features\.css\?v=3/);
     assert.match(index, /community-feature-polish\.js\?v=7/);
     assert.match(index, /journey-dashboard\.css\?v=4/);
-    assert.match(sw, /fog-portal-v65/);
+    assert.match(sw, /fog-portal-v66/);
 });
