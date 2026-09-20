@@ -9,6 +9,7 @@
         sessionShownKeys: new Set(),
         mutationBusy: false,
         completionAcknowledged: false,
+        prayerCovenantStep: 1,
         installed: false
     };
 
@@ -202,9 +203,9 @@
                             aria-label="Close Community Spotlight">×</button>
                     </div>
 
-                    <p
+                    <div
                         id="communitySpotlightMemberMessage"
-                        class="community-spotlight-member-message"></p>
+                        class="community-spotlight-member-message"></div>
 
                     <div
                         id="communitySpotlightMemberStatus"
@@ -231,7 +232,8 @@
                             <input
                                 id="communitySpotlightMemberDsaCheckbox"
                                 type="checkbox">
-                            <span>Don’t show this announcement again.</span>
+                            <span
+                                id="communitySpotlightMemberDsaText">Don’t show this announcement again.</span>
                         </label>
                     </div>
                 </div>
@@ -251,7 +253,7 @@
             'communitySpotlightMemberSecondary'
         ).addEventListener(
             'click',
-            () => dismissActiveCampaign()
+            handleSecondaryAction
         );
 
         byId(
@@ -403,106 +405,679 @@
         }
     }
 
+    function isPrayerCovenantCampaign(
+        campaign = state.activeCampaign
+    ) {
+        return Boolean(
+            campaign &&
+            campaign.primary_action_type ===
+                'prayer_covenant_join'
+        );
+    }
+
+    function clearPrayerGuideContent(container) {
+        if (!container) return;
+
+        while (container.firstChild) {
+            container.removeChild(
+                container.firstChild
+            );
+        }
+    }
+
+    function appendPrayerGuideText(
+        container,
+        text,
+        className =
+            'community-spotlight-prayer-paragraph'
+    ) {
+        const paragraph =
+            document.createElement('p');
+
+        paragraph.className =
+            className;
+
+        paragraph.textContent =
+            text;
+
+        container.appendChild(
+            paragraph
+        );
+
+        return paragraph;
+    }
+
+    function appendPrayerGuideStrongLine(
+        container,
+        text
+    ) {
+        return appendPrayerGuideText(
+            container,
+            text,
+            'community-spotlight-prayer-highlight'
+        );
+    }
+
+    function appendPrayerGuideSteps(
+        container,
+        items
+    ) {
+        const list =
+            document.createElement('ol');
+
+        list.className =
+            'community-spotlight-prayer-how-list';
+
+        for (const item of items) {
+            const entry =
+                document.createElement('li');
+
+            const heading =
+                document.createElement('strong');
+
+            const detail =
+                document.createElement('span');
+
+            heading.textContent =
+                item.title;
+
+            detail.textContent =
+                item.detail;
+
+            entry.appendChild(
+                heading
+            );
+
+            entry.appendChild(
+                detail
+            );
+
+            list.appendChild(
+                entry
+            );
+        }
+
+        container.appendChild(
+            list
+        );
+    }
+
+    function appendPrayerGuideCommitments(
+        container,
+        items
+    ) {
+        const list =
+            document.createElement('ul');
+
+        list.className =
+            'community-spotlight-prayer-commitments';
+
+        for (const text of items) {
+            const item =
+                document.createElement('li');
+
+            item.textContent =
+                text;
+
+            list.appendChild(
+                item
+            );
+        }
+
+        container.appendChild(
+            list
+        );
+    }
+
+    function appendPrayerGuideProgress(
+        container,
+        currentStep
+    ) {
+        const progress =
+            document.createElement('div');
+
+        progress.className =
+            'community-spotlight-prayer-progress';
+
+        progress.setAttribute(
+            'aria-label',
+            `Prayer Covenant introduction, step ${currentStep} of 3`
+        );
+
+        for (
+            let step = 1;
+            step <= 3;
+            step += 1
+        ) {
+            const dot =
+                document.createElement('span');
+
+            dot.className =
+                'community-spotlight-prayer-progress-dot';
+
+            dot.classList.toggle(
+                'active',
+                step <= currentStep
+            );
+
+            dot.setAttribute(
+                'aria-hidden',
+                'true'
+            );
+
+            progress.appendChild(
+                dot
+            );
+        }
+
+        container.appendChild(
+            progress
+        );
+    }
+
+    function renderPrayerCovenantStep(
+        campaign,
+        requestedStep
+    ) {
+        if (
+            !isPrayerCovenantCampaign(
+                campaign
+            )
+        ) {
+            return;
+        }
+
+        const step =
+            Math.max(
+                1,
+                Math.min(
+                    3,
+                    Number(
+                        requestedStep
+                    ) || 1
+                )
+            );
+
+        state.prayerCovenantStep =
+            step;
+
+        const card =
+            document.querySelector(
+                '.community-spotlight-member-card'
+            );
+
+        const eyebrow =
+            byId(
+                'communitySpotlightMemberEyebrow'
+            );
+
+        const title =
+            byId(
+                'communitySpotlightMemberTitle'
+            );
+
+        const message =
+            byId(
+                'communitySpotlightMemberMessage'
+            );
+
+        const primary =
+            byId(
+                'communitySpotlightMemberPrimary'
+            );
+
+        const secondary =
+            byId(
+                'communitySpotlightMemberSecondary'
+            );
+
+        const dsa =
+            byId(
+                'communitySpotlightMemberDsa'
+            );
+
+        const dsaCheckbox =
+            byId(
+                'communitySpotlightMemberDsaCheckbox'
+            );
+
+        const dsaText =
+            byId(
+                'communitySpotlightMemberDsaText'
+            );
+
+        if (
+            !eyebrow ||
+            !title ||
+            !message ||
+            !primary ||
+            !secondary
+        ) {
+            return;
+        }
+
+        if (card) {
+            card.classList.add(
+                'community-spotlight-prayer-guide-card'
+            );
+        }
+
+        message.classList.add(
+            'community-spotlight-prayer-guide'
+        );
+
+        clearPrayerGuideContent(
+            message
+        );
+
+        appendPrayerGuideProgress(
+            message,
+            step
+        );
+
+        primary.style.display = '';
+        secondary.style.display = '';
+
+        if (step === 1) {
+            eyebrow.textContent =
+                '21-DAY DAILY PRAYER COVENANT';
+
+            title.textContent =
+                'What if everyone in our community was prayed for every day?';
+
+            appendPrayerGuideStrongLine(
+                message,
+                'Imagine knowing that every day, someone in our FOG family is intentionally lifting you to God in prayer.'
+            );
+
+            appendPrayerGuideText(
+                message,
+                'Every day, each of us carries hopes, decisions, responsibilities, relationships, and dreams into the day. Prayer gives us a beautiful way to accompany one another—even when we may not know every detail.'
+            );
+
+            appendPrayerGuideText(
+                message,
+                'When we participate together, each person in the Prayer Covenant can be intentionally prayed for. Your prayer may be the encouragement and grace someone needs for the day ahead.'
+            );
+
+            appendPrayerGuideText(
+                message,
+                'And while you pray for someone else, prayer also grows in you. Even 1–3 intentional minutes each day can begin a consistent prayer rhythm and help deepen your relationship with God.'
+            );
+
+            appendPrayerGuideStrongLine(
+                message,
+                'One prayer. One person. Every day. Together as one family.'
+            );
+
+            primary.textContent =
+                '🙏 Join the 21-Day Prayer Covenant';
+
+            secondary.textContent =
+                campaign.secondary_label ||
+                'Maybe later';
+
+            if (dsa) {
+                dsa.classList.toggle(
+                    'active',
+                    campaign.allow_dont_show_again ===
+                        true
+                );
+            }
+
+            if (dsaText) {
+                dsaText.textContent =
+                    'Don’t show this Prayer Covenant invitation again.';
+            }
+
+            return;
+        }
+
+        if (dsa) {
+            dsa.classList.remove(
+                'active'
+            );
+        }
+
+        if (step === 2) {
+            eyebrow.textContent =
+                'STEP 2 OF 3 · HOW IT WORKS';
+
+            title.textContent =
+                'A simple way to pray for one another every day';
+
+            appendPrayerGuideSteps(
+                message,
+                [
+                    {
+                        title:
+                            '1. Receive your Prayer Pal',
+                        detail:
+                            'Each day, the Portal gives you one participating member to intentionally pray for. Prayer Pals rotate day by day and, whenever the active group allows, you will receive someone different from your previous assignment.'
+                    },
+                    {
+                        title:
+                            '2. Choose a prayer',
+                        detail:
+                            'You will have 10 prayer starters to help you begin. You may use one exactly as it is, personalize it, add your own words, or write your own prayer from the heart.'
+                    },
+                    {
+                        title:
+                            '3. Review and send',
+                        detail:
+                            'Before anything is sent, you will review your prayer and confirm it. Nothing is sent simply because you selected a prayer starter.'
+                    },
+                    {
+                        title:
+                            '4. Your Prayer Pal receives it',
+                        detail:
+                            'Your prayer is delivered through the Community Portal so your Prayer Pal can receive and read the prayer offered for them.'
+                    },
+                    {
+                        title:
+                            '5. Gratitude and praise can come back to you',
+                        detail:
+                            'The person who receives your prayer can respond with Thank You or share a Praise Report, and you will receive that acknowledgement through the Portal.'
+                    }
+                ]
+            );
+
+            appendPrayerGuideStrongLine(
+                message,
+                'A few faithful minutes can bless another person while helping prayer become a natural part of your own daily life.'
+            );
+
+            primary.textContent =
+                'Continue';
+
+            secondary.textContent =
+                'Back';
+
+            return;
+        }
+
+        eyebrow.textContent =
+            'STEP 3 OF 3 · MY COVENANT';
+
+        title.textContent =
+            'Ready to pray with our community?';
+
+        appendPrayerGuideText(
+            message,
+            'For the next 21 days, I choose to make a little space each day to pray for someone in our community.'
+        );
+
+        appendPrayerGuideCommitments(
+            message,
+            [
+                'I will receive a Prayer Pal to intentionally pray for.',
+                'I can use one of the 10 prayer starters, personalize it, or pray in my own words.',
+                'I will review my prayer before I confirm and send it.',
+                'My prayer will be shared with the person I am praying for.',
+                'I understand that this journey is about prayer, relationship with God, and caring for one another—not competition or scoring.'
+            ]
+        );
+
+        appendPrayerGuideStrongLine(
+            message,
+            'Together, let us build a community where people are prayed for, encouraged, and accompanied every day.'
+        );
+
+        appendPrayerGuideText(
+            message,
+            'Your enrollment begins only when you choose the button below.',
+            'community-spotlight-prayer-consent-note'
+        );
+
+        primary.textContent =
+            '🙏 Start My 21-Day Prayer Covenant';
+
+        secondary.textContent =
+            'Back';
+
+        if (dsaCheckbox) {
+            /*
+             * Do not silently convert a checkbox selected on page 1
+             * into permanent dismissal from later pages.
+             */
+            dsaCheckbox.checked = false;
+        }
+    }
+
+    function handleSecondaryAction() {
+        const campaign =
+            state.activeCampaign;
+
+        if (
+            !campaign ||
+            state.mutationBusy
+        ) {
+            return;
+        }
+
+        if (
+            state.completionAcknowledged
+        ) {
+            dismissActiveCampaign();
+            return;
+        }
+
+        if (
+            isPrayerCovenantCampaign(
+                campaign
+            ) &&
+            state.prayerCovenantStep > 1
+        ) {
+            renderPrayerCovenantStep(
+                campaign,
+                state.prayerCovenantStep - 1
+            );
+
+            setStatus('');
+
+            const card =
+                document.querySelector(
+                    '.community-spotlight-member-card'
+                );
+
+            if (card) {
+                card.focus();
+            }
+
+            return;
+        }
+
+        dismissActiveCampaign();
+    }
+
     function renderCampaign(campaign) {
         ensureModal();
 
         state.activeCampaign =
             campaign;
-        state.completionAcknowledged = false;
+
+        state.completionAcknowledged =
+            false;
+
+        state.prayerCovenantStep =
+            1;
 
         const overlay =
-            byId('communitySpotlightMemberModal');
+            byId(
+                'communitySpotlightMemberModal'
+            );
+
+        const card =
+            document.querySelector(
+                '.community-spotlight-member-card'
+            );
 
         const eyebrow =
-            byId('communitySpotlightMemberEyebrow');
+            byId(
+                'communitySpotlightMemberEyebrow'
+            );
 
         const title =
-            byId('communitySpotlightMemberTitle');
+            byId(
+                'communitySpotlightMemberTitle'
+            );
 
         const message =
-            byId('communitySpotlightMemberMessage');
+            byId(
+                'communitySpotlightMemberMessage'
+            );
 
         const imageWrap =
-            byId('communitySpotlightMemberImageWrap');
+            byId(
+                'communitySpotlightMemberImageWrap'
+            );
 
         const image =
-            byId('communitySpotlightMemberImage');
+            byId(
+                'communitySpotlightMemberImage'
+            );
 
         const primary =
-            byId('communitySpotlightMemberPrimary');
+            byId(
+                'communitySpotlightMemberPrimary'
+            );
 
         const secondary =
-            byId('communitySpotlightMemberSecondary');
+            byId(
+                'communitySpotlightMemberSecondary'
+            );
 
         const dsa =
-            byId('communitySpotlightMemberDsa');
+            byId(
+                'communitySpotlightMemberDsa'
+            );
 
         const dsaCheckbox =
-            byId('communitySpotlightMemberDsaCheckbox');
+            byId(
+                'communitySpotlightMemberDsaCheckbox'
+            );
+
+        const dsaText =
+            byId(
+                'communitySpotlightMemberDsaText'
+            );
 
         eyebrow.textContent =
             campaign.eyebrow || '';
 
         title.textContent =
-            campaign.title || 'Community Spotlight';
+            campaign.title ||
+            'Community Spotlight';
+
+        message.classList.remove(
+            'community-spotlight-prayer-guide'
+        );
 
         message.textContent =
             campaign.message || '';
 
+        if (card) {
+            card.classList.remove(
+                'community-spotlight-prayer-guide-card'
+            );
+        }
+
         const imageUrl =
-            safeImageUrl(campaign.image_url);
+            safeImageUrl(
+                campaign.image_url
+            );
 
         if (imageUrl) {
-            image.src = imageUrl;
-            imageWrap.classList.add('active');
+            image.src =
+                imageUrl;
+
+            image.alt = '';
+
+            imageWrap.classList.add(
+                'active'
+            );
         } else {
-            image.removeAttribute('src');
-            imageWrap.classList.remove('active');
+            image.removeAttribute(
+                'src'
+            );
+
+            image.alt = '';
+
+            imageWrap.classList.remove(
+                'active'
+            );
+        }
+
+        if (dsaCheckbox) {
+            dsaCheckbox.checked =
+                false;
         }
 
         const actionType =
-            campaign.primary_action_type || 'none';
-
-        if (actionType === 'none') {
-            primary.style.display = 'none';
-            primary.textContent = '';
-        } else {
-            primary.style.display = 'inline-flex';
-            primary.textContent =
-                campaign.primary_label ||
-                'Continue';
-        }
-
-        secondary.textContent =
-            campaign.secondary_label ||
-            'Maybe later';
+            campaign.primary_action_type ||
+            'none';
 
         if (
-            campaign.allow_dont_show_again === true
+            actionType ===
+            'prayer_covenant_join'
         ) {
-            dsa.classList.add('active');
-            dsaCheckbox.checked = false;
+            renderPrayerCovenantStep(
+                campaign,
+                1
+            );
         } else {
-            dsa.classList.remove('active');
-            dsaCheckbox.checked = false;
+            if (actionType === 'none') {
+                primary.style.display =
+                    'none';
+
+                primary.textContent =
+                    '';
+            } else {
+                primary.style.display =
+                    '';
+
+                primary.textContent =
+                    campaign.primary_label ||
+                    'Continue';
+            }
+
+            secondary.style.display =
+                '';
+
+            secondary.textContent =
+                campaign.secondary_label ||
+                'Maybe later';
+
+            if (dsa) {
+                dsa.classList.toggle(
+                    'active',
+                    campaign.allow_dont_show_again ===
+                        true
+                );
+            }
+
+            if (dsaText) {
+                dsaText.textContent =
+                    'Don’t show this announcement again.';
+            }
         }
 
         setStatus('');
         setBusy(false);
 
-        overlay.hidden = false;
-        overlay.classList.add('active');
+        if (overlay) {
+            overlay.hidden = false;
+
+            overlay.classList.add(
+                'active'
+            );
+        }
 
         if (document.body) {
             document.body.classList.add(
                 'community-spotlight-member-open'
             );
         }
-
-        const card =
-            overlay.querySelector(
-                '.community-spotlight-member-card'
-            );
 
         if (card) {
             card.focus();
@@ -527,6 +1102,7 @@
         state.activeCampaign = null;
         state.mutationBusy = false;
         state.completionAcknowledged = false;
+        state.prayerCovenantStep = 1;
     }
 
     function handleBoundaryError(error) {
@@ -719,6 +1295,12 @@
 
         const permanent =
             campaign.allow_dont_show_again === true &&
+            (
+                !isPrayerCovenantCampaign(
+                    campaign
+                ) ||
+                state.prayerCovenantStep === 1
+            ) &&
             Boolean(dsa && dsa.checked);
 
         setBusy(true);
@@ -1025,10 +1607,38 @@
             campaign.primary_action_type ===
             'prayer_covenant_join'
         ) {
+            if (
+                state.prayerCovenantStep < 3
+            ) {
+                renderPrayerCovenantStep(
+                    campaign,
+                    state.prayerCovenantStep + 1
+                );
+
+                setStatus('');
+
+                const card =
+                    document.querySelector(
+                        '.community-spotlight-member-card'
+                    );
+
+                if (card) {
+                    card.focus();
+                }
+
+                return;
+            }
+
+            /*
+             * Pages 1 and 2 are explanatory only.
+             * Enrollment is intentionally possible only after the
+             * member reaches page 3 and presses the final covenant
+             * confirmation button.
+             */
             setBusy(true);
 
             setStatus(
-                'Joining the 21-Day Prayer Covenant…'
+                'Starting your 21-Day Prayer Covenant…'
             );
 
             try {
@@ -1048,7 +1658,7 @@
                     error &&
                     error.message
                         ? error.message
-                        : 'The Prayer Covenant could not be joined right now.',
+                        : 'The Prayer Covenant could not be started right now.',
                     true
                 );
 

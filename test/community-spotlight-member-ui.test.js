@@ -349,7 +349,7 @@ test(
 );
 
 test(
-    'member Spotlight assets load after the authenticated app shell and publish through PWA v61',
+    'member Spotlight assets load after the authenticated app shell and publish through PWA v62',
     () => {
         const app =
             index.indexOf(
@@ -358,7 +358,7 @@ test(
 
         const member =
             index.indexOf(
-                '/js/community-spotlight-member.js?v=2'
+                '/js/community-spotlight-member.js?v=3'
             );
 
         assert.ok(
@@ -368,22 +368,164 @@ test(
 
         assert.match(
             index,
-            /\/css\/community-spotlight-member\.css\?v=1/
+            /\/css\/community-spotlight-member\.css\?v=2/
         );
 
         assert.match(
             serviceWorker,
-            /const CACHE_NAME = 'fog-portal-v61'/
+            /const CACHE_NAME = 'fog-portal-v62'/
         );
 
         assert.match(
             serviceWorker,
-            /'\/js\/community-spotlight-member\.js\?v=2'/
+            /'\/js\/community-spotlight-member\.js\?v=3'/
         );
 
         assert.match(
             serviceWorker,
-            /'\/css\/community-spotlight-member\.css\?v=1'/
+            /'\/css\/community-spotlight-member\.css\?v=2'/
+        );
+    }
+);
+
+test(
+    'Prayer Covenant invitation is a three-page guided journey and enrollment is gated behind final confirmation',
+    () => {
+        assert.match(
+            source,
+            /What if everyone in our community was prayed for every day\?/
+        );
+
+        assert.match(
+            source,
+            /One prayer\. One person\. Every day\. Together as one family\./
+        );
+
+        assert.match(
+            source,
+            /STEP 2 OF 3 · HOW IT WORKS/
+        );
+
+        assert.match(
+            source,
+            /10 prayer starters/
+        );
+
+        assert.match(
+            source,
+            /Thank You or share a Praise Report/
+        );
+
+        assert.match(
+            source,
+            /STEP 3 OF 3 · MY COVENANT/
+        );
+
+        assert.match(
+            source,
+            /Start My 21-Day Prayer Covenant/
+        );
+
+        assert.match(
+            source,
+            /state\.prayerCovenantStep < 3/
+        );
+
+        assert.match(
+            source,
+            /state\.prayerCovenantStep \+ 1/
+        );
+
+        const primaryStart =
+            source.indexOf(
+                'async function handlePrimaryAction'
+            );
+
+        assert.ok(
+            primaryStart >= 0
+        );
+
+        const primaryEnd =
+            source.indexOf(
+                'function install',
+                primaryStart
+            );
+
+        const primaryFlow =
+            source.slice(
+                primaryStart,
+                primaryEnd > primaryStart
+                    ? primaryEnd
+                    : source.length
+            );
+
+        const explanatoryGate =
+            primaryFlow.indexOf(
+                'state.prayerCovenantStep < 3'
+            );
+
+        const joinCall =
+            primaryFlow.indexOf(
+                'await joinPrayerCovenantFromSpotlight'
+            );
+
+        assert.ok(
+            explanatoryGate >= 0
+        );
+
+        assert.ok(
+            joinCall >
+            explanatoryGate
+        );
+
+        assert.match(
+            source,
+            /function handleSecondaryAction/
+        );
+
+        assert.match(
+            source,
+            /state\.prayerCovenantStep - 1/
+        );
+
+        assert.match(
+            source,
+            /state\.prayerCovenantStep === 1/
+        );
+    }
+);
+
+test(
+    'guided Prayer Covenant copy is rendered from trusted static DOM text and does not inject campaign HTML',
+    () => {
+        assert.match(
+            source,
+            /document\.createElement\('p'\)/
+        );
+
+        assert.match(
+            source,
+            /document\.createElement\('ol'\)/
+        );
+
+        assert.match(
+            source,
+            /document\.createElement\('ul'\)/
+        );
+
+        assert.match(
+            source,
+            /paragraph\.textContent/
+        );
+
+        assert.match(
+            source,
+            /item\.textContent/
+        );
+
+        assert.doesNotMatch(
+            source,
+            /campaign\.(?:title|message|eyebrow).*innerHTML/
         );
     }
 );

@@ -415,3 +415,109 @@ test(
         );
     }
 );
+
+test(
+    'guided Prayer Covenant pages remain explanatory until page 3 final confirmation',
+    () => {
+        const member =
+            fs.readFileSync(
+                path.join(
+                    root,
+                    'public/js/community-spotlight-member.js'
+                ),
+                'utf8'
+            );
+
+        const start =
+            member.indexOf(
+                'async function handlePrimaryAction'
+            );
+
+        assert.ok(
+            start >= 0
+        );
+
+        const guidedGate =
+            member.indexOf(
+                'state.prayerCovenantStep < 3',
+                start
+            );
+
+        const finalJoin =
+            member.indexOf(
+                'await joinPrayerCovenantFromSpotlight',
+                start
+            );
+
+        assert.ok(
+            guidedGate >= 0
+        );
+
+        assert.ok(
+            finalJoin >
+            guidedGate
+        );
+
+        const beforeJoin =
+            member.slice(
+                guidedGate,
+                finalJoin
+            );
+
+        assert.match(
+            beforeJoin,
+            /renderPrayerCovenantStep/
+        );
+
+        assert.match(
+            beforeJoin,
+            /return;/
+        );
+
+        const canonicalFlowStart =
+            member.indexOf(
+                'async function joinPrayerCovenantFromSpotlight'
+            );
+
+        const canonicalFlowEnd =
+            member.indexOf(
+                'async function handlePrimaryAction',
+                canonicalFlowStart
+            );
+
+        const canonicalFlow =
+            member.slice(
+                canonicalFlowStart,
+                canonicalFlowEnd
+            );
+
+        const joinIndex =
+            canonicalFlow.indexOf(
+                '/api/growth-journey/prayer-covenant/join'
+            );
+
+        const actionIndex =
+            canonicalFlow.indexOf(
+                'await recordSpotlightAction'
+            );
+
+        const completeIndex =
+            canonicalFlow.indexOf(
+                'await completeSpotlightCampaign'
+            );
+
+        assert.ok(
+            joinIndex >= 0
+        );
+
+        assert.ok(
+            actionIndex >
+            joinIndex
+        );
+
+        assert.ok(
+            completeIndex >
+            actionIndex
+        );
+    }
+);
