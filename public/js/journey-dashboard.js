@@ -302,6 +302,41 @@
         })
     ]);
 
+    function applyDailyPrayerActionState(
+        model,
+        dailyPal,
+        prayedToday
+    ) {
+        if (
+            !model ||
+            typeof model !== 'object'
+        ) {
+            return model;
+        }
+
+        if (prayedToday === true) {
+            model.action =
+                'Prayer offered today';
+
+            model.actionDisabled =
+                true;
+
+            return model;
+        }
+
+        if (dailyPal) {
+            model.actionDisabled =
+                false;
+
+            if (model.completedToday) {
+                model.action =
+                    'Pray for Today’s Prayer Pal';
+            }
+        }
+
+        return model;
+    }
+
     function renderPrayer(document, window, payload, partner, growthMoment) {
         const card = document.getElementById('journeyPrayerCard');
         if (!card) return;
@@ -327,16 +362,14 @@
                 )
             );
 
-        if (
-            partner &&
-            partner.prayedToday === true
-        ) {
-            model.action =
-                'Prayer offered today';
-
-            model.actionDisabled =
-                true;
-        }
+        applyDailyPrayerActionState(
+            model,
+            dailyPal,
+            Boolean(
+                partner &&
+                partner.prayedToday === true
+            )
+        );
         if (growthMoment) {
             card.appendChild(element(document, 'div', 'journey-growth-moment', growthMoment));
         }
@@ -1359,24 +1392,53 @@
                     dailyPrayerSending =
                         false;
 
-                    window.setTimeout(
-                        () => {
-                            window
-                                .closeDailyPrayerCovenant();
-
-                            if (
-                                typeof window.scrollTo ===
+                    const showPrayerSuccess =
+                        typeof window.showSuccessMessage ===
+                            'function'
+                            ? window.showSuccessMessage
+                            : (
+                                typeof showSuccessMessage ===
                                     'function'
-                            ) {
-                                window.scrollTo({
-                                    top: 0,
-                                    behavior:
-                                        'smooth'
-                                });
-                            }
-                        },
-                        1100
-                    );
+                                    ? showSuccessMessage
+                                    : null
+                            );
+
+                    if (showPrayerSuccess) {
+                        window
+                            .closeDailyPrayerCovenant();
+
+                        showPrayerSuccess(
+                            '🙏',
+                            'Prayer Sent!',
+                            'Your prayer was delivered privately to your Prayer Pal.\n\n' +
+                                'Today’s Prayer Covenant prayer is complete. Thank you for carrying someone in our community in prayer.\n\n' +
+                                'Your Prayer Pal can respond with Thank You or a Praise Report through the Community Portal.'
+                        );
+
+                        if (
+                            typeof window.scrollTo ===
+                                'function'
+                        ) {
+                            window.scrollTo({
+                                top: 0,
+                                behavior:
+                                    'smooth'
+                            });
+                        }
+                    } else if (
+                        typeof window.alert ===
+                            'function'
+                    ) {
+                        window.alert(
+                            'Prayer sent. Your prayer was delivered privately to your Prayer Pal.'
+                        );
+
+                        window
+                            .closeDailyPrayerCovenant();
+                    } else {
+                        button.disabled =
+                            true;
+                    }
                 } catch (error) {
                     setDailyPrayerStatus(
                         'dailyCovenantReviewStatus',
@@ -1535,6 +1597,7 @@
         PRAYER_STARTERS,
         manilaDateKey,
         buildPrayerModel,
+        applyDailyPrayerActionState,
         buildJourneyModel,
         selectUpcomingEvents,
         install

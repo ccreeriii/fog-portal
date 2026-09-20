@@ -301,6 +301,130 @@ test(
 );
 
 test(
+    'an unsent assigned Daily Prayer Pal remains actionable even when general Prayer Rhythm already has today credit',
+    () => {
+        const model =
+            Dashboard.buildPrayerModel(
+                {
+                    onboarding: {
+                        templateCode:
+                            'prayer-covenant-21',
+                        durationDays:
+                            21,
+                        paused:
+                            false,
+                        enrollment: {
+                            status:
+                                'active',
+                            completedDays:
+                                5
+                        }
+                    },
+                    prayerRhythm: {
+                        available:
+                            true,
+                        completedToday:
+                            true,
+                        qualifyingDays:
+                            6,
+                        targetDays:
+                            7,
+                        windowDays:
+                            14
+                    }
+                },
+                true
+            );
+
+        assert.equal(
+            model.actionDisabled,
+            true
+        );
+
+        Dashboard
+            .applyDailyPrayerActionState(
+                model,
+                {
+                    youthId:
+                        102,
+                    name:
+                        'Daily Prayer Pal'
+                },
+                false
+            );
+
+        assert.equal(
+            model.actionDisabled,
+            false
+        );
+
+        assert.equal(
+            model.action,
+            'Pray for Today’s Prayer Pal'
+        );
+
+        Dashboard
+            .applyDailyPrayerActionState(
+                model,
+                {
+                    youthId:
+                        102,
+                    name:
+                        'Daily Prayer Pal'
+                },
+                true
+            );
+
+        assert.equal(
+            model.actionDisabled,
+            true
+        );
+
+        assert.equal(
+            model.action,
+            'Prayer offered today'
+        );
+    }
+);
+
+test(
+    'successful Daily Covenant send uses an explicit acknowledgement instead of disappearing on an auto-close timer',
+    () => {
+        const confirmBlock =
+            between(
+                'window.confirmDailyPrayerCovenant =',
+                "document.addEventListener("
+            );
+
+        assert.match(
+            confirmBlock,
+            /showSuccessMessage/
+        );
+
+        assert.match(
+            confirmBlock,
+            /Prayer Sent!/
+        );
+
+        assert.ok(
+            confirmBlock.includes(
+                'Today’s Prayer Covenant prayer is complete.'
+            )
+        );
+
+        assert.match(
+            confirmBlock,
+            /Thank You or a Praise Report/
+        );
+
+        assert.doesNotMatch(
+            confirmBlock,
+            /window\.setTimeout/
+        );
+    }
+);
+
+test(
     'weekly Prayer Partner guided prayer remains separate from Daily Covenant prayer',
     () => {
         assert.match(
@@ -346,21 +470,21 @@ test(
 );
 
 test(
-    'Step 3B publishes Journey v7 through PWA v63',
+    'Step 3B.1 publishes Journey v8 through PWA v64',
     () => {
         assert.match(
             index,
-            /\/js\/journey-dashboard\.js\?v=7/
+            /\/js\/journey-dashboard\.js\?v=8/
         );
 
         assert.match(
             serviceWorker,
-            /const CACHE_NAME = 'fog-portal-v63'/
+            /const CACHE_NAME = 'fog-portal-v64'/
         );
 
         assert.match(
             serviceWorker,
-            /'\/js\/journey-dashboard\.js\?v=7'/
+            /'\/js\/journey-dashboard\.js\?v=8'/
         );
     }
 );
