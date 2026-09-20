@@ -80,17 +80,29 @@
         if (!face) return;
         face.replaceChildren();
         const picture = safeAvatarPicture(member && member.profile_picture);
+        const fallbackPicture = '/img/logo.png';
+
+        const renderFallbackPicture = () => {
+            face.replaceChildren();
+
+            const fallback = document.createElement('img');
+            fallback.src = fallbackPicture;
+            fallback.alt = 'Fire Of God Ministries logo';
+            face.appendChild(fallback);
+        };
+
         if (picture) {
             const image = document.createElement('img');
             image.src = picture;
             image.alt = '';
-            image.addEventListener('error', () => {
-                image.remove();
-                face.textContent = avatarInitial(member);
-            }, { once: true });
+            image.addEventListener(
+                'error',
+                renderFallbackPicture,
+                { once: true }
+            );
             face.appendChild(image);
         } else {
-            face.textContent = avatarInitial(member);
+            renderFallbackPicture();
         }
     }
 
@@ -412,6 +424,34 @@
 
     const previousSwitchTab = root.switchTab;
     root.switchTab = async function switchTabWithCanonicalNav(tabId, subTabId) {
+        if (
+            tabId === 'pulseDashboardTab' &&
+            root.history &&
+            root.location
+        ) {
+            ++state.preregGeneration;
+            state.preregEventId = null;
+
+            try {
+                currentPreregEventId = null;
+                currentPreregEventDetail = null;
+            } catch (error) {
+                /* app.js owns these bindings */
+            }
+
+            if (
+                root.location.pathname !== '/' ||
+                root.location.search ||
+                root.location.hash
+            ) {
+                root.history.replaceState(
+                    null,
+                    '',
+                    '/'
+                );
+            }
+        }
+
         const result = typeof previousSwitchTab === 'function'
             ? await previousSwitchTab(tabId, subTabId)
             : undefined;

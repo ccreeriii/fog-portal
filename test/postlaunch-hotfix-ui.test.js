@@ -224,7 +224,7 @@ test('authenticated bottom navigation has exactly the eight canonical destinatio
     assert.deepEqual(navigation.at(-1), ['eventsTab', undefined]);
 });
 
-test('authenticated header avatar uses a safe profile identity and opens profile without changing the bell or bottom Menu', async () => {
+test('authenticated header avatar uses a safe profile image or FOG logo fallback and opens profile without changing the bell or bottom Menu', async () => {
     const { root, document, elements, navigation } = createHarness();
     assert.match(index, /id="headerNotificationBell"/);
     assert.match(index, /id="headerProfileAvatar"[^>]*aria-label="My Profile"/);
@@ -233,21 +233,31 @@ test('authenticated header avatar uses a safe profile identity and opens profile
     root.persistAuthenticatedIdentity({ username: 'ada@invalid.test', member: { id: 1, name: 'Ada Member' } });
     const face = elements.headerProfileAvatar.querySelector('.header-profile-avatar-face');
     assert.equal(elements.headerProfileAvatar.hidden, false);
-    assert.equal(face.textContent, 'A');
+    assert.equal(face.children.length, 1);
+    assert.match(face.children[0].src, /\/img\/logo\.png$/);
+    assert.equal(face.textContent, '');
     assert.equal(document.body.classList.contains('koinonia-authenticated-header'), true);
     elements.headerProfileAvatar.listeners.click();
     assert.deepEqual(navigation.at(-1), ['profileTab', undefined]);
 
     root.populateProfileTab({ id: 1, name: 'Ada Member', profile_picture: 'data:image/png;base64,AAAA' });
+    assert.equal(face.children.length, 1);
     assert.equal(face.children[0].src, 'data:image/png;base64,AAAA');
+
     root.populateProfileTab({ id: 1, name: 'Ada Member', profile_picture: 'javascript:alert(1)' });
-    assert.equal(face.children.length, 0);
-    assert.equal(face.textContent, 'A');
+    assert.equal(face.children.length, 1);
+    assert.match(face.children[0].src, /\/img\/logo\.png$/);
+    assert.equal(face.textContent, '');
 
     root.persistAuthenticatedIdentity({ username: 'account@invalid.test', member: { id: 1, name: '' } });
-    assert.equal(face.textContent, 'U');
+    assert.equal(face.children.length, 1);
+    assert.match(face.children[0].src, /\/img\/logo\.png$/);
+    assert.equal(face.textContent, '');
+
     root.persistAuthenticatedIdentity({ username: 'BernardAccount', member: { id: 1, name: '' } });
-    assert.equal(face.textContent, 'B');
+    assert.equal(face.children.length, 1);
+    assert.match(face.children[0].src, /\/img\/logo\.png$/);
+    assert.equal(face.textContent, '');
 
     root.isGuestMode = true;
     await root.switchTab('profileTab');
@@ -402,19 +412,71 @@ test('shell retires legacy Paths UI, keeps canonical Journey and preserves Notif
     assert.doesNotMatch(source, /growth[_/-]evidence|member_milestones|discipleship_pathways/i);
 });
 
+test('Home navigation clears preregistration state and canonicalizes the browser URL to the Portal root', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+
+    const hotfixSource = fs.readFileSync(
+        path.join(
+            __dirname,
+            '..',
+            'public',
+            'js',
+            'postlaunch-hotfix.js'
+        ),
+        'utf8'
+    );
+
+    const routerMatch = hotfixSource.match(
+        /root\.switchTab = async function switchTabWithCanonicalNav\(tabId, subTabId\) \{([\s\S]*?)const result =/
+    );
+
+    assert.ok(
+        routerMatch,
+        'canonical navigation wrapper must exist'
+    );
+
+    const router = routerMatch[0];
+
+    assert.match(
+        router,
+        /tabId === 'pulseDashboardTab'/
+    );
+
+    assert.match(
+        router,
+        /state\.preregEventId = null/
+    );
+
+    assert.match(
+        router,
+        /currentPreregEventId = null/
+    );
+
+    assert.match(
+        router,
+        /currentPreregEventDetail = null/
+    );
+
+    assert.match(
+        router,
+        /root\.history\.replaceState\([\s\S]*?null,[\s\S]*?'',[\s\S]*?'\/'[\s\S]*?\)/
+    );
+});
+
 test('post-launch asset and dependent revisions are cached coherently and load last', () => {
     const app = index.indexOf('/js/app.js?v=13.3');
     const mapping = index.indexOf('/js/growth-event-mapping-ui.js?v=3');
     const journey = index.indexOf('/js/journey-dashboard.js?v=8');
-    const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=4');
+    const hotfix = index.indexOf('/js/postlaunch-hotfix.js?v=5');
     const community = index.indexOf('/js/community-feature-polish.js?v=7');
     assert.ok(app < mapping && mapping < journey && journey < hotfix && hotfix < community);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v67'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v68'/);
     for (const asset of [
         '/js/app.js?v=13.3',
         '/js/growth-event-mapping-ui.js?v=3',
         '/js/journey-dashboard.js?v=8',
-        '/js/postlaunch-hotfix.js?v=4',
+        '/js/postlaunch-hotfix.js?v=5',
         '/js/community-feature-polish.js?v=7',
         '/css/community-features.css?v=3'
     ]) assert.ok(serviceWorker.includes(`'${asset}'`));

@@ -373,7 +373,7 @@ test(
 
         assert.match(
             serviceWorker,
-            /const CACHE_NAME = 'fog-portal-v67'/
+            /const CACHE_NAME = 'fog-portal-v68'/
         );
 
         assert.match(
