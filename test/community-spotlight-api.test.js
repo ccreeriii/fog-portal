@@ -444,3 +444,68 @@ test(
         );
     }
 );
+
+
+test(
+    'Prayer Covenant invitation eligibility is derived from canonical Growth Journey state',
+    () => {
+        const helperStart = source.indexOf(
+            'async function isCommunitySpotlightCampaignEligibleForMember'
+        );
+
+        const helperEnd = source.indexOf(
+            "app.get(\n    '/api/community-spotlight/next'",
+            helperStart
+        );
+
+        assert.ok(
+            helperStart >= 0 &&
+            helperEnd > helperStart
+        );
+
+        const helper = source.slice(
+            helperStart,
+            helperEnd
+        );
+
+        assert.match(
+            helper,
+            /GrowthJourney\.getDefaultOnboardingStatus/
+        );
+
+        assert.match(
+            helper,
+            /onboarding\.enrollment/
+        );
+
+        assert.match(
+            helper,
+            /Boolean\(onboarding\.paused\)/
+        );
+
+        assert.doesNotMatch(
+            helper,
+            /enrollPrayerCovenantChallenge/
+        );
+
+        const next = routeBlock(
+            'get',
+            '/api/community-spotlight/next'
+        );
+
+        const impression = routeBlock(
+            'post',
+            '/api/community-spotlight/:campaignId/impression'
+        );
+
+        assert.match(
+            next,
+            /campaignFilter/
+        );
+
+        assert.match(
+            impression,
+            /campaignFilter/
+        );
+    }
+);

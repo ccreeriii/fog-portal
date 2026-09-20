@@ -8,6 +8,7 @@
         sessionIdentity: null,
         sessionShownKeys: new Set(),
         mutationBusy: false,
+        completionAcknowledged: false,
         installed: false
     };
 
@@ -77,6 +78,7 @@
         state.sessionIdentity = null;
         state.sessionShownKeys = new Set();
         state.mutationBusy = false;
+        state.completionAcknowledged = false;
 
         closeVisual();
     }
@@ -406,6 +408,7 @@
 
         state.activeCampaign =
             campaign;
+        state.completionAcknowledged = false;
 
         const overlay =
             byId('communitySpotlightMemberModal');
@@ -523,6 +526,7 @@
 
         state.activeCampaign = null;
         state.mutationBusy = false;
+        state.completionAcknowledged = false;
     }
 
     function handleBoundaryError(error) {
@@ -690,6 +694,16 @@
             return;
         }
 
+        /*
+         * Successful fulfillment is already durable through the
+         * Spotlight completion endpoint. Closing that success state
+         * is therefore a local UI action only.
+         */
+        if (state.completionAcknowledged) {
+            closeVisual();
+            return;
+        }
+
         if (!isOnlineAuthenticatedMember()) {
             setStatus(
                 'An internet connection is required to update this announcement.',
@@ -775,6 +789,214 @@
         return false;
     }
 
+    async function recordSpotlightAction(campaign) {
+        return request(
+            `/api/community-spotlight/${campaign.id}/action`,
+            {
+                method: 'POST',
+                body: JSON.stringify({})
+            }
+        );
+    }
+
+    async function completeSpotlightCampaign(campaign) {
+        return request(
+            `/api/community-spotlight/${campaign.id}/complete`,
+            {
+                method: 'POST',
+                body: JSON.stringify({})
+            }
+        );
+    }
+
+    function prayerCovenantSuccessMessage(joinResult) {
+        const onboarding =
+            joinResult &&
+            joinResult.onboarding &&
+            typeof joinResult.onboarding === 'object'
+                ? joinResult.onboarding
+                : null;
+
+        const enrollment =
+            onboarding &&
+            onboarding.enrollment &&
+            typeof onboarding.enrollment === 'object'
+                ? onboarding.enrollment
+                : null;
+
+        const status =
+            enrollment &&
+            typeof enrollment.status === 'string'
+                ? enrollment.status.toLowerCase()
+                : '';
+
+        if (status === 'completed') {
+            return (
+                'You’ve already completed the 21-Day Prayer Covenant 🙏 ' +
+                'Thank you for your faithful journey of prayer.'
+            );
+        }
+
+        if (
+            joinResult &&
+            joinResult.joined === true
+        ) {
+            return (
+                'Welcome to the Covenant 🙏 Your 21-Day Daily Prayer Covenant ' +
+                'has begun. Take it one day at a time as you build a faithful ' +
+                'habit of prayer and grow closer to God.'
+            );
+        }
+
+        if (status === 'active') {
+            return (
+                'You’re already part of the Covenant 🙏 Continue your ' +
+                '21-Day Daily Prayer Covenant one day at a time.'
+            );
+        }
+
+        return (
+            'Your 21-Day Prayer Covenant is already part of your Growth Journey 🙏.'
+        );
+    }
+
+    function showPrayerCovenantSuccess(
+        joinResult,
+        {
+            trackingComplete = true
+        } = {}
+    ) {
+        state.completionAcknowledged = true;
+        state.mutationBusy = false;
+
+        const primary =
+            byId(
+                'communitySpotlightMemberPrimary'
+            );
+
+        const secondary =
+            byId(
+                'communitySpotlightMemberSecondary'
+            );
+
+        const close =
+            byId(
+                'communitySpotlightMemberClose'
+            );
+
+        const dsa =
+            byId(
+                'communitySpotlightMemberDsa'
+            );
+
+        if (primary) {
+            primary.style.display = 'none';
+            primary.disabled = false;
+        }
+
+        if (secondary) {
+            secondary.textContent = 'Close';
+            secondary.disabled = false;
+        }
+
+        if (close) {
+            close.disabled = false;
+        }
+
+        if (dsa) {
+            dsa.classList.remove(
+                'active'
+            );
+        }
+
+        let message =
+            prayerCovenantSuccessMessage(
+                joinResult
+            );
+
+        if (!trackingComplete) {
+            message += (
+                ' Your Prayer Covenant is active. You can continue from ' +
+                'your Growth Journey.'
+            );
+        }
+
+        setStatus(message);
+    }
+
+    async function joinPrayerCovenantFromSpotlight(
+        campaign
+    ) {
+        /*
+         * Explicit opt-in occurs only after the member presses
+         * the CTA. This reuses the existing canonical endpoint.
+         */
+        const joinResult =
+            await request(
+                '/api/growth-journey/prayer-covenant/join',
+                {
+                    method: 'POST',
+                    body: JSON.stringify({})
+                }
+            );
+
+        const enrollment =
+            joinResult &&
+            joinResult.onboarding &&
+            joinResult.onboarding.enrollment &&
+            typeof joinResult.onboarding.enrollment ===
+                'object'
+                ? joinResult.onboarding.enrollment
+                : null;
+
+        if (!enrollment) {
+            throw new Error(
+                'The Prayer Covenant enrollment could not be confirmed.'
+            );
+        }
+
+        let trackingComplete = false;
+
+        try {
+            /*
+             * Canonical enrollment succeeds first.
+             * Only afterward do we record campaign analytics.
+             */
+            await recordSpotlightAction(
+                campaign
+            );
+
+            await completeSpotlightCampaign(
+                campaign
+            );
+
+            trackingComplete = true;
+        } catch (trackingError) {
+            if (
+                handleBoundaryError(
+                    trackingError
+                )
+            ) {
+                return;
+            }
+
+            /*
+             * Enrollment is already durable. Do not retry it
+             * merely because Spotlight analytics failed.
+             */
+            console.warn(
+                '[Community Spotlight] Prayer Covenant campaign tracking incomplete'
+            );
+        }
+
+        showPrayerCovenantSuccess(
+            joinResult,
+            {
+                trackingComplete
+            }
+        );
+    }
+
     async function handlePrimaryAction() {
         const campaign =
             state.activeCampaign;
@@ -782,99 +1004,100 @@
         if (
             !campaign ||
             state.mutationBusy ||
-            campaign.primary_action_type === 'none'
+            campaign.primary_action_type ===
+                'none'
         ) {
             return;
         }
 
-        if (!isOnlineAuthenticatedMember()) {
+        if (
+            !isOnlineAuthenticatedMember()
+        ) {
             setStatus(
                 'An internet connection is required to continue.',
                 true
             );
+
+            return;
+        }
+
+        if (
+            campaign.primary_action_type ===
+            'prayer_covenant_join'
+        ) {
+            setBusy(true);
+
+            setStatus(
+                'Joining the 21-Day Prayer Covenant…'
+            );
+
+            try {
+                await joinPrayerCovenantFromSpotlight(
+                    campaign
+                );
+            } catch (error) {
+                if (
+                    handleBoundaryError(
+                        error
+                    )
+                ) {
+                    return;
+                }
+
+                setStatus(
+                    error &&
+                    error.message
+                        ? error.message
+                        : 'The Prayer Covenant could not be joined right now.',
+                    true
+                );
+
+                setBusy(false);
+            }
+
             return;
         }
 
         setBusy(true);
-        setStatus('Recording your response…');
+
+        setStatus(
+            'Recording your response…'
+        );
 
         try {
             const data =
-                await request(
-                    `/api/community-spotlight/${campaign.id}/action`,
-                    {
-                        method: 'POST',
-                        body: JSON.stringify({})
-                    }
+                await recordSpotlightAction(
+                    campaign
                 );
 
             const action =
-                data && data.action
+                data &&
+                data.action
                     ? data.action
                     : null;
-
-            /*
-             * Phase 3 deliberately does not call the canonical
-             * Prayer Covenant join route. The Spotlight action
-             * endpoint remains record-only and reports
-             * executed:false until Phase 4.
-             */
-            if (
-                action &&
-                action.type ===
-                    'prayer_covenant_join'
-            ) {
-                const primary =
-                    byId(
-                        'communitySpotlightMemberPrimary'
-                    );
-
-                const secondary =
-                    byId(
-                        'communitySpotlightMemberSecondary'
-                    );
-
-                setStatus(
-                    'Thank you. Your response has been recorded.'
-                );
-
-                if (primary) {
-                    primary.style.display = 'none';
-                }
-
-                if (secondary) {
-                    secondary.textContent = 'Close';
-                    secondary.disabled = false;
-                }
-
-                const close =
-                    byId(
-                        'communitySpotlightMemberClose'
-                    );
-
-                if (close) {
-                    close.disabled = false;
-                }
-
-                state.mutationBusy = false;
-                return;
-            }
 
             closeVisual();
 
             if (
                 action &&
-                navigateRecordedAction(action)
+                navigateRecordedAction(
+                    action
+                )
             ) {
                 return;
             }
         } catch (error) {
-            if (handleBoundaryError(error)) {
+            if (
+                handleBoundaryError(
+                    error
+                )
+            ) {
                 return;
             }
 
             setStatus(
-                error && error.message
+                error &&
+                error.message
                     ? error.message
                     : 'Your response could not be recorded right now.',
                 true

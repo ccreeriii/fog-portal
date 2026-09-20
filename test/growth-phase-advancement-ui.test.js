@@ -101,7 +101,7 @@ test('leadership Journey asset is loaded and cached coherently', () => {
         index.indexOf('/js/growth-journey-leadership.js?v=3') >
         index.indexOf('/js/app.js?v=13.3')
     );
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v60'/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v61'/);
     assert.match(serviceWorker, /'\/js\/growth-journey-leadership\.js\?v=3'/);
 });
 

@@ -5801,6 +5801,61 @@ function sendCommunitySpotlightAdminError(
     });
 }
 
+async function isCommunitySpotlightCampaignEligibleForMember(
+    campaign,
+    youthId
+) {
+    if (
+        !campaign ||
+        campaign.primary_action_type !== 'prayer_covenant_join'
+    ) {
+        return true;
+    }
+
+    /*
+     * Prayer Covenant invitations are meaningful only when a member
+     * can genuinely opt in. Reuse canonical Growth Journey state;
+     * never infer participation from Spotlight clicks.
+     */
+    try {
+        const onboarding =
+            await GrowthJourney.getDefaultOnboardingStatus(
+                db,
+                youthId
+            );
+
+        if (!onboarding) {
+            return false;
+        }
+
+        if (Boolean(onboarding.paused)) {
+            return false;
+        }
+
+        /*
+         * Any existing canonical enrollment means this is no longer
+         * a join invitation. This covers active/completed members and
+         * safely avoids duplicate or misleading invitations.
+         */
+        if (onboarding.enrollment) {
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        /*
+         * Fail closed for this Prayer Covenant invitation only.
+         * The campaign selector may continue to lower-priority items.
+         */
+        console.error(
+            '[Community Spotlight] Prayer Covenant eligibility check failed',
+            error
+        );
+
+        return false;
+    }
+}
+
 app.get(
     '/api/community-spotlight/next',
     requireAuth,
@@ -5817,7 +5872,12 @@ app.get(
                         db,
                         youthId,
                         {
-                            now: getManilaTime()
+                            now: getManilaTime(),
+                            campaignFilter: campaign =>
+                                isCommunitySpotlightCampaignEligibleForMember(
+                                    campaign,
+                                    youthId
+                                )
                         }
                     );
 
@@ -5876,7 +5936,12 @@ app.post(
                         db,
                         youthId,
                         {
-                            now: getManilaTime()
+                            now: getManilaTime(),
+                            campaignFilter: campaign =>
+                                isCommunitySpotlightCampaignEligibleForMember(
+                                    campaign,
+                                    youthId
+                                )
                         }
                     );
 
@@ -6067,10 +6132,11 @@ app.post(
                     );
 
             /*
-             * Phase 1B intentionally records the member's click only.
-             * The action is returned to the client but is not executed
-             * here. In particular, prayer_covenant_join does NOT execute
-             * canonical Prayer Covenant enrollment in this phase.
+             * Spotlight records the member's campaign response only.
+             * Enrollment actions remain owned by their canonical domain
+             * endpoint. For prayer_covenant_join the authenticated member
+             * client explicitly calls the existing Growth Journey join
+             * route after the member presses the CTA.
              */
             return sendCommunitySpotlightJson(res, 200, {
                 success: true,

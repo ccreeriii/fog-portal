@@ -182,64 +182,108 @@ test(
 test(
     'Maybe Later and permanent dismissal use the canonical dismiss endpoint without fabricating completion',
     () => {
+        const dismissStart =
+            source.indexOf(
+                'async function dismissActiveCampaign'
+            );
+
+        const dismissEnd =
+            source.indexOf(
+                'function navigateRecordedAction',
+                dismissStart
+            );
+
+        assert.ok(
+            dismissStart >= 0 &&
+            dismissEnd > dismissStart
+        );
+
+        const dismissSource =
+            source.slice(
+                dismissStart,
+                dismissEnd
+            );
+
         assert.match(
-            source,
+            dismissSource,
             /\/dismiss/
         );
 
         assert.match(
-            source,
+            dismissSource,
             /dont_show_again:\s*permanent/
         );
 
         assert.match(
-            source,
+            dismissSource,
             /allow_dont_show_again === true/
         );
 
+        assert.match(
+            dismissSource,
+            /completionAcknowledged/
+        );
+
         assert.doesNotMatch(
-            source,
+            dismissSource,
             /\/complete/
         );
     }
 );
 
 test(
-    'primary actions are record-first and Prayer Covenant remains strictly non-executing in Phase 3',
+    'Prayer Covenant CTA uses the canonical join route only after explicit member action and then completes Spotlight',
     () => {
         assert.match(
             source,
-            /\/action/
+            /\/api\/growth-journey\/prayer-covenant\/join/
         );
 
         assert.match(
             source,
-            /prayer_covenant_join/
+            /recordSpotlightAction/
         );
 
         assert.match(
             source,
-            /executed !== false/
+            /completeSpotlightCampaign/
         );
 
         assert.match(
             source,
-            /safeInternalRoute/
+            /completionAcknowledged/
         );
 
         assert.match(
             source,
-            /safeExternalUrl/
-        );
-
-        assert.doesNotMatch(
-            source,
-            /prayer-covenant\/join/
+            /Welcome to the Covenant 🙏/
         );
 
         assert.doesNotMatch(
             source,
             /enrollPrayerCovenantChallenge/
+        );
+
+        const lookupStart = source.indexOf(
+            'async function lookupNextCampaign'
+        );
+
+        const lookupEnd = source.indexOf(
+            'function beginAuthenticatedSession',
+            lookupStart
+        );
+
+        assert.ok(
+            lookupStart >= 0 &&
+            lookupEnd > lookupStart
+        );
+
+        assert.doesNotMatch(
+            source.slice(
+                lookupStart,
+                lookupEnd
+            ),
+            /prayer-covenant\/join/
         );
     }
 );
@@ -305,7 +349,7 @@ test(
 );
 
 test(
-    'member Spotlight assets load after the authenticated app shell and publish through PWA v60',
+    'member Spotlight assets load after the authenticated app shell and publish through PWA v61',
     () => {
         const app =
             index.indexOf(
@@ -314,7 +358,7 @@ test(
 
         const member =
             index.indexOf(
-                '/js/community-spotlight-member.js?v=1'
+                '/js/community-spotlight-member.js?v=2'
             );
 
         assert.ok(
@@ -329,12 +373,12 @@ test(
 
         assert.match(
             serviceWorker,
-            /const CACHE_NAME = 'fog-portal-v60'/
+            /const CACHE_NAME = 'fog-portal-v61'/
         );
 
         assert.match(
             serviceWorker,
-            /'\/js\/community-spotlight-member\.js\?v=1'/
+            /'\/js\/community-spotlight-member\.js\?v=2'/
         );
 
         assert.match(
