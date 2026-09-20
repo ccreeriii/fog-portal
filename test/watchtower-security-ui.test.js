@@ -131,6 +131,10 @@ test('Watchtower APIs use live canonical access_prayer authority and reject forg
     });
 
     await fsp.mkdir(path.join(temporaryRoot, 'lib'), { recursive: true });
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'community-spotlight.js'),
+        path.join(temporaryRoot, 'lib', 'community-spotlight.js')
+    );
     await fsp.mkdir(path.join(temporaryRoot, 'public', 'img'), { recursive: true });
     for (const directory of ['terms', 'privacy']) {
         await fsp.cp(path.join(repositoryRoot, 'public', directory), path.join(temporaryRoot, 'public', directory), { recursive: true });

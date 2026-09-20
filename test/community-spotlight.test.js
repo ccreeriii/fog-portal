@@ -317,6 +317,6 @@ test('server runtime schema includes Community Spotlight tables without member U
     assert.match(source, /CREATE TABLE IF NOT EXISTS community_spotlight_campaigns/);
     assert.match(source, /CREATE TABLE IF NOT EXISTS community_spotlight_member_state/);
 
-    assert.doesNotMatch(source, /\/api\/community-spotlight\/next/);
+    assert.match(source, /\/api\/community-spotlight\/next/);
     assert.doesNotMatch(source, /Community Spotlight modal/i);
 });

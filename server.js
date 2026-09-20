@@ -14,6 +14,7 @@ const {
 } = require('./lib/birthday-age-sync');
 const { createSqliteBackupManager } = require('./lib/sqlite-backup');
 const GrowthJourney = require('./lib/growth-journey');
+const CommunitySpotlight = require('./lib/community-spotlight');
 const GrowthNotifications = require('./lib/growth-notifications');
 const NotificationCenter = require('./lib/notification-center');
 const {
@@ -5539,6 +5540,897 @@ app.post('/api/auth/email-verification/confirm', async (req, res) => {
             : 'Your email is now verified.'
     });
 });
+
+/*
+ * Community Spotlight Phase 1B API foundation.
+ *
+ * This is the server-authoritative API layer only.
+ * No campaign is automatically created or enabled here.
+ * No member UI is activated here.
+ * Prayer Covenant actions remain record-only until the dedicated
+ * canonical integration phase.
+ */
+
+function sendCommunitySpotlightJson(res, status, body) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Vary', 'Cookie');
+    return res.status(status).json(body);
+}
+
+function projectCommunitySpotlightCampaignForMember(campaign) {
+    if (!campaign) return null;
+
+    return {
+        id: campaign.id,
+        campaign_key: campaign.campaign_key,
+        version: campaign.version,
+        template_type: campaign.template_type,
+        eyebrow: campaign.eyebrow,
+        title: campaign.title,
+        message: campaign.message,
+        image_url: campaign.image_url,
+        primary_label: campaign.primary_label,
+        primary_action_type: campaign.primary_action_type,
+        primary_action_value: campaign.primary_action_value,
+        secondary_label: campaign.secondary_label,
+        allow_dont_show_again: Boolean(campaign.allow_dont_show_again)
+    };
+}
+
+function projectCommunitySpotlightStateForMember(state) {
+    if (!state) return null;
+
+    return {
+        first_seen_at: state.first_seen_at,
+        last_seen_at: state.last_seen_at,
+        view_count: Number(state.view_count || 0),
+        clicked_at: state.clicked_at,
+        dismissed_at: state.dismissed_at,
+        completed_at: state.completed_at,
+        last_action_at: state.last_action_at
+    };
+}
+
+function getCommunitySpotlightActor(req) {
+    return getCanonicalAuditActor(req) ||
+        (
+            req &&
+            req.auth &&
+            normalizeCanonicalId(req.auth.userId)
+                ? `User ${normalizeCanonicalId(req.auth.userId)}`
+                : 'System'
+        );
+}
+
+function parseCommunitySpotlightCampaignId(value) {
+    return normalizeCanonicalId(value);
+}
+
+function isCommunitySpotlightCampaignActive(campaign, now = getManilaTime()) {
+    if (!campaign) return false;
+    if (Number(campaign.is_enabled) !== 1) return false;
+    if (Number(campaign.is_paused) === 1) return false;
+    if (Number(campaign.is_archived) === 1) return false;
+
+    const current = String(now);
+
+    if (campaign.start_at && String(campaign.start_at) > current) {
+        return false;
+    }
+
+    if (campaign.end_at && String(campaign.end_at) <= current) {
+        return false;
+    }
+
+    return true;
+}
+
+function getCommunitySpotlightMemberState(campaignId, youthId) {
+    return new Promise((resolve, reject) => {
+        db.get(
+            `SELECT *
+             FROM community_spotlight_member_state
+             WHERE campaign_id = ?
+               AND youth_id = ?
+             LIMIT 1`,
+            [campaignId, youthId],
+            (error, row) => error ? reject(error) : resolve(row || null)
+        );
+    });
+}
+
+async function requireCommunitySpotlightLegalAcceptance(req, res, next) {
+    try {
+        const userId =
+            await resolveLegalUserIdForLogin(req && req.auth);
+
+        if (!userId) {
+            return sendCommunitySpotlightJson(res, 403, {
+                success: false,
+                error: 'Legal acceptance is required before Community Spotlight can be used.',
+                legal_acceptance_required: true,
+                terms_version: TERMS_VERSION,
+                privacy_version: PRIVACY_VERSION
+            });
+        }
+
+        const required =
+            await legalAcceptanceStore.requiresCurrentAcceptance(userId);
+
+        if (required) {
+            return sendCommunitySpotlightJson(res, 403, {
+                success: false,
+                error: 'Legal acceptance is required before Community Spotlight can be used.',
+                legal_acceptance_required: true,
+                terms_version: TERMS_VERSION,
+                privacy_version: PRIVACY_VERSION
+            });
+        }
+
+        return next();
+    } catch (error) {
+        console.error(
+            '[Community Spotlight] Legal acceptance check failed'
+        );
+
+        return sendCommunitySpotlightJson(res, 500, {
+            success: false,
+            error: 'Community Spotlight is temporarily unavailable.'
+        });
+    }
+}
+
+function requireCommunitySpotlightMember(req, res, next) {
+    const youthId =
+        normalizeCanonicalId(
+            req &&
+            req.auth &&
+            req.auth.youthId
+        );
+
+    if (!youthId) {
+        return sendCommunitySpotlightJson(res, 403, {
+            success: false,
+            error: 'A member account is required for Community Spotlight.'
+        });
+    }
+
+    req.communitySpotlightYouthId = youthId;
+    return next();
+}
+
+async function loadShownCommunitySpotlightContext(
+    campaignId,
+    youthId,
+    member
+) {
+    const campaign =
+        await CommunitySpotlight.getCampaign(
+            db,
+            campaignId
+        );
+
+    if (!campaign) {
+        return {
+            status: 'not_found',
+            campaign: null,
+            state: null
+        };
+    }
+
+    if (
+        !isCommunitySpotlightCampaignActive(campaign) ||
+        !CommunitySpotlight.audienceEligible(campaign, member)
+    ) {
+        return {
+            status: 'unavailable',
+            campaign,
+            state: null
+        };
+    }
+
+    const state =
+        await getCommunitySpotlightMemberState(
+            campaignId,
+            youthId
+        );
+
+    if (!state || Number(state.view_count || 0) < 1) {
+        return {
+            status: 'not_shown',
+            campaign,
+            state
+        };
+    }
+
+    return {
+        status: 'shown',
+        campaign,
+        state
+    };
+}
+
+function isCommunitySpotlightValidationError(error) {
+    if (!error || typeof error.message !== 'string') {
+        return false;
+    }
+
+    if (
+        error instanceof TypeError ||
+        error instanceof RangeError
+    ) {
+        return true;
+    }
+
+    return /required|invalid|allowed|must|https|min_age|max_age|audience|priority|frequency|action|campaign key/i
+        .test(error.message);
+}
+
+function sendCommunitySpotlightAdminError(
+    res,
+    error,
+    fallback
+) {
+    if (
+        error &&
+        typeof error.code === 'string' &&
+        error.code.startsWith('SQLITE_CONSTRAINT')
+    ) {
+        return sendCommunitySpotlightJson(res, 409, {
+            success: false,
+            error: 'The campaign conflicts with an existing campaign version.'
+        });
+    }
+
+    if (isCommunitySpotlightValidationError(error)) {
+        return sendCommunitySpotlightJson(res, 400, {
+            success: false,
+            error: 'The campaign configuration is invalid.'
+        });
+    }
+
+    console.error(
+        `[Community Spotlight] ${fallback}`,
+        error
+    );
+
+    return sendCommunitySpotlightJson(res, 500, {
+        success: false,
+        error: 'Community Spotlight is temporarily unavailable.'
+    });
+}
+
+app.get(
+    '/api/community-spotlight/next',
+    requireAuth,
+    requireCommunitySpotlightMember,
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        try {
+            const youthId =
+                req.communitySpotlightYouthId;
+
+            const result =
+                await CommunitySpotlight
+                    .getNextEligibleCampaign(
+                        db,
+                        youthId,
+                        {
+                            now: getManilaTime()
+                        }
+                    );
+
+            return sendCommunitySpotlightJson(
+                res,
+                200,
+                {
+                    success: true,
+                    campaign:
+                        result
+                            ? projectCommunitySpotlightCampaignForMember(
+                                result.campaign
+                            )
+                            : null
+                }
+            );
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Next campaign lookup failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'Community Spotlight is temporarily unavailable.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/community-spotlight/:campaignId/impression',
+    requireAuth,
+    requireCommunitySpotlightMember,
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        try {
+            const youthId =
+                req.communitySpotlightYouthId;
+
+            const eligible =
+                await CommunitySpotlight
+                    .getNextEligibleCampaign(
+                        db,
+                        youthId,
+                        {
+                            now: getManilaTime()
+                        }
+                    );
+
+            if (
+                !eligible ||
+                Number(eligible.campaign.id) !== campaignId
+            ) {
+                return sendCommunitySpotlightJson(res, 409, {
+                    success: false,
+                    error: 'This campaign is not currently eligible to be shown.'
+                });
+            }
+
+            const state =
+                await CommunitySpotlight
+                    .recordImpression(
+                        db,
+                        campaignId,
+                        youthId,
+                        {
+                            now: getManilaTime()
+                        }
+                    );
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                state:
+                    projectCommunitySpotlightStateForMember(
+                        state
+                    )
+            });
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Impression recording failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'The campaign view could not be recorded.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/community-spotlight/:campaignId/dismiss',
+    requireAuth,
+    requireCommunitySpotlightMember,
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        try {
+            const youthId =
+                req.communitySpotlightYouthId;
+
+            const context =
+                await loadShownCommunitySpotlightContext(
+                    campaignId,
+                    youthId,
+                    req.auth.member
+                );
+
+            if (context.status === 'not_found') {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            if (context.status !== 'shown') {
+                return sendCommunitySpotlightJson(res, 409, {
+                    success: false,
+                    error: 'This campaign is not available for dismissal.'
+                });
+            }
+
+            const permanent =
+                Boolean(
+                    req.body &&
+                    req.body.dont_show_again === true
+                );
+
+            const state =
+                await CommunitySpotlight
+                    .recordDismissal(
+                        db,
+                        campaignId,
+                        youthId,
+                        {
+                            permanent,
+                            now: getManilaTime()
+                        }
+                    );
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                dont_show_again: permanent,
+                state:
+                    projectCommunitySpotlightStateForMember(
+                        state
+                    )
+            });
+        } catch (error) {
+            if (isCommunitySpotlightValidationError(error)) {
+                return sendCommunitySpotlightJson(res, 400, {
+                    success: false,
+                    error: 'This dismissal option is not available for the campaign.'
+                });
+            }
+
+            console.error(
+                '[Community Spotlight] Dismissal recording failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'The campaign dismissal could not be recorded.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/community-spotlight/:campaignId/action',
+    requireAuth,
+    requireCommunitySpotlightMember,
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        try {
+            const youthId =
+                req.communitySpotlightYouthId;
+
+            const context =
+                await loadShownCommunitySpotlightContext(
+                    campaignId,
+                    youthId,
+                    req.auth.member
+                );
+
+            if (context.status === 'not_found') {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            if (context.status !== 'shown') {
+                return sendCommunitySpotlightJson(res, 409, {
+                    success: false,
+                    error: 'This campaign action is not currently available.'
+                });
+            }
+
+            const result =
+                await CommunitySpotlight
+                    .recordAction(
+                        db,
+                        campaignId,
+                        youthId,
+                        {
+                            now: getManilaTime()
+                        }
+                    );
+
+            /*
+             * Phase 1B intentionally records the member's click only.
+             * The action is returned to the client but is not executed
+             * here. In particular, prayer_covenant_join does NOT execute
+             * canonical Prayer Covenant enrollment in this phase.
+             */
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                action: {
+                    type:
+                        result.campaign
+                            .primary_action_type,
+                    value:
+                        result.campaign
+                            .primary_action_value ||
+                        null,
+                    executed: false
+                },
+                state:
+                    projectCommunitySpotlightStateForMember(
+                        result.state
+                    )
+            });
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Action recording failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'The campaign action could not be recorded.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/community-spotlight/:campaignId/complete',
+    requireAuth,
+    requireCommunitySpotlightMember,
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        try {
+            const youthId =
+                req.communitySpotlightYouthId;
+
+            const context =
+                await loadShownCommunitySpotlightContext(
+                    campaignId,
+                    youthId,
+                    req.auth.member
+                );
+
+            if (context.status === 'not_found') {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            if (context.status !== 'shown') {
+                return sendCommunitySpotlightJson(res, 409, {
+                    success: false,
+                    error: 'This campaign cannot be completed from the current state.'
+                });
+            }
+
+            if (!context.state.clicked_at) {
+                return sendCommunitySpotlightJson(res, 409, {
+                    success: false,
+                    error: 'The campaign action must be recorded before completion.'
+                });
+            }
+
+            const state =
+                await CommunitySpotlight
+                    .recordCompletion(
+                        db,
+                        campaignId,
+                        youthId,
+                        {
+                            now: getManilaTime()
+                        }
+                    );
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                state:
+                    projectCommunitySpotlightStateForMember(
+                        state
+                    )
+            });
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Completion recording failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'The campaign completion could not be recorded.'
+            });
+        }
+    }
+);
+
+app.get(
+    '/api/admin/community-spotlight/campaigns',
+    requirePermission('access_communications'),
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        try {
+            const campaigns =
+                await CommunitySpotlight
+                    .listCampaigns(db);
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                campaigns
+            });
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Campaign list failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'Campaigns could not be loaded.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/admin/community-spotlight/campaigns',
+    requirePermission('access_communications'),
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const actor =
+            getCommunitySpotlightActor(req);
+
+        try {
+            const campaign =
+                await CommunitySpotlight
+                    .createCampaign(
+                        db,
+                        req.body &&
+                        typeof req.body === 'object'
+                            ? req.body
+                            : {},
+                        {
+                            actor,
+                            now: getManilaTime()
+                        }
+                    );
+
+            logActivity(
+                actor,
+                'COMMUNITY_SPOTLIGHT_CREATED',
+                `Campaign ${campaign.id} ${campaign.campaign_key} v${campaign.version}`
+            );
+
+            return sendCommunitySpotlightJson(res, 201, {
+                success: true,
+                campaign
+            });
+        } catch (error) {
+            return sendCommunitySpotlightAdminError(
+                res,
+                error,
+                'Campaign creation failed'
+            );
+        }
+    }
+);
+
+app.put(
+    '/api/admin/community-spotlight/campaigns/:campaignId',
+    requirePermission('access_communications'),
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        const actor =
+            getCommunitySpotlightActor(req);
+
+        try {
+            const campaign =
+                await CommunitySpotlight
+                    .updateCampaign(
+                        db,
+                        campaignId,
+                        req.body &&
+                        typeof req.body === 'object'
+                            ? req.body
+                            : {},
+                        {
+                            actor,
+                            now: getManilaTime()
+                        }
+                    );
+
+            if (!campaign) {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            logActivity(
+                actor,
+                'COMMUNITY_SPOTLIGHT_UPDATED',
+                `Campaign ${campaign.id} ${campaign.campaign_key} v${campaign.version}`
+            );
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                campaign
+            });
+        } catch (error) {
+            return sendCommunitySpotlightAdminError(
+                res,
+                error,
+                'Campaign update failed'
+            );
+        }
+    }
+);
+
+app.post(
+    '/api/admin/community-spotlight/campaigns/:campaignId/relaunch',
+    requirePermission('access_communications'),
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        const actor =
+            getCommunitySpotlightActor(req);
+
+        try {
+            const campaign =
+                await CommunitySpotlight
+                    .relaunchCampaign(
+                        db,
+                        campaignId,
+                        req.body &&
+                        typeof req.body === 'object'
+                            ? req.body
+                            : {},
+                        {
+                            actor,
+                            now: getManilaTime()
+                        }
+                    );
+
+            if (!campaign) {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            logActivity(
+                actor,
+                'COMMUNITY_SPOTLIGHT_RELAUNCHED',
+                `Campaign ${campaign.id} ${campaign.campaign_key} v${campaign.version}`
+            );
+
+            return sendCommunitySpotlightJson(res, 201, {
+                success: true,
+                campaign
+            });
+        } catch (error) {
+            return sendCommunitySpotlightAdminError(
+                res,
+                error,
+                'Campaign relaunch failed'
+            );
+        }
+    }
+);
+
+app.get(
+    '/api/admin/community-spotlight/campaigns/:campaignId/analytics',
+    requirePermission('access_communications'),
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        try {
+            const analytics =
+                await CommunitySpotlight
+                    .getAnalytics(
+                        db,
+                        campaignId
+                    );
+
+            if (!analytics) {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                analytics
+            });
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Analytics load failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'Campaign analytics could not be loaded.'
+            });
+        }
+    }
+);
 
 app.get('/api/auth/me', (req, res) => {
     const activeSession = getValidSession(req);

@@ -174,6 +174,10 @@ test('verified email and pending email changes fail closed across application fl
     });
 
     await fsp.mkdir(path.join(temporaryRoot, 'lib'), { recursive: true });
+    await fsp.copyFile(
+        path.join(repositoryRoot, 'lib', 'community-spotlight.js'),
+        path.join(temporaryRoot, 'lib', 'community-spotlight.js')
+    );
     await fsp.mkdir(path.join(temporaryRoot, 'public', 'js'), { recursive: true });
     await fsp.mkdir(path.join(temporaryRoot, 'public', 'img'), { recursive: true });
     const source = await fsp.readFile(path.join(repositoryRoot, 'server.js'), 'utf8');
