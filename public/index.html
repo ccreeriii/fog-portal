@@ -4205,6 +4205,167 @@
         </div>
     </div>
 
+
+    <!-- DAILY PRAYER COVENANT — REVIEW & CONFIRM -->
+    <div
+        id="dailyCovenantPrayerModal"
+        class="fullscreen-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dailyCovenantPrayerTitle"
+        style="display:none; position:fixed; inset:0; width:100%; height:100%; z-index:106100; background:rgba(38, 28, 19, 0.68); align-items:center; justify-content:center; backdrop-filter:blur(5px); padding:16px;"
+    >
+        <div
+            style="background:#FFFDF8; width:100%; max-width:520px; max-height:min(90vh,760px); overflow-y:auto; border-radius:22px; padding:24px; box-shadow:0 24px 60px rgba(54,36,21,0.28); position:relative; border:1px solid #E7D6C3;"
+        >
+            <button
+                id="dailyCovenantPrayerClose"
+                type="button"
+                aria-label="Close Prayer Covenant prayer"
+                onclick="window.closeDailyPrayerCovenant && window.closeDailyPrayerCovenant()"
+                style="position:absolute; top:14px; right:14px; background:#F6EEE4; border:0; width:34px; height:34px; border-radius:50%; cursor:pointer; color:#70513A; font-size:1rem;"
+            >✕</button>
+
+            <div id="dailyCovenantComposeStep">
+                <p style="margin:0 42px 4px 0; color:#A7652B; font-size:0.74rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase;">
+                    Today’s Prayer Pal
+                </p>
+
+                <h3
+                    id="dailyCovenantPrayerTitle"
+                    style="margin:0 42px 8px 0; color:#5B3821; font-size:1.35rem; border:0; padding:0;"
+                >
+                    🙏 Praying for
+                    <span id="dailyCovenantPalName"></span>
+                </h3>
+
+                <p style="margin:0 0 18px; color:#735F50; font-size:0.9rem; line-height:1.55;">
+                    Choose a prayer starter, personalize it, or write your own prayer from the heart.
+                    Nothing will be sent until you review and confirm it.
+                </p>
+
+                <input
+                    type="hidden"
+                    id="dailyCovenantPalId"
+                >
+
+                <div
+                    id="dailyCovenantStarterList"
+                    aria-label="Prayer starters"
+                    style="display:grid; gap:8px; max-height:235px; overflow-y:auto; padding:2px 4px 12px 0; border-bottom:1px solid #EADBCB; margin-bottom:14px;"
+                ></div>
+
+                <label
+                    for="dailyCovenantPrayerText"
+                    style="display:block; margin-bottom:7px; color:#5B3821; font-weight:700; font-size:0.9rem;"
+                >
+                    Your prayer
+                </label>
+
+                <textarea
+                    id="dailyCovenantPrayerText"
+                    class="form-control"
+                    rows="5"
+                    maxlength="4000"
+                    placeholder="Write or personalize your prayer here..."
+                    style="border-radius:12px; resize:vertical; padding:14px; line-height:1.55;"
+                ></textarea>
+
+                <p
+                    id="dailyCovenantComposeStatus"
+                    role="status"
+                    aria-live="polite"
+                    style="min-height:1.35em; margin:9px 0 0; color:#806B5A; font-size:0.82rem;"
+                ></p>
+
+                <button
+                    id="dailyCovenantReviewBtn"
+                    type="button"
+                    class="btn btn-primary"
+                    onclick="window.reviewDailyPrayerCovenant && window.reviewDailyPrayerCovenant()"
+                    style="width:100%; margin-top:10px; border-radius:12px; font-weight:800; padding:13px;"
+                >
+                    Review Prayer
+                </button>
+            </div>
+
+            <div
+                id="dailyCovenantReviewStep"
+                hidden
+            >
+                <p style="margin:0 42px 4px 0; color:#A7652B; font-size:0.74rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase;">
+                    Review &amp; Confirm
+                </p>
+
+                <h3
+                    style="margin:0 42px 8px 0; color:#5B3821; font-size:1.35rem; border:0; padding:0;"
+                >
+                    Ready to send this prayer to
+                    <span id="dailyCovenantReviewPalName"></span>?
+                </h3>
+
+                <p style="margin:0 0 14px; color:#735F50; font-size:0.88rem; line-height:1.55;">
+                    Read your prayer once more. It will be delivered privately through the Community Portal.
+                </p>
+
+                <div
+                    id="dailyCovenantReviewText"
+                    tabindex="0"
+                    style="white-space:pre-wrap; background:#FFF8EE; border:1px solid #E7D2B9; color:#513B2B; padding:16px; border-radius:14px; line-height:1.65; font-size:0.94rem; margin-bottom:16px;"
+                ></div>
+
+                <div
+                    style="background:#F7F1E8; border:1px solid #E5D7C7; border-radius:14px; padding:14px 16px; margin-bottom:16px;"
+                >
+                    <strong style="display:block; color:#68452B; margin-bottom:7px;">
+                        A caring prayer is:
+                    </strong>
+
+                    <ul style="margin:0; padding-left:20px; color:#735F50; line-height:1.58; font-size:0.84rem;">
+                        <li>Faith-filled, hopeful, and encouraging.</li>
+                        <li>Respectful and caring toward the person receiving it.</li>
+                        <li>Mindful of privacy and sensitive personal details.</li>
+                        <li>Prayer-centered rather than advice, judgment, or diagnosis.</li>
+                    </ul>
+                </div>
+
+                <p style="margin:0 0 16px; color:#806B5A; font-size:0.8rem; line-height:1.5;">
+                    Your Prayer Pal can later respond with <strong>Thank You</strong> or share a
+                    <strong>Praise Report</strong> through the Community Portal.
+                </p>
+
+                <p
+                    id="dailyCovenantReviewStatus"
+                    role="status"
+                    aria-live="polite"
+                    style="min-height:1.4em; margin:0 0 10px; color:#806B5A; font-size:0.84rem; text-align:center;"
+                ></p>
+
+                <div style="display:grid; grid-template-columns:1fr 1.3fr; gap:10px;">
+                    <button
+                        id="dailyCovenantEditBtn"
+                        type="button"
+                        class="btn btn-outline"
+                        onclick="window.editDailyPrayerCovenant && window.editDailyPrayerCovenant()"
+                        style="border-radius:12px; font-weight:700;"
+                    >
+                        Edit
+                    </button>
+
+                    <button
+                        id="dailyCovenantConfirmBtn"
+                        type="button"
+                        class="btn btn-primary"
+                        onclick="window.confirmDailyPrayerCovenant && window.confirmDailyPrayerCovenant()"
+                        style="border-radius:12px; font-weight:800;"
+                    >
+                        Confirm &amp; Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 🚀 V5 DAILY PRAYER COVENANT ENGINE (PERFECT REFRESH & PRIVATE INBOX) -->
     
 
@@ -4889,7 +5050,7 @@
             modal.style.display = 'flex';
         };
     </script>
-    <script src="/js/journey-dashboard.js?v=6"></script>
+    <script src="/js/journey-dashboard.js?v=7"></script>
     <script src="/js/postlaunch-hotfix.js?v=4"></script>
     <script src="/js/community-feature-polish.js?v=7"></script>
 </body>

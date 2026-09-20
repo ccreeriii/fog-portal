@@ -219,7 +219,7 @@ test('pre-launch PWA revisions are synchronized', () => {
 
     assert.match(
         sw,
-        /fog-portal-v62/
+        /fog-portal-v63/
     );
 
     assert.match(

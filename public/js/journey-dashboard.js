@@ -249,12 +249,94 @@
         if (typeof window.switchTab === 'function') window.switchTab(target);
     }
 
+    const PRAYER_STARTERS = Object.freeze([
+        Object.freeze({
+            icon: '🕊️',
+            title: 'Peace & Strength',
+            text: 'Lord, I lift up my prayer pal to You today. Please grant them deep peace, physical strength, and joy in whatever they are facing. Amen.'
+        }),
+        Object.freeze({
+            icon: '❤️',
+            title: 'Blessing & Love',
+            text: 'Father, thank You for my prayer pal. I ask that You bless their day, protect their mind, and let them feel Your overwhelming love for them. Amen.'
+        }),
+        Object.freeze({
+            icon: '✨',
+            title: 'Breakthrough',
+            text: 'God, I pray for a breakthrough and clear guidance for my prayer pal today. Lead their steps and supply all their needs according to Your riches. Amen.'
+        }),
+        Object.freeze({
+            icon: '🌿',
+            title: 'Healing & Comfort',
+            text: 'Lord, I pray for absolute healing and comfort over my prayer pal. Restore their body, mind, and spirit completely. Amen.'
+        }),
+        Object.freeze({
+            icon: '💡',
+            title: 'Guidance & Wisdom',
+            text: 'Holy Spirit, grant my prayer pal profound wisdom and clarity in all their decisions this week. Light their path. Amen.'
+        }),
+        Object.freeze({
+            icon: '🙏',
+            title: 'Protection',
+            text: 'Heavenly Father, please place a hedge of protection around my prayer pal and their family. Guard them from harm and give them safe travels. Amen.'
+        }),
+        Object.freeze({
+            icon: '😌',
+            title: 'Anxiety & Worry',
+            text: 'Lord, I ask You to quiet any anxious thoughts in my prayer pal’s mind. Replace their worries with Your perfect peace that surpasses all understanding. Amen.'
+        }),
+        Object.freeze({
+            icon: '💼',
+            title: 'Work & Provision',
+            text: 'God, I lift up my prayer pal’s career, studies, and finances to You. Open doors of opportunity and bless the work of their hands. Amen.'
+        }),
+        Object.freeze({
+            icon: '🤝',
+            title: 'Relationships',
+            text: 'Father, bless the friendships and family ties of my prayer pal. Bring reconciliation where needed and surround them with supportive people. Amen.'
+        }),
+        Object.freeze({
+            icon: '🔥',
+            title: 'Spiritual Fire',
+            text: 'Holy Spirit, ignite a fresh passion and hunger for Your Word in my prayer pal’s heart. Draw them closer to You today than ever before. Amen.'
+        })
+    ]);
+
     function renderPrayer(document, window, payload, partner, growthMoment) {
         const card = document.getElementById('journeyPrayerCard');
         if (!card) return;
         clear(card);
 
-        const model = buildPrayerModel(payload, Boolean(partner && partner.pal_youth_id));
+        const dailyPal =
+            partner &&
+            partner.available === true &&
+            partner.prayerPal &&
+            Number.isInteger(
+                Number(
+                    partner.prayerPal.youthId
+                )
+            )
+                ? partner.prayerPal
+                : null;
+
+        const model =
+            buildPrayerModel(
+                payload,
+                Boolean(
+                    dailyPal
+                )
+            );
+
+        if (
+            partner &&
+            partner.prayedToday === true
+        ) {
+            model.action =
+                'Prayer offered today';
+
+            model.actionDisabled =
+                true;
+        }
         if (growthMoment) {
             card.appendChild(element(document, 'div', 'journey-growth-moment', growthMoment));
         }
@@ -313,10 +395,22 @@
         const action = element(document, 'button', 'journey-action', model.action);
         action.type = 'button';
         action.disabled = model.actionDisabled;
-        if (!model.actionDisabled && partner) {
+        if (
+            !model.actionDisabled &&
+            dailyPal
+        ) {
             action.addEventListener('click', () => {
-                if (typeof window.openGuidedPrayer === 'function') {
-                    window.openGuidedPrayer(partner.pal_name || 'your Prayer Partner', partner.pal_youth_id);
+                if (
+                    typeof window.openDailyPrayerCovenant ===
+                        'function'
+                ) {
+                    window.openDailyPrayerCovenant(
+                        dailyPal.name ||
+                            'your Prayer Pal',
+                        Number(
+                            dailyPal.youthId
+                        )
+                    );
                 }
             });
         }
@@ -651,7 +745,7 @@
                         cache: 'no-store'
                     }),
                     window.fetch(
-                        `/api/prayer-pals/current/${encodeURIComponent(String(member.id))}`,
+                        '/api/prayer-covenant/daily-pal',
                         { headers: { Accept: 'application/json' }, cache: 'no-store' }
                     ).then(response => response.ok ? response.json() : null)
                         .catch(() => null)
@@ -717,6 +811,619 @@
                 button.insertAdjacentElement('afterend', message);
             }
         };
+
+        let dailyPrayerDraft =
+            null;
+
+        let dailyPrayerSending =
+            false;
+
+        function dailyPrayerElement(id) {
+            return document.getElementById(
+                id
+            );
+        }
+
+        function setDailyPrayerStatus(
+            id,
+            message,
+            isError = false
+        ) {
+            const status =
+                dailyPrayerElement(
+                    id
+                );
+
+            if (!status) return;
+
+            status.textContent =
+                message || '';
+
+            status.style.color =
+                isError
+                    ? 'var(--danger)'
+                    : '#806B5A';
+        }
+
+        function setDailyPrayerStage(
+            stage
+        ) {
+            const compose =
+                dailyPrayerElement(
+                    'dailyCovenantComposeStep'
+                );
+
+            const review =
+                dailyPrayerElement(
+                    'dailyCovenantReviewStep'
+                );
+
+            if (!compose || !review) {
+                return;
+            }
+
+            const reviewing =
+                stage === 'review';
+
+            compose.hidden =
+                reviewing;
+
+            review.hidden =
+                !reviewing;
+
+            if (reviewing) {
+                const reviewText =
+                    dailyPrayerElement(
+                        'dailyCovenantReviewText'
+                    );
+
+                if (
+                    reviewText &&
+                    typeof reviewText.focus ===
+                        'function'
+                ) {
+                    reviewText.focus();
+                }
+            } else {
+                const textarea =
+                    dailyPrayerElement(
+                        'dailyCovenantPrayerText'
+                    );
+
+                if (
+                    textarea &&
+                    typeof textarea.focus ===
+                        'function'
+                ) {
+                    textarea.focus();
+                }
+            }
+        }
+
+        function renderDailyPrayerStarters() {
+            const list =
+                dailyPrayerElement(
+                    'dailyCovenantStarterList'
+                );
+
+            const textarea =
+                dailyPrayerElement(
+                    'dailyCovenantPrayerText'
+                );
+
+            if (
+                !list ||
+                !textarea
+            ) {
+                return;
+            }
+
+            while (
+                list.firstChild
+            ) {
+                list.removeChild(
+                    list.firstChild
+                );
+            }
+
+            const prayers =
+                PRAYER_STARTERS.slice();
+
+            for (
+                let index =
+                    prayers.length - 1;
+                index > 0;
+                index -= 1
+            ) {
+                const swapIndex =
+                    Math.floor(
+                        Math.random() *
+                            (index + 1)
+                    );
+
+                [
+                    prayers[index],
+                    prayers[swapIndex]
+                ] = [
+                    prayers[swapIndex],
+                    prayers[index]
+                ];
+            }
+
+            for (
+                const prayer
+                of prayers
+            ) {
+                const button =
+                    document.createElement(
+                        'button'
+                    );
+
+                button.type =
+                    'button';
+
+                button.className =
+                    'btn';
+
+                button.style.cssText =
+                    'text-align:left;font-size:0.85rem;background:#FFF8EE;' +
+                    'border:1px solid #E6D5C3;color:var(--text-main);' +
+                    'padding:10px 12px;border-radius:10px;cursor:pointer;' +
+                    'line-height:1.4;';
+
+                button.textContent =
+                    `${prayer.icon} Prayer for ${prayer.title}`;
+
+                button.addEventListener(
+                    'click',
+                    () => {
+                        textarea.value =
+                            prayer.text;
+
+                        setDailyPrayerStatus(
+                            'dailyCovenantComposeStatus',
+                            `${prayer.title} starter selected. You can personalize it before reviewing.`
+                        );
+
+                        textarea.focus();
+                    }
+                );
+
+                list.appendChild(
+                    button
+                );
+            }
+        }
+
+        window.closeDailyPrayerCovenant =
+            function() {
+                if (
+                    dailyPrayerSending
+                ) {
+                    setDailyPrayerStatus(
+                        'dailyCovenantReviewStatus',
+                        'Your prayer is being sent. Please keep this window open for a moment.'
+                    );
+
+                    return;
+                }
+
+                const modal =
+                    dailyPrayerElement(
+                        'dailyCovenantPrayerModal'
+                    );
+
+                if (modal) {
+                    modal.style.display =
+                        'none';
+                }
+
+                dailyPrayerDraft =
+                    null;
+
+                setDailyPrayerStage(
+                    'compose'
+                );
+            };
+
+        window.openDailyPrayerCovenant =
+            function(
+                palName,
+                palId
+            ) {
+                const receiverId =
+                    Number(
+                        palId
+                    );
+
+                if (
+                    !Number.isInteger(
+                        receiverId
+                    ) ||
+                    receiverId <= 0
+                ) {
+                    return;
+                }
+
+                const modal =
+                    dailyPrayerElement(
+                        'dailyCovenantPrayerModal'
+                    );
+
+                const name =
+                    dailyPrayerElement(
+                        'dailyCovenantPalName'
+                    );
+
+                const reviewName =
+                    dailyPrayerElement(
+                        'dailyCovenantReviewPalName'
+                    );
+
+                const id =
+                    dailyPrayerElement(
+                        'dailyCovenantPalId'
+                    );
+
+                const textarea =
+                    dailyPrayerElement(
+                        'dailyCovenantPrayerText'
+                    );
+
+                if (
+                    !modal ||
+                    !name ||
+                    !reviewName ||
+                    !id ||
+                    !textarea
+                ) {
+                    return;
+                }
+
+                const safeName =
+                    String(
+                        palName ||
+                        'your Prayer Pal'
+                    ).trim() ||
+                    'your Prayer Pal';
+
+                name.textContent =
+                    safeName;
+
+                reviewName.textContent =
+                    safeName;
+
+                id.value =
+                    String(
+                        receiverId
+                    );
+
+                textarea.value =
+                    '';
+
+                dailyPrayerDraft =
+                    null;
+
+                dailyPrayerSending =
+                    false;
+
+                setDailyPrayerStatus(
+                    'dailyCovenantComposeStatus',
+                    ''
+                );
+
+                setDailyPrayerStatus(
+                    'dailyCovenantReviewStatus',
+                    ''
+                );
+
+                renderDailyPrayerStarters();
+
+                setDailyPrayerStage(
+                    'compose'
+                );
+
+                modal.style.display =
+                    'flex';
+
+                textarea.focus();
+            };
+
+        window.reviewDailyPrayerCovenant =
+            function() {
+                const textarea =
+                    dailyPrayerElement(
+                        'dailyCovenantPrayerText'
+                    );
+
+                const id =
+                    dailyPrayerElement(
+                        'dailyCovenantPalId'
+                    );
+
+                const name =
+                    dailyPrayerElement(
+                        'dailyCovenantPalName'
+                    );
+
+                const reviewText =
+                    dailyPrayerElement(
+                        'dailyCovenantReviewText'
+                    );
+
+                if (
+                    !textarea ||
+                    !id ||
+                    !reviewText
+                ) {
+                    return;
+                }
+
+                const message =
+                    textarea.value.trim();
+
+                const receiverId =
+                    Number(
+                        id.value
+                    );
+
+                if (!message) {
+                    setDailyPrayerStatus(
+                        'dailyCovenantComposeStatus',
+                        'Choose a prayer starter or write your own prayer first.',
+                        true
+                    );
+
+                    textarea.focus();
+
+                    return;
+                }
+
+                if (
+                    message.length > 4000
+                ) {
+                    setDailyPrayerStatus(
+                        'dailyCovenantComposeStatus',
+                        'Please keep your prayer within 4,000 characters.',
+                        true
+                    );
+
+                    return;
+                }
+
+                if (
+                    !Number.isInteger(
+                        receiverId
+                    ) ||
+                    receiverId <= 0
+                ) {
+                    setDailyPrayerStatus(
+                        'dailyCovenantComposeStatus',
+                        'Today’s Prayer Pal could not be confirmed. Please close this window and refresh.',
+                        true
+                    );
+
+                    return;
+                }
+
+                dailyPrayerDraft = {
+                    receiverId,
+                    palName:
+                        name
+                            ? name.textContent.trim()
+                            : 'your Prayer Pal',
+                    message
+                };
+
+                reviewText.textContent =
+                    message;
+
+                setDailyPrayerStatus(
+                    'dailyCovenantReviewStatus',
+                    ''
+                );
+
+                setDailyPrayerStage(
+                    'review'
+                );
+            };
+
+        window.editDailyPrayerCovenant =
+            function() {
+                if (
+                    dailyPrayerSending
+                ) {
+                    return;
+                }
+
+                setDailyPrayerStage(
+                    'compose'
+                );
+            };
+
+        window.confirmDailyPrayerCovenant =
+            async function() {
+                const member =
+                    authenticatedMember();
+
+                const button =
+                    dailyPrayerElement(
+                        'dailyCovenantConfirmBtn'
+                    );
+
+                if (
+                    !member ||
+                    !button ||
+                    !dailyPrayerDraft ||
+                    dailyPrayerSending
+                ) {
+                    return;
+                }
+
+                if (
+                    window.navigator &&
+                    window.navigator.onLine ===
+                        false
+                ) {
+                    setDailyPrayerStatus(
+                        'dailyCovenantReviewStatus',
+                        'Reconnect to the internet before sending your prayer.',
+                        true
+                    );
+
+                    return;
+                }
+
+                dailyPrayerSending =
+                    true;
+
+                button.disabled =
+                    true;
+
+                button.textContent =
+                    'Sending prayer…';
+
+                setDailyPrayerStatus(
+                    'dailyCovenantReviewStatus',
+                    ''
+                );
+
+                let sent =
+                    false;
+
+                try {
+                    const response =
+                        await window.fetch(
+                            '/api/prayer-covenant/daily-pal/send',
+                            {
+                                method:
+                                    'POST',
+
+                                headers: {
+                                    'Content-Type':
+                                        'application/json',
+
+                                    Accept:
+                                        'application/json'
+                                },
+
+                                body:
+                                    JSON.stringify({
+                                        receiver_id:
+                                            dailyPrayerDraft.receiverId,
+
+                                        message:
+                                            dailyPrayerDraft.message
+                                    })
+                            }
+                        );
+
+                    const result =
+                        await response
+                            .json()
+                            .catch(
+                                () => ({})
+                            );
+
+                    if (
+                        !response.ok ||
+                        result.success !== true
+                    ) {
+                        throw new Error(
+                            result.error ||
+                            'Prayer could not be sent.'
+                        );
+                    }
+
+                    sent =
+                        true;
+
+                    button.textContent =
+                        'Prayer sent ✓';
+
+                    setDailyPrayerStatus(
+                        'dailyCovenantReviewStatus',
+                        `Your prayer was delivered to ${dailyPrayerDraft.palName}. They can respond with Thank You or a Praise Report through the Community Portal.`
+                    );
+
+                    state.growthMoment =
+                        'Growth Moment: you intentionally prayed for someone in our community today.';
+
+                    state.lastLoadedAt =
+                        0;
+
+                    await renderDashboard({
+                        force: true
+                    });
+
+                    dailyPrayerSending =
+                        false;
+
+                    window.setTimeout(
+                        () => {
+                            window
+                                .closeDailyPrayerCovenant();
+
+                            if (
+                                typeof window.scrollTo ===
+                                    'function'
+                            ) {
+                                window.scrollTo({
+                                    top: 0,
+                                    behavior:
+                                        'smooth'
+                                });
+                            }
+                        },
+                        1100
+                    );
+                } catch (error) {
+                    setDailyPrayerStatus(
+                        'dailyCovenantReviewStatus',
+                        error &&
+                        error.message
+                            ? error.message
+                            : 'Prayer could not be sent. Please try again.',
+                        true
+                    );
+                } finally {
+                    if (!sent) {
+                        dailyPrayerSending =
+                            false;
+
+                        button.disabled =
+                            false;
+
+                        button.textContent =
+                            'Confirm & Send';
+                    }
+                }
+            };
+
+        document.addEventListener(
+            'keydown',
+            event => {
+                if (
+                    event.key !== 'Escape'
+                ) {
+                    return;
+                }
+
+                const modal =
+                    dailyPrayerElement(
+                        'dailyCovenantPrayerModal'
+                    );
+
+                if (
+                    modal &&
+                    modal.style.display ===
+                        'flex'
+                ) {
+                    window
+                        .closeDailyPrayerCovenant();
+                }
+            }
+        );
 
         function prayerStatusElement() {
             let status = document.getElementById('guidedPrayerStatus');
@@ -825,6 +1532,7 @@
 
     return {
         PHASES,
+        PRAYER_STARTERS,
         manilaDateKey,
         buildPrayerModel,
         buildJourneyModel,

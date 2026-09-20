@@ -210,7 +210,7 @@ test('Home information architecture and final runtime module are ordered and foc
     const connected = index.indexOf('id="journeyConnectedCard"');
     assert.ok(prayer > 0 && prayer < growth && growth < events && events < connected);
 
-    const finalModule = index.indexOf('/js/journey-dashboard.js?v=6');
+    const finalModule = index.indexOf('/js/journey-dashboard.js?v=7');
     const historicalDashboard = index.indexOf('id="dashboardReorderEngine"');
     assert.ok(finalModule > historicalDashboard);
     assert.match(index, /id="headerNotificationBell"/);
@@ -233,13 +233,48 @@ test('Home information architecture and final runtime module are ordered and foc
 
 test('mobile dashboard assets advance the explicit PWA cache coherently', () => {
     assert.match(index, /\/css\/journey-dashboard\.css\?v=4/);
-    assert.match(index, /\/js\/journey-dashboard\.js\?v=6/);
-    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v62'/);
+    assert.match(index, /\/js\/journey-dashboard\.js\?v=7/);
+    assert.match(serviceWorker, /const CACHE_NAME = 'fog-portal-v63'/);
     assert.match(serviceWorker, /'\/css\/journey-dashboard\.css\?v=4'/);
-    assert.match(serviceWorker, /'\/js\/journey-dashboard\.js\?v=6'/);
+    assert.match(serviceWorker, /'\/js\/journey-dashboard\.js\?v=7'/);
     assert.match(dashboardStyles, /env\(safe-area-inset-bottom\)/);
     assert.match(dashboardStyles, /#mainHeader[\s\S]*env\(safe-area-inset-top\)/);
     assert.match(dashboardStyles, /\.journey-home__welcome[\s\S]*position:\s*static/);
     assert.match(dashboardStyles, /overflow-x:\s*clip/);
     assert.match(dashboardStyles, /@media \(max-width: 420px\)/);
 });
+
+test(
+    'Home Prayer Covenant card uses the self-scoped Daily Prayer Pal while preserving weekly Prayer Partner sending separately',
+    () => {
+        assert.match(
+            dashboardSource,
+            /fetch\(\s*'\/api\/prayer-covenant\/daily-pal'/
+        );
+
+        assert.match(
+            dashboardSource,
+            /window\.openDailyPrayerCovenant/
+        );
+
+        assert.match(
+            dashboardSource,
+            /\/api\/prayer-covenant\/daily-pal\/send/
+        );
+
+        assert.match(
+            dashboardSource,
+            /window\.submitGuidedPrayer = async function/
+        );
+
+        assert.match(
+            dashboardSource,
+            /fetch\('\/api\/prayer-pals\/send'/
+        );
+
+        assert.doesNotMatch(
+            dashboardSource,
+            /`\/api\/prayer-pals\/current\/\$\{encodeURIComponent\(String\(member\.id\)\)\}`/
+        );
+    }
+);

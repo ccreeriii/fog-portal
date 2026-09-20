@@ -80,5 +80,5 @@ test('Deep Dive renderer does not put thread content in inline handlers', () => 
 
 test('Campfire asset and service-worker cache are release-bumped', () => {
     assert.match(index, /v2-discipleship\.js\?v=12\.4/);
-    assert.match(sw, /fog-portal-v62/);
+    assert.match(sw, /fog-portal-v63/);
 });
