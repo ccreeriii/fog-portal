@@ -1,0 +1,315 @@
+.member-journey-review-shell {
+    overflow: hidden;
+}
+
+.member-journey-review-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.member-journey-review-heading h2 {
+    margin: 0 0 6px;
+}
+
+.member-journey-review-heading p {
+    margin: 0;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.member-journey-review-layout {
+    display: grid;
+    grid-template-columns: minmax(230px, 0.8fr) minmax(0, 2fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.member-journey-review-list,
+.member-journey-review-detail {
+    min-width: 0;
+}
+
+.member-journey-review-list {
+    display: grid;
+    gap: 10px;
+}
+
+.member-journey-review-list-item {
+    width: 100%;
+    appearance: none;
+    text-align: left;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: var(--card-bg, #fff);
+    color: inherit;
+    cursor: pointer;
+}
+
+.member-journey-review-list-item:hover,
+.member-journey-review-list-item.is-selected {
+    border-color: #d97706;
+    box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.08);
+}
+
+.member-journey-review-list-item__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.member-journey-review-list-item__meta,
+.member-journey-review-list-item__date {
+    margin-top: 6px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+.member-journey-review-badge {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(100, 116, 139, 0.12);
+    font-size: 0.74rem;
+    font-weight: 800;
+}
+
+.member-journey-review-badge[data-status="submitted"] {
+    background: rgba(37, 99, 235, 0.12);
+    color: #1d4ed8;
+}
+
+.member-journey-review-badge[data-status="under_review"] {
+    background: rgba(217, 119, 6, 0.14);
+    color: #b45309;
+}
+
+.member-journey-review-badge[data-status="needs_changes"] {
+    background: rgba(220, 38, 38, 0.1);
+    color: #b91c1c;
+}
+
+.member-journey-review-badge[data-status="approved"] {
+    background: rgba(124, 58, 237, 0.12);
+    color: #6d28d9;
+}
+
+.member-journey-review-badge[data-status="recognized"] {
+    background: rgba(5, 150, 105, 0.12);
+    color: #047857;
+}
+
+.member-journey-review-detail {
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 18px;
+    background: var(--card-bg, #fff);
+}
+
+.member-journey-review-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.member-journey-review-detail-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.member-journey-review-section {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border-color);
+}
+
+.member-journey-review-section h3 {
+    margin: 0 0 12px;
+    font-size: 1rem;
+}
+
+.member-journey-review-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.member-journey-review-field {
+    min-width: 0;
+    padding: 11px;
+    border-radius: 10px;
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.member-journey-review-field__label {
+    margin-bottom: 4px;
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.member-journey-review-field__value {
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.member-journey-review-ministry,
+.member-journey-review-history,
+.member-journey-review-recognition {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+.member-journey-review-ministry__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.member-journey-review-priority {
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(217, 119, 6, 0.12);
+    color: #b45309;
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.member-journey-review-ministry__notes {
+    margin: 8px 0 0;
+}
+
+.member-journey-review-muted {
+    color: var(--text-muted);
+    line-height: 1.45;
+}
+
+.member-journey-review-form-field {
+    display: grid;
+    gap: 6px;
+    margin-top: 12px;
+    font-weight: 700;
+}
+
+.member-journey-review-form-field textarea,
+.member-journey-review-form-field select {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: var(--card-bg, #fff);
+    color: inherit;
+    font: inherit;
+}
+
+.member-journey-review-action-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.member-journey-review-approval {
+    display: grid;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border-color);
+}
+
+.member-journey-review-primary,
+.member-journey-review-secondary,
+.member-journey-review-recognize {
+    margin-top: 10px;
+}
+
+.member-journey-review-recognize {
+    background: #047857;
+    border-color: #047857;
+}
+
+.member-journey-review-warning,
+.member-journey-review-success {
+    padding: 11px 12px;
+    border-radius: 10px;
+    line-height: 1.45;
+}
+
+.member-journey-review-warning {
+    background: rgba(217, 119, 6, 0.1);
+    color: #92400e;
+}
+
+.member-journey-review-success {
+    background: rgba(5, 150, 105, 0.1);
+    color: #047857;
+}
+
+.member-journey-review-recognition {
+    border-color: rgba(5, 150, 105, 0.35);
+    background: rgba(5, 150, 105, 0.06);
+}
+
+.member-journey-review-status {
+    display: none;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+}
+
+.member-journey-review-status.is-info,
+.member-journey-review-status.is-success,
+.member-journey-review-status.is-error {
+    display: block;
+}
+
+.member-journey-review-status.is-info {
+    background: rgba(37, 99, 235, 0.08);
+    color: #1d4ed8;
+}
+
+.member-journey-review-status.is-success {
+    background: rgba(5, 150, 105, 0.1);
+    color: #047857;
+}
+
+.member-journey-review-status.is-error {
+    background: rgba(220, 38, 38, 0.09);
+    color: #b91c1c;
+}
+
+.member-journey-review-empty,
+.member-journey-review-empty-state {
+    padding: 20px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+@media (max-width: 760px) {
+    .member-journey-review-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .member-journey-review-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .member-journey-review-detail-header {
+        flex-direction: column;
+    }
+}

@@ -1,5 +1,5 @@
 // ========== public/js/v9-growth-games.js ==========
-// FIRE OF GOD MINISTRIES - V9 BRAIN GAMES (GROWTH XP)
+// FIRE OF GOD MINISTRIES - V9 BRAIN GAMES
 
 window.V9GrowthGames = {
     // --------------------------------------------------------------------------
@@ -10,12 +10,14 @@ window.V9GrowthGames = {
     mountGameUI: function(htmlContent) {
         document.getElementById('growthGamesGrid').style.display = 'none';
         const area = document.getElementById('growthActiveGameArea');
+        area.hidden = false;
         area.style.display = 'block';
         area.innerHTML = htmlContent;
     },
 
     exitGame: function() {
         if (this._activeTimer) clearInterval(this._activeTimer);
+        document.getElementById('growthActiveGameArea').hidden = true;
         document.getElementById('growthActiveGameArea').style.display = 'none';
         document.getElementById('growthActiveGameArea').innerHTML = '';
         document.getElementById('growthGamesGrid').style.display = 'grid';
@@ -48,7 +50,7 @@ window.V9GrowthGames = {
                 <h2 style="color: #059669; font-size: 1.8rem; margin-bottom: 10px; border: none;">Catechism Clash</h2>
                 <p style="color: #64748B; font-size: 0.95rem; margin-bottom: 20px;">
                     You have 60 seconds to answer as many biblical questions as possible. 
-                    <br><br><strong>+10 XP</strong> per correct answer.<br><strong>+15 XP (Speed Bonus)</strong> if answered under 3 seconds!
+                    <br><br><strong>+10 score</strong> per correct answer.<br><strong>+15 score (speed bonus)</strong> if answered under 3 seconds!
                 </p>
                 <button class="btn btn-primary" style="background: #059669; width: 100%; max-width: 250px; font-size: 1.1rem; padding: 15px;" onclick="V9GrowthGames.startCatechismClash()">▶ START SPRINT</button>
             </div>
@@ -100,7 +102,7 @@ window.V9GrowthGames = {
 
         let html = `
             <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold;">
-                <span class="badge badge-green">Score: ${this.ccState.score} XP</span>
+                <span class="badge badge-green">Score: ${this.ccState.score}</span>
                 <span style="color: #64748B; font-size: 0.85rem;">Q: ${this.ccState.currentIndex + 1} / ${this.ccState.questions.length}</span>
             </div>
             <h3 style="font-size: 1.2rem; color: #0F172A; margin-bottom: 25px; line-height: 1.4;">${q.question}</h3>
@@ -138,7 +140,7 @@ window.V9GrowthGames = {
             selectedBtn.style.background = '#10B981';
             selectedBtn.style.color = '#FFF';
             selectedBtn.style.borderColor = '#10B981';
-            selectedBtn.innerHTML += ` <span style="float:right; font-weight:bold;">+${pointsEarned} XP</span>`;
+            selectedBtn.innerHTML += ` <span style="float:right; font-weight:bold;">+${pointsEarned} score</span>`;
         } else {
             selectedBtn.style.background = '#EF4444';
             selectedBtn.style.color = '#FFF';
@@ -164,8 +166,8 @@ window.V9GrowthGames = {
             <h2 style="color: #0F172A; font-size: 1.8rem; margin-bottom: 5px; border:none;">${reasonTitle}</h2>
             <p style="color: #64748B; font-size: 1rem; margin-bottom: 20px;">Sprint Finished.</p>
             <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
-                <div style="font-size: 0.9rem; color: #64748B; font-weight: bold; text-transform: uppercase;">Total Earned</div>
-                <div style="font-size: 2.5rem; color: #059669; font-weight: 800;">${this.ccState.score} <span style="font-size:1.2rem;">Growth XP</span></div>
+                <div style="font-size: 0.9rem; color: #64748B; font-weight: bold; text-transform: uppercase;">Game Score</div>
+                <div style="font-size: 2.5rem; color: #059669; font-weight: 800;">${this.ccState.score} <span style="font-size:1.2rem;">points</span></div>
             </div>
             <p id="ccSubmitStatus" style="color: #F59E0B; font-weight: bold; margin-bottom: 15px;">Saving your score...</p>
             <button id="ccExitBtn" class="btn btn-primary" style="background: #059669; width: 100%; display: none;" onclick="V9GrowthGames.exitGame()">Claim & Exit to Arcade</button>
@@ -179,12 +181,14 @@ window.V9GrowthGames = {
                     body: JSON.stringify({
                         youth_id: currentMember.id,
                         score: this.ccState.score,
+                        submission_id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `growth-${Date.now()}-${Math.random()}`,
                         actor: typeof currentUser !== 'undefined' ? currentUser : 'System'
                     })
                 });
 
+                const data = await res.json();
                 if (res.ok) {
-                    document.getElementById('ccSubmitStatus').innerText = "Score saved successfully!";
+                    document.getElementById('ccSubmitStatus').innerText = `Score saved. +${data.lifePointsAwarded || 0} Life Points (${data.dailyLifePoints || 0}/${data.dailyCap || 25} today).`;
                     document.getElementById('ccSubmitStatus').style.color = "#10B981";
                     document.getElementById('ccExitBtn').style.display = "block";
                     if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
@@ -240,7 +244,7 @@ window.V9GrowthGames = {
         const body = document.getElementById('pollGameBody');
         body.innerHTML = `
             <div style="margin-bottom: 25px;">
-                <span class="badge" style="background: #F3E8FF; color: #DB2777; font-size: 0.8rem; margin-bottom: 10px;">+5 Growth XP for voting!</span>
+                <span class="badge" style="background: #F3E8FF; color: #DB2777; font-size: 0.8rem; margin-bottom: 10px;">+5 Life Points for voting!</span>
                 <h3 style="font-size: 1.4rem; color: #0F172A; margin-bottom: 10px;">${poll.question}</h3>
             </div>
             
@@ -257,7 +261,13 @@ window.V9GrowthGames = {
         try {
             const res = await fetch('/api/growth-games/poll/vote', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ youth_id: currentMember.id, poll_id: pollId, choice: choice, actor: typeof currentUser !== 'undefined' ? currentUser : 'System' })
+                body: JSON.stringify({
+                    youth_id: currentMember.id,
+                    poll_id: pollId,
+                    choice: choice,
+                    submission_id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `growth-${Date.now()}-${Math.random()}`,
+                    actor: typeof currentUser !== 'undefined' ? currentUser : 'System'
+                })
             });
             const data = await res.json();
             if (data.success && data.poll) {
@@ -278,7 +288,7 @@ window.V9GrowthGames = {
         }
 
         let successBanner = justVoted 
-            ? `<div style="background: #D1FAE5; color: #059669; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-weight: bold;">🎉 Vote locked! +5 Growth XP Earned!</div>` 
+            ? `<div style="background: #D1FAE5; color: #059669; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-weight: bold;">🎉 Vote locked! +5 Life Points Earned!</div>`
             : `<div style="background: #F3F4F6; color: #4B5563; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; font-size: 0.85rem;">You have already voted on today's poll.</div>`;
 
         body.innerHTML = `
@@ -364,12 +374,12 @@ window.V9GrowthGames = {
         }
 
         const moreCluesBtn = this.waiState.cluesRevealed < 3 
-            ? `<button class="btn btn-secondary btn-sm" style="width: 100%; margin-bottom: 20px;" onclick="V9GrowthGames.revealWaiClue()">Need another clue? (Drops reward to ${pts - 5} XP)</button>`
+            ? `<button class="btn btn-secondary btn-sm" style="width: 100%; margin-bottom: 20px;" onclick="V9GrowthGames.revealWaiClue()">Need another clue? (Potential score: ${pts - 5})</button>`
             : '';
 
         document.getElementById('waiGameBody').innerHTML = `
             <div style="margin-bottom: 20px;">
-                <span class="badge badge-orange" style="font-size: 0.9rem;">Potential Reward: +${pts} Growth XP</span>
+                <span class="badge badge-orange" style="font-size: 0.9rem;">Potential Reward: +${pts} Life Points</span>
             </div>
             ${cluesHtml}
             ${moreCluesBtn}
@@ -405,6 +415,7 @@ window.V9GrowthGames = {
                     question_id: this.waiState.question.id,
                     clues_used: this.waiState.cluesRevealed,
                     is_correct: isCorrect,
+                    submission_id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `growth-${Date.now()}-${Math.random()}`,
                     actor: typeof currentUser !== 'undefined' ? currentUser : 'System'
                 })
             });
@@ -417,7 +428,7 @@ window.V9GrowthGames = {
                 statusEl.innerText = data.error;
             } else if (isCorrect) {
                 statusEl.style.color = '#10B981';
-                statusEl.innerText = `🎉 Correct! It was ${this.waiState.question.answer}. +${data.pointsAwarded} Growth XP!`;
+                statusEl.innerText = `🎉 Correct! It was ${this.waiState.question.answer}. +${data.pointsAwarded} Life Points!`;
                 if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
                 document.getElementById('waiGuessInput').disabled = true;
             } else {
@@ -441,7 +452,7 @@ window.V9GrowthGames = {
             </div>
             <div style="background: #FFF; padding: 20px; border: 1px solid #E2E8F0; border-top: none; border-radius: 0 0 12px 12px; min-height: 300px;">
                 <h3 style="color: #DC2626; margin-bottom: 5px; text-align: center;">Small Group Leaderboard</h3>
-                <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">Every XP you earn from arcade games, checking in, and trivia helps your cell group climb the ranks!</p>
+                <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">Every Life Point you earn from arcade games, checking in, and trivia helps your cell group climb the ranks!</p>
                 <div id="cgcLeaderboardContainer" style="text-align: center;">
                     <p style="color:var(--text-muted);">Loading ranks...</p>
                 </div>
@@ -583,7 +594,7 @@ window.V9GrowthGames = {
             }
         }
         finalHtml += `</div>`;
-        finalHtml += `<p style="font-size: 0.8rem; color: #64748B; text-align: center; margin-top: 15px;">Work with your group! Correct words lock in <strong style="color:#10B981;">+10 Growth XP</strong> for you.</p>`;
+        finalHtml += `<p style="font-size: 0.8rem; color: #64748B; text-align: center; margin-top: 15px;">Work with your group! Correct words lock in <strong style="color:#10B981;">+10 Life Points</strong> for you.</p>`;
 
         document.getElementById('vcGameBody').innerHTML = finalHtml;
     },
@@ -614,13 +625,14 @@ window.V9GrowthGames = {
                     verse_id: this.vcState.verse.id,
                     word_index: wordIndex,
                     guessed_word: correctWord, // Submit the beautifully formatted correct word
+                    submission_id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `growth-${Date.now()}-${Math.random()}`,
                     actor: typeof currentUser !== 'undefined' ? currentUser : 'System'
                 })
             });
 
             const data = await res.json();
             if (data.success) {
-                alert(`Correct! You solved a link in the chain! +${data.pointsAwarded} Growth XP!`);
+                alert(`Correct! You solved a link in the chain! +${data.pointsAwarded} Life Points!`);
                 if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
                 // Reload the puzzle to show the locked-in green badge
                 this.loadVerseForGroup(); 

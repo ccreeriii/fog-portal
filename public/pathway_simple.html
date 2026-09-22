@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Spiritual Journey | FOG Portal</title>
+    <style>
+        :root {
+            --primary: #F97316;
+            --primary-light: #FFEDD5;
+            --text-main: #0F172A;
+            --text-muted: #475569;
+            --bg-page: #F8FAFC;
+            --card-bg: #FFFFFF;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: var(--bg-page); margin: 0; padding: 40px 20px; color: var(--text-main); }
+        .header { text-align: center; margin-bottom: 50px; max-width: 600px; margin-left: auto; margin-right: auto; }
+        .header h1 { font-size: 2.2rem; color: var(--primary); margin: 0; display: flex; justify-content: center; align-items: center; gap: 12px; }
+        .header p { font-size: 1.1rem; color: var(--text-muted); margin-top: 10px; line-height: 1.5; }
+        
+        /* Vertical Pathway Container */
+        .pathway-container { max-width: 900px; margin: 0 auto; position: relative; padding-left: 20px; }
+        
+        /* The Connecting Line */
+        .pathway-container::before {
+            content: ''; position: absolute; top: 0; bottom: 0; left: 45px; width: 4px; background: #E2E8F0; border-radius: 4px; z-index: 0;
+        }
+
+        .step-card { position: relative; z-index: 1; margin-bottom: 30px; background: var(--card-bg); border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.04); border: 1px solid #F1F5F9; overflow: hidden; }
+        
+        .step-header { padding: 20px 25px; display: flex; align-items: center; cursor: pointer; user-select: none; transition: background 0.2s; }
+        .step-header:hover { background: #F8FAFC; }
+        
+        .step-number { width: 46px; height: 46px; border-radius: 50%; background: var(--primary); color: white; display: flex; justify-content: center; align-items: center; font-size: 1.4rem; font-weight: bold; margin-right: 20px; box-shadow: 0 0 0 6px var(--bg-page); flex-shrink: 0; transition: transform 0.3s; }
+        .step-header.open .step-number { transform: scale(1.1); background: #EA580C; }
+        
+        .step-title { margin: 0; font-size: 1.4rem; color: var(--text-main); flex: 1; display: flex; flex-direction: column; }
+        .step-subtitle { font-size: 0.95rem; color: var(--primary); font-style: italic; font-weight: normal; margin-top: 4px; }
+        
+        .toggle-icon { font-size: 1.2rem; color: #CBD5E1; transition: transform 0.3s; }
+        .step-header.open .toggle-icon { transform: rotate(180deg); color: var(--primary); }
+
+        /* Expandable Content */
+        .step-content { max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.4s ease; background: var(--card-bg); }
+        .step-content.open { max-height: 1200px; padding: 0 25px 25px 90px; }
+        
+        .goal-box { background: var(--primary-light); border-left: 4px solid var(--primary); padding: 15px; border-radius: 0 8px 8px 0; margin-bottom: 20px; margin-top: 10px; }
+        .goal-box strong { color: #C2410C; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 5px; }
+        .goal-box p { margin: 0; font-size: 1rem; color: #7C2D12; }
+
+        .feature-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 15px; }
+        .feature-item { background: #F8FAFC; padding: 15px; border-radius: 10px; border: 1px solid #E2E8F0; }
+        .feature-title { font-weight: 700; color: var(--text-main); font-size: 1.05rem; display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+        .feature-title::before { content: "✨"; font-size: 1.1rem; }
+        .feature-desc { margin: 0; font-size: 0.95rem; color: var(--text-muted); line-height: 1.5; }
+        
+        @media (max-width: 600px) {
+            .pathway-container::before { left: 35px; }
+            .step-header { padding: 15px; }
+            .step-number { width: 36px; height: 36px; font-size: 1.1rem; margin-right: 15px; box-shadow: 0 0 0 4px var(--bg-page); }
+            .step-title { font-size: 1.2rem; }
+            .step-content.open { padding: 0 15px 20px 15px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Your Spiritual Journey</h1>
+        <p>We are here to walk alongside you. Click any milestone to explore the tools we've built to support your faith.</p>
+    </div>
+
+    <div class="pathway-container">
+        
+        <!-- Encounter -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">👋</div>
+                <h2 class="step-title">Encounter <span class="step-subtitle">"Come & See"</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Heart of this Step</strong>
+                    <p>To explore faith safely at your own pace, without any pressure to join or commit immediately.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">Custom Entry Paths</div>
+                        <p class="feature-desc">Jump straight into what interests you—whether it's playing a Christian game, reading the Daily Gospel, or finding an event—without filling out long forms.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Guest Dashboard</div>
+                        <p class="feature-desc">Get immediate access to daily readings and private prayer requests before you ever need to create an account.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Faith Quest Arcade</div>
+                        <p class="feature-desc">Learn scripture and beat high scores through fun mini-games. When you're ready, save your progress with a single tap.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Easy RSVP</div>
+                        <p class="feature-desc">Sign up for casual, welcoming gatherings like Youth Day or the Alpha Series using just your email.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Connect & Belong -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">🤝</div>
+                <h2 class="step-title">Connect & Belong <span class="step-subtitle">"Find your circle"</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Heart of this Step</strong>
+                    <p>To find your circle and build relationships so you never have to walk alone.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">The Campfire Chat</div>
+                        <p class="feature-desc">A 24/7 digital living room for your small group to chat, share struggles, and bond throughout the week.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Shared Memories</div>
+                        <p class="feature-desc">A group photo gallery where you can post pictures and celebrate moments together using emoji reactions.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Secret Prayer Pal</div>
+                        <p class="feature-desc">Get paired with someone new each week so you can pray for them and check in on how they are doing.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Community Prayer Wall</div>
+                        <p class="feature-desc">Share your burdens (even anonymously) and see exactly how many brothers and sisters are actively praying for you.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Step In -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">🏡</div>
+                <h2 class="step-title">Step In <span class="step-subtitle">"Take root"</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Heart of this Step</strong>
+                    <p>To take root and officially choose this spiritual family as your committed home.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">Your Growth Tracker</div>
+                        <p class="feature-desc">A clear, personalized progress bar showing exactly where you are on your spiritual journey alongside encouraging words from our leaders.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Actionable Next Steps</div>
+                        <p class="feature-desc">Your dashboard will always show you exactly what physical action you can take next to grow deeper in your faith.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Digital Pledge</div>
+                        <p class="feature-desc">Make your official commitment to the community right from your phone during our live gatherings.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Discover Your Gifts -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">🎁</div>
+                <h2 class="step-title">Discover Your Gifts <span class="step-subtitle">"Discernment"</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Heart of this Step</strong>
+                    <p>To unpack the unique talents God has entrusted to you and discover how you can bless others.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">Digital Ministry Application</div>
+                        <p class="feature-desc">A simple, direct way to volunteer and declare how you want to serve without losing track of paper forms.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Ministry Finder</div>
+                        <p class="feature-desc">Explore the needs of the church and find the perfect team that aligns with your specific gifts and passions.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Easy Auditions</div>
+                        <p class="feature-desc">Book a quick video call with leaders for specialized teams like Music or Tech straight into your calendar.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Equip & Form -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">🛡️</div>
+                <h2 class="step-title">Equip & Form <span class="step-subtitle">"Deepen your roots"</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Heart of this Step</strong>
+                    <p>To deepen your character, biblical wisdom, and practical skills before stepping into leadership.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">Attendance Tracker</div>
+                        <p class="feature-desc">An automated tool that helps you stay disciplined and accountable to your formation classes by simply scanning a QR code.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Private Journals</div>
+                        <p class="feature-desc">Built-in templates that guide your daily reflection, helping you process your thoughts and listen to God privately.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Video Vault</div>
+                        <p class="feature-desc">A digital classroom where you can catch up on teachings, watch sermons, and discuss them with your group.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Serve with Joy -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">❤️</div>
+                <h2 class="step-title">Serve with Joy <span class="step-subtitle">"Step into the harvest"</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Heart of this Step</strong>
+                    <p>To actively step into the harvest and use your gifts to build the Kingdom.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">Servant Toolkit</div>
+                        <p class="feature-desc">Once you join a team, the app unlocks specific tools you need to do your job well, keeping everything organized.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Command Center</div>
+                        <p class="feature-desc">Helps volunteer teams coordinate smoothly behind the scenes with access to private event notes and schedules.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Team Alerts</div>
+                        <p class="feature-desc">Receive instant, important notifications directly from your ministry leaders so you never miss an update.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Commissioned -->
+        <div class="step-card">
+            <div class="step-header" onclick="toggleStep(this)">
+                <div class="step-number">🕊️</div>
+                <h2 class="step-title">Commissioned <span class="step-subtitle">"Be Sent"</span></h2>
+                <div class="toggle-icon">▼</div>
+            </div>
+            <div class="step-content">
+                <div class="goal-box">
+                    <strong>The Heart of this Step</strong>
+                    <p>To go forth as a mature disciple, ready to shepherd others and share Christ's love.</p>
+                </div>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <div class="feature-title">Smart AI Assistant</div>
+                        <p class="feature-desc">Helps our leaders easily find and reach out to members who might be slipping through the cracks.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Community Health Dashboard</div>
+                        <p class="feature-desc">Gives shepherds a real-time view of how engaged and healthy the flock is so they can care for everyone effectively.</p>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-title">Lifetime Leaderboards</div>
+                        <p class="feature-desc">Celebrates your long-term faithfulness and joyful endurance as a pillar of the community.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function toggleStep(element) {
+            // Close all others
+            document.querySelectorAll('.step-header').forEach(header => {
+                if(header !== element) {
+                    header.classList.remove('open');
+                    header.nextElementSibling.classList.remove('open');
+                }
+            });
+            
+            // Toggle clicked element
+            element.classList.toggle('open');
+            element.nextElementSibling.classList.toggle('open');
+            
+            // Smooth scroll into view if expanding
+            if(element.classList.contains('open')) {
+                setTimeout(() => {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 300);
+            }
+        }
+    </script>
+</body>
+</html>

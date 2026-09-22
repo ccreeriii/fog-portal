@@ -1,0 +1,8 @@
+Purpose: P9 Phase C production release
+Approved SHA: 9df669dfa2d6b122866eebfda2cd82240271071f
+Prepared Manila: 2026-09-09T23:38:49+08:00
+Source: /home/raspi4/fog-portal-staging
+npm install method: npm ci --omit=dev
+sharp expected: 0.35.4
+Authoritative production DB included: NO
+Production backups included: NO

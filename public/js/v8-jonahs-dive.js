@@ -57,7 +57,7 @@ window.V8JonahsDive = {
                 <div id="jdOverlay" style="position: absolute; inset: 0; background: rgba(255,255,255,0.92); display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; z-index: 10;">
                     <h2 style="color: #0284C7; margin-bottom: 8px; font-size: 1.8rem; border: none; text-align:center;">Jonah's Deep Sea Dive</h2>
                     <p style="text-align: center; max-width: 90%; color: #64748B; margin-bottom: 18px; font-size: 0.92rem; line-height: 1.4;">
-                        Hold the button to swim up, release to sink. Dodge the cave walls and sinking anchors (⚓)! Collect Grace Pearls (✨) for XP!
+                        Hold the button to swim up, release to sink. Dodge the cave walls and sinking anchors (⚓)! Collect Grace Pearls (✨) for score!
                     </p>
                     <button class="btn btn-primary" style="background: #0284C7; padding: 12px 28px;" onclick="V8JonahsDive.startGame()">▶ Dive In</button>
                 </div>
@@ -331,41 +331,8 @@ window.V8JonahsDive = {
 
         const overlay = document.getElementById('jdOverlay');
         overlay.style.display = 'flex';
-        overlay.innerHTML = `
-            <h2 style="color: #EF4444; font-size: 1.8rem; margin-bottom: 5px; border:none; text-align:center;">${titleText}</h2>
-            <p style="color: #0F172A; font-size: 1rem; margin-bottom: 15px; text-align:center;">You survived to Depth ${this.level}.</p>
-            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
-                <span style="color: #10B981; font-weight: bold; font-size: 1.2rem;">${this.score} XP Earned!</span>
-            </div>
-            <div style="display:flex; gap:10px;">
-                <button class="btn btn-secondary" onclick="V8JonahsDive.exitGame()">Arcade</button>
-                <button class="btn btn-primary" style="background: #0284C7;" onclick="V8JonahsDive.startGame()">Dive Again</button>
-            </div>
-        `;
-
-        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id && this.score > 0) {
-            try {
-                await fetch('/api/arcade/submit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        youth_id: currentMember.id,
-                        game_name: "Jonah's Deep Sea Dive",
-                        score: this.score,
-                        actor: typeof currentUser !== 'undefined' ? currentUser : 'System'
-                    })
-                });
-
-                if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
-                if (typeof window.V8Arcade !== 'undefined') {
-                    window.V8Arcade.loadLeaderboard();
-                    window.V8Arcade.updateTotalXP();
-                }
-
-                this.score = 0;
-            } catch(e) {
-                console.error("Failed to submit score.", e);
-            }
-        }
+        const finalScore = this.score;
+        await window.V10Expansion.submitCanvasGameResult({ gameName: "Jonah's Deep Sea Dive", score: finalScore, overlayId: 'jdOverlay', playAgain: 'V8JonahsDive.startGame()' });
+        this.score = 0;
     }
 };

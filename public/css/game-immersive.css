@@ -1,0 +1,211 @@
+/*
+ * FOG Games — Universal Immersive Game Mode
+ *
+ * Applies ONLY while an Arcade or Faith Quest game is active.
+ * Normal Community Portal scrolling and browser zoom remain unchanged.
+ */
+
+html.game-immersive-active,
+body.game-immersive-active {
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+}
+
+#gameImmersiveHost {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+
+    background: #0f172a;
+}
+
+.game-immersive-toolbar {
+    position: relative;
+    z-index: 3;
+
+    min-height: 44px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    padding:
+        max(6px, env(safe-area-inset-top))
+        max(10px, env(safe-area-inset-right))
+        6px
+        max(10px, env(safe-area-inset-left));
+
+    box-sizing: border-box;
+
+    background: rgba(15, 23, 42, .97);
+    color: #fff;
+
+    box-shadow:
+        0 1px 0
+        rgba(255,255,255,.08);
+}
+
+.game-immersive-label {
+    min-width: 0;
+
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .03em;
+}
+
+.game-immersive-exit {
+    flex: 0 0 auto;
+
+    min-height: 34px;
+    padding: 6px 12px;
+
+    border: 1px solid rgba(255,255,255,.22);
+    border-radius: 999px;
+
+    background: rgba(255,255,255,.10);
+    color: #fff;
+
+    font: inherit;
+    font-size: .78rem;
+    font-weight: 900;
+
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.game-immersive-exit:hover,
+.game-immersive-exit:focus-visible {
+    background: rgba(255,255,255,.18);
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
+.game-immersive-stage {
+    position: relative;
+
+    min-width: 0;
+    min-height: 0;
+
+    width: 100%;
+    height: 100%;
+
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+
+    background: #fff;
+}
+
+/*
+ * The actual existing game area is moved into the stage.
+ * Its children are NOT restructured, protecting legacy game code.
+ */
+#gameImmersiveHost
+.games-active-area.game-immersive-surface {
+    --game-fit-scale: 1;
+
+    position: absolute !important;
+
+    top: 50% !important;
+    left: 50% !important;
+
+    width: min(100%, 980px) !important;
+    max-width: 980px !important;
+
+    height: auto !important;
+    max-height: none !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+
+    overflow: visible !important;
+    overscroll-behavior: none !important;
+
+    /*
+     * While the game is active, browser pan/pinch behavior
+     * is suppressed inside the game surface.
+     */
+    touch-action: none !important;
+
+    transform:
+        translate(-50%, -50%)
+        scale(var(--game-fit-scale)) !important;
+
+    transform-origin: center center !important;
+
+    box-sizing: border-box;
+    background: #fff;
+}
+
+/*
+ * Preserve game controls as clickable/tappable.
+ */
+#gameImmersiveHost button,
+#gameImmersiveHost [role="button"],
+#gameImmersiveHost canvas {
+    touch-action: none;
+}
+
+#gameImmersiveHost input,
+#gameImmersiveHost textarea,
+#gameImmersiveHost select {
+    touch-action: manipulation;
+    user-select: text;
+}
+
+/*
+ * Result screens should remain centered and compact.
+ */
+#gameImmersiveHost .game-result-card {
+    max-width: min(620px, 94vw);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/*
+ * Very short phones / landscape mode:
+ * keep the utility bar compact so gameplay receives more height.
+ */
+@media (max-height: 600px) {
+    .game-immersive-toolbar {
+        min-height: 38px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+    }
+
+    .game-immersive-exit {
+        min-height: 30px;
+        padding: 4px 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .game-immersive-toolbar {
+        min-height: 42px;
+    }
+
+    .game-immersive-label {
+        font-size: .7rem;
+    }
+
+    #gameImmersiveHost
+    .games-active-area.game-immersive-surface {
+        width: 100% !important;
+    }
+}

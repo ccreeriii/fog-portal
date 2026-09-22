@@ -1,3 +1,10 @@
+
+// --- RESTORED LOGOUT FUNCTION ---
+window.logout = async function() {
+    if (!confirm('Are you sure you want to log out?')) return;
+    return window.performSecureLogout();
+};
+
 let currentUser = null;
 let currentMember = null;
 let userPermissions = [];
@@ -14,6 +21,7 @@ let qrScanner = null;
 let currentAnalyticsData = null;
 let checkedInYouthIds = new Set();
 let currentPreregEventId = null;
+let currentPreregEventDetail = null;
 let currentRosterFilter = 'all';
 let currentPreRegYouthIds = new Set();
 let currentMinistryId = null;
@@ -26,120 +34,1241 @@ let modalRolesData = []; let modalRolesPage = 1;
 let modalAttData = []; let modalAttPage = 1;
 
 const _originalFetch = window.fetch;
+let authenticatedApi401Handled = false;
+const OFFLINE_VERIFIED_IDENTITY_KEY = 'fog_offline_verified_identity_v1';
+const OFFLINE_LOGOUT_PENDING_KEY = 'fog_offline_logout_pending_v1';
+const OFFLINE_IDENTITY_VERSION = 1;
+const OFFLINE_IDENTITY_TTL_MS = 8 * 60 * 60 * 1000;
+const AUTH_REQUEST_TIMEOUT_MS = 8000;
+const OFFLINE_IDENTITY_FIELDS = new Set([
+    'version',
+    'canonicalMemberId',
+    'displayName',
+    'displayTier',
+    'verifiedAt',
+    'expiresAt'
+]);
+
+window.koinoniaAuthStatus = 'checking';
+window.koinoniaReadOnlyLock = true;
+
+function sanitizeAuthenticatedMember(member) {
+    if (!member || typeof member !== 'object') return null;
+    const sanitized = { ...member };
+    delete sanitized.password;
+    delete sanitized.unique_pass_id;
+    delete sanitized.google_id;
+    delete sanitized.facebook_id;
+    return sanitized;
+}
+
+function syncAuthenticatedGlobals() {
+    window.currentUser = currentUser;
+    window.currentMember = currentMember;
+    window.userPermissions = userPermissions;
+}
+
+function removeLocalStorageItem(key) {
+    try { localStorage.removeItem(key); } catch (e) {}
+}
+
+function clearLiveIdentity() {
+    currentUser = null;
+    currentMember = null;
+    userPermissions = [];
+    syncAuthenticatedGlobals();
+    removeLocalStorageItem('fog_user');
+}
+
+function createVerifiedOfflineSnapshot(identity) {
+    const member = identity && identity.member && typeof identity.member === 'object' ? identity.member : null;
+    const rawMemberId = member && member.id != null ? member.id : null;
+    if (!Number.isSafeInteger(rawMemberId) || rawMemberId <= 0) return null;
+
+    const displayNameValue = member && typeof member.name === 'string' && member.name.trim()
+        ? member.name.trim()
+        : 'Community Member';
+    const displayTierValue = member && typeof member.account_tier === 'string'
+        ? member.account_tier.trim()
+        : '';
+    const verifiedAt = Date.now();
+
+    return {
+        version: OFFLINE_IDENTITY_VERSION,
+        canonicalMemberId: rawMemberId,
+        displayName: displayNameValue.slice(0, 200),
+        displayTier: displayTierValue.slice(0, 100),
+        verifiedAt,
+        expiresAt: verifiedAt + OFFLINE_IDENTITY_TTL_MS
+    };
+}
+
+function persistVerifiedOfflineSnapshot(identity) {
+    const snapshot = createVerifiedOfflineSnapshot(identity);
+    if (!snapshot) return null;
+    try {
+        localStorage.setItem(OFFLINE_VERIFIED_IDENTITY_KEY, JSON.stringify(snapshot));
+        return snapshot;
+    } catch (e) {
+        return null;
+    }
+}
+
+function readVerifiedOfflineSnapshot() {
+    let snapshot;
+    try { snapshot = JSON.parse(localStorage.getItem(OFFLINE_VERIFIED_IDENTITY_KEY) || 'null'); }
+    catch (e) { snapshot = null; }
+
+    const now = Date.now();
+    const valid = Boolean(
+        snapshot &&
+        snapshot.version === OFFLINE_IDENTITY_VERSION &&
+        Object.keys(snapshot).length === OFFLINE_IDENTITY_FIELDS.size &&
+        Object.keys(snapshot).every(key => OFFLINE_IDENTITY_FIELDS.has(key)) &&
+        Number.isSafeInteger(snapshot.canonicalMemberId) &&
+        snapshot.canonicalMemberId > 0 &&
+        typeof snapshot.displayName === 'string' &&
+        snapshot.displayName.length > 0 &&
+        snapshot.displayName.length <= 200 &&
+        typeof snapshot.displayTier === 'string' &&
+        snapshot.displayTier.length <= 100 &&
+        Number.isFinite(snapshot.verifiedAt) &&
+        Number.isFinite(snapshot.expiresAt) &&
+        snapshot.verifiedAt <= now + 5 * 60 * 1000 &&
+        snapshot.expiresAt > now &&
+        snapshot.expiresAt <= snapshot.verifiedAt + OFFLINE_IDENTITY_TTL_MS
+    );
+
+    if (!valid) {
+        removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+        return null;
+    }
+    return snapshot;
+}
+
+function hasPendingLogout() {
+    try { return localStorage.getItem(OFFLINE_LOGOUT_PENDING_KEY) !== null; }
+    catch (e) { return true; }
+}
+
+function markLogoutPending() {
+    try {
+        localStorage.setItem(OFFLINE_LOGOUT_PENDING_KEY, JSON.stringify({
+            version: 1,
+            requestedAt: new Date().toISOString()
+        }));
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function clearLogoutPending() {
+    removeLocalStorageItem(OFFLINE_LOGOUT_PENDING_KEY);
+}
+
+async function originalFetchWithTimeout(resource, options, timeoutMs = AUTH_REQUEST_TIMEOUT_MS) {
+    if (typeof AbortController !== 'function') return _originalFetch(resource, options);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await _originalFetch(resource, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+async function sendServerLogout() {
+    if (!navigator.onLine) return false;
+
+    try {
+        const response = await originalFetchWithTimeout('/api/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({}),
+            credentials: 'same-origin',
+            cache: 'no-store'
+        });
+        return response.ok || response.status === 401;
+    } catch (e) {}
+    return false;
+}
+
+async function resolvePendingLogout() {
+    if (!hasPendingLogout()) return true;
+    const resolved = await sendServerLogout();
+    if (resolved) clearLogoutPending();
+    return resolved;
+}
+
+window.enterOfflineReadonlyIdentity = function() {
+    if (hasPendingLogout()) return false;
+    const snapshot = readVerifiedOfflineSnapshot();
+    if (!snapshot) return false;
+
+    clearLiveIdentity();
+    currentUser = null;
+    currentMember = {
+        id: snapshot.canonicalMemberId,
+        name: snapshot.displayName,
+        account_tier: snapshot.displayTier
+    };
+    userPermissions = [];
+    syncAuthenticatedGlobals();
+    window.koinoniaAuthStatus = 'offline-readonly';
+    window.koinoniaReadOnlyLock = true;
+    window.isGuestMode = false;
+    return true;
+};
+
+window.persistAuthenticatedIdentity = function(identity) {
+    if (window.koinoniaAuthStatus !== 'authenticated') return null;
+    const sanitizedIdentity = {
+        username: identity && typeof identity.username === 'string' ? identity.username : currentUser,
+        permissions: identity && Array.isArray(identity.permissions) ? [...identity.permissions] : [],
+        member: sanitizeAuthenticatedMember(identity ? identity.member : currentMember)
+    };
+
+    currentUser = sanitizedIdentity.username;
+    currentMember = sanitizedIdentity.member;
+    userPermissions = sanitizedIdentity.permissions;
+    syncAuthenticatedGlobals();
+
+    try {
+        localStorage.setItem('fog_user', JSON.stringify(sanitizedIdentity));
+    } catch (e) {}
+    return sanitizedIdentity;
+};
+
+window.clearAuthenticatedClientState = function(options = {}) {
+    clearLiveIdentity();
+    window.koinoniaAuthStatus = 'unauthenticated';
+    window.koinoniaReadOnlyLock = false;
+    if (options.clearOfflineSnapshot !== false) {
+        removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+        if (window.KoinoniaOfflineData) {
+            window.KoinoniaOfflineData.clearAllPersonalCache();
+        }
+    }
+    if (document.body) document.body.classList.remove('koinonia-offline-readonly');
+};
+
+window.applyCanonicalAuthenticatedIdentity = function(identity) {
+    const canonicalUsername = identity && typeof identity.username === 'string' && identity.username
+        ? identity.username
+        : identity && identity.member && (identity.member.qr_code || identity.member.email || identity.member.name);
+    if (!identity || identity.success !== true || !canonicalUsername) {
+        throw new Error('Invalid authenticated identity');
+    }
+    window.koinoniaAuthStatus = 'authenticated';
+    window.koinoniaReadOnlyLock = false;
+    window.isGuestMode = false;
+    authenticatedApi401Handled = false;
+    if (document.body) document.body.classList.remove('koinonia-offline-readonly');
+    const sanitizedIdentity = window.persistAuthenticatedIdentity({ ...identity, username: String(canonicalUsername) });
+    persistVerifiedOfflineSnapshot(sanitizedIdentity);
+    if (window.KoinoniaOfflineData && sanitizedIdentity && sanitizedIdentity.member && sanitizedIdentity.member.id) {
+        window.KoinoniaOfflineData.saveDashboardSnapshot('member:' + sanitizedIdentity.member.id, {
+            displayName: sanitizedIdentity.member.name,
+            displayTier: sanitizedIdentity.member.account_tier
+        });
+    }
+    return sanitizedIdentity;
+};
+
+window.refreshAuthenticatedIdentity = function() {
+    const attempt = (async () => {
+        clearLiveIdentity();
+        window.koinoniaAuthStatus = 'checking';
+        window.koinoniaReadOnlyLock = true;
+
+        if (hasPendingLogout()) {
+            removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+            window.koinoniaReadOnlyLock = true;
+            const logoutResolved = await resolvePendingLogout();
+            if (!logoutResolved) {
+                window.koinoniaAuthStatus = 'unauthenticated';
+                return { authenticated: false, reason: 'logout-pending' };
+            }
+            window.koinoniaReadOnlyLock = false;
+        }
+
+        if (!navigator.onLine) {
+            const offlineReadonly = window.enterOfflineReadonlyIdentity();
+            if (!offlineReadonly) window.clearAuthenticatedClientState({ clearOfflineSnapshot: false });
+            return { authenticated: false, offlineReadonly, reason: 'unavailable' };
+        }
+
+        try {
+            const response = await originalFetchWithTimeout('/api/auth/me', {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store'
+            });
+
+            if (response.status === 401) {
+                window.clearAuthenticatedClientState();
+                return { authenticated: false, reason: 'unauthenticated' };
+            }
+            if (response.status === 428) {
+                const payload = await response.json();
+                window.koinoniaAuthStatus = 'legal-required';
+                window.koinoniaReadOnlyLock = true;
+                if (payload && payload.legal_acceptance_required === true && window.showExistingUserLegalGate) {
+                    window.showExistingUserLegalGate();
+                }
+                return { authenticated: true, legalAcceptanceRequired: true, reason: 'legal-required' };
+            }
+            if (!response.ok) {
+                const offlineReadonly = window.enterOfflineReadonlyIdentity();
+                if (!offlineReadonly) window.clearAuthenticatedClientState({ clearOfflineSnapshot: false });
+                return { authenticated: false, offlineReadonly, reason: 'unavailable' };
+            }
+
+            const identity = await response.json();
+            const sanitizedIdentity = window.applyCanonicalAuthenticatedIdentity(identity);
+            return { authenticated: true, identity: sanitizedIdentity };
+        } catch (e) {
+            const offlineReadonly = window.enterOfflineReadonlyIdentity();
+            if (!offlineReadonly) window.clearAuthenticatedClientState({ clearOfflineSnapshot: false });
+            return { authenticated: false, offlineReadonly, reason: 'unavailable' };
+        }
+    })();
+
+    window.authReady = attempt;
+    return attempt;
+};
+
+window.handleAuthenticatedApi401 = function() {
+    if (window.koinoniaAuthStatus !== 'authenticated' || authenticatedApi401Handled) return;
+    authenticatedApi401Handled = true;
+    window.clearAuthenticatedClientState();
+
+    setTimeout(() => {
+        const hamburger = document.getElementById('hamburgerBtn');
+        const sidebar = document.getElementById('sidebarNav');
+        const bottomNav = document.getElementById('bottomNav');
+        if (hamburger) hamburger.style.display = 'none';
+        if (sidebar) sidebar.innerHTML = '';
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const publicRequest = urlParams.get('play') || urlParams.get('read') || urlParams.get('event');
+        if (publicRequest) {
+            window.isGuestMode = true;
+            window.currentUser = 'Guest';
+            if (window.renderBottomNav) window.renderBottomNav('guest');
+        } else if (window.switchTab) {
+            if (bottomNav) bottomNav.style.display = 'none';
+            window.switchTab('loginTab');
+        }
+    }, 0);
+};
+
+window.authReady = window.refreshAuthenticatedIdentity();
+
+function rememberOfflineHidden(element) {
+    if (!element || element.hasAttribute('data-koinonia-offline-hidden')) return;
+    element.setAttribute('data-koinonia-offline-hidden', 'true');
+    element.setAttribute('data-koinonia-offline-display', element.style.display || '__empty__');
+    element.style.display = 'none';
+}
+
+function restoreOfflineHiddenElements() {
+    document.querySelectorAll('[data-koinonia-offline-hidden="true"]').forEach(element => {
+        const previousDisplay = element.getAttribute('data-koinonia-offline-display');
+        element.style.display = previousDisplay === '__empty__' ? '' : previousDisplay;
+        element.removeAttribute('data-koinonia-offline-hidden');
+        element.removeAttribute('data-koinonia-offline-display');
+    });
+}
+
+function showTabWithoutOnlineHooks(tabId) {
+    document.querySelectorAll('.tab-content').forEach(element => element.classList.remove('active'));
+    const target = document.getElementById(tabId);
+    if (target) target.classList.add('active');
+    document.querySelectorAll('[data-koinonia-offline-control] [data-target]').forEach(button => {
+        button.classList.toggle('active', button.getAttribute('data-target') === tabId);
+    });
+    window.scrollTo(0, 0);
+}
+
+window.showOfflineReadonlyView = function(tabId) {
+    if (window.koinoniaAuthStatus !== 'offline-readonly') return;
+    if (!['pulseDashboardTab', 'profileTab'].includes(tabId)) return;
+    showTabWithoutOnlineHooks(tabId);
+};
+
+window.renderOfflineReadonlyExperience = function() {
+    if (window.koinoniaAuthStatus !== 'offline-readonly' || !currentMember) return false;
+
+    window.koinoniaReadOnlyLock = true;
+    window.isGuestMode = false;
+    document.body.classList.add('koinonia-offline-readonly');
+
+    const mainHeader = document.getElementById('mainHeader');
+    const mainContainer = document.getElementById('mainContainer');
+    const hamburger = document.getElementById('hamburgerBtn');
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    if (mainHeader) mainHeader.style.display = 'block';
+    if (mainContainer) mainContainer.style.display = 'block';
+    if (hamburger) hamburger.style.display = 'block';
+
+    const offlineNavigation = `
+        <button class="nav-btn active" data-target="pulseDashboardTab" onclick="showOfflineReadonlyView('pulseDashboardTab')">🏠 Offline Home</button>
+        <button class="nav-btn" data-target="profileTab" onclick="showOfflineReadonlyView('profileTab')">👤 Offline Profile</button>
+        <button class="nav-btn text-danger" onclick="logout()">🚪 Logout</button>
+    `;
+    if (sidebar) {
+        sidebar.setAttribute('data-koinonia-offline-control', 'true');
+        sidebar.innerHTML = `<div class="sidebar-header"><img src="/img/logo.png" alt="Logo" class="fog-header-logo"><h2>FOG V3</h2></div>${offlineNavigation}`;
+    }
+    if (bottomNav) {
+        bottomNav.setAttribute('data-koinonia-offline-control', 'true');
+        bottomNav.style.display = 'flex';
+        bottomNav.innerHTML = `
+            <button class="bottom-nav-btn active" data-target="pulseDashboardTab" onclick="showOfflineReadonlyView('pulseDashboardTab')"><span>🏠</span>Home</button>
+            <button class="bottom-nav-btn" data-target="profileTab" onclick="showOfflineReadonlyView('profileTab')"><span>👤</span>Profile</button>
+            <button class="bottom-nav-btn text-danger" onclick="logout()"><span>🚪</span>Logout</button>
+        `;
+    }
+
+    const displayName = currentMember.name || 'Community Member';
+    const welcome = document.getElementById('dashWelcomeName');
+    if (welcome) welcome.textContent = `Welcome, ${displayName.split(' ')[0]}!`;
+
+    // Populate offline dashboard from IndexedDB snapshot asynchronously
+    if (window.KoinoniaOfflineData && currentMember && currentMember.id) {
+        window.KoinoniaOfflineData.getDashboardSnapshot('member:' + currentMember.id).then(snapshot => {
+            window.populateOfflineDashboard(snapshot);
+        }).catch(() => {
+            window.populateOfflineDashboard(null);
+        });
+    } else {
+        window.populateOfflineDashboard(null);
+    }
+
+    // Keep form controls safely disabled
+    document.querySelectorAll('#pulseDashboardTab form, #pulseDashboardTab input, #pulseDashboardTab textarea, #pulseDashboardTab select')
+        .forEach(rememberOfflineHidden);
+
+    const profileName = document.getElementById('myProfileName');
+    const profileAvatar = document.getElementById('myProfileAvatar');
+    const profileCode = document.getElementById('myProfileCode');
+    const bio = document.getElementById('myBioSummaryArchitect') || document.getElementById('myBioSummary');
+    if (profileName) profileName.textContent = displayName;
+    if (profileAvatar) profileAvatar.textContent = displayName.charAt(0).toUpperCase() || '👤';
+    if (bio) {
+        bio.textContent = currentMember.account_tier
+            ? `Previously verified member — ${currentMember.account_tier}. Private details require an online session.`
+            : 'Previously verified member. Private details require an online session.';
+    }
+
+    rememberOfflineHidden(profileCode);
+    rememberOfflineHidden(document.querySelector('#profileTab .profile-header-right'));
+    rememberOfflineHidden(document.getElementById('myGamificationBadges'));
+    rememberOfflineHidden(document.querySelector('#profileTab > .sub-nav'));
+    rememberOfflineHidden(document.getElementById('myProfileTabRoles'));
+    rememberOfflineHidden(document.getElementById('myProfileTabSchedule'));
+    rememberOfflineHidden(document.getElementById('myProfileTabAttendance'));
+    rememberOfflineHidden(document.getElementById('adminSettingsCard'));
+
+    const profileForm = document.querySelector('form[onsubmit*="handleSelfProfileUpdate"]');
+    if (profileForm) rememberOfflineHidden(profileForm.closest('.card') || profileForm);
+    const notificationToggle = document.getElementById('notifToggleBtn');
+    if (notificationToggle) rememberOfflineHidden(notificationToggle.closest('.card'));
+
+    const loader = document.getElementById('globalPreloader');
+    if (loader) {
+        loader.style.opacity = '0';
+        loader.style.display = 'none';
+    }
+
+    showTabWithoutOnlineHooks('pulseDashboardTab');
+    return true;
+};
+
+window.populateOfflineDashboard = function(snapshot) {
+    const banner = document.getElementById('offlineBanner');
+    if (banner) {
+        if (snapshot && snapshot.capturedAt) {
+            const timeStr = new Date(snapshot.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            banner.innerHTML = `⚠️ <strong>OFFLINE MODE</strong> — Displaying saved data &bull; Last synced: ${timeStr}`;
+        } else {
+            banner.innerHTML = `⚠️ <strong>OFFLINE MODE</strong> — Displaying saved data &bull; Changes disabled`;
+        }
+        banner.style.display = 'block';
+    }
+
+    const displayName = (snapshot && snapshot.displayName) || (currentMember && currentMember.name) || 'Community Member';
+    const welcome = document.getElementById('dashWelcomeName');
+    if (welcome) {
+        welcome.textContent = displayName.startsWith('Welcome') ? displayName : `Welcome, ${displayName.split(' ')[0]}!`;
+    }
+
+    const points = document.getElementById('dashXpCounter');
+    if (points) {
+        const pts = (snapshot && snapshot.hero && snapshot.hero.lifePoints && snapshot.hero.lifePoints.weekly) != null
+            ? snapshot.hero.lifePoints.weekly
+            : 0;
+        points.textContent = `${pts} Life Points (Saved Offline)`;
+    }
+
+    // Liturgical / Daily Gospel Card
+    const gospelEl = document.getElementById('pulseDailyGospelText');
+    const litCard = document.getElementById('liturgicalCard') || document.querySelector('.lit-card');
+    const lit = (snapshot && snapshot.liturgical) || null;
+    if (lit && lit.gospelSnippet) {
+        if (gospelEl) gospelEl.textContent = `"${lit.gospelSnippet}"`;
+        if (litCard) {
+            litCard.setAttribute('data-healed', 'true');
+            let bg = '#10B981';
+            if (lit.seasonColor === 'red') bg = '#DC2626';
+            else if (lit.seasonColor === 'violet' || lit.seasonColor === 'purple') bg = '#7C3AED';
+            else if (lit.seasonColor === 'white' || lit.seasonColor === 'gold') bg = '#F59E0B';
+            else if (lit.seasonColor === 'rose' || lit.seasonColor === 'pink') bg = '#F472B6';
+            litCard.style.background = 'linear-gradient(135deg, ' + bg + ', #064E3B)';
+            litCard.style.border = 'none';
+            litCard.style.color = '#FFF';
+            litCard.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                    <span class="badge" style="background: rgba(255,255,255,0.25); color: #FFF; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem; padding: 5px 10px; border-radius: 6px; font-weight: bold;">${lit.season || 'ORDINARY TIME'}</span>
+                    <span style="font-size:0.85rem; color:#FFF; font-weight:800; text-align: right; max-width: 60%;">${lit.feast || 'Daily Gospel'}</span>
+                </div>
+                <h3 style="color:#FFF; border:none; padding:0; margin-bottom: 12px; font-size: 1.3rem;">📖 Daily Gospel</h3>
+                <p style="color:#FFF; font-size:1.05rem; font-style:italic; margin-bottom: 20px; line-height:1.6; text-shadow: 0 1px 3px rgba(0,0,0,0.3);">"${lit.gospelSnippet}"</p>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-sm" style="background:#FFF; color:#064E3B; font-weight:800; flex: 1; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="if(window.showOfflineNotice) window.showOfflineNotice('Full readings require an active internet connection.'); else alert('Full readings require an active internet connection.');">📖 Full Readings</button>
+                    <button class="btn btn-sm" style="background:rgba(0,0,0,0.25); color:#FFF; font-weight:800; flex: 1; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px;" onclick="showOfflineReadonlyView('profileTab');">👤 My Profile</button>
+                </div>
+            `;
+        }
+    } else if (gospelEl) {
+        gospelEl.textContent = 'Scripture readings require an internet connection to refresh.';
+    }
+
+    // Daily Prayer Covenant Card
+    const palCard = document.getElementById('pulsePrayerPalWidget');
+    if (palCard) {
+        palCard.style.display = 'block';
+        const cov = snapshot && snapshot.covenant;
+        if (cov && cov.partnerName) {
+            const avatarHtml = cov.partnerAvatar
+                ? `<img src="${cov.partnerAvatar}" style="width:50px;height:50px;border-radius:50%;object-fit:cover; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">`
+                : `<div style="width:50px;height:50px;border-radius:50%;background:#E2E8F0;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-muted); font-size: 1.2rem; border:2px solid var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1);">${cov.partnerName.charAt(0)}</div>`;
+            const todayStr = new Date().toLocaleDateString();
+            const hasPrayed = cov.hasPrayedToday || Boolean(localStorage.getItem('fog_prayed_for_' + cov.partnerId + '_' + todayStr));
+
+            palCard.innerHTML = `
+                <div style="display:flex; align-items:center; gap: 15px; margin-bottom: 15px;">
+                    <span style="font-size: 2rem; background: #EEF2FF; padding: 12px; border-radius: 12px; line-height: 1;">🙏</span>
+                    <div>
+                        <h3 style="margin: 0; color: var(--primary); font-size: 1.2rem; border: none; padding: 0; font-weight: 800;">Daily Prayer Covenant</h3>
+                        <p style="margin: 3px 0 0 0; font-size: 0.9rem; color: var(--text-muted); font-weight: 600;">Saved Partner (Offline)</p>
+                    </div>
+                </div>
+                <div style="background: #FFF; padding: 15px; border-radius: 12px; border: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        ${avatarHtml}
+                        <div>
+                            <strong style="font-size: 1.1rem; color: var(--text-main); display: block;">${cov.partnerName}</strong>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">Covenant Partner</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm" disabled style="background: ${hasPrayed ? '#9CA3AF' : '#10B981'}; color: #FFF; border-radius: 8px; padding: 8px 15px; font-weight: bold; border: none; opacity: 0.85;">${hasPrayed ? '✓ Prayer Recorded' : '🙏 Partner Saved'}</button>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 10px; font-style: italic;">Cover your partner in prayer today. Sending written prayers requires an online connection.</p>
+            `;
+        } else {
+            palCard.innerHTML = `
+                <div style="display:flex; align-items:center; gap: 15px; margin-bottom: 10px;">
+                    <span style="font-size: 2rem; background: #EEF2FF; padding: 12px; border-radius: 12px; line-height: 1;">🙏</span>
+                    <div>
+                        <h3 style="margin: 0; color: var(--primary); font-size: 1.2rem; border: none; padding: 0; font-weight: 800;">Daily Prayer Covenant</h3>
+                        <p style="margin: 3px 0 0 0; font-size: 0.9rem; color: var(--text-muted); font-weight: 600;">Offline Mode</p>
+                    </div>
+                </div>
+                <div style="background: #FFFBEB; padding: 12px; border-radius: 8px; border: 1px solid #FDE68A;">
+                    <p style="margin: 0; font-size: 0.9rem; color: #D97706;">Partner pairing requires an active internet connection.</p>
+                </div>
+            `;
+        }
+    }
+
+    // My Journey Card
+    const journeyContainer = document.getElementById('dynamicHomeJourneyBox') || document.getElementById('dynamicJourneyContainer');
+    if (journeyContainer) {
+        const jCard = journeyContainer.closest('.card') || journeyContainer.parentElement;
+        if (jCard) jCard.style.display = 'block';
+        const j = snapshot && snapshot.journey;
+        if (j && j.title) {
+            journeyContainer.innerHTML = `
+                <div style="background: #F8FAFC; border-radius: 12px; padding: 15px; border-left: 4px solid ${j.statusColor || '#3B82F6'}; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); width: 100%; box-sizing: border-box;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem; display: block; margin-bottom: 6px;">${j.title}</strong>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.5;">${j.desc || 'Continue your spiritual journey.'}</p>
+                </div>
+                <button class="btn btn-outline btn-sm" disabled style="width: 100%; border-radius: 8px; opacity: 0.8; font-weight: bold;">${j.btnText || 'Next Step'} (Saved Offline)</button>
+            `;
+        } else {
+            journeyContainer.innerHTML = `
+                <div style="background: #F8FAFC; border-radius: 12px; padding: 15px; border-left: 4px solid var(--primary); margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); width: 100%; box-sizing: border-box;">
+                    <strong style="color: var(--text-main); font-size: 1rem; display: block; margin-bottom: 4px;">Spiritual Formation</strong>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Connect online to view your latest spiritual journey milestone.</p>
+                </div>
+            `;
+        }
+    }
+
+    // Action Hub
+    const hub = document.getElementById('actionHubContainer');
+    if (hub) hub.style.display = 'block';
+};
+
+window.renderUnauthenticatedShell = function() {
+    restoreOfflineHiddenElements();
+    document.body.classList.remove('koinonia-offline-readonly');
+    const mainHeader = document.getElementById('mainHeader');
+    const mainContainer = document.getElementById('mainContainer');
+    const hamburger = document.getElementById('hamburgerBtn');
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    if (mainHeader) mainHeader.style.display = 'block';
+    if (mainContainer) mainContainer.style.display = 'block';
+    if (hamburger) hamburger.style.display = 'none';
+    if (sidebar) {
+        sidebar.removeAttribute('data-koinonia-offline-control');
+        sidebar.innerHTML = '';
+    }
+    if (bottomNav) {
+        bottomNav.removeAttribute('data-koinonia-offline-control');
+        bottomNav.style.display = 'none';
+        bottomNav.innerHTML = '';
+    }
+    showTabWithoutOnlineHooks('loginTab');
+    const loader = document.getElementById('globalPreloader');
+    if (loader) {
+        loader.style.opacity = '0';
+        loader.style.display = 'none';
+    }
+};
+
+window.resumeAuthenticatedOnlineExperience = function() {
+    if (window.koinoniaAuthStatus !== 'authenticated') return;
+    restoreOfflineHiddenElements();
+    document.body.classList.remove('koinonia-offline-readonly');
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    if (sidebar) sidebar.removeAttribute('data-koinonia-offline-control');
+    if (bottomNav) bottomNav.removeAttribute('data-koinonia-offline-control');
+    if (window.buildNav) window.buildNav();
+    if (window.applyGranularPermissions) window.applyGranularPermissions();
+    if (window.loadDailyManna) window.loadDailyManna();
+    if (window.loadSecretPrayerPal) window.loadSecretPrayerPal();
+    if (window.switchTab) window.switchTab('pulseDashboardTab');
+    if (window.renderHomeJourney) window.renderHomeJourney();
+};
+
+window.performSecureLogout = async function() {
+    let logoutPendingStored = markLogoutPending();
+    removeLocalStorageItem(OFFLINE_VERIFIED_IDENTITY_KEY);
+    if (typeof currentMember !== 'undefined' && currentMember && currentMember.id && window.KoinoniaOfflineData) {
+        window.KoinoniaOfflineData.clearUserCache('member:' + currentMember.id);
+    }
+    if (!logoutPendingStored) logoutPendingStored = markLogoutPending();
+    window.clearAuthenticatedClientState();
+    window.koinoniaReadOnlyLock = true;
+    window.renderUnauthenticatedShell();
+
+    const serverLogoutComplete = await sendServerLogout();
+    if (serverLogoutComplete) {
+        clearLogoutPending();
+        window.koinoniaReadOnlyLock = false;
+    }
+    if (window.OfflineManager && typeof window.OfflineManager.updateUI === 'function') {
+        window.OfflineManager.updateUI();
+    }
+    setTimeout(() => window.location.reload(), 0);
+    return serverLogoutComplete;
+};
+
+window.showOfflineNotice = function(msg) {
+    let toast = document.getElementById('koinoniaOfflineToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'koinoniaOfflineToast';
+        toast.style.cssText = 'position: fixed; bottom: 85px; left: 50%; transform: translateX(-50%); background: #1E293B; color: #FFF; padding: 12px 24px; border-radius: 24px; font-size: 0.9rem; font-weight: bold; z-index: 100000; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: opacity 0.3s ease; pointer-events: none; text-align: center; max-width: 90%;';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    toast.style.display = 'block';
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => { toast.style.display = 'none'; }, 300);
+    }, 2500);
+};
+
+function blockOfflineReadonlyInteraction(event) {
+    if (!window.koinoniaReadOnlyLock) return;
+    if (!event.target || typeof event.target.closest !== 'function') return;
+    const interactiveTarget = event.target.closest('button, a[href], input, select, textarea, form, [onclick]');
+    if (!interactiveTarget || interactiveTarget.closest('[data-koinonia-offline-control]')) return;
+
+    // A legal-required session is intentionally read-only, but it is not
+    // the same thing as an offline-readonly session. The mandatory legal
+    // gate must remain interactive so the user can review, accept, get
+    // help, or log out while the rest of the Portal remains locked.
+    if (interactiveTarget.closest('#existingUserLegalGate')) return;
+
+    if (event.type === 'submit') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        alert('Saving changes requires an active internet connection.');
+        return;
+    }
+
+    const onclickAttr = interactiveTarget.getAttribute('onclick') || '';
+    if (onclickAttr.includes('showOfflineReadonlyView') || onclickAttr.includes('logout()')) {
+        return;
+    }
+
+    if (interactiveTarget.classList.contains('close-modal') || onclickAttr.includes('journeyExplanationModal')) {
+        return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.type === 'click') {
+        window.showOfflineNotice('This action requires an active internet connection.');
+    }
+}
+
+document.addEventListener('click', blockOfflineReadonlyInteraction, true);
+document.addEventListener('submit', blockOfflineReadonlyInteraction, true);
+
+const OFFLINE_QUEUE_STORAGE_KEY = 'fog_offline_queue';
+const OFFLINE_QUEUE_VERSION = 2;
+const OFFLINE_QUEUE_MAX_ENTRIES = 50;
+const OFFLINE_QUEUE_MAX_BODY_BYTES = 16 * 1024;
+const OFFLINE_MUTATION_ALLOWLIST = Object.freeze([]);
+const OFFLINE_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const OFFLINE_LEGACY_REASON = 'legacy-unowned-request-data-removed';
+const OFFLINE_NEVER_QUEUE_PATHS = Object.freeze([
+    /^\/api\/(?:login|logout|auth)(?:\/|$)/i,
+    /^\/api\/(?:public\/)?(?:register(?:[-_][^/]*)?|registration|sign[-_]?up|accounts?)(?:\/|$)/i,
+    /^\/api\/youth(?:\/|$)/i,
+    /\/(?:profiles?|permissions?|pass[-_]?id|qr(?:[-_]?code)?)(?:\/|$)/i,
+    /^\/api\/backups?(?:\/|$)/i,
+    /\/(?:journals?|prayers?|prayer-pals?|ai|inbox|communications|messages?|chat|threads?|replies|small-groups)(?:\/|$)/i,
+    /\/(?:subscriptions?|uploads?|images?)(?:\/|$)/i
+]);
+const OFFLINE_FORBIDDEN_BODY_KEY = /(?:password|passcode|token|credential|secret|authorization|cookie|session|google[_-]?id|facebook[_-]?id|unique[_-]?pass[_-]?id|qr[_-]?code|subscription|profile[_-]?picture|image|photo|journal|prayer|prompt|message|content|email|birthday|mobile|parent|address|sender|username|user[_-]?name|name)/i;
+
+function getOfflineRequestMethod(resource, options) {
+    const method = options && options.method
+        ? options.method
+        : resource && typeof resource === 'object' && resource.method
+            ? resource.method
+            : 'GET';
+    return String(method).toUpperCase();
+}
+
+function getSameOriginRequestPath(resource) {
+    const rawUrl = typeof resource === 'string'
+        ? resource
+        : resource && typeof resource.url === 'string'
+            ? resource.url
+            : null;
+    if (!rawUrl) return null;
+    try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        return parsed.origin === window.location.origin ? parsed.pathname : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function normalizeOfflineMutationPath(resource) {
+    const rawUrl = typeof resource === 'string'
+        ? resource
+        : resource && typeof resource.url === 'string'
+            ? resource.url
+            : null;
+    if (!rawUrl || !rawUrl.startsWith('/') || rawUrl.startsWith('//')) return null;
+
+    try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        if (parsed.origin !== window.location.origin || parsed.search || parsed.hash) return null;
+        return parsed.pathname;
+    } catch (e) {
+        return null;
+    }
+}
+
+function getOfflineAllowlistRule(method, path) {
+    return OFFLINE_MUTATION_ALLOWLIST.find(rule => rule.method === method && rule.path === path) || null;
+}
+
+function isPermanentlyBlockedOfflineMutation(method, path) {
+    if (method === 'DELETE' || !path) return true;
+    return OFFLINE_NEVER_QUEUE_PATHS.some(pattern => pattern.test(path));
+}
+
+function containsForbiddenOfflineData(value, depth = 0) {
+    if (depth > 8) return true;
+    if (typeof value === 'string') return /^data:image\//i.test(value);
+    if (!value || typeof value !== 'object') return false;
+    if (Array.isArray(value)) return value.some(item => containsForbiddenOfflineData(item, depth + 1));
+
+    return Object.entries(value).some(([key, nestedValue]) => (
+        OFFLINE_FORBIDDEN_BODY_KEY.test(key) || containsForbiddenOfflineData(nestedValue, depth + 1)
+    ));
+}
+
+function validateOfflineBody(body, rule) {
+    if (typeof body !== 'string' || new TextEncoder().encode(body).byteLength > OFFLINE_QUEUE_MAX_BODY_BYTES) return null;
+    try {
+        const parsed = JSON.parse(body);
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return null;
+        if (containsForbiddenOfflineData(parsed)) return null;
+        if (rule && typeof rule.validateBody === 'function' && !rule.validateBody(parsed)) return null;
+        return body;
+    } catch (e) {
+        return null;
+    }
+}
+
+function getCanonicalOfflineOwner(identity) {
+    if (!identity || typeof identity.username !== 'string' || !identity.username) return null;
+    const memberId = identity.member && identity.member.id != null ? String(identity.member.id) : null;
+    return { memberId, username: identity.username };
+}
+
+function currentCanonicalOfflineOwner() {
+    if (window.koinoniaAuthStatus !== 'authenticated') return null;
+    return getCanonicalOfflineOwner({ username: currentUser, member: currentMember });
+}
+
+function offlineOwnersMatch(expected, actual) {
+    if (!expected || !actual) return false;
+    return expected.username === actual.username && expected.memberId === actual.memberId;
+}
+
+function createOfflineQueueId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') return null;
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function isSafeVersionedQueueEntry(entry) {
+    if (!entry || entry.version !== OFFLINE_QUEUE_VERSION || typeof entry.queueId !== 'string') return false;
+    if (!['pending', 'blocked-owner'].includes(entry.state)) return false;
+    if (!entry.owner || typeof entry.owner.username !== 'string') return false;
+    if (!(entry.owner.memberId === null || typeof entry.owner.memberId === 'string')) return false;
+    if (typeof entry.createdAt !== 'string' || !Number.isInteger(entry.attemptCount) || entry.attemptCount < 0) return false;
+    if (!(entry.lastAttemptAt === null || typeof entry.lastAttemptAt === 'string')) return false;
+    if (Object.prototype.hasOwnProperty.call(entry, 'headers')) return false;
+
+    const method = String(entry.method || '').toUpperCase();
+    const path = normalizeOfflineMutationPath(entry.path);
+    const rule = getOfflineAllowlistRule(method, path);
+    if (!rule || isPermanentlyBlockedOfflineMutation(method, path)) return false;
+    return validateOfflineBody(entry.body, rule) !== null;
+}
+
+function copySafeVersionedQueueEntry(entry) {
+    return {
+        version: OFFLINE_QUEUE_VERSION,
+        queueId: entry.queueId,
+        owner: { memberId: entry.owner.memberId, username: entry.owner.username },
+        createdAt: entry.createdAt,
+        method: String(entry.method).toUpperCase(),
+        path: entry.path,
+        body: entry.body,
+        attemptCount: entry.attemptCount,
+        lastAttemptAt: entry.lastAttemptAt,
+        state: entry.state
+    };
+}
+
+function createLegacyQueueSummary(discardedCount, createdAt = new Date().toISOString()) {
+    return {
+        version: OFFLINE_QUEUE_VERSION,
+        queueId: 'legacy-quarantine-summary',
+        owner: null,
+        createdAt,
+        method: null,
+        path: null,
+        body: null,
+        attemptCount: 0,
+        lastAttemptAt: null,
+        state: 'quarantined',
+        reason: OFFLINE_LEGACY_REASON,
+        discardedCount
+    };
+}
+
+function isLegacyQueueSummary(entry) {
+    return Boolean(
+        entry && entry.version === OFFLINE_QUEUE_VERSION && entry.state === 'quarantined' &&
+        entry.reason === OFFLINE_LEGACY_REASON && Number.isInteger(entry.discardedCount) && entry.discardedCount > 0
+    );
+}
+
+function readAndSanitizeOfflineQueue() {
+    let rawQueue;
+    try { rawQueue = localStorage.getItem(OFFLINE_QUEUE_STORAGE_KEY); }
+    catch (e) { return []; }
+    if (rawQueue === null) return [];
+
+    let parsedQueue;
+    let discardedCount = 0;
+    let legacySummaryCreatedAt = null;
+    try {
+        parsedQueue = JSON.parse(rawQueue);
+        if (!Array.isArray(parsedQueue)) {
+            parsedQueue = [];
+            discardedCount = 1;
+        }
+    } catch (e) {
+        parsedQueue = [];
+        discardedCount = 1;
+    }
+
+    const sanitizedQueue = [];
+    for (const entry of parsedQueue) {
+        if (isSafeVersionedQueueEntry(entry)) {
+            sanitizedQueue.push(copySafeVersionedQueueEntry(entry));
+        } else if (isLegacyQueueSummary(entry)) {
+            discardedCount += entry.discardedCount;
+            if (!legacySummaryCreatedAt && typeof entry.createdAt === 'string') legacySummaryCreatedAt = entry.createdAt;
+        } else {
+            discardedCount += 1;
+        }
+    }
+
+    if (discardedCount > 0) sanitizedQueue.push(createLegacyQueueSummary(discardedCount, legacySummaryCreatedAt || undefined));
+    const sanitizedJson = JSON.stringify(sanitizedQueue);
+    if (sanitizedJson !== rawQueue) {
+        try { localStorage.setItem(OFFLINE_QUEUE_STORAGE_KEY, sanitizedJson); }
+        catch (e) { return []; }
+    }
+    return sanitizedQueue;
+}
+
+function writeSafeOfflineQueue(queue) {
+    try {
+        localStorage.setItem(OFFLINE_QUEUE_STORAGE_KEY, JSON.stringify(queue));
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function createOfflineUnavailableResponse() {
+    return new Response(JSON.stringify({
+        success: false,
+        offline: true,
+        error: 'An internet connection is required to save this change.',
+        message: 'An internet connection is required for this action.'
+    }), {
+        status: 503,
+        statusText: 'Internet Connection Required',
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+function quarantineOfflineEntry(entry, reason) {
+    return {
+        version: OFFLINE_QUEUE_VERSION,
+        queueId: entry.queueId,
+        owner: entry.owner,
+        createdAt: entry.createdAt,
+        method: entry.method,
+        path: null,
+        body: null,
+        attemptCount: entry.attemptCount,
+        lastAttemptAt: entry.lastAttemptAt,
+        state: 'quarantined',
+        reason
+    };
+}
+
 const OfflineManager = {
+    syncPromise: null,
+    reconnectPromise: null,
+
     init: function() {
+        readAndSanitizeOfflineQueue();
         window.addEventListener('online', this.handleOnline.bind(this));
         window.addEventListener('offline', this.handleOffline.bind(this));
         this.updateUI();
         this.overrideFetch();
+        Promise.resolve(window.authReady)
+            .then(() => this.updateUI())
+            .catch(() => this.updateUI());
         setTimeout(() => { if (navigator.onLine) this.syncQueue(); }, 2000);
     },
+
     updateUI: function() {
         const banner = document.getElementById('offlineBanner');
         if (!banner) return;
-        if (navigator.onLine) {
+        if (window.koinoniaAuthStatus === 'offline-readonly') {
+            if (!banner.innerHTML.includes('Displaying saved data')) {
+                banner.innerHTML = '⚠️ <strong>OFFLINE MODE</strong> — Displaying saved data &bull; Changes disabled';
+            }
+            banner.style.display = 'block';
+            document.body.classList.add('is-offline');
+        } else if (window.koinoniaAuthStatus === 'checking' && window.koinoniaReadOnlyLock) {
+            banner.textContent = '🔄 Reconnecting — verifying your server session before enabling changes.';
+            banner.style.display = 'block';
+            document.body.classList.add('is-offline');
+        } else if (navigator.onLine) {
             banner.style.display = 'none';
             document.body.classList.remove('is-offline');
         } else {
+            banner.textContent = '⚠️ You are offline. An internet connection is required to save changes.';
             banner.style.display = 'block';
             document.body.classList.add('is-offline');
         }
     },
+
     handleOnline: function() {
+        if (this.reconnectPromise) return this.reconnectPromise;
+        window.koinoniaReadOnlyLock = true;
+        window.koinoniaAuthStatus = 'checking';
         this.updateUI();
-        this.syncQueue();
+        this.reconnectPromise = window.refreshAuthenticatedIdentity()
+            .then(result => {
+                this.updateUI();
+                if (result.authenticated) {
+                    window.resumeAuthenticatedOnlineExperience();
+                    return this.syncQueue();
+                }
+                if (window.koinoniaAuthStatus === 'offline-readonly') {
+                    window.renderOfflineReadonlyExperience();
+                } else {
+                    window.renderUnauthenticatedShell();
+                }
+                return undefined;
+            })
+            .catch(() => undefined)
+            .finally(() => { this.reconnectPromise = null; });
+        return this.reconnectPromise;
     },
+
     handleOffline: function() {
+        if (window.koinoniaAuthStatus === 'authenticated') {
+            window.enterOfflineReadonlyIdentity();
+        }
         this.updateUI();
+        if (window.koinoniaAuthStatus === 'offline-readonly') {
+            window.renderOfflineReadonlyExperience();
+        }
     },
+
+    handleOfflineMutation: function(resource, options, method) {
+        this.updateUI();
+        const path = normalizeOfflineMutationPath(resource);
+        const rule = getOfflineAllowlistRule(method, path);
+
+        if (!rule || isPermanentlyBlockedOfflineMutation(method, path)) {
+            return createOfflineUnavailableResponse();
+        }
+
+        const owner = currentCanonicalOfflineOwner();
+        const body = validateOfflineBody(options && options.body, rule);
+        const queueId = createOfflineQueueId();
+        if (!owner || body === null || !queueId) return createOfflineUnavailableResponse();
+
+        const queue = readAndSanitizeOfflineQueue();
+        const pendingCount = queue.filter(entry => isSafeVersionedQueueEntry(entry)).length;
+        if (pendingCount >= OFFLINE_QUEUE_MAX_ENTRIES) return createOfflineUnavailableResponse();
+
+        queue.push({
+            version: OFFLINE_QUEUE_VERSION,
+            queueId,
+            owner,
+            createdAt: new Date().toISOString(),
+            method,
+            path,
+            body,
+            attemptCount: 0,
+            lastAttemptAt: null,
+            state: 'pending'
+        });
+        if (!writeSafeOfflineQueue(queue)) return createOfflineUnavailableResponse();
+
+        return new Response(JSON.stringify({
+            success: false,
+            offline: true,
+            queued: true,
+            synchronized: false,
+            message: 'This approved offline change is pending synchronization.'
+        }), {
+            status: 202,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    },
+
     overrideFetch: function() {
         window.fetch = async function(resource, options) {
-            if (!navigator.onLine && options && ['POST', 'PUT', 'DELETE'].includes(options.method.toUpperCase())) {
-                const url = typeof resource === 'string' ? resource : resource.url;
+            const method = getOfflineRequestMethod(resource, options);
+            const requestPath = getSameOriginRequestPath(resource);
+            const publicReadDuringAuthLock = new Set([
+                '/api/readings/snippet',
+                '/api/liturgical/today',
+                '/api/legal/status',
+                '/api/legal/accept',
+                '/api/logout',
+                '/api/help/faq',
+                '/api/help/contact-support'
+            ]);
+            const isAllowedPublicRead = requestPath && publicReadDuringAuthLock.has(requestPath) &&
+                (method === 'GET' || requestPath === '/api/legal/accept' ||
+                    requestPath === '/api/logout' || requestPath === '/api/help/contact-support');
 
-                if (url.includes('/api/login') || url.includes('/api/logout') || url.includes('/api/backups')) {
-                    return Promise.resolve(new Response(JSON.stringify({ success: false, error: 'This action requires an active internet connection.' }), { status: 400 }));
-                }
-
-                const mockId = Date.now();
-                const queue = JSON.parse(localStorage.getItem('fog_offline_queue') || '[]');
-                queue.push({
-                    url: url,
-                    method: options.method,
-                    headers: options.headers,
-                    body: options.body,
-                    mockId: mockId
-                });
-                localStorage.setItem('fog_offline_queue', JSON.stringify(queue));
-
-                let mockRes = { success: true, offline_queued: true, updated: 1, deleted: 1 };
-                if (url.includes('/api/youth') && options.method.toUpperCase() === 'POST') mockRes = { id: mockId, qr_code: 'OFFLINE-' + mockId, success: true };
-                if (url.includes('/api/checkin')) mockRes = { success: true, member_name: 'Offline Attendee (Queued)', log_id: mockId };
-                if (url.includes('/api/events') && options.method.toUpperCase() === 'POST') mockRes = { id: mockId };
-                if (url.includes('/api/ministries') && options.method.toUpperCase() === 'POST') mockRes = { success: true, id: mockId };
-
-                return Promise.resolve(new Response(JSON.stringify(mockRes), {
-                    status: 200,
-                    headers: { 'Content-Type': 'application/json' }
-                }));
+            if (
+                window.koinoniaReadOnlyLock &&
+                requestPath &&
+                requestPath.startsWith('/api/') &&
+                !isAllowedPublicRead
+            ) {
+                return createOfflineUnavailableResponse();
             }
-            return _originalFetch.apply(this, arguments);
+            if (
+                (!navigator.onLine || window.koinoniaReadOnlyLock || hasPendingLogout()) &&
+                !OFFLINE_SAFE_METHODS.has(method) &&
+                !isAllowedPublicRead
+            ) {
+                return OfflineManager.handleOfflineMutation(resource, options, method);
+            }
+
+            const response = await _originalFetch.apply(this, arguments);
+            if (response.status === 401) {
+                const requestUrl = typeof resource === 'string' ? resource : resource.url;
+                let requestPath = requestUrl;
+                try { requestPath = new URL(requestUrl, window.location.origin).pathname; } catch (e) {}
+                const authPaths = ['/api/login', '/api/auth/google', '/api/auth/me', '/api/logout'];
+                if (!authPaths.includes(requestPath)) window.handleAuthenticatedApi401();
+            }
+            return response;
         };
     },
-    syncQueue: async function() {
-        const queue = JSON.parse(localStorage.getItem('fog_offline_queue') || '[]');
-        if (queue.length === 0) return;
 
-        console.log(`[Offline Sync Engine] Processing ${queue.length} pending actions...`);
-        let failed = [];
-        let idMap = {};
+    syncQueue: function() {
+        if (this.syncPromise) return this.syncPromise;
+        this.syncPromise = this.runSyncQueue()
+            .catch(() => undefined)
+            .finally(() => { this.syncPromise = null; });
+        return this.syncPromise;
+    },
 
-        for (let req of queue) {
+    runSyncQueue: async function() {
+        const queue = readAndSanitizeOfflineQueue();
+        if (!navigator.onLine || !queue.some(entry => isSafeVersionedQueueEntry(entry))) return;
+
+        try { await Promise.resolve(window.authReady); }
+        catch (e) { return; }
+        if (!navigator.onLine || hasPendingLogout() || window.koinoniaReadOnlyLock || window.koinoniaAuthStatus !== 'authenticated') return;
+
+        let authResponse;
+        try {
+            authResponse = await _originalFetch('/api/auth/me', {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store'
+            });
+        } catch (e) {
+            return;
+        }
+
+        if (authResponse.status === 401) {
+            if (window.koinoniaAuthStatus === 'authenticated') window.handleAuthenticatedApi401();
+            else window.clearAuthenticatedClientState();
+            return;
+        }
+        if (!authResponse.ok) return;
+
+        let identity;
+        let activeOwner;
+        try {
+            identity = await authResponse.json();
+            activeOwner = getCanonicalOfflineOwner(identity);
+            if (!activeOwner) return;
+            window.applyCanonicalAuthenticatedIdentity(identity);
+        } catch (e) {
+            return;
+        }
+
+        const remaining = [];
+        let stopSync = false;
+        let mismatchedOwnerCount = 0;
+
+        for (const entry of queue) {
+            if (!isSafeVersionedQueueEntry(entry)) {
+                remaining.push(entry);
+                continue;
+            }
+            if (stopSync) {
+                remaining.push(entry);
+                continue;
+            }
+            if (!offlineOwnersMatch(entry.owner, activeOwner)) {
+                remaining.push({ ...entry, state: 'blocked-owner' });
+                mismatchedOwnerCount += 1;
+                continue;
+            }
+
+            const attemptedEntry = {
+                ...entry,
+                state: 'pending',
+                attemptCount: entry.attemptCount + 1,
+                lastAttemptAt: new Date().toISOString()
+            };
+
+            let response;
             try {
-                let bodyStr = req.body;
-                if (bodyStr && typeof bodyStr === 'string') {
-                    try {
-                        let bodyObj = JSON.parse(bodyStr);
-                        if (bodyObj.youth_id && idMap[bodyObj.youth_id]) bodyObj.youth_id = idMap[bodyObj.youth_id];
-                        if (bodyObj.event_id && idMap[bodyObj.event_id]) bodyObj.event_id = idMap[bodyObj.event_id];
-                        bodyStr = JSON.stringify(bodyObj);
-                    } catch (err) {}
-                }
-
-                let targetUrl = req.url;
-                for (let fakeId in idMap) {
-                    if (targetUrl.includes(`/${fakeId}`)) targetUrl = targetUrl.replace(`/${fakeId}`, `/${idMap[fakeId]}`);
-                }
-
-                const res = await _originalFetch(targetUrl, {
-                    method: req.method,
-                    headers: req.headers,
-                    body: bodyStr
+                response = await _originalFetch(entry.path, {
+                    method: entry.method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: entry.body,
+                    credentials: 'same-origin'
                 });
-
-                if (!res.ok) throw new Error(`Network response was not ok for ${targetUrl}`);
-                const data = await res.json();
-
-                if (req.mockId && data.id) {
-                    idMap[req.mockId] = data.id;
-                }
             } catch (e) {
-                console.error('[Offline Sync Engine] Failed item:', req.url, e);
-                failed.push(req);
+                remaining.push(attemptedEntry);
+                stopSync = true;
+                continue;
+            }
+
+            if (response.status === 401) {
+                remaining.push(attemptedEntry);
+                stopSync = true;
+                if (window.koinoniaAuthStatus === 'authenticated') window.handleAuthenticatedApi401();
+                else window.clearAuthenticatedClientState();
+            } else if (response.status === 403) {
+                remaining.push(quarantineOfflineEntry(attemptedEntry, 'server-forbidden'));
+            } else if (response.status >= 400 && response.status < 500) {
+                remaining.push(quarantineOfflineEntry(attemptedEntry, 'server-rejected'));
+            } else if (!response.ok) {
+                remaining.push(attemptedEntry);
+                stopSync = true;
             }
         }
 
-        localStorage.setItem('fog_offline_queue', JSON.stringify(failed));
-        if (failed.length === 0) {
-            console.log('[Offline Sync Engine] All offline actions synchronized successfully!');
-            if(document.getElementById('eventsTab') && document.getElementById('eventsTab').classList.contains('active')) window.loadEvents();
-            if(document.getElementById('directoryTab') && document.getElementById('directoryTab').classList.contains('active')) window.loadDirectory();
-            if(document.getElementById('checkinTab') && document.getElementById('checkinTab').classList.contains('active')) window.updateActiveEventBanner();
-            if(document.getElementById('ministriesTab') && document.getElementById('ministriesTab').classList.contains('active')) window.loadMinistries();
+        writeSafeOfflineQueue(remaining);
+        if (mismatchedOwnerCount > 0) {
+            console.warn(`[Offline Sync Engine] ${mismatchedOwnerCount} pending change(s) belong to another account and were not sent.`);
         }
     }
 };
 
+window.OfflineManager = OfflineManager;
 OfflineManager.init();
 
 window.getBase64 = async function(file, maxWidth = 600) {
@@ -220,12 +1349,18 @@ bindExecuteAction();
 
 // STRICT GLOBAL PERMISSION EVALUATOR
 window.hasPerm = function(perm) {
+    if (window.koinoniaAuthStatus !== 'authenticated') return false;
     if (currentUser === 'celsocreeriii@gmail.com') return true;
     if (!userPermissions || !Array.isArray(userPermissions)) return false;
     return userPermissions.includes(perm);
 };
 
 window.onload = () => {
+    if (window.koinoniaAuthStatus === 'offline-readonly') {
+        window.renderOfflineReadonlyExperience();
+        return;
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const eventIdParam = urlParams.get('event');
 
@@ -237,13 +1372,7 @@ window.onload = () => {
     document.getElementById('mainHeader').style.display = 'block';
     document.getElementById('mainContainer').style.display = 'block';
 
-    const savedSession = localStorage.getItem('fog_user');
-    if (savedSession) {
-        const s = JSON.parse(savedSession);
-        currentUser = s.username;
-        currentMember = s.member;
-        userPermissions = Array.isArray(s.permissions) ? s.permissions : [];
-
+    if (window.koinoniaAuthStatus === 'authenticated') {
         window.buildNav();
         window.applyGranularPermissions();
 
@@ -257,7 +1386,7 @@ window.onload = () => {
         window.loadEvents();
         window.loadDirectory();
     } else {
-        window.switchTab('loginTab');
+        window.renderUnauthenticatedShell();
     }
 };
 
@@ -290,6 +1419,9 @@ window.closeSidebar = function() {
     document.getElementById('sidebarOverlay').classList.remove('active');
 };
 
+// ==========================================
+// FIXED SIDEBAR NAVIGATION MENU (CLEANED)
+// ==========================================
 window.buildNav = function() {
     const sidebar = document.getElementById('sidebarNav');
     const bottomNav = document.getElementById('bottomNav');
@@ -302,14 +1434,26 @@ window.buildNav = function() {
     if (isAdmin) {
         hamburger.style.display = 'block';
         bottomNav.style.display = 'none';
+        
         sidebarHtml += `<button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
+        sidebarHtml += `<button class="nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')">🔔 My Inbox</button>`; // Fixed: Inbox for Admins
+        
         if (window.hasPerm('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
         if (window.hasPerm('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
         if (window.hasPerm('access_ministries')) sidebarHtml += `<button class="nav-btn" data-target="ministriesTab" onclick="switchTab('ministriesTab')">🏛️ Ministries</button>`;
         if (window.hasPerm('access_events')) sidebarHtml += `<button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Planner</button>`;
+        
+        // Discipleship & New Features (Consolidated & Cleaned)
+        sidebarHtml += `<button class="nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')">📖 Personal Growth</button>`;
+        if (window.hasPerm('access_discipleship')) sidebarHtml += `<button class="nav-btn" data-target="discipleshipAdminTab" onclick="switchTab('discipleshipAdminTab')">🌱 Discipleship Admin</button>`;
+        if (window.hasPerm('access_worship')) sidebarHtml += `<button class="nav-btn" data-target="worshipTab" onclick="switchTab('worshipTab')">🎵 Worship Hub</button>`;
+        if (window.hasPerm('access_communications')) sidebarHtml += `<button class="nav-btn" data-target="communicationsAdminTab" onclick="switchTab('communicationsAdminTab')">📢 Broadcasts</button>`;
+        if (window.hasPerm('access_ai')) sidebarHtml += `<button class="nav-btn" data-target="aiAssistantTab" onclick="switchTab('aiAssistantTab')">🤖 AI Assistant</button>`;
+
         if (window.hasPerm('access_attendance')) sidebarHtml += `<button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
         if (window.hasPerm('access_activity')) sidebarHtml += `<button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
         if (window.hasPerm('access_permissions')) sidebarHtml += `<button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔐 Permissions</button>`;
+        
         sidebarHtml += `<button class="nav-btn text-danger" onclick="handleLogout()">🚪 Logout (${currentUser})</button>`;
 
         sidebar.innerHTML = sidebarHtml;
@@ -317,7 +1461,10 @@ window.buildNav = function() {
     } else {
         hamburger.style.display = 'none';
         bottomNav.style.display = 'flex';
+        
         bottomHtml += `<button class="bottom-nav-btn active" data-target="profileTab" onclick="switchTab('profileTab')"><div class="icon">👤</div>Profile</button>`;
+        bottomHtml += `<button class="bottom-nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')"><div class="icon">🔔</div>Inbox</button>`;
+        bottomHtml += `<button class="bottom-nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')"><div class="icon">📖</div>Grow</button>`;
         bottomHtml += `<button class="bottom-nav-btn" onclick="handleLogout()"><div class="icon">🚪</div>Logout</button>`;
 
         sidebar.innerHTML = '';
@@ -325,29 +1472,322 @@ window.buildNav = function() {
     }
 };
 
+window.canCreateDirectoryMember = function() {
+    const hasCanonicalPair =
+        typeof window.hasPerm === 'function' &&
+        window.hasPerm('access_directory') &&
+        window.hasPerm('add_entries');
+
+    const isLegacySuperAdmin =
+        typeof currentUser !== 'undefined' &&
+        currentUser === 'celsocreeriii@gmail.com';
+
+    return hasCanonicalPair || isLegacySuperAdmin;
+};
+
 window.applyGranularPermissions = function() {
-    const canAdd = window.hasPerm('add_entries');
+    const canAdd = window.hasPerm('add_entries') || currentUser === 'celsocreeriii@gmail.com';
+    
+    // Safely enforce display with !important to bypass CSS conflicts
+    const setDisp = (id) => { 
+        const el = document.getElementById(id); 
+        if (el) el.style.setProperty('display', canAdd ? 'inline-flex' : 'none', 'important'); 
+    };
+    
+    setDisp('btnSubEventCreate');
+    setDisp('btnSubMinistryCreate');
+    setDisp('btnCheckinWalkin');
+    setDisp('addEntryAnalyticsBtn');
+    const directoryAddButton =
+        document.getElementById('btnDirectoryAddMember');
 
-    const btnSubEventCreate = document.getElementById('btnSubEventCreate');
-    if(btnSubEventCreate) btnSubEventCreate.style.display = canAdd ? 'inline-block' : 'none';
+    if (directoryAddButton) {
+        directoryAddButton.style.setProperty(
+            'display',
+            window.canCreateDirectoryMember()
+                ? 'inline-flex'
+                : 'none',
+            'important'
+        );
+    }
+};
 
-    const btnSubMinistryCreate = document.getElementById('btnSubMinistryCreate');
-    if(btnSubMinistryCreate) btnSubMinistryCreate.style.display = canAdd ? 'inline-block' : 'none';
+let permissionAccountsCache = [];
 
-    const btnCheckinWalkin = document.getElementById('btnCheckinWalkin');
-    if(btnCheckinWalkin) btnCheckinWalkin.style.display = canAdd ? 'inline-block' : 'none';
-    const addEntryAnalyticsBtn = document.getElementById('addEntryAnalyticsBtn');
-    if(addEntryAnalyticsBtn) addEntryAnalyticsBtn.style.display = canAdd ? 'flex' : 'none';
+const PERMISSION_DISPLAY_LABELS = Object.freeze({
+    access_checkin: 'Check-In',
+    access_directory: 'Directory',
+    access_events: 'Events',
+    access_attendance: 'Attendance Logs',
+    access_ministries: 'Ministries',
+    access_activity: 'Activity Logs',
+    access_permissions: 'Permissions',
+    access_discipleship: 'Discipleship Admin',
+    access_ai: 'AI Assistant',
+    access_worship: 'Worship Hub',
+    access_communications: 'Broadcasts',
+    access_prayer: 'Watchtower Prayer',
+    access_prayer_journey: 'Prayer Journey Monitor',
+    add_entries: 'Add Entries',
+    edit_entries: 'Edit Entries',
+    delete_entries: 'Delete Entries'
+});
 
-    const btnDirectoryAddMember = document.getElementById('btnDirectoryAddMember');
-    if(btnDirectoryAddMember) btnDirectoryAddMember.style.display = canAdd ? 'inline-block' : 'none';
+function escapePermissionHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function parsePermissionList(value) {
+    try {
+        const parsed = Array.isArray(value)
+            ? value
+            : JSON.parse(value || '[]');
+
+        if (!Array.isArray(parsed)) return [];
+
+        return [...new Set(
+            parsed
+                .filter(item => typeof item === 'string' && item.trim())
+                .map(item => item.trim())
+        )];
+    } catch (e) {
+        return [];
+    }
+}
+
+function permissionDisplayName(permission) {
+    return PERMISSION_DISPLAY_LABELS[permission] || permission;
+}
+
+window.loadPermissionAccountsOverview = async function() {
+    const container = document.getElementById('permAccountsContainer');
+    const summary = document.getElementById('permAccountsSummary');
+
+    if (!container || !summary) return;
+    if (!window.hasPerm('access_permissions')) return;
+
+    container.innerHTML = `
+        <div style="padding:18px; color:var(--text-muted); text-align:center;">
+            Loading accounts with permissions…
+        </div>
+    `;
+
+    try {
+        const res = await fetch('/api/users/list');
+
+        if (!res.ok) {
+            throw new Error(`Unable to load permission accounts (${res.status})`);
+        }
+
+        const rawAccounts = await res.json();
+
+        permissionAccountsCache = (Array.isArray(rawAccounts) ? rawAccounts : [])
+            .map(account => ({
+                ...account,
+                permission_list: parsePermissionList(account.permissions)
+            }))
+            .filter(account => account.permission_list.length > 0)
+            .sort((a, b) => {
+                const aName = String(a.display_name || a.username || '');
+                const bName = String(b.display_name || b.username || '');
+                return aName.localeCompare(bName, undefined, { sensitivity: 'base' });
+            });
+
+        const checkinCount = permissionAccountsCache.filter(
+            account => account.permission_list.includes('access_checkin')
+        ).length;
+
+        const attendanceCount = permissionAccountsCache.filter(
+            account => account.permission_list.includes('access_attendance')
+        ).length;
+
+        const permissionManagerCount = permissionAccountsCache.filter(
+            account => account.permission_list.includes('access_permissions')
+        ).length;
+
+        summary.textContent =
+            `${permissionAccountsCache.length} Accounts • ` +
+            `${checkinCount} Check-In • ` +
+            `${attendanceCount} Attendance • ` +
+            `${permissionManagerCount} Permission Managers`;
+
+        if (permissionAccountsCache.length === 0) {
+            container.innerHTML = `
+                <div style="padding:18px; color:var(--text-muted); text-align:center;">
+                    No accounts currently have Portal permissions.
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = permissionAccountsCache.map(account => {
+            const displayName = escapePermissionHtml(
+                account.display_name || account.username || 'Account'
+            );
+
+            const username = escapePermissionHtml(account.username || '');
+
+            const accountType = account.youth_id == null
+                ? 'System account'
+                : `Member ID ${escapePermissionHtml(account.youth_id)}`;
+
+            const preview = account.permission_list
+                .slice(0, 3)
+                .map(permission => `
+                    <span style="display:inline-block; background:var(--bg-light); border:1px solid var(--border-color); border-radius:999px; padding:3px 8px; font-size:0.72rem;">
+                        ${escapePermissionHtml(permissionDisplayName(permission))}
+                    </span>
+                `)
+                .join('');
+
+            const extra = account.permission_list.length > 3
+                ? `<span style="font-size:0.75rem; color:var(--text-muted);">+${account.permission_list.length - 3} more</span>`
+                : '';
+
+            return `
+                <button type="button"
+                        onclick="openPermissionAccountDetails(${Number(account.id)})"
+                        style="display:block; width:100%; text-align:left; border:0; border-bottom:1px solid var(--border-color); background:transparent; padding:14px 16px; cursor:pointer;">
+                    <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+                        <div style="min-width:0;">
+                            <div style="font-weight:800; color:var(--text-main);">
+                                ${displayName}
+                            </div>
+
+                            <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px; overflow-wrap:anywhere;">
+                                ${username} • ${accountType}
+                            </div>
+
+                            <div style="display:flex; flex-wrap:wrap; gap:5px; align-items:center; margin-top:8px;">
+                                ${preview}
+                                ${extra}
+                            </div>
+                        </div>
+
+                        <span class="badge badge-blue" style="white-space:nowrap;">
+                            ${account.permission_list.length}
+                        </span>
+                    </div>
+                </button>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('Permission account overview failed', error);
+
+        summary.textContent = 'Unavailable';
+
+        container.innerHTML = `
+            <div style="padding:18px; color:var(--danger); text-align:center;">
+                Unable to load accounts with permissions.
+            </div>
+        `;
+    }
+};
+
+window.openPermissionAccountDetails = async function(userId) {
+    let account = permissionAccountsCache.find(
+        item => Number(item.id) === Number(userId)
+    );
+
+    if (!account) {
+        await window.loadPermissionAccountsOverview();
+
+        account = permissionAccountsCache.find(
+            item => Number(item.id) === Number(userId)
+        );
+    }
+
+    if (!account) {
+        alert('Unable to load this permission account.');
+        return;
+    }
+
+    const header = document.getElementById('permissionAccountDetailHeader');
+    const badges = document.getElementById('permissionAccountDetailBadges');
+    const note = document.getElementById('permissionAccountDetailNote');
+    const editBtn = document.getElementById('permissionAccountEditBtn');
+    const modal = document.getElementById('permissionAccountDetailsModal');
+
+    if (!header || !badges || !note || !editBtn || !modal) return;
+
+    const displayName = account.display_name || account.username || 'Account';
+
+    header.innerHTML = `
+        <div style="font-weight:800; font-size:1.05rem;">
+            ${escapePermissionHtml(displayName)}
+        </div>
+        <div style="color:var(--text-muted); font-size:0.82rem; margin-top:4px; overflow-wrap:anywhere;">
+            ${escapePermissionHtml(account.username || '')}
+            ${account.youth_id == null
+                ? ' • System account'
+                : ` • Member ID ${escapePermissionHtml(account.youth_id)}`}
+        </div>
+    `;
+
+    badges.innerHTML = account.permission_list.length
+        ? account.permission_list.map(permission => `
+            <span style="display:inline-block; background:rgba(255,107,0,0.10); color:var(--primary); border:1px solid rgba(255,107,0,0.22); border-radius:999px; padding:6px 10px; font-size:0.78rem; font-weight:700;">
+                ${escapePermissionHtml(permissionDisplayName(permission))}
+            </span>
+        `).join('')
+        : '<span style="color:var(--text-muted);">No permissions assigned.</span>';
+
+    if (account.youth_id == null) {
+        note.style.display = 'block';
+        note.textContent =
+            'This is a system account rather than a member-linked account. ' +
+            'Its current permissions are shown here for visibility.';
+
+        editBtn.style.display = 'none';
+        editBtn.onclick = null;
+    } else {
+        note.style.display = 'none';
+        note.textContent = '';
+
+        editBtn.style.display = 'inline-flex';
+
+        editBtn.onclick = () => {
+            window.closePermissionAccountDetails();
+
+            window['openAssignPermissionModal'](
+                Number(account.youth_id),
+                displayName
+            );
+        };
+    }
+
+    modal.classList.add('active');
+};
+
+window.closePermissionAccountDetails = function() {
+    const modal = document.getElementById('permissionAccountDetailsModal');
+
+    if (modal) {
+        modal.classList.remove('active');
+    }
 };
 
 window.resetPermUserList = function() {
     const searchInput = document.getElementById('permUserSearchInput');
     const container = document.getElementById('permUserListContainer');
-    if(searchInput) searchInput.value = '';
-    if(container) container.innerHTML = `<div style="padding: 15px; color: var(--text-muted); text-align: center;">Please type at least 3 characters to search the directory and assign permissions.</div>`;
+
+    if (searchInput) searchInput.value = '';
+
+    if (container) {
+        container.innerHTML = `
+            <div style="padding:15px; color:var(--text-muted); text-align:center;">
+                Type at least 3 characters to find another member and assign permissions.
+            </div>
+        `;
+    }
+
+    window.loadPermissionAccountsOverview();
 };
 
 window.switchTab = function(tabId) {
@@ -575,10 +2015,11 @@ window.handleLogin = async function(e) {
     const data = await res.json();
 
     if (data.success) {
-        currentUser = data.username;
-        userPermissions = Array.isArray(data.permissions) ? data.permissions : [];
-        currentMember = data.member;
-        localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
+        const authResult = await window.refreshAuthenticatedIdentity();
+        if (!authResult.authenticated) {
+            alert('Sign-in succeeded, but the authenticated session could not be verified. Please sign in again.');
+            return;
+        }
         window.buildNav();
         window.applyGranularPermissions();
         if (currentMember) { window.populateProfileTab(currentMember); window.switchTab('profileTab'); }
@@ -591,13 +2032,56 @@ window.handleLogin = async function(e) {
     } else alert('Invalid credentials!');
 };
 
+window.openForgotPassword = function() {
+    const result = document.getElementById('forgotPasswordResult');
+    const form = document.getElementById('forgotPasswordForm');
+    if (result) {
+        result.style.display = 'none';
+        result.textContent = '';
+    }
+    if (form) form.style.display = 'block';
+    showTabWithoutOnlineHooks('forgotPasswordTab');
+};
+
+window.returnToLoginFromRecovery = function() {
+    const email = document.getElementById('forgotPasswordEmail');
+    if (email) email.value = '';
+    showTabWithoutOnlineHooks('loginTab');
+};
+
+window.handleForgotPassword = async function(event) {
+    event.preventDefault();
+    const email = document.getElementById('forgotPasswordEmail');
+    const form = document.getElementById('forgotPasswordForm');
+    const result = document.getElementById('forgotPasswordResult');
+    const submitButton = form && form.querySelector('button[type="submit"]');
+    if (!email || !form || !result || !submitButton) return;
+
+    submitButton.disabled = true;
+    try {
+        const response = await fetch('/api/auth/forgot-password', {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email.value })
+        });
+        if (!response.ok) throw new Error('Recovery request unavailable');
+        const body = await response.json();
+        result.textContent = body.message || 'If an eligible account matches that email, password reset instructions will be sent shortly.';
+        form.style.display = 'none';
+        email.value = '';
+        result.style.display = 'block';
+    } catch (error) {
+        result.textContent = 'The request could not be completed right now. Check your connection and try again.';
+        result.style.display = 'block';
+    } finally {
+        submitButton.disabled = false;
+    }
+};
+
 window.handleLogout = async function() {
-    if (currentUser) await fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: currentUser }) });
-    localStorage.removeItem('fog_user'); currentUser = null; currentMember = null; userPermissions = [];
-    document.getElementById('hamburgerBtn').style.display = 'none';
-    document.getElementById('sidebarNav').innerHTML = '';
-    document.getElementById('bottomNav').style.display = 'none';
-    window.switchTab('loginTab');
+    return window.performSecureLogout();
 };
 
 window.loadMinistriesAndEventRolesForProfile = async function(youthId, containerId) {
@@ -664,7 +2148,7 @@ window.populateProfileTab = async function(member) {
     }
 
     document.getElementById('myQrContainer').innerHTML = '';
-    if(member.qr_code) {
+    if(member.qr_code && window.QRCode && typeof window.QRCode.toDataURL === 'function') {
         QRCode.toDataURL(member.qr_code, { width: 220 }, function (err, url) {
             if(!err) {
                 const img = document.createElement('img'); img.src = url;
@@ -781,7 +2265,7 @@ window.populateProfileTab = async function(member) {
         modalRolesData = [];
         ministries.forEach(m => modalRolesData.push({type: 'ministry', ...m}));
         eventRoles.forEach(er => modalRolesData.push({type: 'event', ...er}));
-        
+
         modalRolesData.sort((a,b) => {
             const dateA = new Date(a.assigned_at || a.event_date || 0);
             const dateB = new Date(b.assigned_at || b.event_date || 0);
@@ -823,20 +2307,27 @@ window.handleSelfProfileUpdate = async function(e) {
     let picBase64 = undefined;
     if (fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
 
+    const passwordInput = document.getElementById('myEditPassword');
+    const requestedPassword = passwordInput ? passwordInput.value : '';
+    if (requestedPassword && (requestedPassword.length < 8 || requestedPassword.length > 128 || !/\S/.test(requestedPassword))) {
+        return alert('Password must be 8 to 128 characters.');
+    }
+
     const payload = {
         name: document.getElementById('myEditName').value, email: document.getElementById('myEditEmail').value,
         age: document.getElementById('myEditAge').value, birthday: document.getElementById('myEditBirthday').value,
         social_media: document.getElementById('myEditSocial').value, parents_name: document.getElementById('myEditParents').value,
-        password: document.getElementById('myEditPassword').value, profile_picture: picBase64, actor: currentUser
+        profile_picture: picBase64, actor: currentUser
     };
+    if (requestedPassword) payload.password = requestedPassword;
     window.triggerActionConfirmation(`Save changes to your personal profile?`, async () => {
         const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await res.json();
         if (data.success) {
+            if (passwordInput) passwordInput.value = '';
             alert('Profile updated successfully!');
-            currentMember = data.member;
-            localStorage.setItem('fog_user', JSON.stringify({ username: currentUser, permissions: userPermissions, member: currentMember }));
-            window.populateProfileTab(data.member);
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
+            window.populateProfileTab(currentMember);
         }
     });
 };
@@ -861,11 +2352,15 @@ window.handlePublicRegistration = async function(e) {
         document.getElementById('passMemberName').innerText = payload.name;
         document.getElementById('passMemberCode').innerText = `Pass ID & Login: ${data.qr_code}`;
         document.getElementById('qrCanvasContainer').innerHTML = '';
-        QRCode.toDataURL(data.qr_code, { width: 220 }, function (err, url) {
-            const img = document.createElement('img'); img.src = url;
-            document.getElementById('qrCanvasContainer').appendChild(img);
-            document.getElementById('downloadQrBtn').href = url;
-        });
+        if (window.QRCode && typeof window.QRCode.toDataURL === 'function') {
+            QRCode.toDataURL(data.qr_code, { width: 220 }, function (err, url) {
+                const img = document.createElement('img'); img.src = url;
+                document.getElementById('qrCanvasContainer').appendChild(img);
+                document.getElementById('downloadQrBtn').href = url;
+            });
+        } else {
+            document.getElementById('qrCanvasContainer').textContent = 'QR preview requires an internet connection.';
+        }
         document.getElementById('qrPassCard').style.display = 'block';
         document.getElementById('regForm').reset();
         youthData = [];
@@ -874,6 +2369,10 @@ window.handlePublicRegistration = async function(e) {
 
 window.initScanner = function() {
     if (qrScanner) return;
+    if (typeof window.Html5QrcodeScanner !== 'function') {
+        alert('The QR scanner is unavailable. Please check your connection and try again.');
+        return;
+    }
     qrScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 250, height: 250 } });
     qrScanner.render((decodedText) => {
         const eventId = document.getElementById('activeEventDropdown').value;
@@ -985,7 +2484,7 @@ window.submitFastEditProfile = async function(doCheckIn) {
         name: document.getElementById('fastEditName').value, email: document.getElementById('fastEditEmail').value,
         age: document.getElementById('fastEditAge').value, birthday: document.getElementById('fastEditBirthday').value,
         social_media: document.getElementById('fastEditSocial').value, parents_name: document.getElementById('fastEditParents').value,
-        profile_picture: picBase64, password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, actor: currentUser
+        profile_picture: picBase64, actor: currentUser
     };
     window.triggerActionConfirmation(`Confirm updating profile for ${payload.name}?`, async () => {
         const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
@@ -1053,12 +2552,12 @@ window.filterDirectory = function() {
     const exportBtnHTML = `<button type="button" class="btn btn-outline btn-sm" onclick="exportDirectoryCSV()" style="font-weight: 600; margin-left: 10px;">📤 Export CSV</button>`;
 
     const totalCountDiv = document.getElementById('directoryTotalCount');
-    totalCountDiv.className = ''; 
+    totalCountDiv.className = '';
     totalCountDiv.style.background = 'transparent';
     totalCountDiv.style.color = 'var(--text-main)';
     totalCountDiv.style.display = 'flex';
     totalCountDiv.style.alignItems = 'center';
-    
+
     totalCountDiv.innerHTML = `
         <span class="badge badge-orange" style="font-size: 0.85rem; padding: 8px 12px;">${labelText}: ${matches.length}</span>
         ${exportBtnHTML}
@@ -1159,16 +2658,25 @@ window.submitNewMember = async function(e) {
     let picBase64 = null;
     if (fileInput && fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
 
+    const readMemberField = (id) => {
+        const element = document.getElementById(id);
+        return element ? element.value : '';
+    };
+
     const payload = {
-        name: document.getElementById('addMemberName').value, age: document.getElementById('addMemberAge').value,
-        birthday: document.getElementById('addMemberBirthday').value, email: document.getElementById('addMemberEmail').value,
-        mobile: document.getElementById('addMemberMobile').value, social_media: document.getElementById('addMemberSocial').value,
-        parents_name: document.getElementById('addMemberParents').value, profile_picture: picBase64, actor: currentUser
+        name: readMemberField('addMemberName'),
+        age: readMemberField('addMemberAge'),
+        birthday: readMemberField('addMemberBirthday'),
+        email: readMemberField('addMemberEmail'),
+        mobile: readMemberField('addMemberMobile'),
+        social_media: readMemberField('addMemberSocial'),
+        parents_name: readMemberField('addMemberParents'),
+        profile_picture: picBase64
     };
 
     window.triggerActionConfirmation(`Register ${payload.name} into the directory?`, async () => {
         try {
-            const res = await fetch('/api/youth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const res = await fetch('/api/admin/directory/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
             if (data.id) {
                 alert(`Successfully registered ${payload.name}!\nUnique Pass ID: ${data.qr_code}`);
@@ -1210,7 +2718,7 @@ window.saveMemberEditWithConfirm = async function() {
         name: document.getElementById('editMemberName').value, email: document.getElementById('editMemberEmail').value,
         age: document.getElementById('editMemberAge').value, birthday: document.getElementById('editMemberBirthday').value,
         social_media: document.getElementById('editMemberSocial').value, parents_name: document.getElementById('editMemberParents').value,
-        password: `FOG-MEMBER-${String(id).padStart(3, '0')}`, profile_picture: picBase64, actor: currentUser
+        profile_picture: picBase64, actor: currentUser
     };
     window.triggerActionConfirmation(`Confirm updating member profile for '${payload.name}'?`, async () => {
         await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -1224,7 +2732,7 @@ window.openViewProfileModal = async function(youthId) {
 
     const safeName = member.name || 'Unknown';
     document.getElementById('modalProfileName').innerText = safeName;
-    
+
     const isOwner = currentMember && currentMember.id == youthId;
     const isSuperAdmin = currentUser === 'celsocreeriii@gmail.com';
     const passIdElem = document.getElementById('modalProfileCode');
@@ -1234,9 +2742,9 @@ window.openViewProfileModal = async function(youthId) {
         passIdElem.innerText = `Unique Pass ID: ${member.qr_code || ''}`;
         passIdElem.style.display = 'inline-block';
         if (rightPanel) rightPanel.style.display = 'flex';
-        
+
         document.getElementById('modalQrContainer').innerHTML = '';
-        if(member.qr_code) {
+        if(member.qr_code && window.QRCode && typeof window.QRCode.toDataURL === 'function') {
             QRCode.toDataURL(member.qr_code, { width: 180 }, function (err, url) {
                 if(!err) {
                     const img = document.createElement('img'); img.src = url;
@@ -1276,7 +2784,7 @@ window.openViewProfileModal = async function(youthId) {
         modalRolesData = [];
         ministries.forEach(m => modalRolesData.push({type: 'ministry', ...m}));
         eventRoles.forEach(er => modalRolesData.push({type: 'event', ...er}));
-        
+
         modalRolesData.sort((a,b) => {
             const dateA = new Date(a.assigned_at || a.event_date || 0);
             const dateB = new Date(b.assigned_at || b.event_date || 0);
@@ -1300,8 +2808,8 @@ window.openViewProfileModal = async function(youthId) {
     if(modal) modal.classList.add('active');
 };
 
-window.closeViewProfileModal = function() { 
-    document.getElementById('viewProfileModal').classList.remove('active'); 
+window.closeViewProfileModal = function() {
+    document.getElementById('viewProfileModal').classList.remove('active');
 };
 
 window.loadMinistries = async function() {
@@ -1585,14 +3093,79 @@ window.removeMinistryRole = function(mappingId, name) {
     });
 };
 
+window.setPreregSettingsFeedback = function(message, isError = false) {
+    const feedback = document.getElementById('preregSettingsFeedback');
+    if (!feedback) return;
+    feedback.innerText = message || '';
+    feedback.style.display = message ? 'block' : 'none';
+    feedback.style.color = isError ? 'var(--danger)' : 'var(--success)';
+};
+
+window.setPreregSettingsPreview = function(previewId, statusId, source, emptyMessage) {
+    const preview = document.getElementById(previewId);
+    const status = document.getElementById(statusId);
+    if (!preview) return;
+    preview.onload = null;
+    preview.onerror = null;
+    if (!source) {
+        preview.removeAttribute('src');
+        preview.style.display = 'none';
+        if (status) status.innerText = emptyMessage;
+        return;
+    }
+    preview.src = source;
+    preview.style.display = 'block';
+    if (status) status.innerText = 'Saved image currently in use.';
+    preview.onerror = () => {
+        preview.removeAttribute('src');
+        preview.style.display = 'none';
+        if (status) status.innerText = 'The saved image could not be previewed.';
+    };
+};
+
+window.previewPreregSettingsImage = function(input, previewId, statusId) {
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = event => {
+        window.setPreregSettingsPreview(previewId, statusId, event.target.result, '');
+        const status = document.getElementById(statusId);
+        if (status) status.innerText = 'Selected image ready to save.';
+    };
+    reader.onerror = () => window.setPreregSettingsFeedback('Unable to preview the selected image.', true);
+    reader.readAsDataURL(file);
+};
+
+window.populatePreregSettingsEditor = function(event) {
+    const idInput = document.getElementById('preregSetEventId');
+    if (idInput) idInput.value = event.id;
+    const titleInput = document.getElementById('preregSetTitle');
+    if (titleInput) titleInput.value = event.prereg_title || event.name || '';
+    const infoInput = document.getElementById('preregSetInfo');
+    if (infoInput) infoInput.value = event.prereg_info || '';
+    const bannerInput = document.getElementById('preregSetBanner');
+    if (bannerInput) bannerInput.value = '';
+    const bottomBannerInput = document.getElementById('preregSetBottomBanner');
+    if (bottomBannerInput) bottomBannerInput.value = '';
+    window.setPreregSettingsPreview(
+        'preregSetBannerPreview',
+        'preregSetBannerStatus',
+        event.prereg_banner_url,
+        'No custom Top Banner saved. The Event Poster will be used as fallback.'
+    );
+    window.setPreregSettingsPreview(
+        'preregSetBottomBannerPreview',
+        'preregSetBottomBannerStatus',
+        event.prereg_bottom_banner_url,
+        'No Bottom Banner saved.'
+    );
+    window.setPreregSettingsFeedback('');
+};
+
 window.openPreregSettings = function(eventId) {
-    const e = eventsData.find(ev => ev.id == eventId);
-    if (!e) return;
-    document.getElementById('preregSetEventId').value = e.id;
-    document.getElementById('preregSetTitle').value = e.prereg_title || e.name || '';
-    document.getElementById('preregSetInfo').value = e.prereg_info || '';
-    document.getElementById('preregSetBanner').value = '';
-    document.getElementById('preregSetBottomBanner').value = '';
+    const event = eventsData.find(candidate => candidate.id == eventId);
+    if (!event) return;
+    window.populatePreregSettingsEditor(event);
     document.getElementById('preregSettingsModal').classList.add('active');
 };
 window.closePreregSettingsModal = function() { document.getElementById('preregSettingsModal').classList.remove('active'); };
@@ -1604,18 +3177,46 @@ window.savePreregSettings = async function(e) {
     const info = document.getElementById('preregSetInfo').value;
     const fileInput = document.getElementById('preregSetBanner');
     const fileInputBottom = document.getElementById('preregSetBottomBanner');
-    let bannerBase64 = null;
-    if (fileInput.files.length > 0) bannerBase64 = await window.getBase64(fileInput.files[0], 1200);
+    if (!fileInput || !fileInputBottom) {
+        window.setPreregSettingsFeedback('The banner controls are unavailable. Please reload and try again.', true);
+        alert('Unable to save settings. Please reload and try again.');
+        return;
+    }
 
-    let bottomBannerBase64 = null;
-    if (fileInputBottom.files.length > 0) bottomBannerBase64 = await window.getBase64(fileInputBottom.files[0], 1200);
+    const payload = { title, info, actor: currentUser };
+    try {
+        if (fileInput.files.length > 0) payload.banner = await window.getBase64(fileInput.files[0], 1200);
+        if (fileInputBottom.files.length > 0) payload.bottom_banner = await window.getBase64(fileInputBottom.files[0], 1200);
+    } catch (error) {
+        console.error('Unable to read pre-registration banner.', error);
+        window.setPreregSettingsFeedback('Unable to read the selected image. Please choose it again.', true);
+        alert('Unable to read the selected image. Please choose it again.');
+        return;
+    }
 
     window.triggerActionConfirmation('Save Pre-Registration Page Settings?', async () => {
-        const res = await fetch(`/api/events/${id}/prereg-settings`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ banner: bannerBase64, bottom_banner: bottomBannerBase64, title, info, actor: currentUser })
-        });
-        if(res.ok) { alert('Settings saved successfully!'); window.closePreregSettingsModal(); window.loadEvents(); }
+        window.setPreregSettingsFeedback('Saving settings…');
+        try {
+            const res = await fetch(`/api/events/${id}/prereg-settings`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            let response = null;
+            try { response = await res.json(); } catch (error) {}
+            if (!res.ok || !response || response.success !== true) {
+                throw new Error(response && response.error ? response.error : `HTTP ${res.status}`);
+            }
+            window.setPreregSettingsFeedback('Settings saved successfully.');
+            alert('Settings saved successfully!');
+            window.closePreregSettingsModal();
+            await window.loadEvents();
+            return true;
+        } catch (error) {
+            console.error('Failed to save pre-registration settings.', error);
+            window.setPreregSettingsFeedback('Unable to save settings. Please try again.', true);
+            alert('Unable to save settings. Please try again.');
+            return false;
+        }
     });
 };
 
@@ -1624,40 +3225,106 @@ window.openPublicPreregFromSettings = async function() {
     window.closePreregSettingsModal(); window.launchPublicPrereg(id);
 };
 
+window.loadPreregHeroMedia = function(event) {
+    const banner = document.getElementById('preregPublicBanner');
+    const status = document.getElementById('preregPublicMediaStatus');
+    if (!banner) return;
+
+    const sources = [event && event.prereg_banner_url, event && event.poster_url]
+        .filter((source, index, all) => source && all.indexOf(source) === index);
+    banner.loading = 'eager';
+    banner.fetchPriority = 'high';
+    banner.decoding = 'async';
+    banner.onload = null;
+    banner.onerror = null;
+
+    if (sources.length === 0) {
+        banner.removeAttribute('src');
+        banner.style.display = 'none';
+        if (status) status.style.display = 'none';
+        return;
+    }
+
+    let sourceIndex = 0;
+    if (status) {
+        status.innerText = 'Loading event image…';
+        status.style.display = 'block';
+    }
+    banner.style.display = 'block';
+    banner.onload = () => {
+        if (status) status.style.display = 'none';
+    };
+    banner.onerror = () => {
+        sourceIndex += 1;
+        if (sourceIndex < sources.length) {
+            banner.src = sources[sourceIndex];
+            return;
+        }
+        banner.removeAttribute('src');
+        banner.style.display = 'none';
+        if (status) {
+            status.innerText = 'Event image is unavailable. Registration is still open.';
+            status.style.display = 'block';
+        }
+    };
+    banner.src = sources[sourceIndex];
+};
+
 window.launchPublicPrereg = async function(eventId) {
     currentPreregEventId = eventId;
+    currentPreregEventDetail = null;
     document.getElementById('mainContainer').style.display = 'block';
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('event') !== String(eventId)) window.history.pushState(null, '', '?event=' + eventId);
 
-    try {
+    const preregIdsPromise = (async () => {
         const prRes = await fetch(`/api/events/${eventId}/preregs`);
+        if (!prRes.ok) throw new Error(`HTTP ${prRes.status}`);
         const prData = await prRes.json();
-        currentPreRegYouthIds = new Set(prData);
-    } catch(e) { currentPreRegYouthIds = new Set(); }
+        return new Set(prData);
+    })().catch(() => new Set());
 
-    if(eventsData.length === 0) { const res = await fetch('/api/events'); eventsData = await res.json(); }
-    const e = eventsData.find(ev => ev.id == eventId);
-    if (e) {
-        document.getElementById('preregPublicTitle').innerText = e.prereg_title || e.name;
-        document.getElementById('preregPublicInfo').innerText = e.prereg_info || `Date: ${e.event_date} | Venue: ${e.venue || 'TBA'}`;
-
-        const banner = document.getElementById('preregPublicBanner');
-        if (e.prereg_banner) { banner.src = e.prereg_banner; banner.style.display = 'block'; }
-        else if (e.poster) { banner.src = e.poster; banner.style.display = 'block'; }
-        else { banner.style.display = 'none'; }
-
-        const bottomBanner = document.getElementById('preregPublicBottomBanner');
-        if (e.prereg_bottom_banner) { bottomBanner.src = e.prereg_bottom_banner; bottomBanner.style.display = 'block'; }
-        else { bottomBanner.style.display = 'none'; }
+    try {
+        const eventRes = await fetch(`/api/events/${eventId}`);
+        if (!eventRes.ok) throw new Error(`HTTP ${eventRes.status}`);
+        currentPreregEventDetail = await eventRes.json();
+    } catch (error) {
+        console.error('Failed to load event details.', error);
     }
 
+    const event = currentPreregEventDetail;
+    if (event) {
+        document.getElementById('preregPublicTitle').innerText = event.prereg_title || event.name;
+        document.getElementById('preregPublicInfo').innerText = event.prereg_info || `Date: ${event.event_date} | Venue: ${event.venue || 'TBA'}`;
+
+        window.loadPreregHeroMedia(event);
+
+        const bottomBanner = document.getElementById('preregPublicBottomBanner');
+        bottomBanner.onload = null;
+        bottomBanner.onerror = null;
+        if (event.prereg_bottom_banner_url) {
+            bottomBanner.loading = 'lazy';
+            bottomBanner.src = event.prereg_bottom_banner_url;
+            bottomBanner.style.display = 'block';
+            bottomBanner.onerror = () => {
+                bottomBanner.removeAttribute('src');
+                bottomBanner.style.display = 'none';
+            };
+        }
+        else {
+            bottomBanner.removeAttribute('src');
+            bottomBanner.style.display = 'none';
+        }
+    }
+
+    currentPreRegYouthIds = await preregIdsPromise;
     if(youthData.length === 0) { const yRes = await fetch('/api/youth'); youthData = await yRes.json(); }
     window.switchTab('preregPublicTab'); window.showPreregStep(1);
 };
 
 window.closePublicPrereg = function() {
     currentPreregEventId = null;
+    currentPreregEventDetail = null;
     document.getElementById('mainHeader').style.display = 'block';
     window.history.pushState(null, '', window.location.pathname);
     window.location.reload();
@@ -1709,7 +3376,7 @@ window.executePreregister = async function(youthId, qrCode) {
         if(res.ok) {
             currentPreRegYouthIds.add(youthId);
             document.getElementById('preregSuccessQrContainer').innerHTML = '';
-            if(qrCode) {
+            if(qrCode && window.QRCode && typeof window.QRCode.toDataURL === 'function') {
                 QRCode.toDataURL(qrCode, { width: 200 }, function (err, url) {
                     if (!err) {
                         const img = document.createElement('img'); img.src = url;
@@ -1739,43 +3406,44 @@ window.submitNewPrereg = async function(e) {
     } catch(err) { alert("Network error."); }
 };
 
-window.dataURItoFile = function(dataURI, fileName) {
-    const arr = dataURI.split(',');
-    const mime = arr[0].match(/:(.*?);/)[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while(n--) { u8arr[n] = bstr.charCodeAt(n); }
-    return new File([u8arr], fileName, { type: mime });
+window.copyPreRegInvite = function(shareText, shareUrl) {
+    const invite = `${shareText} ${shareUrl}`;
+    const showManualCopy = () => {
+        if (typeof window.prompt === 'function') window.prompt('Copy this event invitation:', invite);
+        return false;
+    };
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+        return Promise.resolve(showManualCopy());
+    }
+    return navigator.clipboard.writeText(invite)
+        .then(() => {
+            alert('Event invitation copied to clipboard.');
+            return true;
+        })
+        .catch(showManualCopy);
 };
 
-window.sharePreRegLink = async function() {
+window.sharePreRegLink = function() {
     const shareTitle = document.getElementById('preregPublicTitle').innerText || 'Community Event';
     const shareText = `Join me at ${shareTitle}, click the link to pre-register.`;
-    const shareUrl = window.location.href;
+    const shareUrl = currentPreregEventId
+        ? `${window.location.origin}/?event=${encodeURIComponent(currentPreregEventId)}`
+        : window.location.href;
     const shareData = { title: shareTitle, text: shareText, url: shareUrl };
 
-    let targetBase64Image = null;
-    if (currentPreregEventId && eventsData && eventsData.length > 0) {
-        const e = eventsData.find(ev => ev.id == currentPreregEventId);
-        if (e && e.poster && e.poster.startsWith('data:image')) targetBase64Image = e.poster;
-    }
-    if (!targetBase64Image) {
-        const bannerImg = document.getElementById('preregPublicBanner');
-        if (bannerImg && bannerImg.src && bannerImg.src.startsWith('data:image')) targetBase64Image = bannerImg.src;
-    }
-    if (targetBase64Image) {
+    if (typeof navigator.share === 'function') {
         try {
-            const posterFile = window.dataURItoFile(targetBase64Image, 'event-poster.jpg');
-            if (navigator.canShare && navigator.canShare({ files: [posterFile] })) shareData.files = [posterFile];
-        } catch (err) { console.error('Image attachment failed:', err); }
+            // Keep this call synchronous with the click so Safari retains user activation.
+            const nativeShare = navigator.share(shareData);
+            return Promise.resolve(nativeShare).catch(error => {
+                if (error && error.name === 'AbortError') return false;
+                return window.copyPreRegInvite(shareText, shareUrl);
+            });
+        } catch (error) {
+            return window.copyPreRegInvite(shareText, shareUrl);
+        }
     }
-
-    if (navigator.share) {
-        try { await navigator.share(shareData); } catch (error) { console.log('Error sharing', error); }
-    } else {
-        navigator.clipboard.writeText(`${shareText} ${shareUrl}`).then(() => alert(`Link copied to clipboard!\n\n${shareText}`));
-    }
+    return window.copyPreRegInvite(shareText, shareUrl);
 };
 
 window.openEditEventModal = function(eventId) {
@@ -1827,6 +3495,74 @@ window.submitEditEvent = async function() {
     });
 };
 
+// === P9 PHASE C EVENT EXPERIENCE HELPERS ===
+window.getManilaDateKey = function(referenceDate = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(referenceDate);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+};
+
+window.getUpcomingEvents = function(sourceEvents, referenceDate = new Date()) {
+    const today = window.getManilaDateKey(referenceDate);
+    return (Array.isArray(sourceEvents) ? sourceEvents : [])
+        .filter(event => /^\d{4}-\d{2}-\d{2}$/.test(event.event_date || '') && event.event_date >= today)
+        .slice()
+        .sort((left, right) => {
+            const dateOrder = left.event_date.localeCompare(right.event_date);
+            if (dateOrder !== 0) return dateOrder;
+            const timeOrder = (left.time_start || '').localeCompare(right.time_start || '');
+            if (timeOrder !== 0) return timeOrder;
+            return Number(left.id || 0) - Number(right.id || 0);
+        });
+};
+
+window.getEventViewerCapabilities = function() {
+    const permitted = permission => typeof window.hasPerm === 'function' && window.hasPerm(permission);
+    const hasEventAccess = permitted('access_events');
+    return {
+        isEventPlanner: hasEventAccess,
+        canViewDetails: hasEventAccess || permitted('access_attendance') || permitted('access_checkin'),
+        canCreate: hasEventAccess && permitted('add_entries'),
+        canEdit: hasEventAccess && permitted('edit_entries'),
+        canDelete: hasEventAccess && permitted('delete_entries')
+    };
+};
+
+window.getVisibleEventsForCurrentUser = function(sourceEvents, referenceDate = new Date()) {
+    const capabilities = window.getEventViewerCapabilities();
+    return capabilities.isEventPlanner
+        ? (Array.isArray(sourceEvents) ? sourceEvents.slice() : [])
+        : window.getUpcomingEvents(sourceEvents, referenceDate);
+};
+
+window.renderEventActionButtons = function(event, capabilities) {
+    const eventId = Number(event.id);
+    if (!Number.isSafeInteger(eventId) || eventId <= 0) return '';
+    const buttons = [];
+    if (capabilities.canViewDetails) {
+        buttons.push(`<button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${eventId})">Details</button>`);
+    }
+    if (!capabilities.isEventPlanner && event.preregistration_available) {
+        buttons.push(`<a href="/?event=${eventId}" class="btn btn-primary btn-sm" onclick="event.preventDefault(); window.launchPublicPrereg(${eventId})">Pre-register</a>`);
+    }
+    if (capabilities.canEdit) {
+        buttons.push(`<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${eventId})">Form</button>`);
+        buttons.push(`<button type="button" class="btn btn-secondary btn-sm" onclick="openGrowthEventMapping(${eventId})">Growth</button>`);
+        buttons.push(`<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${eventId})">Edit</button>`);
+    }
+    if (capabilities.canDelete) {
+        const safeName = String(event.name || 'Event').replace(/'/g, "\\'");
+        buttons.push(`<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${eventId}, '${safeName}')">Del</button>`);
+    }
+    return buttons.join('');
+};
+// === END P9 PHASE C EVENT EXPERIENCE HELPERS ===
+
 window.setEventViewMode = function(mode) {
     eventViewMode = mode;
     const btnList = document.getElementById('viewBtnList');
@@ -1841,58 +3577,63 @@ window.setEventViewMode = function(mode) {
 
     const container = document.getElementById('eventsListContainer');
     if (!container) return;
+    const capabilities = window.getEventViewerCapabilities();
+    const visibleEvents = window.getVisibleEventsForCurrentUser(eventsData);
+    const title = document.getElementById('eventListTitle');
+    if (title) title.innerText = capabilities.isEventPlanner ? 'Events' : 'Upcoming Events';
 
-    if (eventsData.length === 0) {
-        container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding: 20px;">No events published yet.</p>';
+    if (visibleEvents.length === 0) {
+        const emptyMessage = capabilities.isEventPlanner ? 'No events published yet.' : 'No upcoming events are published yet.';
+        container.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding: 20px;">${emptyMessage}</p>`;
         return;
     }
 
     if (eventViewMode === 'list') {
         container.className = 'events-list-view';
-        container.innerHTML = eventsData.map(e => {
+        container.innerHTML = visibleEvents.map(e => {
             const safeName = e.name || 'Event';
+            const eventId = Number(e.id);
+            const titleAction = capabilities.canViewDetails ? ` onclick="openAnalyticsModal(${eventId})"` : '';
             let linkBadges = '';
             if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
             if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
             return `
             <div style="border-bottom: 1px solid var(--border-color); padding: 15px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div>
-                    <strong style="cursor: pointer; color: var(--primary); font-size: 1.1rem;" onclick="openAnalyticsModal(${e.id})">${safeName}</strong><br>
+                    <strong style="color: var(--primary); font-size: 1.1rem;"${titleAction}>${safeName}</strong><br>
                     <small style="color: var(--text-muted); font-size: 0.85rem;">${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''} | ${e.venue || 'No Location'}</small>
                     ${linkBadges ? `<div style="margin-top: 8px;">${linkBadges}</div>` : ''}
                 </div>
                 <div style="display: flex; gap: 6px;">
-                    <button type="button" class="btn btn-primary btn-sm" onclick="openAnalyticsModal(${e.id})">Details</button>
-                    ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
-                    ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
-                    ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
+                    ${window.renderEventActionButtons(e, capabilities)}
                 </div>
             </div>`}).join('');
     } else if (eventViewMode === 'grid') {
         container.className = 'events-grid-view';
-        container.innerHTML = eventsData.map(e => {
+        container.innerHTML = visibleEvents.map(e => {
             const safeName = e.name || 'Event';
+            const eventId = Number(e.id);
+            const mediaAction = capabilities.canViewDetails
+                ? ` onclick="openAnalyticsModal(${eventId})"`
+                : (e.preregistration_available ? ` onclick="window.launchPublicPrereg(${eventId})"` : '');
             let linkBadges = '';
             if (e.photos_url) linkBadges += `<a href="${e.photos_url}" target="_blank" class="badge badge-orange" style="text-decoration:none; margin-right: 4px;">📷 Photos</a>`;
             if (e.materials_url) linkBadges += `<a href="${e.materials_url}" target="_blank" class="badge badge-blue" style="text-decoration:none;">📁 Materials</a>`;
             return `
             <div class="event-card">
-                ${e.poster ? `<img src="${e.poster}" class="event-card-img" style="cursor:pointer;" onclick="openAnalyticsModal(${e.id})" alt="Poster">` : `<div class="event-card-img" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); cursor:pointer; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;" onclick="openAnalyticsModal(${e.id})">Blank Thumbnail</div>`}
+                ${e.poster_url ? `<img src="${e.poster_url}" class="event-card-img"${mediaAction} alt="Poster" loading="lazy">` : `<div class="event-card-img" style="background: var(--bg-light); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;"${mediaAction}>Blank Thumbnail</div>`}
                 <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
-                        <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main); cursor: pointer;" onclick="openAnalyticsModal(${e.id})">${safeName}</h3>
+                        <h3 style="font-size: 1.1rem; margin-bottom: 6px; color: var(--text-main);"${mediaAction}>${safeName}</h3>
                         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">📅 ${e.event_date} ${e.time_start ? '@ ' + e.time_start : ''}<br>📍 ${e.venue || 'No Location'}</p>
                         ${linkBadges ? `<div style="margin-bottom: 12px;">${linkBadges}</div>` : ''}
                     </div>
                     <div style="display: flex; gap: 6px; margin-top: 10px;">
-                        <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="openAnalyticsModal(${e.id})">Details</button>
-                        ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openPreregSettings(${e.id})">Form</button>` : ''}
-                        ${window.hasPerm('edit_entries') ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditEventModal(${e.id})">Edit</button>` : ''}
-                        ${window.hasPerm('delete_entries') ? `<button type="button" class="btn btn-danger btn-sm" onclick="triggerDeleteEvent(${e.id}, '${safeName.replace(/'/g, "\\'")}')">Del</button>` : ''}
+                        ${window.renderEventActionButtons(e, capabilities)}
                     </div>
                 </div>
             </div>`}).join('');
-    } else if (eventViewMode === 'calendar') window.renderCalendarView(container);
+    } else if (eventViewMode === 'calendar') window.renderCalendarView(container, visibleEvents);
 };
 
 window.loadEvents = async function() {
@@ -1932,7 +3673,8 @@ window.handleCreateEvent = function(e) {
     });
 };
 
-window.renderCalendarView = function(container) {
+window.renderCalendarView = function(container, sourceEvents = eventsData) {
+    const capabilities = window.getEventViewerCapabilities();
     const year = calCurrentDate.getFullYear();
     const month = calCurrentDate.getMonth();
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -1946,9 +3688,17 @@ window.renderCalendarView = function(container) {
     for (let i = 0; i < firstDay; i++) html += `<div class="calendar-day-cell other-month"></div>`;
     for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const dayEvents = eventsData.filter(e => e.event_date === dateStr);
+        const dayEvents = sourceEvents.filter(e => e.event_date === dateStr);
         html += `<div class="calendar-day-cell"><strong style="color:var(--text-main);">${day}</strong>`;
-        dayEvents.forEach(e => html += `<div class="calendar-event-tag" onclick="openAnalyticsModal(${e.id})" title="View Analytics for ${(e.name || '').replace(/"/g, '&quot;')}">${e.name || 'Event'}</div>`);
+        dayEvents.forEach(e => {
+            const eventId = Number(e.id);
+            const action = capabilities.canViewDetails
+                ? ` onclick="openAnalyticsModal(${eventId})" title="View event details"`
+                : (e.preregistration_available
+                    ? ` onclick="window.launchPublicPrereg(${eventId})" title="Pre-register for this event"`
+                    : '');
+            html += `<div class="calendar-event-tag"${action}>${e.name || 'Event'}</div>`;
+        });
         html += `</div>`;
     }
     html += `</div>`;
@@ -2180,7 +3930,7 @@ window.openAnalyticsModal = async function(eventId) {
 
         const posterContainer = document.getElementById('analyticsModalPoster');
         if (posterContainer) {
-            if (data.event.poster) posterContainer.innerHTML = `<img src="${data.event.poster}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)">`;
+            if (data.event.poster_url) posterContainer.innerHTML = `<img src="${data.event.poster_url}" style="width: 100%; height: 100%; object-fit: cover; cursor:pointer;" onclick="openImageViewer(this.src)" loading="lazy">`;
             else posterContainer.innerHTML = `<span style="font-size: 0.75rem; color: #aaa; text-align: center; font-weight: 600;">No<br>Poster</span>`;
         }
 
@@ -2580,7 +4330,7 @@ window.filterPermUserList = async function() {
     container.innerHTML = matches.map(u => `
         <div class="search-item">
             <div><strong style="color:var(--text-main); font-size:1.05rem;">${u.name || 'Unknown'}</strong></div>
-            <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${(u.name || '').replace(/'/g, "\\'")}')">Select</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openAssignPermissionModal(${u.id}, '${(u.name || '').replace(/'/g, "\\'")}')">Click here to register</button>
         </div>
     `).join('');
 };
@@ -2595,13 +4345,363 @@ window.loadUserPermissionsList = async function() {
     window.filterPermUserList();
 };
 
+let currentIssuedAccountClaimUrl = null;
+let currentIssuedAccountRecoveryUrl = null;
+
+function getAccountClaimStatusLabel(status) {
+    return ({
+        claimable: 'Not Claimed',
+        active: 'Active Claim',
+        claimed: 'Claimed',
+        expired: 'Expired',
+        revoked: 'Revoked',
+        conflict: 'Needs Review',
+        needs_account: 'Needs Review'
+    })[status] || 'Needs Review';
+}
+
+window.loadAccountClaimAdminStatus = async function(youthId) {
+    const statusElement = document.getElementById('accountClaimStatus');
+    const actionsElement = document.getElementById('accountClaimActions');
+    if (!statusElement || !actionsElement || !window.hasPerm('access_permissions')) return;
+    statusElement.textContent = 'Loading account status…';
+    actionsElement.replaceChildren();
+    try {
+        const response = await fetch(`/api/admin/account-claims/${youthId}`, {
+            credentials: 'same-origin',
+            cache: 'no-store'
+        });
+        const body = await response.json();
+        if (!response.ok || !body.success) throw new Error(body.error || 'Unable to load account status.');
+        statusElement.textContent = `Status: ${getAccountClaimStatusLabel(body.account_status)}`;
+
+        const canIssue = ['claimable', 'expired', 'revoked'].includes(body.account_status);
+        const canReplace = body.account_status === 'active';
+        if (canIssue || canReplace) {
+            const issueButton = document.createElement('button');
+            issueButton.type = 'button';
+            issueButton.className = 'btn btn-primary btn-sm';
+            issueButton.textContent = canReplace ? 'Replace Account Claim' : 'Issue Account Claim';
+            issueButton.addEventListener('click', () => window.issueAccountClaim(youthId));
+            actionsElement.appendChild(issueButton);
+        }
+        if (body.account_status === 'active') {
+            const revokeButton = document.createElement('button');
+            revokeButton.type = 'button';
+            revokeButton.className = 'btn btn-danger btn-sm';
+            revokeButton.textContent = 'Revoke Claim';
+            revokeButton.addEventListener('click', () => window.revokeAccountClaim(youthId));
+            actionsElement.appendChild(revokeButton);
+        }
+        if (body.account_status === 'claimed') {
+            const recoveryStatusResponse = await fetch(
+                `/api/admin/account-recovery/${youthId}`,
+                {
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                }
+            );
+
+            let recoveryStatus = null;
+
+            if (recoveryStatusResponse.ok) {
+                const recoveryStatusBody =
+                    await recoveryStatusResponse.json();
+
+                recoveryStatus =
+                    recoveryStatusBody &&
+                    recoveryStatusBody.recovery
+                        ? recoveryStatusBody.recovery.status
+                        : null;
+            }
+
+            const recoveryButton =
+                document.createElement('button');
+
+            recoveryButton.type = 'button';
+            recoveryButton.className =
+                'btn btn-primary btn-sm';
+
+            recoveryButton.textContent =
+                recoveryStatus === 'active'
+                    ? 'Replace Recovery QR / Link'
+                    : 'Generate Recovery QR / Link';
+
+            recoveryButton.addEventListener(
+                'click',
+                () =>
+                    window.issueAccountRecovery(
+                        youthId
+                    )
+            );
+
+            actionsElement.appendChild(
+                recoveryButton
+            );
+
+            if (recoveryStatus === 'active') {
+                const revokeRecoveryButton =
+                    document.createElement(
+                        'button'
+                    );
+
+                revokeRecoveryButton.type =
+                    'button';
+
+                revokeRecoveryButton.className =
+                    'btn btn-danger btn-sm';
+
+                revokeRecoveryButton.textContent =
+                    'Revoke Recovery Link';
+
+                revokeRecoveryButton.addEventListener(
+                    'click',
+                    () =>
+                        window.revokeAccountRecovery(
+                            youthId
+                        )
+                );
+
+                actionsElement.appendChild(
+                    revokeRecoveryButton
+                );
+            }
+        }
+    } catch (error) {
+        statusElement.textContent = error.message || 'Unable to load account status.';
+    }
+};
+
+window.issueAccountClaim = async function(youthId) {
+    const statusElement = document.getElementById('accountClaimStatus');
+    const issuedElement = document.getElementById('accountClaimIssued');
+    try {
+        const response = await fetch('/api/admin/account-claims', {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ youth_id: youthId })
+        });
+        const body = await response.json();
+        if (!response.ok || !body.success) throw new Error(body.error || 'Unable to issue account claim.');
+        currentIssuedAccountClaimUrl = body.claim_url;
+        document.getElementById('accountClaimIssuedName').textContent = body.member_name;
+        document.getElementById('accountClaimIssuedExpiry').textContent = `Expires ${new Date(body.expires_at).toLocaleString()}`;
+        document.getElementById('accountClaimQrImage').src = body.claim_qr_data_url;
+        issuedElement.style.display = 'block';
+        statusElement.textContent = 'Status: Active Claim';
+        await window.loadAccountClaimAdminStatus(youthId);
+    } catch (error) {
+        statusElement.textContent = error.message || 'Unable to issue account claim.';
+    }
+};
+
+window.copyIssuedAccountClaimLink = async function() {
+    if (!currentIssuedAccountClaimUrl) return;
+    try {
+        await navigator.clipboard.writeText(currentIssuedAccountClaimUrl);
+        alert('Account claim link copied.');
+    } catch (error) {
+        alert('Copy was unavailable. Replace the claim if you need a new link.');
+    }
+};
+
+window.revokeAccountClaim = async function(youthId) {
+    const statusElement = document.getElementById('accountClaimStatus');
+    try {
+        const response = await fetch(`/api/admin/account-claims/${youthId}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            cache: 'no-store'
+        });
+        const body = await response.json();
+        if (!response.ok || !body.success) throw new Error(body.error || 'Unable to revoke account claim.');
+        currentIssuedAccountClaimUrl = null;
+        document.getElementById('accountClaimIssued').style.display = 'none';
+        document.getElementById('accountClaimQrImage').removeAttribute('src');
+        await window.loadAccountClaimAdminStatus(youthId);
+    } catch (error) {
+        statusElement.textContent = error.message || 'Unable to revoke account claim.';
+    }
+};
+
+
+window.issueAccountRecovery = async function(youthId) {
+    const statusElement =
+        document.getElementById(
+            'accountClaimStatus'
+        );
+
+    const issuedElement =
+        document.getElementById(
+            'accountRecoveryIssued'
+        );
+
+    try {
+        const response =
+            await fetch(
+                '/api/admin/account-recovery',
+                {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {
+                        'Content-Type':
+                            'application/json'
+                    },
+                    body: JSON.stringify({
+                        youth_id:
+                            youthId
+                    })
+                }
+            );
+
+        const body =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !body.success
+        ) {
+            throw new Error(
+                body.error ||
+                'Unable to issue account recovery.'
+            );
+        }
+
+        currentIssuedAccountRecoveryUrl =
+            body.recovery_url;
+
+        document.getElementById(
+            'accountRecoveryIssuedName'
+        ).textContent =
+            body.member_name;
+
+        document.getElementById(
+            'accountRecoveryIssuedUsername'
+        ).textContent =
+            `Username: ${body.login_identifier}`;
+
+        document.getElementById(
+            'accountRecoveryIssuedExpiry'
+        ).textContent =
+            `Expires ${new Date(
+                body.expires_at
+            ).toLocaleString()}`;
+
+        document.getElementById(
+            'accountRecoveryQrImage'
+        ).src =
+            body.recovery_qr_data_url;
+
+        issuedElement.style.display =
+            'block';
+
+        await window.loadAccountClaimAdminStatus(
+            youthId
+        );
+    } catch (error) {
+        statusElement.textContent =
+            error.message ||
+            'Unable to issue account recovery.';
+    }
+};
+
+window.copyIssuedAccountRecoveryLink =
+    async function() {
+        if (
+            !currentIssuedAccountRecoveryUrl
+        ) return;
+
+        try {
+            await navigator.clipboard.writeText(
+                currentIssuedAccountRecoveryUrl
+            );
+
+            alert(
+                'Account recovery link copied.'
+            );
+        } catch (error) {
+            alert(
+                'Copy was unavailable. Generate a new recovery link if needed.'
+            );
+        }
+    };
+
+window.revokeAccountRecovery =
+    async function(youthId) {
+        const statusElement =
+            document.getElementById(
+                'accountClaimStatus'
+            );
+
+        try {
+            const response =
+                await fetch(
+                    `/api/admin/account-recovery/${youthId}`,
+                    {
+                        method: 'DELETE',
+                        credentials:
+                            'same-origin',
+                        cache: 'no-store'
+                    }
+                );
+
+            const body =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !body.success
+            ) {
+                throw new Error(
+                    body.error ||
+                    'Unable to revoke account recovery.'
+                );
+            }
+
+            currentIssuedAccountRecoveryUrl =
+                null;
+
+            const issuedElement =
+                document.getElementById(
+                    'accountRecoveryIssued'
+                );
+
+            const qrImage =
+                document.getElementById(
+                    'accountRecoveryQrImage'
+                );
+
+            if (issuedElement) {
+                issuedElement.style.display =
+                    'none';
+            }
+
+            if (qrImage) {
+                qrImage.removeAttribute(
+                    'src'
+                );
+            }
+
+            await window.loadAccountClaimAdminStatus(
+                youthId
+            );
+        } catch (error) {
+            statusElement.textContent =
+                error.message ||
+                'Unable to revoke account recovery.';
+        }
+    };
+
 window.openAssignPermissionModal = async function(id, displayName) {
     try {
         // Query the active users list to find their specific permissions rather than the youth list
         const res = await fetch('/api/users/list');
         const dbUsers = await res.json();
         const targetUser = dbUsers.find(u => u.youth_id === id);
-        
+
         let perms = [];
         if (targetUser && targetUser.permissions) {
             try {
@@ -2614,13 +4714,47 @@ window.openAssignPermissionModal = async function(id, displayName) {
 
         const bannerElem = document.getElementById('permModalUserBanner');
         if(bannerElem) bannerElem.innerText = `Assign Permissions for: ${displayName}`;
-        
-        document.querySelectorAll('.permCheckModal').forEach(chk => { 
-            chk.checked = perms.includes(chk.value); 
+
+        document.querySelectorAll('.permCheckModal').forEach(chk => {
+            chk.checked = perms.includes(chk.value);
         });
 
         const modal = document.getElementById('assignPermissionModal');
         if(modal) modal.classList.add('active');
+
+        currentIssuedAccountClaimUrl = null;
+        currentIssuedAccountRecoveryUrl = null;
+
+        document.getElementById(
+            'accountClaimIssued'
+        ).style.display = 'none';
+
+        document.getElementById(
+            'accountClaimQrImage'
+        ).removeAttribute('src');
+
+        const recoveryIssued =
+            document.getElementById(
+                'accountRecoveryIssued'
+            );
+
+        const recoveryQr =
+            document.getElementById(
+                'accountRecoveryQrImage'
+            );
+
+        if (recoveryIssued) {
+            recoveryIssued.style.display =
+                'none';
+        }
+
+        if (recoveryQr) {
+            recoveryQr.removeAttribute(
+                'src'
+            );
+        }
+
+        await window.loadAccountClaimAdminStatus(id);
     } catch(e) {
         console.error(e);
         alert("Failed to load user permissions from server.");
@@ -2630,6 +4764,50 @@ window.openAssignPermissionModal = async function(id, displayName) {
 window.closeAssignPermissionModal = function() {
     const modal = document.getElementById('assignPermissionModal');
     if(modal) modal.classList.remove('active');
+    currentIssuedAccountClaimUrl = null;
+    currentIssuedAccountRecoveryUrl = null;
+
+    const issuedElement =
+        document.getElementById(
+            'accountClaimIssued'
+        );
+
+    const qrImage =
+        document.getElementById(
+            'accountClaimQrImage'
+        );
+
+    const recoveryIssuedElement =
+        document.getElementById(
+            'accountRecoveryIssued'
+        );
+
+    const recoveryQrImage =
+        document.getElementById(
+            'accountRecoveryQrImage'
+        );
+
+    if (issuedElement) {
+        issuedElement.style.display =
+            'none';
+    }
+
+    if (qrImage) {
+        qrImage.removeAttribute(
+            'src'
+        );
+    }
+
+    if (recoveryIssuedElement) {
+        recoveryIssuedElement.style.display =
+            'none';
+    }
+
+    if (recoveryQrImage) {
+        recoveryQrImage.removeAttribute(
+            'src'
+        );
+    }
 };
 
 window.handleSavePermissionsFromModal = function() {
@@ -2653,6 +4831,7 @@ window.handleSavePermissionsFromModal = function() {
             if (data.success) {
                 alert('Permissions updated successfully!');
                 window.closeAssignPermissionModal();
+                await window.loadPermissionAccountsOverview();
                 window.resetPermUserList();
                 youthData = []; await window.loadDirectory();
             } else {
@@ -2680,3 +4859,7049 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 1000);
 });
+
+
+window.loadSecretPrayerPal = async function() {
+    if (!currentMember || !currentMember.id) return;
+    try {
+        const res = await fetch('/api/prayer-pals/current/' + currentMember.id);
+        const data = await res.json();
+        const palNameElem = document.getElementById('pulsePrayerPalName');
+        if (palNameElem) {
+            palNameElem.innerText = data && data.pal_name ? data.pal_name : "Not assigned yet.";
+        }
+    } catch(e) {}
+};
+
+// ==========================================
+// V3 DYNAMIC KOINONIA NAVIGATION PATCH
+// ==========================================
+
+// Override standard login routing to go to Home instead of Profile
+const _origHandleLogin = window.handleLogin;
+window.handleLogin = async function(e) {
+    e.preventDefault();
+    document.getElementById('globalPreloader').style.display = 'flex';
+    document.getElementById('globalPreloader').style.opacity = '1';
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: document.getElementById('loginUser').value, password: document.getElementById('loginPass').value })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (data.legal_acceptance_required === true) {
+                window.koinoniaAuthStatus = 'legal-required';
+                window.koinoniaReadOnlyLock = true;
+                if (window.showExistingUserLegalGate) window.showExistingUserLegalGate();
+                return;
+            }
+            const authResult = await window.refreshAuthenticatedIdentity();
+            if (!authResult.authenticated) {
+                alert('Sign-in succeeded, but the authenticated session could not be verified. Please sign in again.');
+                return;
+            }
+            window.buildNav();
+            if(window.applyGranularPermissions) window.applyGranularPermissions();
+            if(window.loadDailyManna) window.loadDailyManna();
+            if(window.loadSecretPrayerPal) window.loadSecretPrayerPal();
+            switchTab('pulseDashboardTab');
+            if(window.renderHomeJourney) window.renderHomeJourney();
+        } else { alert(data.message); }
+    } catch (err) { alert('Network Error'); }
+    finally { 
+        document.getElementById('globalPreloader').style.opacity = '0';
+        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500); 
+    }
+};
+
+window.checkLoginState = async function() {
+    await window.authReady;
+    if (window.koinoniaAuthStatus === 'authenticated') {
+        window.buildNav();
+        if(window.applyGranularPermissions) window.applyGranularPermissions();
+        if(window.loadDailyManna) window.loadDailyManna();
+        if(window.loadSecretPrayerPal) window.loadSecretPrayerPal();
+        switchTab('pulseDashboardTab');
+            if(window.renderHomeJourney) window.renderHomeJourney();
+    } else if (window.koinoniaAuthStatus === 'legal-required') {
+        if (window.showExistingUserLegalGate) window.showExistingUserLegalGate();
+        const loader = document.getElementById('globalPreloader');
+        if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 500); }
+    } else {
+        switchTab('loginTab');
+        const loader = document.getElementById('globalPreloader');
+        if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 500); }
+    }
+};
+
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+    const isAdmin = window.hasPerm && (window.hasPerm('edit_entries') || currentUser === 'celsocreeriii@gmail.com');
+    let bHtml = '';
+
+    if (context === 'arcadeTab') {
+        bHtml = `
+            <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+            <button class="bottom-nav-btn" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+            <button class="bottom-nav-btn active" onclick="switchTab('arcadeTab')"><span>🎮</span>Games</button>
+            <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab')"><span>🌱</span>Grow</button>
+            <button class="bottom-nav-btn" onclick="switchTab('leaderboardsHubTab')"><span>🏆</span>Ranks</button>
+            <button class="bottom-nav-btn text-danger" onclick="logout()"><span>🚪</span>Logout</button>
+        `;
+    } else if (context === 'discipleshipTab') {
+        bHtml = `
+            <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+            <button class="bottom-nav-btn active" onclick="switchTab('discipleshipTab')"><span>🌱</span>Growth</button>
+            <button class="bottom-nav-btn" onclick="switchTab('leaderboardsHubTab')"><span>🏆</span>Ranks</button>
+            <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+            <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+            <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        `;
+    } else {
+        // Default View (Home, Profile, etc)
+        bHtml = `
+            <button class="bottom-nav-btn ${context === 'pulseDashboardTab' ? 'active' : ''}" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+            <button class="bottom-nav-btn ${context === 'profileTab' ? 'active' : ''}" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+            <button class="bottom-nav-btn ${context === 'arcadeTab' ? 'active' : ''}" onclick="switchTab('arcadeTab')"><span>🎮</span>Games</button>
+            <button class="bottom-nav-btn ${context === 'discipleshipTab' ? 'active' : ''}" onclick="switchTab('discipleshipTab')"><span>🌱</span>Grow</button>
+        `;
+        if (isAdmin) {
+            bHtml += `<button class="bottom-nav-btn" onclick="openSidebar()"><span>☰</span>Menu</button>`;
+        } else {
+            bHtml += `<button class="bottom-nav-btn text-danger" onclick="logout()"><span>🚪</span>Logout</button>`;
+        }
+    }
+    bottomNav.innerHTML = bHtml;
+};
+
+window.buildNav = function() {
+    const sidebar = document.getElementById('sidebarNav');
+    if (!sidebar) return;
+    const isAdmin = window.hasPerm && (window.hasPerm('edit_entries') || currentUser === 'celsocreeriii@gmail.com');
+
+    // Force bottom nav to show for everyone (including Admins)
+    const bottomNav = document.getElementById('bottomNav');
+    if(bottomNav) bottomNav.style.display = 'flex';
+
+    let sidebarHtml = `
+        <div class="sidebar-header">
+            <img src="/img/logo.png" alt="Logo" class="fog-header-logo" onerror="this.style.display='none'">
+            <h2>FOG V3</h2>
+        </div>
+        <button class="nav-btn" onclick="switchTab('pulseDashboardTab')">🏠 Home</button>
+        <button class="nav-btn" onclick="switchTab('profileTab')">👤 My Profile</button>
+        <button class="nav-btn" onclick="switchTab('inboxTab')">🔔 Inbox</button>
+        <button class="nav-btn" onclick="switchTab('arcadeTab')">🎮 Games</button>
+        <button class="nav-btn" onclick="switchTab('discipleshipTab')">🌱 Spiritual Growth</button>
+    `;
+
+    if (isAdmin) {
+        document.getElementById('hamburgerBtn').style.display = 'block';
+        sidebarHtml += `
+            <hr style="border-color: #334155; margin: 15px 0;">
+            <p style="color: #94A3B8; font-size: 0.75rem; margin-left: 15px; text-transform: uppercase;">Leadership Tools</p>
+            <button class="nav-btn" onclick="switchTab('checkinTab')">📸 Event Check-In</button>
+            <button class="nav-btn" onclick="switchTab('eventsTab')">📅 Events Admin</button>
+            <button class="nav-btn" onclick="switchTab('directoryTab')">👥 Directory</button>
+            <button class="nav-btn" onclick="switchTab('ministriesTab')">🏛️ Ministries</button>
+            <button class="nav-btn" onclick="switchTab('worshipTab')">🎵 Worship Hub</button>
+            <button class="nav-btn" onclick="switchTab('discipleshipAdminTab')">⚙️ Discipleship Admin</button>
+            <button class="nav-btn" onclick="switchTab('communicationsAdminTab')">📢 Broadcasts</button>
+            <button class="nav-btn" onclick="switchTab('aiAssistantTab')">🤖 AI Assistant</button>
+            <button class="nav-btn" onclick="switchTab('permissionsTab')">🔑 Permissions</button>
+            <button class="nav-btn" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>
+            <button class="nav-btn" onclick="switchTab('activityLogsTab')">📝 Audit Logs</button>
+        `;
+    } else {
+        document.getElementById('hamburgerBtn').style.display = 'none';
+    }
+
+    sidebarHtml += `<button class="nav-btn text-danger" onclick="logout()" style="margin-top: auto;">🚪 Logout</button>`;
+    sidebar.innerHTML = sidebarHtml;
+
+    // Trigger bottom nav render based on the currently active tab
+    const activeTab = document.querySelector('.tab-content.active');
+    window.renderBottomNav(activeTab ? activeTab.id : 'pulseDashboardTab');
+};
+
+const _originalSwitchTabNav = window.switchTab;
+window.switchTab = function(tabId) {
+    if (_originalSwitchTabNav) _originalSwitchTabNav(tabId);
+    if (window.renderBottomNav) window.renderBottomNav(tabId);
+};
+
+
+
+
+// ==========================================
+// V14: ABSOLUTE TRUTH MASTER OVERRIDE
+// ==========================================
+
+// --- 1. COMMITMENT PLEDGE (I'M READY) ---
+window.openCommitmentModal = function() {
+    const modal = document.getElementById('commitmentModal');
+    if (modal) {
+        modal.style.display = 'flex'; // Force bypass CSS
+        modal.classList.add('active');
+    } else { alert("Error: Commitment modal not found in HTML."); }
+};
+
+window.closeCommitmentModal = function() {
+    const modal = document.getElementById('commitmentModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+};
+
+window.submitCommitmentPledge = async function(e) {
+    e.preventDefault();
+    if (!currentMember) return;
+    const msgEl = document.getElementById('commitmentIntentMsg');
+    const intentMsg = msgEl ? msgEl.value.trim() : 'I am ready to commit.';
+
+    document.getElementById('globalPreloader').style.display = 'flex';
+    document.getElementById('globalPreloader').style.opacity = '1';
+
+    try {
+        const res = await fetch(`/api/youth/${currentMember.id}/commit`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentMember.name, intent_message: intentMsg })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions || [], member: data.member });
+            window.closeCommitmentModal();
+            if(window.renderHomeJourney) window.renderHomeJourney();
+            alert('Your membership intent was received. We are grateful to begin this journey of belonging with you.');
+        } else { alert('Error: ' + data.error); }
+    } catch(err) { alert('Network error while processing your pledge.'); } 
+    finally {
+        document.getElementById('globalPreloader').style.opacity = '0';
+        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+    }
+};
+
+// --- 2. DYNAMIC HOME JOURNEY ---
+window.renderHomeJourney = async function() {
+    const container = document.getElementById('dynamicJourneyContainer');
+    if (!container || !currentMember) return;
+    let html = '';
+    if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take the next step to officially become a member of our spiritual family.</p></div><button class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+    } else {
+        try {
+            const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
+            const ministries = await res.json();
+            const isApplicant = ministries.some(m => m.role === 'Applicant');
+            const isActiveMember = ministries.some(m => m.role !== 'Applicant');
+            if (isActiveMember) {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p></div><button class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
+            } else if (isApplicant) {
+                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">🙏 Discerning Together</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">We are so excited you want to serve! Our team is currently praying and preparing a space for you.</p></div><button class="btn btn-secondary btn-sm" disabled>Preparing Space</button>`;
+            } else {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take some time to explore where you might love to serve and share those gifts with the community.</p></div><button class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Explore Serving</button>`;
+            }
+        } catch(e) {}
+    }
+    container.innerHTML = html;
+};
+
+// --- 3. PROFILE POPULATOR & QR CODE GENERATOR ---
+window.populateProfileTab = async function(member) {
+    if (!member) return;
+    
+    if (!document.getElementById('myEditGender') && document.getElementById('myEditName')) {
+        document.getElementById('myEditName').parentElement.insertAdjacentHTML('afterend', `
+        <div class="form-group"><label>Gender</label><select id="myEditGender" class="form-control"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>`);
+    }
+
+    const bio = document.getElementById('myBioSummary');
+    if (bio) {
+        bio.innerHTML = `
+            <strong>Email:</strong> ${member.email || 'N/A'}<br>
+            <strong>Age:</strong> ${member.age || 'N/A'}<br>
+            <strong>Gender:</strong> ${member.gender || 'N/A'}<br>
+            <strong>Birthday:</strong> ${member.birthday || 'N/A'}<br>
+            <strong>Mobile:</strong> ${member.mobile || 'N/A'}<br>
+            <strong>Social Media:</strong> ${member.social_media || 'N/A'}<br>
+            <strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}
+        `;
+    }
+
+    ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            let key = id.replace('myEdit', '').toLowerCase();
+            if(id === 'myEditParents') key = 'parents_name';
+            if(id === 'myEditSocial') key = 'social_media';
+            if(id === 'myMemberId') key = 'id';
+            el.value = member[key] || '';
+        }
+    });
+    
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+    
+    // 🔥 THE QR CODE IMAGE GENERATOR
+    const codeEl = document.getElementById('myProfileCode');
+    if (codeEl) {
+        codeEl.className = ""; // Remove orange badge class
+        codeEl.style.textAlign = 'center';
+        if (member.qr_code) {
+            codeEl.innerHTML = `<br><img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(member.qr_code)}" alt="QR" style="border-radius:8px; padding:5px; background:white; margin-top:5px; border:2px solid var(--primary);"><br><span style="font-weight:bold; font-size:1.05rem; margin-top:5px; display:inline-block; color:var(--text-main);">${member.qr_code}</span>`;
+        } else {
+            codeEl.innerText = 'No QR Assigned';
+        }
+    }
+    
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+    
+    if (window.loadMyV3Roles) window.loadMyV3Roles(member.id, 'myMinistriesHistory');
+    if (window.loadMyV3Attendance) window.loadMyV3Attendance(member.id, 'myAttendanceHistory');
+    if (window.renderHomeJourney) window.renderHomeJourney(); 
+};
+
+// --- 4. FRESH CACHE SYNC ON PROFILE TAB CLICK ---
+if (!window.switchTab.isV14Patched) {
+    const origSwitchTab = window.switchTab;
+    window.switchTab = async function(tabId) {
+        if(origSwitchTab) origSwitchTab(tabId);
+        
+        if (tabId === 'profileTab' && typeof currentMember !== 'undefined' && currentMember) {
+            try {
+                const res = await fetch('/api/youth');
+                const users = await res.json();
+                const fresh = users.find(u => u.id == currentMember.id);
+                if (fresh && window.populateProfileTab) window.populateProfileTab(fresh);
+            } catch(e) {}
+        }
+    };
+    window.switchTab.isV14Patched = true;
+}
+
+// --- 5. ROLES & HIERARCHY ---
+window.switchMyProfileTab = function(tabId) {
+    document.querySelectorAll('#btnMyProfileTabRoles, #btnMyProfileTabSchedule, #btnMyProfileTabAttendance').forEach(b => b.classList.remove('active'));
+    ['Roles', 'Schedule', 'Attendance'].forEach(t => {
+        const el = document.getElementById('myProfileTab' + t);
+        if(el) el.style.display = 'none';
+    });
+    
+    if (tabId === 'roles') {
+        document.getElementById('btnMyProfileTabRoles').classList.add('active');
+        document.getElementById('myProfileTabRoles').style.display = 'block';
+        if (window.loadMyV3Roles) window.loadMyV3Roles();
+    } else if (tabId === 'attendance') {
+        document.getElementById('btnMyProfileTabAttendance').classList.add('active');
+        document.getElementById('myProfileTabAttendance').style.display = 'block';
+        if (window.loadMyV3Attendance) window.loadMyV3Attendance();
+    } else if (tabId === 'schedule') {
+        document.getElementById('btnMyProfileTabSchedule').classList.add('active');
+        document.getElementById('myProfileTabSchedule').style.display = 'block';
+    }
+};
+
+window.loadMyV3Roles = async function(targetMemberId, containerId) {
+    const id = targetMemberId || (typeof currentMember !== 'undefined' && currentMember ? currentMember.id : null);
+    const cId = containerId || 'myMinistriesHistory';
+    const container = document.getElementById(cId);
+    if (!container || !id) return;
+    
+    container.innerHTML = '<div style="text-align:center; padding:10px; color:var(--text-muted);">Loading roles...</div>';
+    try {
+        const [minRes, evtRes] = await Promise.all([ fetch('/api/youth/' + id + '/ministries'), fetch('/api/youth/' + id + '/event_roles') ]);
+        const ministries = await minRes.json(); const events = await evtRes.json();
+        
+        let allRoles = [];
+        if(ministries && ministries.length) ministries.forEach(m => allRoles.push({...m, type: 'ministry'}));
+        if(events && events.length) events.forEach(e => allRoles.push({...e, type: 'event'}));
+        if (allRoles.length === 0) return container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:10px;">No roles assigned yet.</div>'; 
+        
+        // 🔥 HIERARCHY: Ministry First, Event Second, Then Date
+        allRoles.sort((a, b) => {
+            if (a.type !== b.type) return a.type === 'ministry' ? -1 : 1;
+            return new Date(b.assigned_at) - new Date(a.assigned_at);
+        });
+        
+        container.innerHTML = allRoles.map(r => {
+            const isPriority = r.is_priority === 1;
+            const priorityBadge = isPriority ? '<span style="background:#FEF3C7; color:#D97706; padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-left:8px;">⭐ Priority</span>' : '';
+            const badge = r.type === 'ministry' ? '<span class="badge badge-blue">🏛️ Ministry</span>' : '<span class="badge badge-orange">📅 Event</span>';
+            const title = r.type === 'ministry' ? r.ministry_name : r.event_name;
+            const actionBtn = (r.type === 'ministry' && r.role !== 'Applicant' && !isPriority && currentMember && id == currentMember.id && cId === 'myMinistriesHistory') 
+                ? `<button class="btn btn-outline btn-sm" style="margin-top:10px; font-size:0.75rem;" onclick="setCorePriority(${r.mapping_id})">Make Core Priority</button>` : '';
+            
+            return `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${isPriority ? '#F59E0B' : 'var(--border-color)'};">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><strong style="color: var(--primary); font-size: 1.05rem;">${title || 'Unknown'} ${priorityBadge}</strong>${badge}</div>
+                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:5px;"><strong>Role:</strong> ${r.role || r.role_name} ${r.sub_role ? ' | '+r.sub_role : ''}</div>${actionBtn}
+            </div>`;
+        }).join('');
+    } catch(e) { container.innerHTML = '<div style="color:var(--danger); text-align:center;">Failed to load roles.</div>'; }
+};
+
+window.loadMyV3Attendance = async function() {
+    let container = document.getElementById('myAttendanceHistory');
+    if (!container) {
+        const parent = document.getElementById('myProfileTabAttendance');
+        if (parent) { parent.innerHTML = '<div class="card" style="margin-bottom: 0;"><div id="myAttendanceHistory" style="padding: 5px;"></div></div>'; container = document.getElementById('myAttendanceHistory'); }
+    }
+    if (!container || !currentMember) return;
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/history');
+        const logs = await res.json();
+        if (!logs || logs.length === 0) return container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">No participation logs found.</div>';
+        container.innerHTML = logs.map(a => `<div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; background: #FFF; border-radius: 8px; margin-bottom: 8px;"><div><strong style="color: var(--primary); font-size: 1.05rem;">${a.event_name || 'Event'}</strong><br><small style="color:var(--text-muted);">${a.checked_in_at || ''}</small></div>${a.is_walkin ? '<span class="badge badge-orange">Walk-in</span>' : '<span class="badge badge-green">Pre-Reg</span>'}</div>`).join('');
+    } catch(e) {}
+};
+
+// --- 6. DIRECTORY "VIEW PROFILE" MODAL (Forced Open) ---
+window.viewProfile = async function(id) {
+    try {
+        document.getElementById('globalPreloader').style.display = 'flex';
+        document.getElementById('globalPreloader').style.opacity = '1';
+
+        const res = await fetch('/api/youth');
+        const users = await res.json();
+        const member = users.find(u => u.id == id);
+        if (!member) {
+            document.getElementById('globalPreloader').style.opacity = '0';
+            setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+            return alert('Member not found.');
+        }
+        
+        const safeText = (val) => val || 'N/A';
+        if(document.getElementById('viewProfileName')) document.getElementById('viewProfileName').innerText = member.name || 'Unknown';
+        if(document.getElementById('viewProfileAge')) document.getElementById('viewProfileAge').innerText = safeText(member.age);
+        if(document.getElementById('viewProfileEmail')) document.getElementById('viewProfileEmail').innerText = safeText(member.email);
+        if(document.getElementById('viewProfileMobile')) document.getElementById('viewProfileMobile').innerText = safeText(member.mobile);
+        if(document.getElementById('viewProfileSocial')) document.getElementById('viewProfileSocial').innerText = safeText(member.social_media);
+        if(document.getElementById('viewProfileBirthday')) document.getElementById('viewProfileBirthday').innerText = safeText(member.birthday);
+        if(document.getElementById('viewProfileParents')) document.getElementById('viewProfileParents').innerText = safeText(member.parents_name);
+        
+        const av = document.getElementById('viewProfileAvatar');
+        if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+
+        const modal = document.getElementById('viewProfileModal');
+        if(modal) {
+            modal.style.display = 'flex'; // Force bypass CSS conflicts
+            modal.classList.add('active');
+        }
+    } catch(e) {
+        alert("Network error.");
+    } finally {
+        document.getElementById('globalPreloader').style.opacity = '0';
+        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+    }
+};
+
+window.closeViewProfileModal = function() {
+    const modal = document.getElementById('viewProfileModal');
+    if(modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+};
+
+// --- 7. MODERATION DASHBOARD OBSERVER ---
+window.loadPendingApplications = async function() {
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+        
+        let board = document.getElementById('pendingApplicationsBoard');
+        if (!apps || apps.length === 0) { if (board) board.style.display = 'none'; return; }
+
+        if (!board) {
+            const minTab = document.getElementById('ministriesTab');
+            if (minTab) {
+                const h2 = minTab.querySelector('h2');
+                const ui = `<div id="pendingApplicationsBoard" style="margin-bottom: 25px; background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02);"><h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Expressions</h3><div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;"></div></div>`;
+                if (h2) h2.insertAdjacentHTML('afterend', ui); else minTab.insertAdjacentHTML('afterbegin', ui);
+                board = document.getElementById('pendingApplicationsBoard');
+            }
+        }
+        if (!board) return;
+        board.style.display = 'block';
+
+        const list = document.getElementById('pendingApplicationsList');
+        if (!list) return;
+        list.innerHTML = apps.map(app => `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;"><div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;"><div style="flex: 1; min-width: 200px;"><strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong><span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span><p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p></div><div style="display: flex; gap: 8px;"><button class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button><button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button></div></div></div>`).join('');
+    } catch(e) {}
+};
+
+const secureMinistriesTab = () => {
+    const minTab = document.getElementById('ministriesTab');
+    if (!minTab) return;
+    const observer = new MutationObserver(() => {
+        if (!document.getElementById('pendingApplicationsBoard') && window.loadPendingApplications) window.loadPendingApplications();
+    });
+    observer.observe(minTab, { childList: true, subtree: true });
+};
+document.addEventListener('DOMContentLoaded', secureMinistriesTab);
+
+window.logout = async function() {
+    if (!confirm('Are you sure you want to log out?')) return;
+    return window.performSecureLogout();
+};
+
+
+// ==========================================
+// V15: ABSOLUTE PERFECTION OVERRIDE
+// ==========================================
+
+// 1. REPAIR QR PLACEMENT
+window.populateProfileTab = async function(member) {
+    if (!member) return;
+    
+    if (!document.getElementById('myEditGender') && document.getElementById('myEditName')) {
+        document.getElementById('myEditName').parentElement.insertAdjacentHTML('afterend', `
+        <div class="form-group"><label>Gender</label><select id="myEditGender" class="form-control"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>`);
+    }
+
+    const bio = document.getElementById('myBioSummary');
+    if (bio) {
+        bio.innerHTML = `<strong>Email:</strong> ${member.email || 'N/A'}<br><strong>Age:</strong> ${member.age || 'N/A'}<br><strong>Gender:</strong> ${member.gender || 'N/A'}<br><strong>Birthday:</strong> ${member.birthday || 'N/A'}<br><strong>Mobile:</strong> ${member.mobile || 'N/A'}<br><strong>Social Media:</strong> ${member.social_media || 'N/A'}<br><strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}`;
+    }
+
+    ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            let key = id.replace('myEdit', '').toLowerCase();
+            if(id === 'myEditParents') key = 'parents_name';
+            if(id === 'myEditSocial') key = 'social_media';
+            if(id === 'myMemberId') key = 'id';
+            el.value = member[key] || '';
+        }
+    });
+    
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+    
+    // 🔥 TARGET EXACT HTML QR PLACEHOLDER
+    const qrContainer = document.getElementById('myQrContainer');
+    const dlBtn = document.getElementById('myDownloadQrBtn');
+    if (qrContainer && dlBtn) {
+        if (member.qr_code) {
+            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:100%; height:auto; border-radius:8px;">`;
+            dlBtn.href = qrUrl;
+            dlBtn.style.display = 'inline-block';
+        } else {
+            qrContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No QR Assigned</span>';
+            dlBtn.style.display = 'none';
+        }
+    }
+    
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+    
+    if (window.loadMyV3Roles) window.loadMyV3Roles(member.id, 'myMinistriesHistory');
+    if (window.loadMyV3Attendance) window.loadMyV3Attendance();
+    if (window.renderHomeJourney) window.renderHomeJourney(); 
+};
+
+// 2. REPAIR DIRECTORY MODAL
+window.viewProfile = async function(id) {
+    try {
+        document.getElementById('globalPreloader').style.display = 'flex';
+        document.getElementById('globalPreloader').style.opacity = '1';
+
+        const res = await fetch('/api/youth');
+        const users = await res.json();
+        // Loose equality to catch string-to-int mismatches
+        const member = users.find(u => String(u.id) === String(id));
+        if (!member) {
+            document.getElementById('globalPreloader').style.opacity = '0';
+            setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+            return alert('Member not found.');
+        }
+        
+        const safeText = (val) => val || 'N/A';
+        
+        // Populate all possible fields securely
+        ['viewProfileName','viewProfileAge','viewProfileEmail','viewProfileMobile','viewProfileSocial','viewProfileBirthday','viewProfileParents'].forEach(fieldId => {
+             let key = fieldId.replace('viewProfile', '').toLowerCase();
+             if(key === 'parents') key = 'parents_name';
+             if(key === 'social') key = 'social_media';
+             if(document.getElementById(fieldId)) document.getElementById(fieldId).innerText = safeText(member[key]);
+        });
+        
+        // Target specific Version 1 Avatar ID
+        const av1 = document.getElementById('viewModalProfileAvatar');
+        const avHtml = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+        if (av1) av1.innerHTML = avHtml;
+
+        // Target specific Version 1 QR Pass modal section
+        const mQrContainer = document.getElementById('modalQrContainer');
+        const mDlBtn = document.getElementById('modalDownloadQrBtn');
+        const mQrWrap = document.getElementById('modalQrSectionWrapper');
+        if (mQrContainer && mDlBtn && mQrWrap) {
+             if (member.qr_code) {
+                 const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+                 mQrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:150px; height:150px; border-radius:8px;">`;
+                 mDlBtn.href = qrUrl;
+                 mQrWrap.style.display = 'block';
+             } else {
+                 mQrWrap.style.display = 'none';
+             }
+        }
+
+        const modal = document.getElementById('viewProfileModal');
+        if(modal) {
+            modal.style.display = 'block';
+            modal.classList.add('active');
+        }
+    } catch(e) {
+        alert("Network error.");
+    } finally {
+        document.getElementById('globalPreloader').style.opacity = '0';
+        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+    }
+};
+
+window.closeViewProfileModal = function() {
+    const modal = document.getElementById('viewProfileModal');
+    if(modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+};
+
+// 3. REPAIR MODERATION DASHBOARD (Targeting hardcoded HTML)
+window.loadPendingApplications = async function() {
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+        
+        let board = document.getElementById('pendingApplicationsBoard');
+        if (!board) return; // Failsafe
+
+        if (!apps || apps.length === 0) { 
+            board.style.display = 'none'; 
+            return; 
+        }
+
+        board.style.display = 'block';
+        const list = document.getElementById('pendingApplicationsList');
+        if (!list) return;
+        
+        list.innerHTML = apps.map(app => `<div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;"><div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;"><div style="flex: 1; min-width: 200px;"><strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong><span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span><p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p></div><div style="display: flex; gap: 8px;"><button class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button><button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button></div></div></div>`).join('');
+    } catch(e) {}
+};
+
+window.openCommitmentModal = function() {
+    const modal = document.getElementById('commitmentModal');
+    if (modal) {
+        modal.style.display = 'block';
+        modal.classList.add('active');
+    } else {
+        alert('Commitment Modal HTML not found!');
+    }
+};
+
+// === V16: DIRECTORY, MODAL FREEZE, & BOARD FIX ===
+
+// 1. DIRECTORY "VIEW" BUTTON FIX (Matches the exact HTML onclick)
+window.openViewProfileModal = async function(id) {
+    try {
+        document.getElementById('globalPreloader').style.display = 'flex';
+        document.getElementById('globalPreloader').style.opacity = '1';
+
+        const res = await fetch('/api/youth');
+        const users = await res.json();
+        const member = users.find(u => String(u.id) === String(id));
+        
+        if (!member) {
+            document.getElementById('globalPreloader').style.opacity = '0';
+            setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+            return alert('Member not found.');
+        }
+        
+        const safeText = (val) => val || 'N/A';
+        ['viewProfileName','viewProfileAge','viewProfileEmail','viewProfileMobile','viewProfileSocial','viewProfileBirthday','viewProfileParents'].forEach(fieldId => {
+             let key = fieldId.replace('viewProfile', '').toLowerCase();
+             if(key === 'parents') key = 'parents_name';
+             if(key === 'social') key = 'social_media';
+             if(document.getElementById(fieldId)) document.getElementById(fieldId).innerText = safeText(member[key]);
+        });
+        
+        const av1 = document.getElementById('viewModalProfileAvatar');
+        if (av1) av1.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+
+        const mQrContainer = document.getElementById('modalQrContainer');
+        const mDlBtn = document.getElementById('modalDownloadQrBtn');
+        const mQrWrap = document.getElementById('modalQrSectionWrapper');
+        if (mQrContainer && mDlBtn && mQrWrap) {
+             if (member.qr_code) {
+                 const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+                 mQrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:150px; height:150px; border-radius:8px;">`;
+                 mDlBtn.href = qrUrl;
+                 mQrWrap.style.display = 'block';
+             } else {
+                 mQrWrap.style.display = 'none';
+             }
+        }
+
+        const modal = document.getElementById('viewProfileModal');
+        if(modal) {
+            modal.style.display = 'flex';
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden'; // LOCK BACKGROUND SCROLL
+        }
+    } catch(e) {
+        alert("Network error.");
+    } finally {
+        document.getElementById('globalPreloader').style.opacity = '0';
+        setTimeout(() => document.getElementById('globalPreloader').style.display = 'none', 500);
+    }
+};
+
+window.closeViewProfileModal = function() {
+    const modal = document.getElementById('viewProfileModal');
+    if(modal) {
+        modal.style.display = '';
+        modal.classList.remove('active');
+        document.body.style.overflow = ''; // UNFREEZE BACKGROUND SCROLL
+    }
+};
+
+// 2. MODAL FREEZE FIX ("I'M READY" MODAL)
+window.openCommitmentModal = function() {
+    const modal = document.getElementById('commitmentModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden'; // LOCK BACKGROUND SCROLL
+    }
+};
+
+window.closeCommitmentModal = function() {
+    const modal = document.getElementById('commitmentModal');
+    if (modal) {
+        modal.style.display = '';
+        modal.classList.remove('active');
+        document.body.style.overflow = ''; // UNFREEZE BACKGROUND SCROLL
+    }
+};
+
+// 3. MODERATION DASHBOARD FIX (Intercept native loadMinistries)
+if (!window.loadMinistries.isV16Patched) {
+    const origLoadMinistries = window.loadMinistries;
+    window.loadMinistries = async function(...args) {
+        if(origLoadMinistries) await origLoadMinistries.apply(this, args);
+        if(window.loadPendingApplications) window.loadPendingApplications(); // RUN AFTER WIPE
+    };
+    window.loadMinistries.isV16Patched = true;
+}
+
+window.loadPendingApplications = async function() {
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+        
+        // Delete old board to prevent duplicate injection
+        const oldBoard = document.getElementById('pendingApplicationsBoard');
+        if (oldBoard) oldBoard.remove();
+
+        if (!apps || apps.length === 0) return;
+
+        const minTab = document.getElementById('ministriesTab');
+        if (!minTab) return;
+
+        let appsHtml = '';
+        apps.forEach(app => {
+            appsHtml += `
+            <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                        <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                        <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                        <button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplication(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                    </div>
+                </div>
+            </div>`;
+        });
+
+        const ui = `
+        <div id="pendingApplicationsBoard" style="margin-bottom: 25px; background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+            <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Expressions</h3>
+            <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;">
+                ${appsHtml}
+            </div>
+        </div>`;
+        
+        const h2 = minTab.querySelector('h2');
+        if (h2) h2.insertAdjacentHTML('afterend', ui);
+        else minTab.insertAdjacentHTML('afterbegin', ui);
+        
+    } catch(e) {}
+};
+
+// ==========================================
+
+/*
+ * Canonical Email verification indicator.
+ *
+ * Informational only. The canonical source of truth
+ * is youth.email_verified === 1.
+ */
+function emailVerificationBadgeHtml(member) {
+    const verified =
+        Boolean(
+            member &&
+            member.email_verified === 1
+        );
+
+    const label =
+        verified
+            ? '✓ Verified'
+            : 'Not verified';
+
+    const state =
+        verified
+            ? 'verified'
+            : 'not-verified';
+
+    const palette =
+        verified
+            ? {
+                background: '#DCFCE7',
+                color: '#166534',
+                border: '#BBF7D0'
+            }
+            : {
+                background: '#FEF3C7',
+                color: '#92400E',
+                border: '#FDE68A'
+            };
+
+    return `
+        <span
+            class="email-verification-badge"
+            data-email-verification-state="${state}"
+            role="status"
+            aria-label="Email ${verified ? 'verified' : 'not verified'}"
+            style="
+                display:inline-flex;
+                align-items:center;
+                white-space:nowrap;
+                border-radius:999px;
+                padding:2px 7px;
+                background:${palette.background};
+                color:${palette.color};
+                border:1px solid ${palette.border};
+                font-size:0.62rem;
+                line-height:1.25;
+                font-weight:800;
+                letter-spacing:0;
+                text-transform:none;
+                vertical-align:middle;
+            "
+        >${label}</span>
+    `;
+}
+
+// V24: UNIFIED DIRECTORY PROFILE & FREEZE FIX (CLEAN)
+// ==========================================
+let directoryProfileRequestGeneration = 0;
+
+function normalizeDirectoryProfileYouthId(value) {
+    const youthId = Number(value);
+    return Number.isSafeInteger(youthId) && youthId > 0 ? youthId : null;
+}
+
+function isCurrentDirectoryProfileRequest(modal, youthId, requestGeneration) {
+    return Boolean(
+        modal &&
+        directoryProfileRequestGeneration === requestGeneration &&
+        modal.dataset.profileYouthId === String(youthId) &&
+        modal.dataset.profileRequestGeneration === String(requestGeneration)
+    );
+}
+
+window.openViewProfileModal = async function(id) {
+    const youthId = normalizeDirectoryProfileYouthId(id);
+    if (!youthId) return;
+
+    const requestGeneration = ++directoryProfileRequestGeneration;
+    const modal = document.getElementById('viewProfileModal');
+    if (!modal) return;
+
+    if (window.GrowthJourneyLeadership?.invalidateLeadershipJourneyReview) {
+        window.GrowthJourneyLeadership.invalidateLeadershipJourneyReview();
+    } else {
+        const previousJourney = document.getElementById('growthLeadershipJourneyReview');
+        if (previousJourney) previousJourney.remove();
+    }
+    modal.dataset.profileYouthId = String(youthId);
+    modal.dataset.profileRequestGeneration = String(requestGeneration);
+    modal.style.display = 'none';
+    modal.classList.remove('active');
+
+    try {
+        document.getElementById('globalPreloader').style.display = 'flex';
+        document.getElementById('globalPreloader').style.opacity = '1';
+
+        // Fetch User and their specific history
+        const [usersRes, minRes, evtRes, histRes] = await Promise.all([
+            fetch('/api/youth'),
+            fetch('/api/youth/' + youthId + '/ministries'),
+            fetch('/api/youth/' + youthId + '/event_roles'),
+            fetch('/api/youth/' + youthId + '/history')
+        ]);
+
+        const users = await usersRes.json();
+        const member = users.find(u => Number(u.id) === youthId);
+        if (!member) throw new Error('Member not found.');
+
+        const ministries = await minRes.json();
+        const events = await evtRes.json();
+        const history = await histRes.json();
+
+        // Merge Roles
+        let allRoles = [];
+        if(ministries && ministries.length) ministries.forEach(m => allRoles.push({...m, type: 'ministry'}));
+        if(events && events.length) events.forEach(e => allRoles.push({...e, type: 'event'}));
+        allRoles.sort((a, b) => new Date(b.assigned_at) - new Date(a.assigned_at));
+
+        const safeText = (val) => val || 'N/A';
+        const avatarHtml = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+
+        // Completely replace the modal's innerHTML to ensure a pristine layout matching "My Profile"
+        let modalHtml = `
+        <div class="modal-content" style="max-width: 600px; padding: 0; background: #F8FAFC; overflow-y: auto; max-height: 90vh;">
+            <span class="close-modal" onclick="closeViewProfileModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer; z-index: 10;">&times;</span>
+
+            <div class="card profile-header-card" style="display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 20px; padding: 35px 25px 25px 25px; margin: 0; border-radius: 0; border-bottom: 1px solid var(--border-color);">
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; width: 100%; text-align: center;">
+                    <div class="avatar-circle" style="width: 130px; height: 130px; font-size: 3.5rem; margin: 0 auto;">${avatarHtml}</div>
+                    <h2 style="color: var(--primary); font-size: 1.8rem; margin: 0; border: none; padding: 0;">${member.name || 'Unknown'}</h2>
+                </div>
+            </div>
+
+            <div style="padding: 20px;">
+                <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 20px;">
+                    <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 10px; border-bottom: 2px solid var(--bg-light); padding-bottom: 5px;">Personal Details</h3>
+                    <div style="font-size: 0.95rem; color: var(--text-muted); line-height: 1.6; text-align: left;">
+                        <strong>Email:</strong> ${emailVerificationBadgeHtml(member)} ${safeText(member.email)}<br>
+                        <strong>Age:</strong> ${safeText(member.age)}<br>
+                        <strong>Gender:</strong> ${safeText(member.gender)}<br>
+                        <strong>Birthday:</strong> ${safeText(member.birthday)}<br>
+                        <strong>Mobile:</strong> ${safeText(member.mobile)}<br>
+                        <strong>Social Media:</strong> ${safeText(member.social_media)}<br>
+                        <strong>Parents/Guardian:</strong> ${safeText(member.parents_name)}
+                    </div>
+                </div>
+
+                <div class="sub-nav" style="margin-bottom: 15px; justify-content: center; background: #FFF; padding: 5px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <button class="sub-nav-btn active" style="flex:1;" onclick="switchModalViewTab(this, 'viewRoles')">🎭 Roles</button>
+                    <button class="sub-nav-btn" style="flex:1;" onclick="switchModalViewTab(this, 'viewAttendance')">📋 Participation</button>
+                </div>
+
+                <div id="viewRoles" class="view-modal-tab" style="display: block;">
+                    <div class="card" style="margin-bottom: 0;">
+                        <div style="padding: 5px; text-align: left;">
+                            ${allRoles.length === 0 ? '<div style="color:var(--text-muted); text-align:center;">No roles assigned yet.</div>' : allRoles.map(r => `
+                            <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid var(--border-color);">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                                    <strong style="color: var(--primary); font-size: 1.05rem;">${r.type === 'ministry' ? '🏛️ ' + r.ministry_name : '📅 ' + r.event_name}</strong>
+                                </div>
+                                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:5px;">
+                                    <strong>Role:</strong> ${r.role || r.role_name} ${r.sub_role ? ' | ' + r.sub_role : ''}<br>
+                                    <strong>Assigned:</strong> ${(r.assigned_at || '').split(' ')[0]}
+                                </div>
+                            </div>`).join('')}
+                        </div>
+                    </div>
+                </div>
+
+                <div id="viewAttendance" class="view-modal-tab" style="display: none;">
+                    <div class="card" style="margin-bottom: 0;">
+                        <div style="padding: 5px; text-align: left;">
+                            ${history.length === 0 ? '<div style="color:var(--text-muted); text-align:center;">No participation logs found.</div>' : history.map(a => `
+                            <div style="padding:15px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; background: #FFF; border-radius: 8px; margin-bottom: 8px;">
+                                <div><strong style="color: var(--primary); font-size: 1.05rem;">${a.event_name || 'Event'}</strong><br><small style="color:var(--text-muted);">${a.checked_in_at || ''}</small></div>
+                                ${a.is_walkin ? '<span class="badge badge-orange">Walk-in</span>' : '<span class="badge badge-green">Pre-Reg</span>'}
+                            </div>`).join('')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+        if (!isCurrentDirectoryProfileRequest(modal, youthId, requestGeneration)) return;
+
+        modal.innerHTML = modalHtml;
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden'; // Lock background scroll
+
+        if (window.GrowthJourneyLeadership?.mountLeadershipJourneyReview) {
+            void window.GrowthJourneyLeadership.mountLeadershipJourneyReview(youthId);
+        }
+    } catch(e) { 
+        if (!isCurrentDirectoryProfileRequest(modal, youthId, requestGeneration)) return;
+        console.error(e);
+        delete modal.dataset.profileYouthId;
+        delete modal.dataset.profileRequestGeneration;
+        alert("Error loading member profile."); 
+    } finally { 
+        if (directoryProfileRequestGeneration === requestGeneration) {
+            document.getElementById('globalPreloader').style.opacity = '0';
+            setTimeout(() => {
+                if (directoryProfileRequestGeneration === requestGeneration) {
+                    document.getElementById('globalPreloader').style.display = 'none';
+                }
+            }, 500);
+        }
+    }
+};
+
+window.switchModalViewTab = function(btnEl, tabId) {
+    const parent = btnEl.closest('.sub-nav');
+    if (parent) { parent.querySelectorAll('.sub-nav-btn').forEach(b => b.classList.remove('active')); }
+    btnEl.classList.add('active');
+    document.querySelectorAll('.view-modal-tab').forEach(el => el.style.display = 'none');
+    document.getElementById(tabId).style.display = 'block';
+};
+
+// CRITICAL FIX: Unlock screen when closed
+window.closeViewProfileModal = function() {
+    directoryProfileRequestGeneration += 1;
+    const modal = document.getElementById('viewProfileModal');
+    if(modal) {
+        if (window.GrowthJourneyLeadership?.invalidateLeadershipJourneyReview) {
+            window.GrowthJourneyLeadership.invalidateLeadershipJourneyReview();
+        } else {
+            const journey = document.getElementById('growthLeadershipJourneyReview');
+            if (journey) journey.remove();
+        }
+        delete modal.dataset.profileYouthId;
+        delete modal.dataset.profileRequestGeneration;
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+    const preloader = document.getElementById('globalPreloader');
+    if (preloader) {
+        preloader.style.opacity = '0';
+        preloader.style.display = 'none';
+    }
+    document.body.style.overflow = ''; // Restores background scrolling
+};
+
+// FAILSAFE: If they click the dark background to close
+if (!window.isModalFailsafePatched) {
+    window.addEventListener('click', function(event) {
+        if (event.target && event.target.classList && event.target.classList.contains('modal')) {
+            if (event.target.id === 'viewProfileModal') {
+                window.closeViewProfileModal();
+                return;
+            }
+            event.target.style.display = 'none';
+            event.target.classList.remove('active');
+            document.body.style.overflow = ''; // Restores background scrolling
+        }
+    });
+    window.isModalFailsafePatched = true;
+}
+
+// ==========================================
+// V25: SURGICAL FIXES (GENDER, HOME BUTTONS, XP, 3-WAY MINISTRIES)
+// ==========================================
+
+// --- FIX 1: GENDER NOT SAVING ---
+window.handleSelfProfileUpdate = async function(e) {
+    e.preventDefault();
+    const id = document.getElementById('myMemberId').value;
+    if (!id) return alert('Admin accounts are updated directly in Add Permissions.');
+
+    const fileInput = document.getElementById('myEditProfilePic');
+    let picBase64 = undefined;
+    if (fileInput && fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
+
+    const genderVal = document.getElementById('myEditGender') ? document.getElementById('myEditGender').value : '';
+
+    const payload = {
+        name: document.getElementById('myEditName').value, email: document.getElementById('myEditEmail').value,
+        age: document.getElementById('myEditAge').value, birthday: document.getElementById('myEditBirthday').value,
+        social_media: document.getElementById('myEditSocial').value, parents_name: document.getElementById('myEditParents').value,
+        password: document.getElementById('myEditPassword').value, profile_picture: picBase64, actor: currentUser,
+        gender: genderVal
+    };
+    window.triggerActionConfirmation('Save changes to your personal profile?', async () => {
+        const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.message || 'Profile updated successfully!');
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
+            window.populateProfileTab(currentMember);
+        } else {
+            alert(data.error || 'Unable to update your profile.');
+        }
+    });
+};
+
+window.requestMyEmailVerification = async function() {
+    try {
+        const response = await fetch('/api/auth/email-verification/request', {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+        });
+        const body = await response.json();
+        alert(body.message || (response.ok
+            ? 'If your email needs confirmation, we’ll send you a verification link.'
+            : 'We could not send the verification email right now.'));
+    } catch (error) {
+        alert('We could not send the verification email right now. Please try again later.');
+    }
+};
+
+window.cancelMyEmailChange = async function() {
+    try {
+        const response = await fetch('/api/auth/email-verification/cancel', {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+        });
+        const body = await response.json();
+        if (!response.ok) return alert(body.message || 'The email change could not be cancelled right now.');
+        alert(body.message || 'Your pending email change was cancelled.');
+        const authResult = await window.refreshAuthenticatedIdentity();
+        if (authResult.authenticated && currentMember) window.populateProfileTab(currentMember);
+    } catch (error) {
+        alert('The email change could not be cancelled right now.');
+    }
+};
+
+window.renderMyEmailVerificationStatus = function(member) {
+    const status = document.getElementById('myEmailVerificationStatus');
+    const verifyButton = document.getElementById('verifyMyEmailBtn');
+    const cancelButton = document.getElementById('cancelMyEmailChangeBtn');
+    if (!status || !verifyButton || !cancelButton || !member) return;
+
+    if (member.pending_email) {
+        status.textContent = `Waiting for confirmation: ${member.pending_email}`;
+        verifyButton.textContent = 'Resend verification email';
+        verifyButton.style.display = 'inline-block';
+        cancelButton.style.display = 'inline-block';
+        return;
+    }
+    status.textContent = member.email_verified === 1 ? 'Verified' : 'Not verified';
+    verifyButton.textContent = 'Verify my email';
+    verifyButton.style.display = member.email && member.email_verified !== 1 ? 'inline-block' : 'none';
+    cancelButton.style.display = 'none';
+};
+
+// --- FIX 2: HOME DASHBOARD BUTTONS ("I'm Ready", "Discern", "Expand Service") ---
+if (!document.getElementById('commitmentModal')) {
+    document.body.insertAdjacentHTML('beforeend', `
+    <div id="commitmentModal" class="modal">
+        <div class="modal-content" style="max-width: 450px; text-align: center; padding: 30px 20px;">
+            <span class="close-modal" onclick="closeCommitmentModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer;">&times;</span>
+            <div style="font-size: 3rem; margin-bottom: 10px;">🛡️</div>
+            <h2 style="color: var(--primary); margin-bottom: 5px; border: none;">Koinonia Commitment</h2>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Take the pledge to join our core community.</p>
+            <form onsubmit="submitCommitment(event)" style="text-align: left;">
+                <div class="form-group">
+                    <label style="font-weight: bold; color: var(--text-main);">Your Pledge/Intent</label>
+                    <textarea id="commitmentIntentMsg" class="form-control" rows="3" placeholder="I commit to..." required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-radius: 12px;">Submit Pledge</button>
+            </form>
+        </div>
+    </div>`);
+}
+
+window.openCommitmentModal = function() {
+    const m = document.getElementById('commitmentModal');
+    if(m) { m.style.display = 'flex'; m.classList.add('active'); document.body.style.overflow = 'hidden'; }
+};
+window.closeCommitmentModal = function() {
+    const m = document.getElementById('commitmentModal');
+    if(m) { m.style.display = 'none'; m.classList.remove('active'); document.body.style.overflow = ''; }
+};
+
+window.submitCommitment = async function(e) {
+    e.preventDefault();
+    const msg = document.getElementById('commitmentIntentMsg').value;
+    if (!msg) return;
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/commit', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: currentMember.name, intent_message: msg })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert("Welcome to the core community!");
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
+            closeCommitmentModal();
+            if(window.renderHomeJourney) window.renderHomeJourney();
+        }
+    } catch(err) { alert('Network Error'); }
+};
+
+window.openMinistryIntentModal = async function() {
+    const modal = document.getElementById('ministryIntentModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        try {
+            const res = await fetch('/api/ministries');
+            const ministries = await res.json();
+            document.getElementById('ministrySelect').innerHTML = '<option value="">Select a Ministry...</option>' + ministries.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+        } catch(e) {}
+    }
+};
+window.closeMinistryIntentModal = function() {
+    const modal = document.getElementById('ministryIntentModal');
+    if (modal) { modal.style.display = 'none'; modal.classList.remove('active'); document.body.style.overflow = 'auto'; }
+};
+
+// --- FIX 3: DIRECTORY VIEW PROFILE XP DISPLAY ---
+const origOpenViewProfileModal = window.openViewProfileModal;
+window.openViewProfileModal = async function(id) {
+    await origOpenViewProfileModal(id);
+    const youthId = normalizeDirectoryProfileYouthId(id);
+    if (!youthId) return;
+    
+    // Inject XP specifically under the generated name header inside the modal
+    setTimeout(async () => {
+        try {
+            const modal = document.getElementById('viewProfileModal');
+            if (
+                !modal ||
+                modal.dataset.profileYouthId !== String(youthId) ||
+                !modal.classList.contains('active')
+            ) return;
+
+            const usersRes = await fetch('/api/youth');
+            const users = await usersRes.json();
+            const member = users.find(u => Number(u.id) === youthId);
+            if (!member) return;
+            if (
+                modal.dataset.profileYouthId !== String(youthId) ||
+                !modal.classList.contains('active')
+            ) return;
+
+            const modalNameHeader = modal.querySelector('h2');
+            if (modalNameHeader && !modal.querySelector('#injectedModalXP')) {
+                modalNameHeader.insertAdjacentHTML('afterend', `
+                <div id="injectedModalXP" style="display:flex; justify-content:center; gap:10px; margin-top:10px;">
+                    <span class="badge badge-orange" style="font-size: 0.9rem;">⭐ ${member.points || 0} XP</span>
+                </div>`);
+            }
+        } catch(e) {}
+    }, 100);
+};
+
+// --- FIX 4: MINISTRIES 3-WAY SPLIT TABS ---
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        const minTab = document.getElementById('ministriesTab');
+        if (!minTab) return;
+
+        // 1. Rebuild Sub-Nav with exactly 3 tabs
+        const subNav = minTab.querySelector('.sub-nav');
+        if (subNav) {
+            subNav.innerHTML = `
+                <button id="btnSubMinistryList" class="sub-nav-btn active" onclick="switchMinistrySubTab('list')">🏛️ Directory</button>
+                <button id="btnSubMinistryModeration" class="sub-nav-btn" onclick="switchMinistrySubTab('moderation')">📋 Moderation</button>
+                <button id="btnSubMinistryCreate" class="sub-nav-btn" onclick="switchMinistrySubTab('create')" style="display: ${window.hasPerm('add_entries') ? 'inline-block' : 'none'};">➕ Create</button>
+            `;
+        }
+
+        // 2. Ensure Moderation Content Exists safely
+        let modTab = document.getElementById('subTabMinistryModeration');
+        if (!modTab) {
+            const listTab = document.getElementById('subTabMinistryList');
+            if (listTab) {
+                listTab.insertAdjacentHTML('afterend', `
+                <div id="subTabMinistryModeration" class="ministry-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+                    <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+                        <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Application</h3>
+                        <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px;"></div>
+                    </div>
+                </div>`);
+            }
+        }
+    }, 500);
+});
+
+// 3. Perfect the Logic Controller for the 3 tabs
+window.switchMinistrySubTab = function(tab) {
+    const tabs = ['list', 'moderation', 'create'];
+    
+    tabs.forEach(t => {
+        // Capitalize first letter for element IDs
+        const capitalTab = t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById('subTabMinistry' + capitalTab);
+        const btn = document.getElementById('btnSubMinistry' + capitalTab);
+        
+        if (el) el.style.display = (tab === t) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', tab === t);
+    });
+
+    if (tab === 'list') window.loadMinistries();
+    if (tab === 'moderation' && window.loadPendingApplications) window.loadPendingApplications();
+};
+
+window.loadPendingApplications = async function() {
+    const list = document.getElementById('pendingApplicationsList');
+    if (!list) return;
+    list.innerHTML = '<div style="text-align:center; color:var(--text-muted);">Loading pending applications...</div>';
+    
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">No pending applications right now!</div>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+        <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                    <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                    <button class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { list.innerHTML = '<div style="text-align:center; color:var(--danger);">Network error.</div>'; }
+};
+
+window.processApplicationModal = async function(ministryId, mappingId, decision) {
+    if (!confirm('Are you sure you want to ' + decision + ' this application?')) return;
+    try {
+        if (decision === 'Denied') {
+            await fetch(`/api/ministries/${ministryId}/members/${mappingId}`, { method: 'DELETE' });
+        } else {
+            await fetch(`/api/ministries/${ministryId}/members/${mappingId}`, {
+                method: 'PUT', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ role: decision, sub_role: '' })
+            });
+        }
+        window.loadPendingApplications(); 
+        if (window.loadMinistries) window.loadMinistries(); 
+    } catch(e) { alert("Network Error"); }
+};
+
+// Suppress any rogue buttons from old logic loops
+setInterval(() => {
+    document.querySelectorAll('#btnModerateMinistries').forEach(b => b.remove());
+}, 1000);
+
+// ==========================================
+// V26: SURGICAL FIXES (COMMITMENT MODAL, FORM RELOADS, WORKFLOW)
+// ==========================================
+
+// --- FIX 1 & 2: REBUILD COMMITMENT MODAL WITH EXACT WORDINGS & STOP RELOADS ---
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        const commitModal = document.getElementById('commitmentModal');
+        if (commitModal) {
+            commitModal.innerHTML = `
+            <div class="modal-content" style="max-width: 450px; text-align: center; padding: 30px 20px;">
+                <span class="close-modal" onclick="closeCommitmentModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer;">&times;</span>
+                <div style="font-size: 3rem; margin-bottom: 10px;">🕊️</div>
+                <h2 style="color: var(--primary); margin-bottom: 5px; border: none;">Choose to Belong</h2>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Share your desire to belong and begin walking with the community.</p>
+                
+                <div style="background: #FFFBEB; padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 20px; text-align: left;">
+                    <p style="font-size: 0.9rem; color: #D97706; margin: 0; font-style: italic;">
+                        "I choose to grow with Fire of God Ministries and journey with this community in faith, fellowship, formation, and mission."
+                    </p>
+                </div>
+
+                <form onsubmit="event.preventDefault(); submitCommitment(event);" style="text-align: left;">
+                    <div class="form-group">
+                        <label style="font-weight: bold; color: var(--text-main);">How is God leading you to make this community your home?</label>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 8px;">We'd love to hear a brief reflection on your heart to journey with us.</p>
+                        <textarea id="commitmentIntentMsg" class="form-control" rows="4" placeholder="Share your heart..." required></textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-radius: 12px; background: #F59E0B; border: none;" onclick="submitCommitment(event)">Share My Intent</button>
+                </form>
+            </div>`;
+        }
+
+        const intentModal = document.getElementById('ministryIntentModal');
+        if (intentModal) {
+            intentModal.innerHTML = `
+            <div class="modal-content" style="max-width: 450px; text-align: center; padding: 30px 20px;">
+                <span class="close-modal" onclick="closeMinistryIntentModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer;">&times;</span>
+                <div style="font-size: 3rem; margin-bottom: 10px;">🔥</div>
+                <h2 style="color: var(--primary); margin-bottom: 5px; border: none;">Discover Your Place</h2>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Express your intent to serve and begin your discernment journey.</p>
+                <form onsubmit="event.preventDefault(); submitMinistryIntent(event);" style="text-align: left;">
+                    <div class="form-group">
+                        <label style="font-weight: bold; color: var(--text-main);">Which Ministry are you drawn to?</label>
+                        <select id="ministrySelect" class="form-control" required><option value="">Loading...</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight: bold; color: var(--text-main);">What draws your heart to this team?</label>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 8px;">Share a little bit about what excites you or how you'd love to contribute! 💛</p>
+                        <textarea id="ministryIntentMsg" class="form-control" rows="3" placeholder="I'd love to be part of this because..." required></textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-radius: 12px; background: #F59E0B; border: none;" onclick="submitMinistryIntent(event)">Send My Intent 🕊️</button>
+                </form>
+            </div>`;
+        }
+    }, 800);
+});
+
+// --- FIX 3: BULLETPROOF SUBMIT FUNCTIONS ---
+window.submitCommitment = async function(e) {
+    if(e) e.preventDefault();
+    const msg = document.getElementById('commitmentIntentMsg').value.trim();
+    if (!msg) return alert('Please share your reflection.');
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/commit', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: currentMember.name, intent_message: msg })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert("Welcome to the core community!");
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
+            closeCommitmentModal();
+            if(window.renderHomeJourney) window.renderHomeJourney();
+        } else { alert(data.error || 'Failed to submit commitment.'); }
+    } catch(err) { alert('Network Error'); }
+};
+
+window.submitMinistryIntent = async function(e) {
+    if(e) e.preventDefault();
+    const minId = document.getElementById('ministrySelect').value;
+    const msg = document.getElementById('ministryIntentMsg').value.trim();
+    if (!minId || !msg) return alert('Please complete all fields.');
+    try {
+        const payload = { youth_id: currentMember.id, intent_message: msg, actor: currentMember.name || 'Member' };
+        const res = await fetch(`/api/ministries/${minId}/apply`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.success) { 
+            alert('Ministry Intent submitted successfully!'); 
+            closeMinistryIntentModal(); 
+            if (window.renderHomeJourney) window.renderHomeJourney(); 
+            if (window.loadMyV3Roles) window.loadMyV3Roles(); 
+        } else { alert(data.error || 'Failed to submit application. You may already be in this ministry.'); }
+    } catch(err) { alert('Network error.'); }
+};
+
+// --- FIX 4: CLARIFY EXPAND SERVICE WORKFLOW ---
+window.renderHomeJourney = async function() {
+    const container = document.getElementById('dynamicJourneyContainer');
+    if (!container || !currentMember) return;
+    let html = '';
+    if (currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker') {
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take the next step to officially become a member of our spiritual family.</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+    } else {
+        try {
+            const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
+            const ministries = await res.json();
+            const isApplicant = ministries.some(m => m.role === 'Applicant');
+            const isActiveMember = ministries.some(m => m.role !== 'Applicant');
+            
+            if (isActiveMember) {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p>${isApplicant ? '<p style="font-size:0.75rem; color:#F59E0B; margin:0; font-weight:bold;">(Application Pending)</p>' : ''}</div><button type="button" class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
+            } else if (isApplicant) {
+                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">🙏 Discerning Together</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">We are so excited you want to serve! Our team is currently praying and preparing a space for you.</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Preparing Space</button>`;
+            } else {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take some time to explore where you might love to serve and share those gifts with the community.</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Explore Serving</button>`;
+            }
+        } catch(e) {}
+    }
+    container.innerHTML = html;
+};
+
+// --- FIX 5: ENSURE MODERATION TAB RENDERS ---
+window.loadPendingApplications = async function() {
+    const list = document.getElementById('pendingApplicationsList');
+    if (!list) return;
+    list.innerHTML = '<div style="text-align:center; color:var(--text-muted);">Loading pending applications...</div>';
+    
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">No pending applications right now!</div>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+        <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                    <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                    <button type="button" class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { list.innerHTML = '<div style="text-align:center; color:var(--danger);">Network error.</div>'; }
+};
+
+// ==========================================
+// V26: ISOLATED FIXES (MESSAGES, PASSWORD BUG, MODERATION UI)
+// ==========================================
+
+// --- FIX 1: BEAUTIFUL SUCCESS MODALS FOR WORKFLOWS ---
+if (!document.getElementById('customSuccessModal')) {
+    document.body.insertAdjacentHTML('beforeend', `
+    <div id="customSuccessModal" class="modal" style="z-index: 99999;">
+        <div class="modal-content" style="max-width: 450px; text-align: center; padding: 30px 20px;">
+            <div id="csmIcon" style="font-size: 3rem; margin-bottom: 10px;">🎉</div>
+            <h2 id="csmTitle" style="color: var(--primary); margin-bottom: 10px; border: none;">Success</h2>
+            <p id="csmMessage" style="font-size: 0.95rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 20px; white-space: pre-wrap; text-align: left;"></p>
+            <button class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; border-radius: 12px;" onclick="document.getElementById('customSuccessModal').classList.remove('active'); document.body.style.overflow = 'auto';">Awesome, thanks!</button>
+        </div>
+    </div>`);
+}
+
+window.showSuccessMessage = function(icon, title, message) {
+    document.getElementById('csmIcon').innerText = icon;
+    document.getElementById('csmTitle').innerText = title;
+    document.getElementById('csmMessage').innerText = message;
+    document.getElementById('customSuccessModal').style.display = 'flex';
+    document.getElementById('customSuccessModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+};
+
+window.submitCommitment = async function(e) {
+    if(e) e.preventDefault();
+    const msg = document.getElementById('commitmentIntentMsg').value.trim();
+    if (!msg) return alert('Please share your reflection.');
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/commit', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: currentMember.name, intent_message: msg })
+        });
+        const data = await res.json();
+        if (data.success) {
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
+            closeCommitmentModal();
+            if(window.renderHomeJourney) window.renderHomeJourney();
+            
+            showSuccessMessage('🕊️', 'Welcome to the Family!', "Thank you for choosing to belong to Fire of God Ministries. This is a beautiful step in your spiritual journey.\n\nWe are excited to walk alongside you in faith, fellowship, and formation. Welcome home!");
+        } else { alert(data.error || 'Failed to submit commitment.'); }
+    } catch(err) { alert('Network Error'); }
+};
+
+window.submitMinistryIntent = async function(e) {
+    if(e) e.preventDefault();
+    const minId = document.getElementById('ministrySelect').value;
+    const msg = document.getElementById('ministryIntentMsg').value.trim();
+    if (!minId || !msg) return alert('Please complete all fields.');
+    try {
+        const payload = { youth_id: currentMember.id, intent_message: msg, actor: currentMember.name || 'Member' };
+        const res = await fetch(`/api/ministries/${minId}/apply`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.success) { 
+            closeMinistryIntentModal(); 
+            if (window.renderHomeJourney) window.renderHomeJourney(); 
+            if (window.loadMyV3Roles) window.loadMyV3Roles(); 
+            
+            showSuccessMessage('🌱', 'Intent Received!', "Thank you for stepping out in faith to serve!\n\nPlease note that joining a ministry is a process of discernment and growth. You will be invited to undergo specific activities and formations as you journey toward becoming a full-fledged team member. \n\nWe are excited for what God will do through you!");
+        } else { alert(data.error || 'Failed to submit application. You may already be in this ministry.'); }
+    } catch(err) { alert('Network error.'); }
+};
+
+// --- FIX 2: PREVENT PASSWORD OVERWRITING ON ADMIN EDITS ---
+window.submitFastEditProfile = async function(doCheckIn) {
+    const form = document.getElementById('fastEditProfileForm');
+    if(!form.checkValidity()) { form.reportValidity(); return; }
+
+    const id = document.getElementById('fastEditMemberId').value;
+    const fileInput = document.getElementById('fastEditProfilePic');
+    let picBase64 = undefined;
+    if (fileInput && fileInput.files && fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
+
+    const payload = {
+        name: document.getElementById('fastEditName').value, email: document.getElementById('fastEditEmail').value,
+        age: document.getElementById('fastEditAge').value, birthday: document.getElementById('fastEditBirthday').value,
+        social_media: document.getElementById('fastEditSocial').value, parents_name: document.getElementById('fastEditParents').value,
+        profile_picture: picBase64, 
+        password: '', // CRITICAL FIX: Empty string preserves the existing password in backend!
+        actor: currentUser
+    };
+    window.triggerActionConfirmation(`Confirm updating profile for ${payload.name}?`, async () => {
+        const res = await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if(data.success) {
+            window.closeFastEditProfileModal(); youthData = []; await window.loadDirectory();
+            if(doCheckIn) window.quickCheckin(id, payload.name);
+            else {
+                alert("Profile updated successfully! (Password safely preserved)");
+                window.updateActiveEventBanner();
+                if(currentAnalyticsData) window.openAnalyticsModal(currentAnalyticsData.event.id);
+            }
+        }
+    });
+};
+
+window.saveMemberEditWithConfirm = async function() {
+    const form = document.getElementById('editMemberModal').querySelector('form');
+    if(!form.checkValidity()) { form.reportValidity(); return; }
+
+    const id = document.getElementById('editMemberId').value;
+    const fileInput = document.getElementById('editMemberProfilePic');
+    let picBase64 = undefined;
+    if (fileInput && fileInput.files && fileInput.files.length > 0) picBase64 = await window.getBase64(fileInput.files[0], 400);
+
+    const payload = {
+        name: document.getElementById('editMemberName').value, email: document.getElementById('editMemberEmail').value,
+        age: document.getElementById('editMemberAge').value, birthday: document.getElementById('editMemberBirthday').value,
+        social_media: document.getElementById('editMemberSocial').value, parents_name: document.getElementById('editMemberParents').value,
+        password: '', // CRITICAL FIX: Empty string preserves the existing password in backend!
+        profile_picture: picBase64, actor: currentUser
+    };
+    window.triggerActionConfirmation(`Confirm updating member profile for '${payload.name}'?`, async () => {
+        await fetch(`/api/youth/profile/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        window.closeEditMemberModal(); youthData = []; window.loadDirectory();
+    });
+};
+
+// --- FIX 3: ENSURE MODERATION TAB RENDERS HEIGHT FULLY ---
+window.ensureModerationDOM = function() {
+    let modTab = document.getElementById('subTabMinistryModeration');
+    if (!modTab) {
+        const listTab = document.getElementById('subTabMinistryList');
+        if (listTab) {
+            listTab.insertAdjacentHTML('afterend', `
+            <div id="subTabMinistryModeration" class="ministry-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out; width: 100%;">
+                <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02); min-height: 200px;">
+                    <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Application</h3>
+                    <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px; width: 100%;"></div>
+                </div>
+            </div>`);
+        }
+    } else {
+        if (!document.getElementById('pendingApplicationsList')) {
+            const header = modTab.querySelector('h3');
+            if (header) header.insertAdjacentHTML('afterend', '<div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px; width: 100%;"></div>');
+        }
+    }
+};
+
+window.switchMinistrySubTab = function(tab) {
+    const tabs = ['list', 'moderation', 'create'];
+    tabs.forEach(t => {
+        const capitalTab = t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById('subTabMinistry' + capitalTab);
+        const btn = document.getElementById('btnSubMinistry' + capitalTab);
+        
+        if (el) el.style.display = (tab === t) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', tab === t);
+    });
+
+    if (tab === 'list') window.loadMinistries();
+    if (tab === 'moderation') {
+        window.ensureModerationDOM();
+        if (window.loadPendingApplications) window.loadPendingApplications();
+    }
+};
+
+window.loadPendingApplications = async function() {
+    window.ensureModerationDOM();
+    const list = document.getElementById('pendingApplicationsList');
+    if (!list) return;
+    
+    list.innerHTML = '<div style="text-align:center; padding: 20px; color:var(--text-muted);">Loading pending applications...</div>';
+    
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        const apps = await res.json();
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">No pending applications right now!</div>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+        <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                    <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                    <button type="button" class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { list.innerHTML = '<div style="text-align:center; padding: 20px; color:var(--danger);">Network error fetching applications.</div>'; }
+};
+
+// ==========================================
+// V27: UI REFINEMENTS (ICONS, TAGLINES, MODERATION RENDER FIX)
+// ==========================================
+
+// --- FIX 1: INSPIRING SUCCESS MESSAGES & YOUTHFUL ICONS ---
+window.submitCommitment = async function(e) {
+    if(e) e.preventDefault();
+    const msg = document.getElementById('commitmentIntentMsg').value.trim();
+    if (!msg) return alert('Please share your reflection.');
+    try {
+        const res = await fetch('/api/youth/' + currentMember.id + '/commit', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: currentMember.name, intent_message: msg })
+        });
+        const data = await res.json();
+        if (data.success) {
+            window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: data.member });
+            closeCommitmentModal();
+            if(window.renderHomeJourney) window.renderHomeJourney();
+            
+            showSuccessMessage('🕊️', 'Intent Received!', "Thank you for sharing your desire to belong to Fire of God Ministries. We are grateful to begin this season of prayer, relationship, and discernment with you.");
+        } else { alert(data.error || 'Failed to submit commitment.'); }
+    } catch(err) { alert('Network Error'); }
+};
+
+window.submitMinistryIntent = async function(e) {
+    if(e) e.preventDefault();
+    const minId = document.getElementById('ministrySelect').value;
+    const msg = document.getElementById('ministryIntentMsg').value.trim();
+    if (!minId || !msg) return alert('Please complete all fields.');
+    try {
+        const payload = { youth_id: currentMember.id, intent_message: msg, actor: currentMember.name || 'Member' };
+        const res = await fetch(`/api/ministries/${minId}/apply`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.success) { 
+            closeMinistryIntentModal(); 
+            if (window.renderHomeJourney) window.renderHomeJourney(); 
+            if (window.loadMyV3Roles) window.loadMyV3Roles(); 
+            
+            showSuccessMessage('🙌', 'Intent Received!', "Thank you for stepping out in faith to serve!\n\nPlease note that joining a ministry is a process of discernment and growth. You will be invited to undergo specific activities and formations as you journey toward becoming a full-fledged team member. \n\nWe are excited for what God will do through you!");
+        } else { alert(data.error || 'Failed to submit application. You may already be in this ministry.'); }
+    } catch(err) { alert('Network error.'); }
+};
+
+// --- FIX 2: ENCOURAGING HEADING FOR DISCERN/EXPAND ---
+window.openMinistryIntentModal = async function() {
+    const modal = document.getElementById('ministryIntentModal');
+    if (modal) {
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width: 450px; text-align: center; padding: 30px 20px;">
+            <span class="close-modal" onclick="closeMinistryIntentModal()" style="position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer;">&times;</span>
+            <div style="font-size: 3rem; margin-bottom: 10px;">🙌</div>
+            <h2 style="color: var(--primary); margin-bottom: 5px; border: none;">Step Into Your Calling!</h2>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Express your intent to serve and begin your discernment journey.</p>
+            <form onsubmit="event.preventDefault(); submitMinistryIntent(event);" style="text-align: left;">
+                <div class="form-group">
+                    <label style="font-weight: bold; color: var(--text-main);">Which Ministry are you drawn to?</label>
+                    <select id="ministrySelect" class="form-control" required><option value="">Loading...</option></select>
+                </div>
+                <div class="form-group">
+                    <label style="font-weight: bold; color: var(--text-main);">What draws your heart to this team?</label>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 8px;">Share a little bit about what excites you or how you'd love to contribute! 💛</p>
+                    <textarea id="ministryIntentMsg" class="form-control" rows="3" placeholder="I'd love to be part of this because..." required></textarea>
+                </div>
+                <button type="button" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-radius: 12px; background: #F59E0B; border: none;" onclick="submitMinistryIntent(event)">Send My Intent</button>
+            </form>
+        </div>`;
+        
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        try {
+            const res = await fetch('/api/ministries');
+            const ministries = await res.json();
+            document.getElementById('ministrySelect').innerHTML = '<option value="">Select a Ministry...</option>' + ministries.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+        } catch(e) {}
+    }
+};
+
+// --- FIX 3: BULLETPROOF MODERATION DOM RENDERER ---
+window.ensureModerationDOM = function() {
+    // 1. Completely destroy ANY duplicate moderation tabs hiding in the background
+    document.querySelectorAll('#subTabMinistryModeration').forEach(e => e.remove());
+    
+    // 2. Build one pristine, full-height container and attach it
+    const listTab = document.getElementById('subTabMinistryList');
+    if (listTab) {
+        listTab.insertAdjacentHTML('afterend', `
+        <div id="subTabMinistryModeration" class="ministry-sub-tab" style="display:none; width: 100%; min-height: 400px; animation: fadeIn 0.3s ease-out;">
+            <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02); min-height: 300px;">
+                <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Application</h3>
+                <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px; width: 100%;"></div>
+            </div>
+        </div>`);
+    }
+};
+
+window.switchMinistrySubTab = function(tab) {
+    const tabs = ['list', 'moderation', 'create'];
+    tabs.forEach(t => {
+        const capitalTab = t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById('subTabMinistry' + capitalTab);
+        const btn = document.getElementById('btnSubMinistry' + capitalTab);
+
+        if (el) el.style.display = (tab === t) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', tab === t);
+    });
+
+    if (tab === 'list') window.loadMinistries();
+    if (tab === 'moderation') {
+        if (window.loadPendingApplications) window.loadPendingApplications();
+    }
+};
+
+window.loadPendingApplications = async function() {
+    window.ensureModerationDOM(); // Guarantee DOM exists and is clean!
+    const list = document.getElementById('pendingApplicationsList');
+    if (!list) return;
+
+    list.innerHTML = '<div style="text-align:center; padding: 20px; color:var(--text-muted); font-size: 1rem;">Loading pending applications...</div>';
+
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        if (!res.ok) throw new Error('Server returned ' + res.status);
+        const apps = await res.json();
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size: 1rem; border: 1px dashed var(--border-color); border-radius: 8px;">No pending applications right now!</div>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+        <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px; width: 100%; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                    <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                    <button type="button" class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { 
+        list.innerHTML = `<div style="text-align:center; padding: 20px; color:var(--danger); font-weight: bold;">Network error fetching applications: ${e.message}</div>`; 
+    }
+};
+
+// ==========================================
+// V28: NON-DESTRUCTIVE MODERATION TAB RENDER
+// ==========================================
+
+// Safely inject the tab once without destroying existing visible tabs
+window.injectModerationTab = function() {
+    let modTab = document.getElementById('subTabMinistryModeration');
+    if (!modTab) {
+        const listTab = document.getElementById('subTabMinistryList');
+        if (listTab) {
+            listTab.insertAdjacentHTML('afterend', `
+            <div id="subTabMinistryModeration" class="ministry-sub-tab" style="display:none; width: 100%; min-height: 400px; animation: fadeIn 0.3s ease-out;">
+                <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02); min-height: 300px;">
+                    <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Application</h3>
+                    <div id="pendingApplicationsList" style="display: flex; flex-direction: column; gap: 12px; width: 100%;"></div>
+                </div>
+            </div>`);
+        }
+    }
+};
+
+// Override the destructive function to prevent it from hiding the tab
+window.ensureModerationDOM = function() {
+    window.injectModerationTab();
+};
+
+window.switchMinistrySubTab = function(tab) {
+    window.injectModerationTab(); // Ensure it exists before trying to switch to it
+
+    const tabs = ['list', 'moderation', 'create'];
+    tabs.forEach(t => {
+        const capitalTab = t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById('subTabMinistry' + capitalTab);
+        const btn = document.getElementById('btnSubMinistry' + capitalTab);
+
+        if (el) el.style.display = (tab === t) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', tab === t);
+    });
+
+    if (tab === 'list') window.loadMinistries();
+    if (tab === 'moderation') {
+        if (window.loadPendingApplications) window.loadPendingApplications();
+    }
+};
+
+window.loadPendingApplications = async function() {
+    window.injectModerationTab();
+    const list = document.getElementById('pendingApplicationsList');
+    if (!list) return;
+
+    list.innerHTML = '<div style="text-align:center; padding: 20px; color:var(--text-muted); font-size: 1rem;">Loading pending applications...</div>';
+
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        if (!res.ok) throw new Error('Server returned ' + res.status);
+        const apps = await res.json();
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size: 1rem; border: 1px dashed var(--border-color); border-radius: 8px;">No pending applications right now!</div>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+        <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px; width: 100%; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                    <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                    <button type="button" class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { 
+        list.innerHTML = `<div style="text-align:center; padding: 20px; color:var(--danger); font-weight: bold;">Network error fetching applications: ${e.message}</div>`; 
+    }
+};
+
+// Call this once on load to ensure it's staged
+setTimeout(window.injectModerationTab, 1000);
+
+// ==========================================
+// V29: GHOST DOM ERADICATION & MODERATION UI
+// ==========================================
+
+window.ensureModerationDOM = function() {
+    // 1. Destroy ANY existing moderation tabs or lists to prevent ghost DOM collisions
+    document.querySelectorAll('#subTabMinistryModeration, #pendingApplicationsList, #pendingApplicationsListActive').forEach(el => el.remove());
+    
+    // 2. Build one pristine, uniquely identified container and attach it
+    const listTab = document.getElementById('subTabMinistryList');
+    if (listTab) {
+        listTab.insertAdjacentHTML('afterend', `
+        <div id="subTabMinistryModeration" class="ministry-sub-tab" style="display:none; width: 100%; min-height: 250px; animation: fadeIn 0.3s ease-out;">
+            <div style="background: #FFF; padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02); min-height: 200px;">
+                <h3 style="color: #F59E0B; font-size: 1.15rem; border-bottom: 2px solid #FEF3C7; padding-bottom: 8px; margin-top: 0; margin-bottom: 15px;">📋 Pending Ministry Application</h3>
+                <div id="pendingApplicationsListActive" style="display: flex; flex-direction: column; gap: 12px; width: 100%;"></div>
+            </div>
+        </div>`);
+    }
+};
+
+window.switchMinistrySubTab = function(tab) {
+    if (tab === 'moderation') window.ensureModerationDOM();
+
+    const tabs = ['list', 'moderation', 'create'];
+    tabs.forEach(t => {
+        const capitalTab = t.charAt(0).toUpperCase() + t.slice(1);
+        const el = document.getElementById('subTabMinistry' + capitalTab);
+        const btn = document.getElementById('btnSubMinistry' + capitalTab);
+
+        if (el) el.style.display = (tab === t) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', tab === t);
+    });
+
+    if (tab === 'list') window.loadMinistries();
+    if (tab === 'moderation') {
+        if (window.loadPendingApplications) window.loadPendingApplications();
+    }
+};
+
+window.loadPendingApplications = async function() {
+    // Target the newly injected unique ID
+    const list = document.getElementById('pendingApplicationsListActive');
+    if (!list) return;
+
+    list.innerHTML = '<div style="text-align:center; padding: 20px; color:var(--text-muted); font-size: 1rem;">Loading pending applications...</div>';
+
+    try {
+        const res = await fetch('/api/ministries/applications/pending');
+        if (!res.ok) throw new Error('Server returned ' + res.status);
+        const apps = await res.json();
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size: 1rem; border: 1px dashed var(--border-color); border-radius: 8px;">No pending applications right now!</div>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+        <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px; width: 100%; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <strong style="color: var(--text-main); font-size: 1.05rem;">${app.applicant_name}</strong>
+                    <span style="font-size: 0.8rem; background: #FEF3C7; color: #D97706; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">${app.ministry_name}</span>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 8px 0 0 0; font-style: italic;">"${app.intent_message || 'No message provided.'}"</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-outline btn-sm text-danger" style="border-color: var(--danger);" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Denied')">Decline</button>
+                    <button type="button" class="btn btn-primary btn-sm" style="background: #10B981; border: none;" onclick="processApplicationModal(${app.ministry_id}, ${app.mapping_id}, 'Integration Period')">Approve</button>
+                </div>
+            </div>
+        </div>`).join('');
+    } catch(e) { 
+        list.innerHTML = `<div style="text-align:center; padding: 20px; color:var(--danger); font-weight: bold;">Network error fetching applications: ${e.message}</div>`; 
+    }
+};
+
+// ==========================================
+// V38: UNIFIED MASTER PATCH (CLEAN RECOVERY)
+// ==========================================
+
+// 1. Z-INDEX & CSS FIXES (Hides duplicate Pass ID, forces Modals to front)
+const styleFixes = document.createElement('style');
+styleFixes.innerHTML = `
+    #editMinistryRoleModal, #editMemberModal, .modal[id*="edit"] { z-index: 99999 !important; }
+    #ministryDetailsModal, #viewMinistryModal { z-index: 1050 !important; }
+    .custom-success-modal { z-index: 100000 !important; }
+    #modalProfileCode { display: none !important; }
+`;
+document.head.appendChild(styleFixes);
+
+// 2. AUTO-HEALING UI (Prevents Screen Freezing)
+setInterval(() => {
+    const visibleModals = Array.from(document.querySelectorAll('.modal')).filter(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.opacity !== '0';
+    });
+    if (visibleModals.length === 0) {
+        if (document.body.style.overflow === 'hidden' || document.body.style.pointerEvents === 'none') {
+            document.body.style.overflow = '';
+            document.body.style.pointerEvents = 'auto';
+        }
+    }
+}, 1000);
+
+// 3. MASTER FETCH INTERCEPTOR (Safe & Unified)
+
+
+// 4. DYNAMIC UI INJECTOR (Inputs & Overrides)
+setInterval(() => {
+    // Dropdown Override
+    const select = document.querySelector('#editMinistryRoleModal select');
+    if (select && !select.classList.contains('patched-v37')) {
+        if (select.innerHTML.includes('value="Member"')) {
+            const currentVal = select.value;
+            select.innerHTML = `
+                <option value="Ministry Head">Ministry Head</option>
+                <option value="Assistant Ministry Head">Assistant Ministry Head</option>
+                <option value="Youth Ministry Head">Youth Ministry Head</option>
+                <option value="Core">Core</option>
+                <option value="Member">Member</option>
+                <option value="Integration Period">Integration Period</option>
+            `;
+            if (currentVal && !select.innerHTML.includes(currentVal)) select.innerHTML += `<option value="${currentVal}">${currentVal}</option>`;
+            select.value = currentVal;
+            select.classList.add('patched-v37');
+        }
+    }
+
+    // Profile Form Inputs (My Profile)
+    const myEmailGroup = document.getElementById('myEditEmail');
+    if (myEmailGroup && !document.getElementById('myEditMobile')) {
+        myEmailGroup.parentElement.insertAdjacentHTML('afterend', `
+            <div class="form-group"><label>Mobile Number</label><input type="text" id="myEditMobile" class="form-control" placeholder="e.g. 09123456789"></div>
+            <div class="form-group"><label>Address</label><input type="text" id="myEditAddress" class="form-control" placeholder="Enter full address"></div>
+        `);
+    }
+    
+    // Profile Form Inputs (Admin Edit)
+    const edEmailGroup = document.getElementById('editMemberEmail');
+    if (edEmailGroup && !document.getElementById('editMemberMobile')) {
+        edEmailGroup.parentElement.insertAdjacentHTML('afterend', `
+            <div class="form-group"><label>Mobile Number</label><input type="text" id="editMemberMobile" class="form-control"></div>
+            <div class="form-group"><label>Address</label><input type="text" id="editMemberAddress" class="form-control"></div>
+        `);
+    }
+
+    // Make Priority Button
+    document.querySelectorAll('button').forEach(btn => {
+        if (btn.innerText.trim() === 'Make Core Priority') {
+            btn.innerText = '⭐ Make Priority';
+            btn.classList.remove('btn-outline');
+            btn.classList.add('btn-primary');
+        }
+    });
+}, 1000);
+
+// 5. PROFILE UI OVERRIDES (Pass ID & Display mapping)
+const origPopV37 = window.populateProfileTab;
+if (origPopV37 && !window.v37PopPatched) {
+    window.populateProfileTab = function(member) {
+        origPopV37(member);
+        setTimeout(() => {
+            // Unique Pass ID Injection
+            const codeEl = document.getElementById('myProfileCode');
+            if (codeEl) {
+                codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
+                codeEl.style.display = 'inline-block';
+            }
+
+            // Input Values
+            if(document.getElementById('myEditMobile')) document.getElementById('myEditMobile').value = member.mobile || '';
+            if(document.getElementById('myEditAddress')) document.getElementById('myEditAddress').value = member.address || '';
+            
+            // Display Values
+            const pTags = Array.from(document.querySelectorAll('#profileTab p, #profileTab div'));
+            for (let p of pTags) {
+                if (p.innerHTML.includes('<strong>Mobile:</strong>') && !p.innerHTML.includes('<strong>Address:</strong>')) {
+                    p.innerHTML = p.innerHTML.replace('<strong>Mobile:</strong>', `<strong>Mobile:</strong> ${member.mobile || 'N/A'}<br><strong>Address:</strong> ${member.address || 'N/A'}<br><strong style="display:none;">Mobile:</strong>`);
+                    break;
+                }
+            }
+        }, 150);
+    };
+    window.v37PopPatched = true;
+}
+
+// 6. MAKE PRIORITY FUNCTION
+window.makeCorePriority = async function(mappingId, youthId) {
+    if(!confirm("Set this as your Priority Ministry?")) return;
+    try {
+        await fetch('/api/ministries-v37/priority/' + mappingId, {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({youth_id: youthId})
+        });
+        alert('Priority Ministry Updated Successfully! ⭐');
+        if (window.loadMyV3Roles) window.loadMyV3Roles();
+        if (window.renderHomeJourney) window.renderHomeJourney();
+    } catch(e) { alert('Error updating priority.'); }
+};
+
+// 7. MEMBERSHIP LOGS (ADMIN DASHBOARD)
+// A. Inject Tab HTML
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        if (!document.getElementById('membershipAdminTab')) {
+            document.getElementById('mainContainer').insertAdjacentHTML('beforeend', `
+            <div id="membershipAdminTab" class="tab-content">
+                <div class="sub-nav">
+                    <button id="btnSubMemCommunity" class="sub-nav-btn active" onclick="switchMemSubTab('community')">🕊️ Community Intents</button>
+                    <button id="btnSubMemMinistry" class="sub-nav-btn" onclick="switchMemSubTab('ministry')">🔥 Ministry Logs</button>
+                </div>
+                
+                <div id="subTabMemCommunity" class="mem-sub-tab" style="display:block; animation: fadeIn 0.3s ease-out;">
+                    <div class="card">
+                        <h2 style="color: var(--primary);">🕊️ Community Intent Logs</h2>
+                        <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                            <input type="text" id="commFilterName" class="form-control" placeholder="🔍 Search name..." oninput="filterCommunityLogs()" style="flex:1; min-width:150px;">
+                            <input type="date" id="commFilterStart" class="form-control" onchange="filterCommunityLogs()" title="Start Date">
+                            <input type="date" id="commFilterEnd" class="form-control" onchange="filterCommunityLogs()" title="End Date">
+                        </div>
+                        <div id="communityIntentsList"></div>
+                    </div>
+                </div>
+                
+                <div id="subTabMemMinistry" class="mem-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+                    <div class="card">
+                        <h2 style="color: #F59E0B;">🔥 Master Ministry Logs</h2>
+                        <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                            <input type="text" id="minLogFilterName" class="form-control" placeholder="🔍 Search name or ministry..." oninput="filterMinistryLogs()" style="flex:1; min-width:150px;">
+                            <input type="date" id="minLogFilterStart" class="form-control" onchange="filterMinistryLogs()" title="Start Date">
+                            <input type="date" id="minLogFilterEnd" class="form-control" onchange="filterMinistryLogs()" title="End Date">
+                        </div>
+                        <div id="ministryIntentsLogList"></div>
+                    </div>
+                </div>
+            </div>`);
+        }
+    }, 1000);
+});
+
+// B. Sidebar Button
+const origBuildNavLogs = window.buildNav;
+window.buildNav = function() {
+    if(origBuildNavLogs) origBuildNavLogs();
+    const sidebar = document.getElementById('sidebarNav');
+    if (sidebar && (window.hasPerm('edit_entries') || currentUser === 'celsocreeriii@gmail.com')) {
+        if (!document.getElementById('navBtnMembership')) {
+            const dirBtn = Array.from(sidebar.querySelectorAll('.nav-btn')).find(b => b.innerText.includes('Directory'));
+            if (dirBtn) {
+                dirBtn.insertAdjacentHTML('afterend', `<button id="navBtnMembership" class="nav-btn" data-target="membershipAdminTab" onclick="switchTab('membershipAdminTab'); loadMembershipAdminData();">🛡️ Membership Logs</button>`);
+            }
+        }
+    }
+};
+
+window.switchMemSubTab = function(tab) {
+    document.getElementById('subTabMemCommunity').style.display = tab === 'community' ? 'block' : 'none';
+    document.getElementById('subTabMemMinistry').style.display = tab === 'ministry' ? 'block' : 'none';
+    document.getElementById('btnSubMemCommunity').classList.toggle('active', tab === 'community');
+    document.getElementById('btnSubMemMinistry').classList.toggle('active', tab === 'ministry');
+    loadMembershipAdminData();
+};
+
+// C. Data Fetching & Caching
+window.cachedCommunityIntents = [];
+window.cachedMinistryLogs = [];
+
+window.loadMembershipAdminData = async function() {
+    try {
+        const commRes = await fetch('/api/admin/community-intents-v2');
+        window.cachedCommunityIntents = await commRes.json();
+        window.filterCommunityLogs();
+    } catch(e) {}
+    try {
+        const minRes = await fetch('/api/admin/ministry-logs-v36');
+        window.cachedMinistryLogs = await minRes.json();
+        window.filterMinistryLogs();
+    } catch(e) {}
+};
+
+window.filterCommunityLogs = function() {
+    const q = document.getElementById('commFilterName') ? document.getElementById('commFilterName').value.toLowerCase().trim() : '';
+    const start = document.getElementById('commFilterStart') ? document.getElementById('commFilterStart').value : '';
+    const end = document.getElementById('commFilterEnd') ? document.getElementById('commFilterEnd').value : '';
+    let filtered = window.cachedCommunityIntents.filter(c => {
+        let matchName = (c.name || '').toLowerCase().includes(q);
+        let matchDate = true;
+        if(start || end) {
+            const intentDate = c.intent_recorded_at ? c.intent_recorded_at.split(' ')[0] : '';
+            if(start && intentDate < start) matchDate = false;
+            if(end && intentDate > end) matchDate = false;
+        }
+        return matchName && matchDate;
+    });
+    window.renderCommunityIntents(filtered);
+};
+
+window.filterMinistryLogs = function() {
+    const q = document.getElementById('minLogFilterName') ? document.getElementById('minLogFilterName').value.toLowerCase().trim() : '';
+    const start = document.getElementById('minLogFilterStart') ? document.getElementById('minLogFilterStart').value : '';
+    const end = document.getElementById('minLogFilterEnd') ? document.getElementById('minLogFilterEnd').value : '';
+    let filtered = window.cachedMinistryLogs.filter(m => {
+        let matchName = (m.applicant_name || '').toLowerCase().includes(q) || (m.ministry_name || '').toLowerCase().includes(q);
+        let matchDate = true;
+        if(start || end) {
+            const logDate = m.assigned_at ? m.assigned_at.split(' ')[0] : '';
+            if(start && logDate < start) matchDate = false;
+            if(end && logDate > end) matchDate = false;
+        }
+        return matchName && matchDate;
+    });
+    window.renderMinistryLogs(filtered);
+};
+
+// D. Renderers
+window.renderCommunityIntents = function(list) {
+    const cList = document.getElementById('communityIntentsList');
+    if (!cList) return;
+    if (list.length === 0) {
+        cList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); border: 1px dashed var(--border-color); border-radius: 8px;">No intents match your filter.</div>';
+        return;
+    }
+    cList.innerHTML = list.map(c => {
+        const awaitingAcceptance = !c.commitment_accepted_at && c.account_tier !== 'Committed Member' && c.account_tier !== 'Leader';
+        return `
+    <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+            <div style="flex: 1;">
+                <strong style="color: var(--text-main); font-size: 1.05rem;">${c.name}</strong>
+                <span class="badge ${c.account_tier === 'Integration Period' ? 'badge-orange' : 'badge-blue'}">${c.account_tier}</span><br>
+                <small style="color: var(--text-muted);">🕊️ Membership intent recorded: ${c.intent_recorded_at || 'Date unavailable'}</small>
+                ${c.commitment_accepted_at ? `<br><small style="color: var(--success); font-weight: bold;">✅ Accepted: ${c.commitment_accepted_at} by ${c.commitment_accepted_by || 'Admin'}</small>` : ''}
+                <p style="font-size: 0.9rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-style: italic;">"${c.commitment_intent || 'No message provided.'}"</p>
+            </div>
+            ${awaitingAcceptance ? `<button class="btn btn-primary btn-sm" onclick="approveFullMember(${c.id})">Accept as Committed Member</button>` : `<span style="font-size: 0.8rem; color: var(--success); font-weight: bold; background: #D1FAE5; padding: 4px 8px; border-radius: 8px;">Accepted</span>`}
+        </div>
+    </div>`;
+    }).join('');
+};
+
+window.renderMinistryLogs = function(list) {
+    const mList = document.getElementById('ministryIntentsLogList');
+    if (!mList) return;
+    if (list.length === 0) {
+        mList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); border: 1px dashed var(--border-color); border-radius: 8px;">No logs match your filter.</div>';
+        return;
+    }
+    mList.innerHTML = list.map(m => `
+    <div style="background: var(--bg-light); padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+            <div style="flex: 1;">
+                <strong style="color: var(--text-main); font-size: 1.05rem;">${m.applicant_name}</strong>
+                <span class="badge badge-orange">${m.ministry_name}</span>
+                <span class="badge" style="background: #E2E8F0; color: #475569;">Current Role: ${m.role}</span><br>
+                <small style="color: var(--text-muted);">📅 Action Logged: <strong style="color:var(--text-main);">${m.timestamp || m.assigned_at || 'Unknown Time'}</strong></small><br>
+                <small style="color: var(--success); font-weight: bold;">👤 Processed by: ${m.actor || 'Admin / System'}</small>
+                <p style="font-size: 0.95rem; color: var(--text-main); margin: 8px 0 0 0; background: #FFF; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); font-weight: 500;">
+                    📝 ${m.intent_message || 'Assigned directly by Admin.'}
+                </p>
+            </div>
+        </div>
+    </div>`).join('');
+};
+
+window.approveFullMember = async function(id) {
+    if(!confirm('Accept this membership intent and grant formal Committed Member status?')) return;
+    try {
+        await fetch('/api/admin/community-intents-v2/' + id + '/approve', { 
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ actor: (window.currentMember && window.currentMember.name) ? window.currentMember.name : currentUser })
+        });
+        window.loadMembershipAdminData();
+    } catch(e) { alert('Error processing approval.'); }
+};
+
+// ==========================================
+// V39: FULL NAME LOGS & CLEAN PROFILE UI
+// ==========================================
+
+// 1. BULLETPROOF FETCH INTERCEPTOR (Extracts Real Name from LocalStorage)
+if (!window.v39FetchPatched) {
+    const nativeFetchV39 = window.fetch;
+    window.fetch = async function(url, options) {
+        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/members/') && url.includes('/api/ministries')) {
+            try {
+                url = url.replace(/\/api\/ministries(\-v\d+)?\//, '/api/ministries-v36/');
+                if (options.body) {
+                    let bodyObj = JSON.parse(options.body);
+                    
+                    const realName = (window.currentMember && window.currentMember.name) || window.currentUser || 'Admin';
+                    
+                    bodyObj.actor = realName;
+                    options.body = JSON.stringify(bodyObj);
+                }
+            } catch(e) {}
+        }
+        
+        // Profile Update Interceptor
+        if (options && options.method === 'PUT' && typeof url === 'string' && url.includes('/api/youth/profile/')) {
+            try {
+                url = url.replace(/\/api\/youth(\-v\d+)?\/profile\//, '/api/youth-v37/profile/');
+                if (options.body) {
+                    let bodyObj = JSON.parse(options.body);
+                    const myMob = document.getElementById('myEditMobile'), myAdd = document.getElementById('myEditAddress');
+                    const edMob = document.getElementById('editMemberMobile'), edAdd = document.getElementById('editMemberAddress');
+                    if (myMob && myMob.value) bodyObj.mobile = myMob.value;
+                    if (myAdd && myAdd.value) bodyObj.address = myAdd.value;
+                    if (edMob && edMob.value) bodyObj.mobile = edMob.value;
+                    if (edAdd && edAdd.value) bodyObj.address = edAdd.value;
+                    options.body = JSON.stringify(bodyObj);
+                }
+            } catch(e) {}
+        }
+        return nativeFetchV39.apply(this, [url, options]);
+    };
+    window.v39FetchPatched = true;
+}
+
+// 2. CLEAN PROFILE UI (Wipes Redundant Mobile)
+const origPopV39 = window.populateProfileTab;
+window.populateProfileTab = function(member) {
+    if (origPopV39) origPopV39(member);
+    setTimeout(() => {
+        const pTags = Array.from(document.querySelectorAll('#profileTab p, #profileTab div'));
+        for (let p of pTags) {
+            // Find the exact paragraph holding the contact info and rebuild it from scratch
+            if (p.innerHTML.includes('<strong>Mobile:</strong>') || p.innerHTML.includes('<strong>Email:</strong>')) {
+                p.innerHTML = `<strong>Email:</strong> ${member.email || 'N/A'}<br>
+                               <strong>Mobile:</strong> ${member.mobile || 'N/A'}<br>
+                               <strong>Address:</strong> ${member.address || 'N/A'}`;
+                break; // Stop after fixing the contact block
+            }
+        }
+    }, 200);
+};
+
+// ==========================================
+// V40: RESTORE PROFILE DETAILS & DATE UI
+// ==========================================
+
+// 2. STANDARDIZE DATE PICKER UI (Compact "From / To" Pill Design)
+setInterval(() => {
+    ['commFilter', 'minLogFilter'].forEach(prefix => {
+        const startInput = document.getElementById(prefix + 'Start');
+        if (startInput && !startInput.parentElement.classList.contains('date-pill')) {
+            const container = startInput.parentElement;
+            container.style.alignItems = 'center';
+            
+            // Wrap Start Date
+            const startWrapper = document.createElement('div');
+            startWrapper.className = 'date-pill';
+            startWrapper.style.cssText = 'display:flex; align-items:center; gap:6px; background:#FFF; padding:6px 10px; border-radius:8px; border:1px solid #CBD5E1; box-shadow:inset 0 1px 2px rgba(0,0,0,0.05);';
+            startInput.parentNode.insertBefore(startWrapper, startInput);
+            startWrapper.innerHTML = '<span style="font-size:0.85rem; color:#64748B; font-weight:bold;">From</span>';
+            startWrapper.appendChild(startInput);
+            startInput.style.cssText = 'border:none; outline:none; background:transparent; cursor:pointer; font-size:0.9rem; color:var(--text-main);';
+
+            // Wrap End Date
+            const endInput = document.getElementById(prefix + 'End');
+            if (endInput) {
+                const endWrapper = document.createElement('div');
+                endWrapper.className = 'date-pill';
+                endWrapper.style.cssText = 'display:flex; align-items:center; gap:6px; background:#FFF; padding:6px 10px; border-radius:8px; border:1px solid #CBD5E1; box-shadow:inset 0 1px 2px rgba(0,0,0,0.05);';
+                endInput.parentNode.insertBefore(endWrapper, endInput);
+                endWrapper.innerHTML = '<span style="font-size:0.85rem; color:#64748B; font-weight:bold;">To</span>';
+                endWrapper.appendChild(endInput);
+                endInput.style.cssText = 'border:none; outline:none; background:transparent; cursor:pointer; font-size:0.9rem; color:var(--text-main);';
+            }
+        }
+    });
+}, 1000);
+
+// ==========================================
+// V48: NATIVE NAV OBSERVER & GROUPS MODAL
+// ==========================================
+
+// 1. REBUILD MISSING GROUPS FUNCTION
+window.openGroupDashboard = function(id, name, logo, leader, leader_id) {
+    const modal = document.getElementById('groupDashboardModal');
+    if (modal) {
+        // Populate the modal data natively
+        const nameEl = document.getElementById('dashGroupName');
+        if (nameEl) nameEl.innerText = name || 'Group Name';
+        
+        const metaEl = document.getElementById('dashGroupMeta');
+        if (metaEl) metaEl.innerText = leader ? ('Led by ' + leader) : 'Ministry Group';
+        
+        const logoEl = document.getElementById('dashGroupLogo');
+        if (logoEl) logoEl.innerText = logo || '👥';
+
+        // Force it open securely
+        modal.style.display = 'flex';
+        modal.style.zIndex = '105000';
+        modal.classList.add('active');
+    } else {
+        console.error("Dashboard Modal not found in DOM");
+    }
+};
+
+// 2. NATIVE MUTATION OBSERVER FOR BOTTOM NAV
+document.addEventListener('DOMContentLoaded', () => {
+    const bNav = document.getElementById('bottomNav');
+    if (bNav && !window.v48ObserverActive) {
+        window.v48ObserverActive = true;
+        
+        const navObserver = new MutationObserver((mutations) => {
+            const html = bNav.innerHTML.toLowerCase();
+            
+            // Intercept only when Growth Tab injects 'rank'
+            if (html.includes('rank') && !bNav.classList.contains('v48-processing')) {
+                bNav.classList.add('v48-processing');
+                
+                // Rebuild using EXACT NATIVE CLASSES. No inline CSS to ruin the layout.
+                bNav.innerHTML = `
+                    <button class="bottom-nav-btn" onclick="if(typeof switchTab==='function') switchTab('profileTab')"><span>👤</span>Profile</button>
+                    <button class="bottom-nav-btn active" onclick="if(typeof switchTab==='function') switchTab('growthTab')"><span>🌱</span>Growth</button>
+                    <button class="bottom-nav-btn" onclick="if(typeof switchTab==='function') switchTab('pathwayTab')"><span>🗺️</span>Paths</button>
+                    <button class="bottom-nav-btn" onclick="if(typeof switchTab==='function') switchTab('journalTab')"><span>📖</span>Journal</button>
+                    <button class="bottom-nav-btn" onclick="if(typeof switchTab==='function') switchTab('groupsTab')"><span>👥</span>Groups</button>
+                    <button class="bottom-nav-btn" onclick="if(typeof openSidebar==='function') openSidebar(); else { const sb = document.getElementById('sidebarNav'); if(sb) { sb.style.display = window.getComputedStyle(sb).display === 'none' ? 'block' : 'none'; sb.style.zIndex='999999'; } }"><span>☰</span>Menu</button>
+                `;
+                
+                setTimeout(() => { bNav.classList.remove('v48-processing'); }, 50);
+            }
+        });
+        
+        navObserver.observe(bNav, { childList: true });
+    }
+});
+
+// ========================================================
+// EVENT-DRIVEN NAVIGATION ARCHITECTURE
+// ========================================================
+
+window.buildNav = function() {
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    const hamburger = document.getElementById('hamburgerBtn');
+    const isAdmin = currentUser === 'celsocreeriii@gmail.com' || (userPermissions && userPermissions.length > 0);
+
+    let sidebarHtml = `<h2>Main Menu</h2>`;
+    
+    // Delegate bottom nav rendering strictly to renderBottomNav.
+    // We only enforce its flex display state here globally.
+    if (bottomNav) bottomNav.style.display = 'flex';
+
+    if (isAdmin) {
+        if(hamburger) hamburger.style.display = 'block';
+        
+        sidebarHtml += `<button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>`;
+        sidebarHtml += `<button class="nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')">🔔 My Inbox</button>`; 
+        
+        if (window.hasPerm('access_checkin')) sidebarHtml += `<button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📷 Check-In Station</button>`;
+        if (window.hasPerm('access_directory')) sidebarHtml += `<button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>`;
+        if (window.hasPerm('access_ministries')) sidebarHtml += `<button class="nav-btn" data-target="ministriesTab" onclick="switchTab('ministriesTab')">🏛️ Ministries</button>`;
+        if (window.hasPerm('access_events')) sidebarHtml += `<button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Planner</button>`;
+        
+        sidebarHtml += `<button class="nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')">📖 Personal Growth</button>`;
+        if (window.hasPerm('access_discipleship')) sidebarHtml += `<button class="nav-btn" data-target="discipleshipAdminTab" onclick="switchTab('discipleshipAdminTab')">🌱 Discipleship Admin</button>`;
+        if (window.hasPerm('access_worship')) sidebarHtml += `<button class="nav-btn" data-target="worshipTab" onclick="switchTab('worshipTab')">🎵 Worship Hub</button>`;
+        if (window.hasPerm('access_communications')) sidebarHtml += `<button class="nav-btn" data-target="communicationsAdminTab" onclick="switchTab('communicationsAdminTab')">📢 Broadcasts</button>`;
+        if (window.hasPerm('access_ai')) sidebarHtml += `<button class="nav-btn" data-target="aiAssistantTab" onclick="switchTab('aiAssistantTab')">🤖 AI Assistant</button>`;
+        
+        if (window.hasPerm('access_attendance')) sidebarHtml += `<button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>`;
+        if (window.hasPerm('access_activity')) sidebarHtml += `<button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">🔍 Audit Logs</button>`;
+        if (window.hasPerm('access_permissions')) sidebarHtml += `<button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔐 Permissions</button>`;
+        
+        sidebarHtml += `<button class="nav-btn text-danger" onclick="handleLogout()">🚪 Logout (${currentUser})</button>`;
+        
+        if(sidebar) sidebar.innerHTML = sidebarHtml;
+    } else {
+        if(hamburger) hamburger.style.display = 'none';
+        if(sidebar) sidebar.innerHTML = '';
+    }
+};
+
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+    
+    let bHtml = '';
+
+    if (context === 'discipleshipTab') {
+        // Growth Mode (7 Icons)
+        bHtml = `
+        <button class="bottom-nav-btn" data-target="profileTab" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn active" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')"><span>🌱</span>Growth</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    } else {
+        // Default Mode (7 Icons)
+        bHtml = `
+        <button class="bottom-nav-btn" data-target="pulseDashboardTab" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+        <button class="bottom-nav-btn" data-target="profileTab" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn" data-target="arcadeTab" onclick="switchTab('arcadeTab')"><span>🎮</span>Games</button>
+        <button class="bottom-nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')"><span>🌱</span>Grow</button>
+        <button class="bottom-nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+        <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab'); setTimeout(() => { if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer'); }, 50);"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    }
+    
+    bottomNav.innerHTML = bHtml;
+};
+
+window.switchTab = function(tabId) {
+    // 1. Render Navigation layout dynamically based on state first.
+    // By providing the data-target attributes inside the HTML rendering above, 
+    // the logic below inherently tracks them natively.
+    if (typeof window.renderBottomNav === 'function') window.renderBottomNav(tabId);
+
+    // 2. Safely apply native CSS routing classes without loops/observers
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+
+    document.querySelectorAll('.sidebar .nav-btn').forEach(el => el.classList.remove('active'));
+    const sidebarTarget = document.querySelector(`.sidebar .nav-btn[data-target="${tabId}"]`);
+    if(sidebarTarget) sidebarTarget.classList.add('active');
+
+    document.querySelectorAll('.bottom-nav-btn').forEach(el => el.classList.remove('active'));
+    const bottomTarget = document.querySelector(`.bottom-nav-btn[data-target="${tabId}"]`);
+    if(bottomTarget) bottomTarget.classList.add('active');
+
+    window.closeSidebar();
+
+    const targetTab = document.getElementById(tabId);
+    if (targetTab) targetTab.classList.add('active');
+    
+    // 3. Tab-specific logical triggers
+    if (tabId !== 'checkinTab' && typeof qrScanner !== 'undefined' && qrScanner) { qrScanner.clear().catch(e => console.log(e)); qrScanner = null; }
+    if (tabId === 'checkinTab') { window.switchCheckinMode('scanner'); window.updateActiveEventBanner(); }
+    if (tabId === 'directoryTab') window.loadDirectory();
+    if (tabId === 'eventsTab') window.loadEvents();
+    if (tabId === 'ministriesTab') window.loadMinistries();
+    if (tabId === 'attendanceTab') window.loadAttendanceLogs();
+    if (tabId === 'activityLogsTab') window.loadActivityLogs();
+    if (tabId === 'permissionsTab') window.resetPermUserList();
+
+    if (tabId === 'profileTab' && currentUser === 'celsocreeriii@gmail.com') {
+        const backupCard = document.getElementById('adminBackupCard');
+        if(backupCard) backupCard.style.display = 'block';
+        if(typeof window.loadBackups === 'function') window.loadBackups();
+    } else {
+        const backupCard = document.getElementById('adminBackupCard');
+        if(backupCard) backupCard.style.display = 'none';
+    }
+};
+
+// ==========================================
+// V41: PROFILE DETAILS & GROWTH SUB-NAV FIX
+// ==========================================
+
+// FIX 1: Restore all profile details (Overriding V39 truncation safely)
+const origPopV40 = window.populateProfileTab;
+window.populateProfileTab = function(member) {
+    if (origPopV40) origPopV40(member);
+    
+    // We use a 300ms timeout to safely execute AFTER V39's 200ms wipe
+    setTimeout(() => {
+        const bio = document.getElementById('myBioSummary');
+        if (bio) {
+            bio.innerHTML = `
+                <strong>Gender:</strong> ${member.gender || 'N/A'}<br>
+                <strong>Email:</strong> ${member.email || 'N/A'}<br>
+                <strong>Mobile:</strong> ${member.mobile || 'N/A'}<br>
+                <strong>Address:</strong> ${member.address || 'N/A'}<br>
+                <strong>Age:</strong> ${member.age || 'N/A'}<br>
+                <strong>Birthday:</strong> ${member.birthday || 'N/A'}<br>
+                <strong>Social Media Handle:</strong> ${member.social_media || 'N/A'}<br>
+                <strong>Parents/Guardian:</strong> ${member.parents_name || 'N/A'}
+            `;
+        }
+    }, 300);
+};
+
+// FIX 2: Implement missing switchGrowthSubTab mapping for Bottom Navigation
+window.switchGrowthSubTab = function(subTabName) {
+    // 1. Hide all growth sub-tabs
+    document.querySelectorAll('.growth-sub-tab').forEach(el => {
+        el.classList.remove('active');
+        el.style.display = 'none';
+    });
+    
+    // 2. Show the target sub-tab natively mapped to your index.html
+    const targetId = 'growthSub' + subTabName;
+    const targetEl = document.getElementById(targetId);
+    
+    if (targetEl) {
+        targetEl.classList.add('active');
+        targetEl.style.display = 'block';
+    } else {
+        // Failsafe to Growth Home
+        const homeEl = document.getElementById('growthSubHome');
+        if(homeEl) { homeEl.classList.add('active'); homeEl.style.display = 'block'; }
+    }
+
+    // 3. Trigger Data Loads Dynamically so pages aren't empty when clicked
+    if (typeof V2Discipleship !== 'undefined') {
+        if (subTabName === 'Prayer') V2Discipleship.loadPrayers();
+        if (subTabName === 'Journal') V2Discipleship.loadJournals();
+        if (subTabName === 'Milestones') V2Discipleship.loadPathways();
+        if (subTabName === 'Groups') V2Discipleship.loadSmallGroups();
+    }
+};
+
+// ========================================================
+// V42: ABSOLUTE PROFILE TRUTH & GROWTH NAVIGATION FIX
+// ========================================================
+
+// 1. Definitively define the Profile Populator (Bypassing V39 wipe)
+window.populateProfileTab = function(member) {
+    if (!member) return;
+
+    const safeText = (val) => val && val !== 'null' ? val : 'N/A';
+    
+    // Map all 8 personal details securely
+    const bio = document.getElementById('myBioSummary');
+    if (bio) {
+        bio.innerHTML = `
+            <strong>Gender:</strong> ${safeText(member.gender)}<br>
+            <strong>Email:</strong> ${safeText(member.email)}<br>
+            <strong>Mobile Number:</strong> ${safeText(member.mobile)}<br>
+            <strong>Address:</strong> ${safeText(member.address)}<br>
+            <strong>Age:</strong> ${safeText(member.age)}<br>
+            <strong>Birthday:</strong> ${safeText(member.birthday)}<br>
+            <strong>Social Media:</strong> ${safeText(member.social_media)}<br>
+            <strong>Parents/Guardian:</strong> ${safeText(member.parents_name)}
+        `;
+    }
+
+    // Map inputs safely
+    ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender','myEditMobile','myEditAddress'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            let key = id.replace('myEdit', '').toLowerCase();
+            if(id === 'myEditParents') key = 'parents_name';
+            if(id === 'myEditSocial') key = 'social_media';
+            if(id === 'myMemberId') key = 'id';
+            el.value = member[key] || '';
+        }
+    });
+    if (typeof window.renderMyEmailVerificationStatus === 'function') {
+        window.renderMyEmailVerificationStatus(member);
+    }
+    if (typeof window.refreshLegalProfileStatus === 'function') {
+        window.refreshLegalProfileStatus();
+    }
+
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+
+    // QR Code
+    const codeEl = document.getElementById('myProfileCode');
+    if (codeEl) {
+        codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
+        codeEl.style.display = 'inline-block';
+    }
+
+    const qrContainer = document.getElementById('myQrContainer');
+    const dlBtn = document.getElementById('myDownloadQrBtn');
+    if (qrContainer && dlBtn) {
+        if (member.qr_code) {
+            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:100%; height:auto; border-radius:8px; border: 1px solid var(--border-color);">`;
+            dlBtn.href = qrUrl;
+            dlBtn.style.display = 'inline-block';
+        } else {
+            qrContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No QR Assigned</span>';
+            dlBtn.style.display = 'none';
+        }
+    }
+
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+
+    if (window.loadMyV3Roles) window.loadMyV3Roles(member.id, 'myMinistriesHistory');
+    if (window.loadMyV3Attendance) window.loadMyV3Attendance(member.id, 'myAttendanceHistory');
+};
+
+// 2. Attach to Tab Switch for INSTANT rendering without refresh
+const ogSwitchTabProf = window.switchTab;
+window.switchTab = async function(tabId) {
+    if (ogSwitchTabProf) ogSwitchTabProf(tabId);
+    if (tabId === 'profileTab' && typeof currentMember !== 'undefined' && currentMember) {
+        window.populateProfileTab(currentMember); // Instant load
+        
+        // Background fetch to update cache silently
+        fetch('/api/youth').then(r=>r.json()).then(users => {
+            const fresh = users.find(u => u.id == currentMember.id);
+            if (fresh) {
+                window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: fresh });
+                window.populateProfileTab(currentMember);
+            }
+        }).catch(e=>{});
+    }
+};
+
+// 3. Prevent V39 from ruining the profile layout
+setInterval(() => {
+    const bio = document.getElementById('myBioSummary');
+    if(bio && bio.innerHTML.split('<br>').length <= 4 && typeof currentMember !== 'undefined' && currentMember) {
+        window.populateProfileTab(currentMember);
+    }
+}, 500);
+
+// 4. Update the Bottom Nav to explicitly reset Growth Tab
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+
+    let bHtml = '';
+    if (context === 'discipleshipTab') {
+        bHtml = `
+        <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn active" onclick="switchTab('discipleshipTab'); if(window.switchGrowthSubTab) window.switchGrowthSubTab('Home');"><span>🌱</span>Growth</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    } else {
+        bHtml = `
+        <button class="bottom-nav-btn ${context === 'pulseDashboardTab' ? 'active' : ''}" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+        <button class="bottom-nav-btn ${context === 'profileTab' ? 'active' : ''}" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn ${context === 'arcadeTab' ? 'active' : ''}" onclick="switchTab('arcadeTab')"><span>🎮</span>Games</button>
+        <button class="bottom-nav-btn ${context === 'discipleshipTab' ? 'active' : ''}" onclick="switchTab('discipleshipTab'); if(window.switchGrowthSubTab) window.switchGrowthSubTab('Home');"><span>🌱</span>Grow</button>
+        <button class="bottom-nav-btn ${context === 'inboxTab' ? 'active' : ''}" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+        <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab'); setTimeout(() => { if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer'); }, 50);"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    }
+    bottomNav.innerHTML = bHtml;
+};
+
+// ========================================================
+// V43: ABSOLUTE PROFILE TRUTH & GROWTH NAVIGATION FIX
+// ========================================================
+
+// 1. Definitively define the Profile Populator (Bypassing legacy wipes)
+window.populateProfileTab = function(member) {
+    if (!member) return;
+
+    // Inject Gender Field securely if missing
+    if (!document.getElementById('myEditGender') && document.getElementById('myEditName')) {
+        document.getElementById('myEditName').parentElement.insertAdjacentHTML('afterend', `
+        <div class="form-group"><label>Gender</label><select id="myEditGender" class="form-control"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>`);
+    }
+
+    // Inject Mobile and Address if missing
+    const myEmailGroup = document.getElementById('myEditEmail');
+    if (myEmailGroup && !document.getElementById('myEditMobile')) {
+        myEmailGroup.parentElement.insertAdjacentHTML('afterend', `
+            <div class="form-group"><label>Mobile Number</label><input type="text" id="myEditMobile" class="form-control" placeholder="e.g. 09123456789"></div>
+            <div class="form-group"><label>Address</label><input type="text" id="myEditAddress" class="form-control" placeholder="Enter full address"></div>
+        `);
+    }
+
+    const safeText = (val) => val && val !== 'null' ? val : 'N/A';
+    
+    // Map all 8 personal details securely
+    const bio = document.getElementById('myBioSummary');
+    if (bio) {
+        bio.innerHTML = `
+            <strong>Gender:</strong> ${safeText(member.gender)}<br>
+            <strong>Email:</strong> ${safeText(member.email)}<br>
+            <strong>Mobile Number:</strong> ${safeText(member.mobile)}<br>
+            <strong>Address:</strong> ${safeText(member.address)}<br>
+            <strong>Age:</strong> ${safeText(member.age)}<br>
+            <strong>Birthday:</strong> ${safeText(member.birthday)}<br>
+            <strong>Social Media Handle:</strong> ${safeText(member.social_media)}<br>
+            <strong>Parents/Guardian:</strong> ${safeText(member.parents_name)}
+        `;
+    }
+
+    // Map inputs safely
+    ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender','myEditMobile','myEditAddress'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            let key = id.replace('myEdit', '').toLowerCase();
+            if(id === 'myEditParents') key = 'parents_name';
+            if(id === 'myEditSocial') key = 'social_media';
+            if(id === 'myMemberId') key = 'id';
+            el.value = member[key] || '';
+        }
+    });
+    if (typeof window.renderMyEmailVerificationStatus === 'function') {
+        window.renderMyEmailVerificationStatus(member);
+    }
+
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+
+    // QR Code Engine
+    const codeEl = document.getElementById('myProfileCode');
+    if (codeEl) {
+        codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
+        codeEl.style.display = 'inline-block';
+    }
+
+    const qrContainer = document.getElementById('myQrContainer');
+    const dlBtn = document.getElementById('myDownloadQrBtn');
+    if (qrContainer && dlBtn) {
+        if (member.qr_code) {
+            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:100%; height:auto; border-radius:8px; border: 1px solid var(--border-color);">`;
+            dlBtn.href = qrUrl;
+            dlBtn.style.display = 'inline-block';
+        } else {
+            qrContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No QR Assigned</span>';
+            dlBtn.style.display = 'none';
+        }
+    }
+
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+
+    if (window.loadMyV3Roles) window.loadMyV3Roles(member.id, 'myMinistriesHistory');
+    if (window.loadMyV3Attendance) window.loadMyV3Attendance(member.id, 'myAttendanceHistory');
+};
+
+// 2. Attach to Tab Switch for INSTANT rendering without refresh
+const ogSwitchTabProfV43 = window.switchTab;
+window.switchTab = async function(tabId) {
+    if (ogSwitchTabProfV43) ogSwitchTabProfV43(tabId);
+    if (tabId === 'profileTab' && typeof currentMember !== 'undefined' && currentMember) {
+        window.populateProfileTab(currentMember); // Instant load cache
+        
+        // Background fetch to update cache silently
+        fetch('/api/youth').then(r=>r.json()).then(users => {
+            const fresh = users.find(u => u.id == currentMember.id);
+            if (fresh) {
+                window.persistAuthenticatedIdentity({ username: currentUser, permissions: userPermissions, member: fresh });
+                window.populateProfileTab(currentMember);
+            }
+        }).catch(e=>{});
+    }
+};
+
+// 3. Update Bottom Nav explicitly reset Growth Tab and neutralize observers
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+    
+    // Neutralize legacy V48 observer
+    bottomNav.classList.add('v48-processing');
+
+    let bHtml = '';
+    if (context === 'discipleshipTab') {
+        bHtml = `
+        <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn active" onclick="switchTab('discipleshipTab'); if(window.switchGrowthSubTab) window.switchGrowthSubTab('Home');"><span>🌱</span>Growth</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    } else {
+        bHtml = `
+        <button class="bottom-nav-btn ${context === 'pulseDashboardTab' ? 'active' : ''}" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+        <button class="bottom-nav-btn ${context === 'profileTab' ? 'active' : ''}" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn ${context === 'arcadeTab' ? 'active' : ''}" onclick="switchTab('arcadeTab')"><span>🎮</span>Games</button>
+        <button class="bottom-nav-btn ${context === 'discipleshipTab' ? 'active' : ''}" onclick="switchTab('discipleshipTab'); if(window.switchGrowthSubTab) window.switchGrowthSubTab('Home');"><span>🌱</span>Grow</button>
+        <button class="bottom-nav-btn ${context === 'inboxTab' ? 'active' : ''}" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+        <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab'); setTimeout(() => { if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer'); }, 50);"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    }
+    bottomNav.innerHTML = bHtml;
+};
+
+// 4. Force data fetching when Growth sub-tabs are clicked
+window.switchGrowthSubTab = function(subTabName) {
+    document.querySelectorAll('.growth-sub-tab').forEach(el => {
+        el.classList.remove('active');
+        el.style.display = 'none';
+    });
+    
+    const targetEl = document.getElementById('growthSub' + subTabName);
+    if (targetEl) {
+        targetEl.classList.add('active');
+        targetEl.style.display = 'block';
+    }
+
+    if (typeof V2Discipleship !== 'undefined') {
+        if (subTabName === 'Home') {
+            V2Discipleship.loadLiturgicalData();
+            V2Discipleship.loadNextStep();
+        }
+        if (subTabName === 'Prayer') V2Discipleship.loadPrayers();
+        if (subTabName === 'Journal') V2Discipleship.loadJournals();
+        if (subTabName === 'Groups') V2Discipleship.loadSmallGroups();
+        if (subTabName === 'Milestones') {
+            V2Discipleship.loadPathways();
+            if (typeof currentMember !== 'undefined' && currentMember) {
+                fetch('/api/discipleship/member-progress/' + currentMember.id)
+                    .then(r=>r.json())
+                    .then(progress => {
+                        const userList = document.getElementById('pathwaysListContainer');
+                        if (userList) {
+                            if (progress.length === 0) {
+                                userList.innerHTML = '<p style="color:var(--text-muted); text-align:center;">No active pathways available.</p>';
+                                return;
+                            }
+                            userList.innerHTML = progress.map(p => {
+                                const isCompleted = p.status === 'Completed'; 
+                                const badge = isCompleted ? '<span class="badge badge-green">✅ Completed</span>' : '<span class="badge badge-orange">⏳ Pending</span>'; 
+                                const actionBtn = !isCompleted ? `<button class="btn btn-primary btn-sm" onclick="V2Discipleship.updateMilestone(${p.pathway_id}, 'Completed')">Mark Complete</button>` : '';
+                                return `<div style="background:#FFF; border: 1px solid var(--border-color); padding: 15px; margin-bottom: 10px; border-radius: 8px; display:flex; justify-content:space-between; align-items:center;"><div><strong style="color:var(--text-main); font-size:1.05rem;">${p.title}</strong><div style="margin-top:5px;">${badge}</div></div><div>${actionBtn}</div></div>`;
+                            }).join('');
+                        }
+                    });
+            }
+        }
+    }
+};
+
+// ========================================================
+// V44: DEFINITIVE UI ENFORCEMENT & ROUTING FIX
+// ========================================================
+
+// 1. Force Growth Tab to Reset to Home securely
+const _v44SwitchTab = window.switchTab;
+window.switchTab = async function(tabId) {
+    if (_v44SwitchTab) _v44SwitchTab(tabId);
+    if (tabId === 'discipleshipTab' && typeof window.switchGrowthSubTab === 'function') {
+        // Slight delay ensures Bottom Nav finishes re-rendering before switching sub-tabs
+        setTimeout(() => { window.switchGrowthSubTab('Home'); }, 50);
+    }
+};
+
+// 2. Clean Bottom Nav HTML (Remove dangerous inline sub-tab calls)
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+    bottomNav.classList.add('v48-processing'); // Block old observers
+
+    let bHtml = '';
+    if (context === 'discipleshipTab') {
+        bHtml = `
+        <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn active" onclick="switchTab('discipleshipTab')"><span>🌱</span>Growth</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+        <button class="bottom-nav-btn" onclick="if(window.switchGrowthSubTab) window.switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    } else {
+        bHtml = `
+        <button class="bottom-nav-btn ${context === 'pulseDashboardTab' ? 'active' : ''}" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+        <button class="bottom-nav-btn ${context === 'profileTab' ? 'active' : ''}" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn ${context === 'arcadeTab' ? 'active' : ''}" onclick="switchTab('arcadeTab')"><span>🎮</span>Games</button>
+        <button class="bottom-nav-btn ${context === 'discipleshipTab' ? 'active' : ''}" onclick="switchTab('discipleshipTab')"><span>🌱</span>Grow</button>
+        <button class="bottom-nav-btn ${context === 'inboxTab' ? 'active' : ''}" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+        <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab'); setTimeout(() => { if(window.switchGrowthSubTab) window.switchGrowthSubTab('Prayer'); }, 50);"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    }
+    bottomNav.innerHTML = bHtml;
+};
+
+// 3. Unbreakable Loop to Enforce Profile Gender & 8 Details
+setInterval(() => {
+    if (!document.getElementById('myEditGender') && document.getElementById('myEditName')) {
+        document.getElementById('myEditName').parentElement.insertAdjacentHTML('afterend', `
+        <div class="form-group"><label>Gender</label><select id="myEditGender" class="form-control"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select></div>`);
+        if(typeof currentMember !== 'undefined' && currentMember && currentMember.gender) document.getElementById('myEditGender').value = currentMember.gender;
+    }
+
+    const bio = document.getElementById('myBioSummary');
+    if (bio && typeof currentMember !== 'undefined' && currentMember) {
+        const safeText = (val) => val && val !== 'null' ? val : 'N/A';
+        const correctHTML = `
+            <strong>Gender:</strong> ${safeText(currentMember.gender)}<br>
+            <strong>Email:</strong> ${safeText(currentMember.email)}<br>
+            <strong>Mobile Number:</strong> ${safeText(currentMember.mobile)}<br>
+            <strong>Address:</strong> ${safeText(currentMember.address)}<br>
+            <strong>Age:</strong> ${safeText(currentMember.age)}<br>
+            <strong>Birthday:</strong> ${safeText(currentMember.birthday)}<br>
+            <strong>Social Media Handle:</strong> ${safeText(currentMember.social_media)}<br>
+            <strong>Parents/Guardian:</strong> ${safeText(currentMember.parents_name)}
+        `;
+        if (bio.innerHTML.replace(/\s+/g, '') !== correctHTML.replace(/\s+/g, '')) {
+            bio.innerHTML = correctHTML;
+        }
+    }
+}, 1000);
+
+// ========================================================
+// V46: ROUTER
+// ========================================================
+
+window.switchTab = function(tabId, subTabId = null) {
+    if (typeof window.renderBottomNav === 'function') window.renderBottomNav(tabId);
+
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.sidebar .nav-btn').forEach(el => el.classList.remove('active'));
+    const sidebarTarget = document.querySelector(`.sidebar .nav-btn[data-target="${tabId}"]`);
+    if(sidebarTarget) sidebarTarget.classList.add('active');
+
+    document.querySelectorAll('.bottom-nav-btn').forEach(el => el.classList.remove('active'));
+    const bottomTarget = document.querySelector(`.bottom-nav-btn[data-target="${tabId}"]`);
+    if(bottomTarget) bottomTarget.classList.add('active');
+
+    window.closeSidebar();
+
+    const targetTab = document.getElementById(tabId);
+    if (targetTab) targetTab.classList.add('active');
+
+    if (
+        tabId === 'permissionsTab' &&
+        typeof window.resetPermUserList === 'function'
+    ) {
+        window.resetPermUserList();
+    }
+
+    if (tabId === 'discipleshipTab') {
+        if (typeof window.switchGrowthSubTab === 'function') {
+            setTimeout(() => { window.switchGrowthSubTab(subTabId || 'Home'); }, 50);
+        }
+    }
+};
+
+window.renderBottomNav = function(context) {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+    
+    let bHtml = '';
+    if (context === 'discipleshipTab') {
+        bHtml = `
+        <button class="bottom-nav-btn" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn active" onclick="switchTab('discipleshipTab', 'Home')"><span>🌱</span>Growth</button>
+        <button class="bottom-nav-btn" onclick="switchGrowthSubTab('Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="switchGrowthSubTab('Milestones')"><span>🗺️</span>Paths</button>
+        <button class="bottom-nav-btn" onclick="switchGrowthSubTab('Journal')"><span>📖</span>Journal</button>
+        <button class="bottom-nav-btn" onclick="switchGrowthSubTab('Groups')"><span>👥</span>Groups</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    } else {
+        bHtml = `
+        <button class="bottom-nav-btn ${context === 'pulseDashboardTab' ? 'active' : ''}" onclick="switchTab('pulseDashboardTab')"><span>🏠</span>Home</button>
+        <button class="bottom-nav-btn ${context === 'profileTab' ? 'active' : ''}" onclick="switchTab('profileTab')"><span>👤</span>Profile</button>
+        <button class="bottom-nav-btn ${context === 'arcadeTab' ? 'active' : ''}" onclick="switchTab('arcadeTab')"><span>🎮</span>Games</button>
+        <button class="bottom-nav-btn ${context === 'discipleshipTab' ? 'active' : ''}" onclick="switchTab('discipleshipTab', 'Home')"><span>🌱</span>Grow</button>
+        <button class="bottom-nav-btn ${context === 'inboxTab' ? 'active' : ''}" onclick="switchTab('inboxTab')"><span>🔔</span>Inbox</button>
+        <button class="bottom-nav-btn" onclick="switchTab('discipleshipTab', 'Prayer')"><span>🙏</span>Prayer</button>
+        <button class="bottom-nav-btn" onclick="window.openSidebar()" style="margin-left: auto;"><span>☰</span>Menu</button>
+        `;
+    }
+    bottomNav.innerHTML = bHtml;
+};
+
+// ==========================================
+// HOTFIX: SIDEBAR MEMBERSHIP LOGS & HOME JOURNEY
+// ==========================================
+
+// --- 1. DEFINITIVE SIDEBAR MENU WITH MEMBERSHIP LOGS ---
+window.buildNav = function() {
+    const sidebar = document.getElementById('sidebarNav');
+    const bottomNav = document.getElementById('bottomNav');
+    const hamburger = document.getElementById('hamburgerBtn');
+    const isAdmin = window.hasPerm && (window.hasPerm('edit_entries') || currentUser === 'celsocreeriii@gmail.com');
+
+    if (bottomNav) bottomNav.style.display = 'flex';
+
+    let sidebarHtml = `
+        <div class="sidebar-header">
+            <img src="/img/logo.png" alt="Logo" class="fog-header-logo" onerror="this.style.display='none'">
+            <h2>FOG V3</h2>
+        </div>
+        <button class="nav-btn" data-target="pulseDashboardTab" onclick="switchTab('pulseDashboardTab')">🏠 Home</button>
+        <button class="nav-btn" data-target="profileTab" onclick="switchTab('profileTab')">👤 My Profile</button>
+        <button class="nav-btn" data-target="inboxTab" onclick="switchTab('inboxTab')">🔔 Inbox</button>
+        <button class="nav-btn" data-target="arcadeTab" onclick="switchTab('arcadeTab')">🎮 Games</button>
+        <button class="nav-btn" data-target="discipleshipTab" onclick="switchTab('discipleshipTab')">🌱 Spiritual Growth</button>
+    `;
+
+    if (isAdmin) {
+        if (hamburger) hamburger.style.display = 'block';
+        sidebarHtml += `
+            <hr style="border-color: #334155; margin: 15px 0;">
+            <p style="color: #94A3B8; font-size: 0.75rem; margin-left: 15px; text-transform: uppercase;">Leadership Tools</p>
+            <button class="nav-btn" data-target="checkinTab" onclick="switchTab('checkinTab')">📸 Event Check-In</button>
+            <button class="nav-btn" data-target="eventsTab" onclick="switchTab('eventsTab')">📅 Events Admin</button>
+            <button class="nav-btn" data-target="directoryTab" onclick="switchTab('directoryTab')">👥 Directory</button>
+            <button class="nav-btn" data-target="membershipAdminTab" onclick="switchTab('membershipAdminTab'); if(window.loadMembershipAdminData) window.loadMembershipAdminData();">🛡️ Membership Logs</button>
+            <button class="nav-btn" data-target="ministriesTab" onclick="switchTab('ministriesTab')">🏛️ Ministries</button>
+            <button class="nav-btn" data-target="worshipTab" onclick="switchTab('worshipTab')">🎵 Worship Hub</button>
+            <button class="nav-btn" data-target="discipleshipAdminTab" onclick="switchTab('discipleshipAdminTab')">⚙️ Discipleship Admin</button>
+            <button class="nav-btn" data-target="communicationsAdminTab" onclick="switchTab('communicationsAdminTab')">📢 Broadcasts</button>
+            <button class="nav-btn" data-target="aiAssistantTab" onclick="switchTab('aiAssistantTab')">🤖 AI Assistant</button>
+            <button class="nav-btn" data-target="permissionsTab" onclick="switchTab('permissionsTab')">🔑 Permissions</button>
+            <button class="nav-btn" data-target="attendanceTab" onclick="switchTab('attendanceTab')">📋 Attendance Logs</button>
+            <button class="nav-btn" data-target="activityLogsTab" onclick="switchTab('activityLogsTab')">📝 Audit Logs</button>
+        `;
+    } else {
+        if (hamburger) hamburger.style.display = 'none';
+    }
+
+    sidebarHtml += `<button class="nav-btn text-danger" onclick="logout()" style="margin-top: auto;">🚪 Logout</button>`;
+    if(sidebar) sidebar.innerHTML = sidebarHtml;
+    
+    // Ensure Membership Admin Tab exists in HTML
+    if (!document.getElementById('membershipAdminTab')) {
+        document.getElementById('mainContainer').insertAdjacentHTML('beforeend', `
+        <div id="membershipAdminTab" class="tab-content">
+            <div class="sub-nav">
+                <button id="btnSubMemCommunity" class="sub-nav-btn active" onclick="switchMemSubTab('community')">🕊️ Community Intents</button>
+                <button id="btnSubMemMinistry" class="sub-nav-btn" onclick="switchMemSubTab('ministry')">🔥 Ministry Logs</button>
+            </div>
+            <div id="subTabMemCommunity" class="mem-sub-tab" style="display:block; animation: fadeIn 0.3s ease-out;">
+                <div class="card">
+                    <h2 style="color: var(--primary);">🕊️ Community Intent Logs</h2>
+                    <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <input type="text" id="commFilterName" class="form-control" placeholder="🔍 Search name..." oninput="if(window.filterCommunityLogs) window.filterCommunityLogs()" style="flex:1; min-width:150px;">
+                    </div>
+                    <div id="communityIntentsList"></div>
+                </div>
+            </div>
+            <div id="subTabMemMinistry" class="mem-sub-tab" style="display:none; animation: fadeIn 0.3s ease-out;">
+                <div class="card">
+                    <h2 style="color: #F59E0B;">🔥 Master Ministry Logs</h2>
+                    <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <input type="text" id="minLogFilterName" class="form-control" placeholder="🔍 Search name or ministry..." oninput="if(window.filterMinistryLogs) window.filterMinistryLogs()" style="flex:1; min-width:150px;">
+                    </div>
+                    <div id="ministryIntentsLogList"></div>
+                </div>
+            </div>
+        </div>`);
+    }
+};
+
+// --- 2. HOME DASHBOARD JOURNEY BUTTONS FIX ---
+window.renderHomeJourney = async function() {
+    const container = document.getElementById('dynamicJourneyContainer');
+    if (!container || !currentMember) return;
+    let html = '';
+    const isPreCommitTier = currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker';
+    if (isPreCommitTier && currentMember.membership_intent_submitted === true) {
+        html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">Beginning Belong</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Your membership intent has been received. We are walking with you in prayer, relationship, and discernment.</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Intent Received</button>`;
+    } else if (isPreCommitTier) {
+        html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Step In</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take the next step to officially become a member of our spiritual family.</p></div><button type="button" class="btn btn-primary btn-sm" style="background: var(--primary); color: white; border: none;" onclick="openCommitmentModal()">I'm Ready</button>`;
+    } else {
+        try {
+            const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
+            const ministries = await res.json();
+            const isApplicant = ministries.some(m => m.role === 'Applicant');
+            const isActiveMember = ministries.some(m => m.role !== 'Applicant');
+
+            if (isActiveMember) {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Serve & Grow</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Continue your formation</p>${isApplicant ? '<p style="font-size:0.75rem; color:#F59E0B; margin:0; font-weight:bold;">(Application Pending)</p>' : ''}</div><button type="button" class="btn btn-outline btn-sm" style="color: #F59E0B; border-color: #F59E0B;" onclick="openMinistryIntentModal()">Expand Service</button>`;
+            } else if (isApplicant) {
+                html = `<div><strong style="color: #F59E0B; font-size: 0.95rem;">🙏 Discerning Together</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">We are so excited you want to serve! Our team is currently praying and preparing a space for you.</p></div><button type="button" class="btn btn-secondary btn-sm" disabled>Preparing Space</button>`;
+            } else {
+                html = `<div><strong style="color: var(--text-main); font-size: 0.95rem;">Next Step: Discover Your Gifts</strong><p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">Take some time to explore where you might love to serve and share those gifts with the community.</p></div><button type="button" class="btn btn-primary btn-sm" style="background: #F59E0B; border: none; color: white;" onclick="openMinistryIntentModal()">Explore Serving</button>`;
+            }
+        } catch(e) {}
+    }
+    container.innerHTML = html;
+};
+
+// Force Failsafe Render 
+setInterval(() => {
+    const container = document.getElementById('dynamicJourneyContainer');
+    if (container && container.innerHTML === '') window.renderHomeJourney();
+}, 2000);
+
+// ==========================================
+// HOTFIX: PROFILE PRIORITY BUTTON FIX
+// ==========================================
+
+window.setCorePriority = async function(mappingId) {
+    if (!currentMember) return alert("Please log in.");
+    if (!confirm("Set this as your ⭐ Priority Ministry?")) return;
+    
+    try {
+        const res = await fetch('/api/ministries-v37/priority/' + mappingId, {
+            method: 'POST', 
+            headers: {'Content-Type':'application/json'}, 
+            body: JSON.stringify({ youth_id: currentMember.id })
+        });
+        
+        if (res.ok) {
+            alert('Priority Ministry Updated Successfully! ⭐');
+            // Instantly refresh the roles UI
+            if (window.loadMyV3Roles) window.loadMyV3Roles(currentMember.id, 'myMinistriesHistory');
+        } else {
+            alert('Failed to update priority.');
+        }
+    } catch(e) { 
+        console.error(e);
+        alert('Error updating priority. Please check your connection.'); 
+    }
+};
+
+// ==========================================
+// HOTFIX: EVENTS BUGS & TRUE FACEBOOK REACTIONS
+// ==========================================
+
+// --- 1. EVENT FORM BUTTON FIX (Safe Null Checks) ---
+window.openPreregSettings = async function(eventId) {
+    try {
+        const response = await fetch(`/api/events/${eventId}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const event = await response.json();
+        window.populatePreregSettingsEditor(event);
+        const modal = document.getElementById('preregSettingsModal');
+        if (modal) modal.classList.add('active');
+    } catch (error) {
+        console.error('Failed to load pre-registration settings.', error);
+        alert('Unable to load event settings. Please try again.');
+    }
+};
+
+// --- 2. EVENT ROLES TAB FIX (Direct Display Manipulation) ---
+window.switchAnalyticsSubTab = function(tab) {
+    const overviewTab = document.getElementById('analyticsTabOverview');
+    const rolesTab = document.getElementById('analyticsTabRoles');
+    const btnOverview = document.getElementById('btnAnalyticsTabOverview');
+    const btnRoles = document.getElementById('btnAnalyticsTabRoles');
+
+    if (overviewTab) overviewTab.style.display = (tab === 'overview') ? 'block' : 'none';
+    if (rolesTab) rolesTab.style.display = (tab === 'roles') ? 'block' : 'none';
+
+    if (btnOverview) btnOverview.classList.toggle('active', tab === 'overview');
+    if (btnRoles) btnRoles.classList.toggle('active', tab === 'roles');
+};
+
+// --- 3. TRUE FACEBOOK REACTION ENGINE (Direct DOM Mutation, ZERO Reloads) ---
+window.refreshReactionBadgeUI = function(type, id, reactionsObj) {
+    // Keep local cache synced
+    if (type === 'chat') window.chatReactionsMap[id] = reactionsObj;
+    if (type === 'memory') window.memoryReactionsMap[id] = reactionsObj;
+
+    let totalReacts = 0;
+    let reactSummary = [];
+    
+    Object.keys(reactionsObj).forEach(emoji => {
+        const count = Array.isArray(reactionsObj[emoji]) ? reactionsObj[emoji].length : reactionsObj[emoji];
+        if (count > 0) {
+            totalReacts += count;
+            if(!reactSummary.includes(emoji)) reactSummary.push(emoji);
+        }
+    });
+
+    // Locate the exact badge for this specific message/memory
+    const summaryId = `react_summary_${type}_${id}`;
+    const summaryEl = document.getElementById(summaryId);
+    
+    if (summaryEl) {
+        if (totalReacts > 0) {
+            summaryEl.innerHTML = `${reactSummary.slice(0,3).join('')} <span style="margin-left: 4px; font-weight: bold;">${totalReacts}</span>`;
+            summaryEl.style.display = 'flex';
+        } else {
+            summaryEl.innerHTML = '';
+            summaryEl.style.display = 'none';
+        }
+    }
+};
+
+window.submitReactionMaster = async function(type, id, emoji, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (!currentMember) return alert("Please log in to react.");
+    
+    // 1. Instantly hide the popup picker
+    const pickerId = `picker_${type}_${id}`;
+    const picker = document.getElementById(pickerId);
+    if (picker) picker.style.display = 'none';
+
+    // 2. Optimistic UI: Inject the emoji to give instant visual feedback
+    const summaryId = `react_summary_${type}_${id}`;
+    const summaryEl = document.getElementById(summaryId);
+    if (summaryEl) {
+        summaryEl.style.display = 'flex';
+        summaryEl.innerHTML = `${emoji} <span style="font-size: 0.7rem; opacity: 0.8; margin-left:4px;">...</span>`;
+    }
+
+    try {
+        // 3. Send to API in the background
+        const res = await fetch(`/api/small-groups/react-v2`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: type, id: id, emoji: emoji, user_name: currentMember.name })
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.reactions) {
+                // 4. Update the DOM directly using the verified API response!
+                // NO PAGE RELOADING. The UI updates natively and securely.
+                window.refreshReactionBadgeUI(type, id, data.reactions);
+            }
+        } else {
+            // Revert on failure
+            if (summaryEl) { summaryEl.innerHTML = '❌'; setTimeout(() => summaryEl.style.display = 'none', 1000); }
+        }
+    } catch(e) { 
+        console.error("Reaction submission error", e); 
+        if (summaryEl) { summaryEl.innerHTML = '❌'; setTimeout(() => summaryEl.style.display = 'none', 1000); }
+    }
+};
+
+
+// ==========================================
+// KOINONIA PHASE B: SEEKER FUNNEL & GUEST STATE
+// ==========================================
+
+window.isGuestMode = false;
+
+// 1. URL ROUTER & LOGIN INTERCEPTOR
+const origCheckLoginStatePhaseB = window.checkLoginState;
+window.checkLoginState = async function() {
+    await window.authReady;
+    const urlParams = new URLSearchParams(window.location.search);
+    const playParam = urlParams.get('play');
+    const readParam = urlParams.get('read');
+    const eventParam = urlParams.get('event');
+
+    // SCENARIO A: User is already logged in normally
+    if (window.koinoniaAuthStatus === 'authenticated') {
+        await origCheckLoginStatePhaseB();
+        
+        // Route them directly to their requested content
+        if (playParam) {
+            setTimeout(() => { switchTab('arcadeTab'); }, 500);
+        } else if (readParam === 'daily-manna') {
+            setTimeout(() => { switchTab('pulseDashboardTab'); if(window.loadDailyManna) window.loadDailyManna(); }, 500);
+        } else if (eventParam) {
+            setTimeout(() => { switchTab('preregPublicTab'); }, 500);
+        }
+        return;
+    }
+
+    // SCENARIO B: Unauthenticated Seeker (Guest Mode)
+    if (playParam || readParam || eventParam) {
+        window.isGuestMode = true;
+        window.currentUser = 'Guest';
+        
+        // Hide global preloader
+        const loader = document.getElementById('globalPreloader');
+        if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 500); }
+
+        // Render Guest Navigation
+        if (window.renderBottomNav) window.renderBottomNav('guest');
+
+        // Route to content
+        if (playParam) {
+            switchTab('arcadeTab');
+        } else if (readParam === 'daily-manna') {
+            switchTab('pulseDashboardTab');
+            setTimeout(() => { if(window.loadDailyManna) window.loadDailyManna(); }, 500);
+        } else if (eventParam) {
+            switchTab('preregPublicTab');
+            
+            // 2. ENFORCE EMAIL REQUIREMENT FOR DEDUPLICATION
+            const pubEmail = document.getElementById('preregPublicEmail');
+            if (pubEmail) {
+                pubEmail.required = true;
+                pubEmail.placeholder = "Email Address (Required for VIP Pass)";
+            }
+        }
+    } else {
+        // SCENARIO C: Default Unauthenticated (Send to Login)
+        await origCheckLoginStatePhaseB();
+    }
+};
+
+// 3. GUEST UI MASKING (Bottom Nav)
+const origRenderBottomNavPhaseB = window.renderBottomNav;
+window.renderBottomNav = function(context) {
+    if (window.isGuestMode || context === 'guest') {
+        const bottomNav = document.getElementById('bottomNav');
+        if (bottomNav) {
+            bottomNav.innerHTML = `
+                <button class="bottom-nav-btn text-primary" style="font-weight: bold;" onclick="window.location.href='/'"><span>🚪</span>Login</button>
+                <button class="bottom-nav-btn ${window.location.search.includes('read=') ? 'active' : ''}" onclick="window.location.href='/?read=daily-manna'"><span>📖</span>Manna</button>
+                <button class="bottom-nav-btn ${window.location.search.includes('play=') ? 'active' : ''}" onclick="window.location.href='/?play=arcade'"><span>🎮</span>Games</button>
+            `;
+        }
+        return;
+    }
+    
+    // Normal Member Nav
+    if (origRenderBottomNavPhaseB) origRenderBottomNavPhaseB(context);
+};
+
+// ==========================================
+// KOINONIA PHASE B HOTFIX: ONLOAD MASTER OVERRIDE
+// ==========================================
+
+const ogOnLoadPhaseB = window.onload;
+
+window.onload = async (e) => {
+    await window.authReady;
+    if (window.koinoniaAuthStatus === 'offline-readonly') {
+        window.renderOfflineReadonlyExperience();
+        return;
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const playParam = urlParams.get('play');
+    const readParam = urlParams.get('read');
+    const eventParam = urlParams.get('event');
+    const hasAuthenticatedSession = window.koinoniaAuthStatus === 'authenticated';
+
+    // SCENARIO 1: Unauthenticated Guest accessing Manna or Arcade
+    if (!hasAuthenticatedSession && (playParam || readParam)) {
+        document.getElementById('mainHeader').style.display = 'block';
+        document.getElementById('mainContainer').style.display = 'block';
+
+        window.isGuestMode = true;
+        window.currentUser = 'Guest';
+
+        const loader = document.getElementById('globalPreloader');
+        if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 500); }
+
+        if (window.renderBottomNav) window.renderBottomNav('guest');
+
+        if (playParam) {
+            window.switchTab('arcadeTab');
+        } else if (readParam === 'daily-manna') {
+            window.switchTab('pulseDashboardTab');
+            setTimeout(() => { if(window.loadDailyManna) window.loadDailyManna(); }, 500);
+        }
+        
+        // CRITICAL: Return immediately to prevent the original onload from forcing loginTab!
+        return; 
+    }
+
+    // SCENARIO 2: Unauthenticated Guest accessing Event Pre-reg
+    if (!hasAuthenticatedSession && eventParam) {
+        window.isGuestMode = true;
+        window.currentUser = 'Guest';
+        
+        // Let the original script handle the event load
+        if (ogOnLoadPhaseB) await ogOnLoadPhaseB(e);
+        
+        // Enforce email deduplication & guest nav after the original load finishes
+        setTimeout(() => {
+            const pubEmail = document.getElementById('preregPublicEmail');
+            if (pubEmail) {
+                pubEmail.required = true;
+                pubEmail.placeholder = "Email Address (Required for VIP Pass)";
+            }
+            if (window.renderBottomNav) window.renderBottomNav('guest');
+        }, 500);
+        return;
+    }
+
+    // SCENARIO 3: Authenticated User overriding their default start tab
+    if (hasAuthenticatedSession && (playParam || readParam || eventParam)) {
+        if (ogOnLoadPhaseB) await ogOnLoadPhaseB(e);
+        
+        // Let original logic log them in, then yank them to their requested content
+        setTimeout(() => {
+            if (playParam) window.switchTab('arcadeTab');
+            else if (readParam === 'daily-manna') {
+                window.switchTab('pulseDashboardTab');
+                if(window.loadDailyManna) window.loadDailyManna();
+            }
+        }, 800);
+        return;
+    }
+
+    // DEFAULT SCENARIO: Normal load (No special URLs)
+    if (ogOnLoadPhaseB) await ogOnLoadPhaseB(e);
+};
+
+// ==========================================
+// KOINONIA PHASE B HOTFIX: SECURE GUEST ROUTING
+// ==========================================
+
+const ogSwitchTabGuestSec = window.switchTab;
+
+window.switchTab = async function(tabId) {
+    // 1. Intercept restricted tabs for Guests
+    if (window.isGuestMode) {
+        const restrictedTabs = ['eventsTab', 'discipleshipTab', 'inboxTab', 'profileTab'];
+        
+        if (restrictedTabs.includes(tabId)) {
+            // Drop them at the login screen with a warm Koinonia message
+            alert("Create a free account to unlock community events and deeper spiritual formation! 🌱");
+            if (ogSwitchTabGuestSec) await ogSwitchTabGuestSec('loginTab');
+            return; 
+        }
+    }
+    
+    // 2. Proceed with normal tab routing
+    if (ogSwitchTabGuestSec) await ogSwitchTabGuestSec(tabId);
+    
+    // 3. UI Masking: Hide the "Quick Actions" block on the Guest Dashboard
+    if (window.isGuestMode && tabId === 'pulseDashboardTab') {
+        setTimeout(() => {
+            // Find the Events quick-action button
+            const eventsBtn = document.querySelector('button[onclick="switchTab(\'eventsTab\')"]');
+            if (eventsBtn && eventsBtn.parentElement) {
+                // Hide the grid container holding the Quick Actions
+                eventsBtn.parentElement.style.display = 'none';
+            }
+        }, 150);
+    }
+};
+
+
+// ==========================================
+// KOINONIA PHASE B HOTFIX: GUEST UI & REGISTRATION MUTATION
+// ==========================================
+
+const ogSwitchTabGuestSecV2 = window.switchTab;
+
+window.switchTab = async function(tabId) {
+    // 1. GUEST RESTRICTION & REGISTRATION MUTATOR
+    if (window.isGuestMode) {
+        const restrictedTabs = ['eventsTab', 'discipleshipTab', 'inboxTab', 'profileTab'];
+        
+        if (restrictedTabs.includes(tabId)) {
+            alert("Create a free account to unlock community events and deeper spiritual formation! 🌱");
+            
+            // Transform the Login Tab into a Frictionless Registration Tab
+            const loginTitle = document.querySelector('#loginTab h2');
+            if(loginTitle) loginTitle.innerText = "Create Free Account";
+            
+            // Hide the manual username/password fields and the submit button
+            document.querySelectorAll('#loginTab form .form-group').forEach(el => el.style.display = 'none');
+            const loginBtn = document.querySelector('#loginTab form button[type="submit"]');
+            if (loginBtn) loginBtn.style.display = 'none';
+            
+            // Emphasize the 1-Tap Google Auth
+            const orText = document.querySelector('#loginTab .text-muted');
+            if (orText) orText.innerText = "Sign up instantly with Google";
+            if (!orText) { // Fallback if exact class is missed
+                document.querySelectorAll('#loginTab span').forEach(s => {
+                    if (s.innerText.includes('continue with')) s.innerText = "Sign up instantly with Google";
+                });
+            }
+
+            if (ogSwitchTabGuestSecV2) await ogSwitchTabGuestSecV2('loginTab');
+            return; 
+        }
+    }
+    
+    // 2. NORMAL TAB ROUTING
+    if (ogSwitchTabGuestSecV2) await ogSwitchTabGuestSecV2(tabId);
+    
+    // 3. GUEST DASHBOARD CLEANUP & DAILY MANNA FAILSAFE
+    if (window.isGuestMode && tabId === 'pulseDashboardTab') {
+        setTimeout(() => {
+            // Hide all unnecessary cards (Prayer Pal, Journey)
+            const dashboardCards = document.querySelectorAll('#pulseDashboardTab .card');
+            if (dashboardCards.length > 1) dashboardCards[1].style.display = 'none'; 
+            if (dashboardCards.length > 2) dashboardCards[2].style.display = 'none'; 
+
+            // Force hide the Events/Campfire buttons reliably
+            Array.from(document.querySelectorAll('#pulseDashboardTab button')).forEach(btn => {
+                if (btn.textContent.includes('Events') || btn.textContent.includes('Campfire')) {
+                    if (btn.parentElement) btn.parentElement.style.display = 'none';
+                }
+            });
+
+            // Failsafe Daily Manna Load (Bypasses the broken member profile fetch)
+            fetch('/api/liturgical/today')
+                .then(res => res.json())
+                .then(data => {
+                    const mannaText = document.getElementById('pulseDailyGospelText');
+                    if (mannaText) mannaText.innerText = data.daily_gospel || data.gospel || "The Lord is my shepherd; I shall not want. (Psalm 23)";
+                }).catch(e => {
+                    const mannaText = document.getElementById('pulseDailyGospelText');
+                    if (mannaText) mannaText.innerText = "The Lord is my shepherd; I shall not want. (Psalm 23)";
+                });
+        }, 100);
+    }
+};
+
+// ==========================================
+// V115: COMBINE GROWTH GAMES WITH FAITH QUEST
+// ==========================================
+setTimeout(() => {
+    const origSwitchGamTab = window.V6Gamification ? window.V6Gamification.switchTab : null;
+    if (window.V6Gamification) {
+        window.V6Gamification.switchTab = function(tabName) {
+            if (origSwitchGamTab) origSwitchGamTab(tabName);
+            
+            if (tabName === 'games') {
+                const container = document.getElementById('gamTabGames');
+                if (container && !document.getElementById('faithQuestGrowthEmbed')) {
+                    container.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; font-weight:bold;">Faith Quest Challenge: improve your score and earn Life Points.</p>
+                    </div>
+                    <div style="height: 75vh; width: 100%; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); background:#FFF;">
+                        <iframe id="faithQuestGrowthEmbed" src="/?faith=quest&embedded=true" style="width:100%; height:100%; border:none;"></iframe>
+                    </div>`;
+                }
+            }
+        };
+    }
+}, 1000);
+
+
+
+
+
+
+
+
+
+
+
+ {
+    window.ogSwitchTabInboxHookV5 = window.switchTab;
+    window.switchTab = async function(tabId) {
+        if(window.ogSwitchTabInboxHookV5) await window.ogSwitchTabInboxHookV5(tabId);
+        if(tabId === 'inboxTab') {
+            setTimeout(window.loadPersonalInbox, 200);
+        }
+    };
+}
+
+
+// --- V6 PRIVATE INBOX SPLIT-TAB ENGINE ---
+window.switchInboxSubTab = function(tab) {
+    const pBtn = document.getElementById('btnInboxPrayers');
+    const aBtn = document.getElementById('btnInboxAnnounce');
+    const pView = document.getElementById('inboxPrayersView');
+    const aView = document.getElementById('inboxAnnounceView');
+    
+    if(!pBtn || !aBtn || !pView || !aView) return;
+
+    pBtn.style.background = tab === 'prayers' ? '#FFF' : 'transparent';
+    pBtn.style.boxShadow = tab === 'prayers' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none';
+    pBtn.style.color = tab === 'prayers' ? 'var(--primary)' : 'var(--text-muted)';
+
+    aBtn.style.background = tab === 'announcements' ? '#FFF' : 'transparent';
+    aBtn.style.boxShadow = tab === 'announcements' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none';
+    aBtn.style.color = tab === 'announcements' ? 'var(--primary)' : 'var(--text-muted)';
+
+    pView.style.display = tab === 'prayers' ? 'block' : 'none';
+    aView.style.display = tab === 'announcements' ? 'block' : 'none';
+};
+
+window.acknowledgePrayer = async function(inboxId, action) {
+    try {
+        const res = await fetch('/api/inbox/personal/' + inboxId + '/respond', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ action: action })
+        });
+        if(res.ok) {
+            window.loadPersonalInbox(); // Instantly refresh UI to show the checkmark
+        }
+    } catch(e) { console.error(e); }
+};
+
+window.loadPersonalInbox = async function() {
+    if(typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
+    const inboxTab = document.getElementById('inboxTab');
+    if(!inboxTab) return;
+
+    // Hijack the entire native tab layout for a custom SPA feel
+    inboxTab.innerHTML = `
+        <div style="background:#FFF; padding:15px; position:sticky; top:0; z-index:10; border-bottom:1px solid #E2E8F0;">
+            <h2 style="margin:0; color:var(--primary); font-size:1.4rem;">Community Inbox</h2>
+        </div>
+        <div style="padding:15px;">
+            <div style="display:flex; background:#F1F5F9; border-radius:12px; padding:4px; margin-bottom:20px;">
+                <button id="btnInboxPrayers" onclick="switchInboxSubTab('prayers')" style="flex:1; border-radius:10px; border:none; padding:10px; font-weight:bold; background:#FFF; box-shadow:0 2px 4px rgba(0,0,0,0.05); color:var(--primary); cursor:pointer; transition: 0.2s;">🙏 Prayers</button>
+                <button id="btnInboxAnnounce" onclick="switchInboxSubTab('announcements')" style="flex:1; border-radius:10px; border:none; padding:10px; font-weight:bold; background:transparent; color:var(--text-muted); cursor:pointer; transition: 0.2s;">📢 Announcements</button>
+            </div>
+            <div id="inboxPrayersView">Loading prayers...</div>
+            <div id="inboxAnnounceView" style="display:none;">Loading announcements...</div>
+        </div>
+    `;
+
+    // 1. Load Personal Prayers
+    try {
+        const resP = await fetch('/api/inbox/personal/' + currentMember.id);
+        const prayers = await resP.json();
+        const pView = document.getElementById('inboxPrayersView');
+        if(prayers.length === 0) {
+            pView.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); background:#FFF; border-radius:12px; border:1px dashed #CBD5E1;">No personal prayers received yet.</div>';
+        } else {
+            pView.innerHTML = prayers.map(p => {
+                const avatar = p.profile_picture ? `<img src="${p.profile_picture}" style="width:45px;height:45px;border-radius:50%;object-fit:cover; border: 2px solid var(--primary);">` : `<div style="width:45px;height:45px;border-radius:50%;background:#EEF2FF;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--primary); border: 2px solid var(--primary); font-size:1.2rem;">${p.sender_name.charAt(0)}</div>`;
+                
+                // Determine 1-Tap UI State
+                let actionHtml = '';
+                if (p.title && p.title.includes('A Prayer from')) {
+                    const hasThanks = p.status && p.status.includes('thank_you');
+                    const hasPraise = p.status && p.status.includes('answered');
+                    
+                    const thankBtn = hasThanks 
+                        ? `<div style="flex:1; background:#F8FAFC; color:#3B82F6; font-weight:bold; padding:8px; border-radius:8px; text-align:center; font-size:0.85rem; border:1px solid #E2E8F0;">✓ Thanks Sent</div>`
+                        : `<button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, 'thank_you')" style="flex:1; background:#EFF6FF; color:#3B82F6; font-weight:bold; border-radius:8px; border:none; cursor:pointer; padding:8px; transition:0.2s;">💙 Send Thanks</button>`;
+                        
+                    const praiseBtn = hasPraise 
+                        ? `<div style="flex:1; background:#F8FAFC; color:#10B981; font-weight:bold; padding:8px; border-radius:8px; text-align:center; font-size:0.85rem; border:1px solid #E2E8F0;">✓ Praise Shared</div>`
+                        : `<button class="btn btn-sm" onclick="acknowledgePrayer(${p.id}, 'answered')" style="flex:1; background:#ECFDF5; color:#10B981; font-weight:bold; border-radius:8px; border:none; cursor:pointer; padding:8px; transition:0.2s;">✨ Praise Report</button>`;
+                        
+                    actionHtml = `<div style="display:flex; gap:10px; margin-top:15px; border-top:1px solid #E2E8F0; padding-top:15px;">${thankBtn}${praiseBtn}</div>`;
+                }
+                
+                return `
+                <div style="background:#FFF; padding:15px; border-radius:16px; border:1px solid #E2E8F0; margin-bottom:15px; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
+                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                        ${avatar}
+                        <div>
+                            <strong style="color:var(--text-main); font-size:1.05rem; display:block;">${p.title}</strong>
+                            <span style="font-size:0.8rem; color:var(--text-muted);">${p.created_at.split(' ')[0]}</span>
+                        </div>
+                    </div>
+                    <p style="font-size:1rem; color:var(--text-main); line-height:1.6; margin:0; font-style:italic; padding: 12px; background: #F8FAFC; border-radius: 12px; border-left: 3px solid var(--primary);">"${p.message}"</p>
+                    ${actionHtml}
+                </div>`;
+            }).join('');
+        }
+    } catch(e) { console.error(e); }
+
+    // 2. Load Global Announcements
+    try {
+        const resA = await fetch('/api/communications/inbox');
+        const ann = await resA.json();
+        const aView = document.getElementById('inboxAnnounceView');
+        if(ann.length === 0) {
+            aView.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); background:#FFF; border-radius:12px; border:1px dashed #CBD5E1;">No community announcements.</div>';
+        } else {
+            aView.innerHTML = ann.map(a => `
+                <div style="background:#FFF; padding:15px; border-radius:12px; border:1px solid #E2E8F0; margin-bottom:15px; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
+                    <h4 style="margin:0 0 5px 0; color:var(--primary); font-size:1.05rem;">${a.title}</h4>
+                    <p style="margin:0 0 10px 0; font-size:0.9rem; color:var(--text-main); line-height:1.5;">${a.message}</p>
+                    <small style="color:var(--text-muted);">${a.created_at}</small>
+                </div>
+            `).join('');
+        }
+    } catch(e) { console.error(e); }
+};
+
+if (!window.ogSwitchTabInboxHookV6) {
+    window.ogSwitchTabInboxHookV6 = window.switchTab;
+    window.switchTab = async function(tabId) {
+        if(window.ogSwitchTabInboxHookV6) await window.ogSwitchTabInboxHookV6(tabId);
+        if(tabId === 'inboxTab') {
+            setTimeout(window.loadPersonalInbox, 100);
+        }
+    };
+}
+
+
+
+
+
+// --- V19: DUAL RENDER ENGINE ---
+
+// 1. RESTORE "MY JOURNEY" FOR HOME DASHBOARD
+window.renderHomeJourneyCard = async function() {
+    if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
+    
+    const dashTab = document.getElementById('pulseDashboardTab');
+    if (!dashTab || dashTab.style.display === 'none') return;
+
+    const allHeaders = Array.from(dashTab.querySelectorAll('h1, h2, h3, h4, h5'));
+    const journeyHeader = allHeaders.find(el => el.innerText.toUpperCase().includes('MY JOURNEY') && el.children.length === 0);
+    if (!journeyHeader) return;
+    
+    const journeyCard = journeyHeader.closest('.card');
+    if (!journeyCard) return;
+
+    let container = document.getElementById('dynamicHomeJourneyBox');
+    if (!container) {
+        journeyCard.innerHTML = `<h3 style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin: 0 0 15px 0; font-weight: 800; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; border:none; padding:0;"><span style="color: var(--primary);">📍</span> MY JOURNEY</h3><div id="dynamicHomeJourneyBox"></div>`;
+        container = document.getElementById('dynamicHomeJourneyBox');
+    }
+
+    let title = "Begin Your Walk";
+    let desc = "Join an upcoming gathering to see what our family is all about.";
+    let btnText = "View Events";
+    let btnAction = "if(window.hubNavTo) window.hubNavTo('/?tab=events'); else window.location.href='/?tab=events';";
+    let statusColor = "#3B82F6";
+
+    const isPreCommitTier = currentMember.account_tier === 'New Member' || currentMember.account_tier === 'Seeker';
+    if (isPreCommitTier && currentMember.membership_intent_submitted === true) {
+        title = "Beginning Belong";
+        desc = "Your membership intent has been received. We are walking with you in prayer, relationship, and discernment.";
+        btnText = "Intent Received";
+        btnAction = "";
+        statusColor = "#F59E0B";
+    } else if (isPreCommitTier) {
+        title = "Welcome Home";
+        desc = "We would love for you to plant your roots here. Take the next step to officially become a member of our spiritual family.";
+        btnText = "Join Our Family";
+        btnAction = "if(typeof openCommitmentModal === 'function') openCommitmentModal(); else alert('Feature pending implementation.');";
+        statusColor = "#F59E0B";
+    } else {
+        try {
+            const res = await fetch('/api/youth/' + currentMember.id + '/ministries');
+            const ministries = await res.json();
+            const isApplicant = ministries.some(m => m.role === 'Applicant');
+            const isActiveMember = ministries.some(m => m.role !== 'Applicant');
+
+            if (isActiveMember) {
+                title = "Serve & Grow";
+                desc = "You are an active servant! Feel called to do more? You can always expand your borders and join another ministry.";
+                btnText = "Expand Service";
+                btnAction = "if(typeof openMinistryIntentModal === 'function') openMinistryIntentModal(); else alert('Feature pending implementation.');";
+                statusColor = "#10B981";
+            } else if (isApplicant) {
+                title = "🙏 Discerning Together";
+                desc = "We are so excited you want to serve! Our team is currently praying and preparing a space for you. We will reach out very soon.";
+                btnText = "Preparing Space";
+                btnAction = "";
+                statusColor = "#64748B";
+            } else {
+                title = "Discover Your Gifts";
+                desc = "God has given you beautiful, unique talents. Take some time to explore where you might love to serve and share those gifts with the community.";
+                btnText = "Explore Serving";
+                btnAction = "if(typeof openMinistryIntentModal === 'function') openMinistryIntentModal(); else alert('Feature pending implementation.');";
+                statusColor = "#8B5CF6";
+            }
+        } catch(e) {}
+    }
+
+    const btnHtml = btnAction === "" ? 
+        `<button class="btn" disabled style="background: #E2E8F0; color: #64748B; width: 100%; border-radius: 10px; font-weight: bold; padding: 12px; cursor: not-allowed; box-shadow: none;">${btnText}</button>` : 
+        `<button class="btn btn-primary" onclick="${btnAction}" style="width: 100%; border-radius: 10px; font-weight: bold; padding: 12px; background: ${statusColor}; border-color: ${statusColor}; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">${btnText}</button>`;
+
+    if (window.KoinoniaOfflineData && typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+        window.KoinoniaOfflineData.saveDashboardSnapshot('member:' + currentMember.id, {
+            journey: {
+                title,
+                desc,
+                btnText,
+                statusColor,
+                accountTier: currentMember.account_tier
+            }
+        });
+    }
+
+    container.innerHTML = `
+        <div style="background: #F8FAFC; border-radius: 12px; padding: 15px; border-left: 4px solid ${statusColor}; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+            <strong style="color: var(--text-main); font-size: 1.05rem; display: block; margin-bottom: 6px;">${title}</strong>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.5;">${desc}</p>
+        </div>
+        ${btnHtml}
+        <button onclick="document.getElementById('journeyExplanationModal').style.display='flex'" style="background: transparent; color: var(--primary); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px; font-size: 0.8rem; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.2s;">
+            🌱 About The Growth Pathway
+        </button>
+    `;
+};
+
+// 2. INJECT 7-STAGE PATHWAY FOR GROWTH PAGE
+window.renderGrowthPathwayCard = async function() {
+    if (typeof currentMember === 'undefined' || !currentMember || !currentMember.id) return;
+    const growTab = document.getElementById('growTab');
+    if (!growTab) return;
+
+    // Eradicate the native green card
+    Array.from(growTab.querySelectorAll('.card')).forEach(c => {
+        if (c.id !== 'dynamicGrowthPathwayBox' && (c.innerText.includes('Your Next Step') || c.innerText.includes('Salvation') || c.className.includes('bg-success'))) {
+            c.style.display = 'none';
+        }
+    });
+
+    let container = document.getElementById('dynamicGrowthPathwayBox');
+    if (!container) {
+        growTab.insertAdjacentHTML('afterbegin', '<div id="dynamicGrowthPathwayBox" style="margin-bottom:20px;"></div>');
+        container = document.getElementById('dynamicGrowthPathwayBox');
+    }
+
+    try {
+        const res = await fetch('/api/discipleship/next-step/' + currentMember.id);
+        const data = await res.json();
+        
+        let title = "Salvation & Baptism";
+        let desc = "Accept Jesus Christ as Lord and Savior and publicly declare your faith through water baptism.";
+        let stageIndex = 1;
+        
+        if (data && data.nextStep) { title = data.nextStep.title || title; desc = data.nextStep.description || desc; }
+
+        const titleLower = title.toLowerCase();
+        if (titleLower.includes('encounter') || titleLower.includes('come') || titleLower.includes('salvation')) stageIndex = 1;
+        else if (titleLower.includes('connect') || titleLower.includes('belong')) stageIndex = 2;
+        else if (titleLower.includes('pledge') || titleLower.includes('commit')) stageIndex = 3;
+        else if (titleLower.includes('gift') || titleLower.includes('discover')) stageIndex = 4;
+        else if (titleLower.includes('equip') || titleLower.includes('form')) stageIndex = 5;
+        else if (titleLower.includes('serve') || titleLower.includes('participate')) stageIndex = 6;
+        else if (titleLower.includes('commission') || titleLower.includes('sent')) stageIndex = 7;
+
+        const progressPercent = Math.round((stageIndex / 7) * 100);
+
+        let pastoralContext = "";
+        switch(stageIndex) {
+            case 1: pastoralContext = "God is inviting you to experience His love in a fresh way. Take this bold first step to explore your faith and see what He has in store."; break;
+            case 2: pastoralContext = "We are not meant to walk alone. Finding your spiritual family will anchor your faith and provide brothers and sisters to support you."; break;
+            case 3: pastoralContext = "You are laying a firm foundation. By committing to this spiritual home, you are planting roots that will yield immense spiritual fruit."; break;
+            case 4: pastoralContext = "God has entrusted you with unique talents meant to bless others. Unpack those gifts now so you can prepare to serve His Kingdom."; break;
+            case 5: pastoralContext = "This is a season of deep refinement. Lean into your formation to sharpen your character, skills, and heart for ministry."; break;
+            case 6: pastoralContext = "The harvest is ready! Step out in faith to actively serve and experience the profound joy of building up your community."; break;
+            case 7: pastoralContext = "You are fully equipped. Go forth with a burning passion for God and deep compassion for all, shining His light wherever you go."; break;
+        }
+
+        container.innerHTML = `
+            <div class="card" style="background: #FFF; border-radius: 16px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #E2E8F0; margin: 0;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                    <h3 style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin: 0; font-weight: 800; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; border:none; padding:0;">
+                        <span style="color: #F97316;">📍</span> MY JOURNEY
+                    </h3>
+                    <button onclick="document.getElementById('journeyExplanationModal').style.display='flex'" style="background: #FFFBEB; color: #D97706; border: none; border-radius: 20px; padding: 5px 12px; font-size: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                        ℹ️ About My Journey
+                    </button>
+                </div>
+                
+                <strong style="color: #F97316; font-size: 1.4rem; display: block; margin-bottom: 8px;">Step ${stageIndex}: ${title}</strong>
+                
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                    <div style="flex: 1; height: 8px; background: #E2E8F0; border-radius: 10px; overflow: hidden;">
+                        <div style="height: 100%; width: ${progressPercent}%; background: #F97316; border-radius: 10px;"></div>
+                    </div>
+                    <span style="font-size: 0.75rem; font-weight: bold; color: var(--text-muted);">Step ${stageIndex} of 7</span>
+                </div>
+
+                <div style="background: #FFF; padding: 15px; border-radius: 12px; border-left: 4px solid #F97316; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                    <p style="font-size: 0.95rem; color: var(--text-main); font-style: italic; margin: 0 0 10px 0; line-height: 1.5;">"${pastoralContext}"</p>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; font-weight: 600;">🎯 Action: ${desc}</p>
+                </div>
+
+                <button class="btn btn-primary" onclick="if(window.hubNavTo) window.hubNavTo('events'); else window.location.href='/?tab=events';" style="width: 100%; border-radius: 10px; font-weight: bold; padding: 14px; background: #F97316; border-color: #F97316; font-size: 1.05rem; box-shadow: 0 4px 10px rgba(249, 115, 22, 0.2);">Take Your Next Step</button>
+            </div>
+        `;
+    } catch(e) { console.error('Error rendering growth pathway:', e); }
+};
+
+// 3. HOOK INTERVALS
+const ogIntervalV19 = setInterval(() => {
+    window.renderGrowthPathwayCard();
+}, 1500);
+// --- END V19 ---
+
+
+// ==========================================
+// KIONONIA CORE UX OVERRIDES
+// ==========================================
+const _origCheckLoginState = window.checkLoginState;
+window.checkLoginState = async function() {
+    await window.authReady;
+    if (window.koinoniaAuthStatus === 'offline-readonly') {
+        window.renderOfflineReadonlyExperience();
+        return;
+    }
+    if (_origCheckLoginState) await _origCheckLoginState();
+    
+    // Aggressively force Dashboard 300ms later to override background scripts
+    setTimeout(() => {
+        if (window.koinoniaAuthStatus === 'authenticated' && !window.location.search.includes('faith=quest')) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            const dash = document.getElementById('pulseDashboardTab');
+            if (dash) dash.classList.add('active');
+            if (typeof window.renderBottomNav === 'function') window.renderBottomNav('pulseDashboardTab');
+            window.scrollTo(0,0);
+        }
+    }, 300);
+};
+
+const _origRenderBottomNav = window.renderBottomNav;
+window.renderBottomNav = function(context) {
+    if (_origRenderBottomNav) _origRenderBottomNav(context);
+    
+    // Wait for native rendering to finish, then swap the icon
+    setTimeout(() => {
+        if (context === 'discipleshipTab') {
+            const navItems = Array.from(document.querySelectorAll('.bottom-nav-btn'));
+            const profileBtn = navItems.find(btn => btn.innerText.includes('Profile'));
+            if (profileBtn) {
+                profileBtn.innerHTML = '<span>🏠</span>Home';
+                profileBtn.setAttribute('onclick', "switchTab('pulseDashboardTab')");
+            }
+        }
+    }, 50);
+};
+
+// ==========================================
+// V50: PROFILE TOOLTIP LOGIC
+// ==========================================
+document.addEventListener('click', (e) => {
+    const profTarget = e.target.closest('#overallXpBadgeToggle');
+    const profTooltip = document.getElementById('xpTooltip');
+    if (profTarget && profTooltip) {
+        e.stopPropagation();
+        profTooltip.style.display = profTooltip.style.display === 'flex' ? 'none' : 'flex';
+    } else if (profTooltip) {
+        profTooltip.style.display = 'none';
+    }
+});
+
+// ==========================================
+// V51: EVENT PLANNER & PERMISSIONS FIX
+// ==========================================
+
+// 1. Safe overriding of Granular Permissions (ensuring Super Admins get access)
+window.applyGranularPermissions = function() {
+    const canAdd = window.hasPerm('add_entries') || currentUser === 'celsocreeriii@gmail.com';
+    
+    // Safely enforce display with !important to bypass CSS conflicts
+    const setDisp = (id) => { 
+        const el = document.getElementById(id); 
+        if (el) el.style.setProperty('display', canAdd ? 'inline-flex' : 'none', 'important'); 
+    };
+    
+    setDisp('btnSubEventCreate');
+    setDisp('btnSubMinistryCreate');
+    setDisp('btnCheckinWalkin');
+    setDisp('addEntryAnalyticsBtn');
+    const directoryAddButton =
+        document.getElementById('btnDirectoryAddMember');
+
+    if (directoryAddButton) {
+        directoryAddButton.style.setProperty(
+            'display',
+            window.canCreateDirectoryMember()
+                ? 'inline-flex'
+                : 'none',
+            'important'
+        );
+    }
+};
+
+// 2. Ensuring the Sidebar lists "Event Planner" properly
+const ogBuildNavV51 = window.buildNav;
+window.buildNav = function() {
+    if (ogBuildNavV51) ogBuildNavV51();
+    const sidebar = document.getElementById('sidebarNav');
+    if (sidebar) {
+        const evBtn = Array.from(sidebar.querySelectorAll('.nav-btn')).find(b => b.innerText.includes('Events Admin'));
+        if (evBtn) evBtn.innerHTML = '📅 Event Planner';
+        window.applyGranularPermissions();
+    }
+};
+
+// 3. Bulletproof Event Editor & Submitter
+window.openEditEventModal = async function(eventId) {
+    try {
+        const response = await fetch(`/api/events/${eventId}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const e = await response.json();
+
+        const safeSet = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
+        safeSet('editEvtId', e.id);
+        safeSet('editEvtName', e.name || '');
+        safeSet('editEvtDate', e.event_date || '');
+        safeSet('editEvtTime', e.time_start || '');
+        safeSet('editEvtVenue', e.venue || '');
+        safeSet('editEvtPoints', e.event_points || 10);
+        safeSet('editEvtPhotosUrl', e.photos_url || '');
+        safeSet('editEvtMaterialsUrl', e.materials_url || '');
+        safeSet('editEvtPoster', '');
+
+        window.closeAnalyticsModal();
+        const modal = document.getElementById('editEventModal');
+        if (modal) modal.classList.add('active');
+    } catch (err) {
+        console.error("Edit Event Error:", err);
+        alert("Unable to load the Event Editor. Please try again.");
+    }
+};
+
+window.submitEditEvent = async function() {
+    const form = document.getElementById('editEventForm');
+    if(!form.checkValidity()) { form.reportValidity(); return; }
+    
+    const id = document.getElementById('editEvtId').value;
+    const fileInput = document.getElementById('editEvtPoster');
+    
+    window.triggerActionConfirmation(`Confirm saving changes to event?`, async () => {
+        let posterBase64 = null;
+        if (fileInput && fileInput.files && fileInput.files.length > 0) {
+            posterBase64 = await window.getBase64(fileInput.files[0], 1200);
+        }
+        
+        const safeGet = (elId) => { const el = document.getElementById(elId); return el ? el.value : ''; };
+        const payload = {
+            name: safeGet('editEvtName'), 
+            event_date: safeGet('editEvtDate'),
+            time_start: safeGet('editEvtTime'), 
+            venue: safeGet('editEvtVenue'),
+            poster: posterBase64, 
+            photos_url: safeGet('editEvtPhotosUrl'),
+            materials_url: safeGet('editEvtMaterialsUrl'), 
+            event_points: safeGet('editEvtPoints') || 10,
+            actor: currentUser
+        };
+        
+        try {
+            const res = await fetch(`/api/events/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+            if(res.ok) { window.closeEditEventModal(); alert("Event updated successfully!"); window.loadEvents(); }
+            else { const d = await res.json(); alert(d.error || "Error updating event"); }
+        } catch(e) { alert("Error connecting to server."); throw e; }
+    });
+};
+
+// 4. Restore Home Dashboard "Life Points" Scroll Behavior (And suppress tooltip)
+document.addEventListener('click', (e) => {
+    const homeTarget = e.target.closest('#dashXpClickTarget');
+    if (homeTarget) {
+        e.stopPropagation();
+        
+        // Suppress tooltip if it was previously injected
+        const homeTooltip = document.getElementById('homeXpTooltip');
+        if (homeTooltip) homeTooltip.style.display = 'none';
+
+        const hub = document.getElementById('actionHubContainer');
+        if (hub) {
+            hub.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const fqCard = Array.from(hub.querySelectorAll('.continuity-card')).find(el => el.innerText.includes('Games'));
+            if (fqCard) {
+                const ogBg = fqCard.style.background;
+                fqCard.style.background = '#FEF3C7';
+                setTimeout(() => fqCard.style.background = ogBg, 1200);
+            }
+        }
+    }
+});
+
+// ==========================================
+// V52: DYNAMIC DASHBOARD POINTS & EVENT TAB FIX
+// ==========================================
+window.updateDashboardLifePoints = function() {
+    if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+        fetch('/api/gamification/points/' + currentMember.id)
+            .then(res => res.json())
+            .then(data => {
+                window.currentLifePointsData = data;
+                
+                // Update Dashboard Hero Banner
+                const xpCounter = document.getElementById('dashXpCounter');
+                if (xpCounter) xpCounter.innerText = (data.weekly_points || 0) + ' Life Points This Week 🖱️';
+                
+                // Silently update Profile Tooltip variables
+                const elA = document.getElementById('myArcadeXp');
+                const elG = document.getElementById('myGrowthXp');
+                const elE = document.getElementById('myEventXp');
+                if(elA) elA.innerText = data.arcade_xp || 0;
+                if(elG) elG.innerText = data.growth_xp || 0;
+                if(elE) elE.innerText = data.event_xp || 0;
+            }).catch(e => console.log('Points sync error', e));
+    }
+};
+
+// ==========================================
+// PHASE 2A: EVENT SERIES + GROWTH MAPPING
+// ==========================================
+let growthAdminSeries = [];
+let growthAdminTasks = [];
+let growthAdminEventId = null;
+let growthAdminDirectMappings = [];
+let growthAdminSeriesMappings = [];
+
+window.escapeGrowthAdminText = function(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+window.growthAdminRequest = async function(url, options = {}) {
+    const response = await fetch(url, options);
+    let data = null;
+    try { data = await response.json(); } catch (_) {}
+    if (!response.ok) throw new Error((data && data.error) || `Request failed (${response.status})`);
+    return data;
+};
+
+window.renderGrowthTaskChoices = function(containerId, selectedTaskIds) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const selected = new Set((selectedTaskIds || []).map(Number));
+    let currentPhase = '';
+    const rows = [];
+    for (const task of growthAdminTasks) {
+        if (task.phase_key !== currentPhase) {
+            currentPhase = task.phase_key;
+            rows.push(`<strong style="display:block; margin:${rows.length ? '14px' : '0'} 0 6px; color:var(--primary);">${window.escapeGrowthAdminText(task.phase_title)}</strong>`);
+        }
+        rows.push(`<label style="display:flex; gap:8px; align-items:flex-start; margin:6px 0;">
+            <input type="checkbox" data-growth-task-id="${Number(task.id)}" ${selected.has(Number(task.id)) ? 'checked' : ''}>
+            <span>${window.escapeGrowthAdminText(task.title)} <small style="color:var(--text-muted);">(${window.escapeGrowthAdminText(task.task_key)})</small></span>
+        </label>`);
+    }
+    container.innerHTML = rows.join('') || '<p style="color:var(--text-muted);">No active Growth tasks are available.</p>';
+};
+
+window.renderGrowthSeriesOptions = function(selectedSeriesId = null) {
+    const eventSelect = document.getElementById('growthEventSeriesSelect');
+    if (eventSelect) {
+        eventSelect.innerHTML = '<option value="">No series</option>' + growthAdminSeries.map(series => (
+            `<option value="${Number(series.id)}">${window.escapeGrowthAdminText(series.name)}${series.is_active ? '' : ' (inactive)'}</option>`
+        )).join('');
+        eventSelect.value = selectedSeriesId ? String(selectedSeriesId) : '';
+    }
+    const managerSelect = document.getElementById('growthSeriesManagerSelect');
+    if (managerSelect) {
+        const previous = managerSelect.value;
+        managerSelect.innerHTML = '<option value="">Create new series</option>' + growthAdminSeries.map(series => (
+            `<option value="${Number(series.id)}">${window.escapeGrowthAdminText(series.name)}${series.is_active ? '' : ' (inactive)'}</option>`
+        )).join('');
+        if (growthAdminSeries.some(series => String(series.id) === previous)) managerSelect.value = previous;
+    }
+};
+
+window.toggleGrowthEventFields = function() {
+    const enabled = document.getElementById('growthEventEnabled');
+    const fields = document.getElementById('growthEventFields');
+    if (fields) fields.style.display = enabled && enabled.checked ? 'block' : 'none';
+};
+
+window.openGrowthEventMapping = async function(eventId) {
+    const normalizedEventId = Number(eventId);
+    if (!Number.isSafeInteger(normalizedEventId) || normalizedEventId <= 0) return;
+    try {
+        const [series, tasks, assignment, mappings] = await Promise.all([
+            window.growthAdminRequest('/api/admin/growth/event-series'),
+            window.growthAdminRequest('/api/admin/growth/tasks'),
+            window.growthAdminRequest(`/api/admin/growth/events/${normalizedEventId}/series`),
+            window.growthAdminRequest(`/api/admin/growth/events/${normalizedEventId}/mappings`)
+        ]);
+        growthAdminEventId = normalizedEventId;
+        growthAdminSeries = series;
+        growthAdminTasks = tasks;
+        growthAdminDirectMappings = mappings.direct_mappings || [];
+        const event = (Array.isArray(eventsData) ? eventsData : []).find(item => Number(item.id) === normalizedEventId);
+        const title = document.getElementById('growthEventMappingTitle');
+        if (title) title.textContent = event ? event.name : `Event ${normalizedEventId}`;
+        window.renderGrowthSeriesOptions(assignment.series && assignment.series.id);
+        window.renderGrowthTaskChoices('growthEventTaskList', growthAdminDirectMappings.filter(item => item.is_active).map(item => item.task_id));
+        const enabled = document.getElementById('growthEventEnabled');
+        if (enabled) enabled.checked = Boolean(assignment.series || growthAdminDirectMappings.some(item => item.is_active));
+        window.toggleGrowthEventFields();
+        const manager = document.getElementById('growthSeriesManager');
+        if (manager) manager.style.display = 'none';
+        const modal = document.getElementById('growthEventMappingModal');
+        if (modal) modal.classList.add('active');
+    } catch (error) {
+        alert(error.message || 'Unable to load Growth Journey configuration.');
+    }
+};
+
+window.closeGrowthEventMapping = function() {
+    const modal = document.getElementById('growthEventMappingModal');
+    if (modal) modal.classList.remove('active');
+};
+
+window.getGrowthFormationArea = function(taskId) {
+    const task = growthAdminTasks.find(item => Number(item.id) === Number(taskId));
+    const match = task && String(task.task_key).match(/^form-(spiritual|community|servanthood|ministry|mission)$/);
+    return match ? match[1] : '';
+};
+
+window.syncGrowthTaskMappings = async function(source, containerId, existingMappings) {
+    const container = document.getElementById(containerId);
+    const selected = new Set(Array.from(container ? container.querySelectorAll('[data-growth-task-id]:checked') : [])
+        .map(input => Number(input.dataset.growthTaskId)));
+    const byTask = new Map();
+    for (const mapping of existingMappings || []) {
+        const taskId = Number(mapping.task_id);
+        if (!byTask.has(taskId)) byTask.set(taskId, []);
+        byTask.get(taskId).push(mapping);
+    }
+    for (const [taskId, mappings] of byTask) {
+        if (!selected.has(taskId)) {
+            for (const mapping of mappings) {
+                await window.growthAdminRequest(`/api/admin/growth/event-mappings/${mapping.id}`, { method: 'DELETE' });
+            }
+        } else if (!mappings.some(mapping => mapping.is_active)) {
+            await window.growthAdminRequest(`/api/admin/growth/event-mappings/${mappings[0].id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: true })
+            });
+        }
+    }
+    for (const taskId of selected) {
+        if (byTask.has(taskId)) continue;
+        await window.growthAdminRequest('/api/admin/growth/event-mappings', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ...source,
+                task_id: taskId,
+                evidence_mode: 'attendance',
+                formation_area: window.getGrowthFormationArea(taskId)
+            })
+        });
+    }
+};
+
+window.saveGrowthEventMapping = async function() {
+    if (!growthAdminEventId) return;
+    const enabled = document.getElementById('growthEventEnabled').checked;
+    const seriesValue = enabled ? document.getElementById('growthEventSeriesSelect').value : '';
+    try {
+        await window.growthAdminRequest(`/api/admin/growth/events/${growthAdminEventId}/series`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ series_id: seriesValue ? Number(seriesValue) : null })
+        });
+        if (enabled) {
+            await window.syncGrowthTaskMappings(
+                { event_id: growthAdminEventId }, 'growthEventTaskList', growthAdminDirectMappings
+            );
+        } else {
+            for (const mapping of growthAdminDirectMappings) {
+                await window.growthAdminRequest(`/api/admin/growth/event-mappings/${mapping.id}`, { method: 'DELETE' });
+            }
+        }
+        window.closeGrowthEventMapping();
+        alert('Growth Journey configuration saved.');
+    } catch (error) {
+        alert(error.message || 'Unable to save Growth Journey configuration.');
+    }
+};
+
+window.toggleGrowthSeriesManager = function() {
+    const manager = document.getElementById('growthSeriesManager');
+    if (!manager) return;
+    manager.style.display = manager.style.display === 'none' ? 'block' : 'none';
+    if (manager.style.display === 'block') window.loadGrowthSeriesEditor();
+};
+
+window.startNewGrowthSeries = function() {
+    const select = document.getElementById('growthSeriesManagerSelect');
+    if (select) select.value = '';
+    window.loadGrowthSeriesEditor();
+};
+
+window.loadGrowthSeriesEditor = async function() {
+    const selectedId = Number(document.getElementById('growthSeriesManagerSelect').value || 0);
+    const series = growthAdminSeries.find(item => Number(item.id) === selectedId) || null;
+    document.getElementById('growthSeriesId').value = series ? series.id : '';
+    document.getElementById('growthSeriesName').value = series ? series.name : '';
+    document.getElementById('growthSeriesKey').value = series ? series.series_key : '';
+    document.getElementById('growthSeriesDescription').value = series ? (series.description || '') : '';
+    document.getElementById('growthSeriesAudience').value = series ? series.audience : 'all';
+    document.getElementById('growthSeriesActive').checked = series ? Boolean(series.is_active) : true;
+    growthAdminSeriesMappings = [];
+    if (series) {
+        try {
+            growthAdminSeriesMappings = await window.growthAdminRequest(`/api/admin/growth/event-series/${series.id}/mappings`);
+        } catch (error) {
+            alert(error.message || 'Unable to load series mappings.');
+        }
+    }
+    window.renderGrowthTaskChoices('growthSeriesTaskList', growthAdminSeriesMappings.filter(item => item.is_active).map(item => item.task_id));
+};
+
+window.saveGrowthSeries = async function() {
+    const existingId = Number(document.getElementById('growthSeriesId').value || 0);
+    const name = document.getElementById('growthSeriesName').value.trim();
+    let seriesKey = document.getElementById('growthSeriesKey').value.trim().toLowerCase();
+    if (!seriesKey && name) seriesKey = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const payload = {
+        series_key: seriesKey,
+        name,
+        description: document.getElementById('growthSeriesDescription').value.trim(),
+        audience: document.getElementById('growthSeriesAudience').value,
+        is_active: document.getElementById('growthSeriesActive').checked
+    };
+    try {
+        const saved = await window.growthAdminRequest(
+            existingId ? `/api/admin/growth/event-series/${existingId}` : '/api/admin/growth/event-series',
+            {
+                method: existingId ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }
+        );
+        const seriesId = existingId || Number(saved.id);
+        await window.syncGrowthTaskMappings(
+            { series_id: seriesId }, 'growthSeriesTaskList', existingId ? growthAdminSeriesMappings : []
+        );
+        growthAdminSeries = await window.growthAdminRequest('/api/admin/growth/event-series');
+        window.renderGrowthSeriesOptions(document.getElementById('growthEventSeriesSelect').value);
+        document.getElementById('growthSeriesManagerSelect').value = String(seriesId);
+        await window.loadGrowthSeriesEditor();
+        alert('Event series saved.');
+    } catch (error) {
+        alert(error.message || 'Unable to save event series.');
+    }
+};
+
+// Bind the updater to the tab switching mechanism
+const ogSwitchTabV52 = window.switchTab;
+window.switchTab = async function(tabId, subTabId) {
+    if (ogSwitchTabV52) await ogSwitchTabV52(tabId, subTabId);
+    
+    // Auto-refresh points when visiting the Home Dashboard
+    if (tabId === 'pulseDashboardTab') {
+        if (typeof window.updateDashboardLifePoints === 'function') window.updateDashboardLifePoints();
+    }
+    
+    // Ensure "Create Event" tab renders correctly when Events tab opens
+    if (tabId === 'eventsTab') {
+        setTimeout(() => { 
+            if (typeof window.applyGranularPermissions === 'function') window.applyGranularPermissions(); 
+        }, 100);
+    }
+};
+
+// ==========================================
+// V53: ULTIMATE PERMISSION & SPEED OPTIMIZATION
+// ==========================================
+
+// 1. INDESTRUCTIBLE PERMISSION ENFORCER
+// Runs every 1 second in the background to guarantee UI is unlocked for admins
+setInterval(() => {
+    if (typeof currentUser === 'undefined' || !currentUser) return;
+    const canAdd = (typeof window.hasPerm === 'function' && window.hasPerm('add_entries')) || currentUser === 'celsocreeriii@gmail.com';
+    const canCreateEvent = (typeof window.hasPerm === 'function' && window.hasPerm('access_events') && window.hasPerm('add_entries')) || currentUser === 'celsocreeriii@gmail.com';
+    
+    const idsToUnlock = ['btnSubEventCreate', 'btnSubMinistryCreate', 'btnCheckinWalkin', 'addEntryAnalyticsBtn', 'btnDirectoryAddMember'];
+    
+    idsToUnlock.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            const shouldShow =
+                id === 'btnSubEventCreate'
+                    ? canCreateEvent
+                    : id === 'btnDirectoryAddMember'
+                        ? window.canCreateDirectoryMember()
+                        : canAdd;
+            if (shouldShow) {
+                if (el.style.display === 'none' || el.style.display === '') {
+                    el.style.setProperty('display', 'inline-flex', 'important');
+                }
+            } else {
+                el.style.setProperty('display', 'none', 'important');
+            }
+        }
+    });
+}, 1000);
+
+// 2. OPTIMISTIC UI & DEBOUNCING FOR EVENTS
+// Prevents double-fetching and renders instantly using cached data
+let isFetchingEvents = false;
+window.loadEvents = async function() {
+    if (isFetchingEvents) return;
+    isFetchingEvents = true;
+
+    // Instant Render (Optimistic UI)
+    if (typeof eventsData !== 'undefined' && eventsData.length > 0) {
+        const eventsTab = document.getElementById('eventsTab');
+        if (eventsTab && eventsTab.classList.contains('active')) {
+            window.setEventViewMode(eventViewMode);
+        }
+    }
+
+    try {
+        const res = await fetch('/api/events');
+        eventsData = await res.json();
+        
+        const dropdown = document.getElementById('activeEventDropdown');
+        if (dropdown) {
+            const currentVal = dropdown.value;
+            dropdown.innerHTML = eventsData.map(e => `<option value="${e.id}">${e.name || 'Event'} (${e.event_date || ''})</option>`).join('');
+            if (currentVal && eventsData.find(e => e.id == currentVal)) {
+                dropdown.value = currentVal;
+            }
+        }
+        
+        // Re-render UI with fresh data
+        const eventsTab = document.getElementById('eventsTab');
+        if (eventsTab && eventsTab.classList.contains('active')) {
+            window.setEventViewMode(eventViewMode);
+        }
+        
+        const checkinTab = document.getElementById('checkinTab');
+        if (checkinTab && checkinTab.classList.contains('active')) {
+            window.updateActiveEventBanner();
+        }
+    } catch(e) {
+        console.error("Failed loading events.", e);
+    } finally {
+        isFetchingEvents = false;
+    }
+};
+
+// 3. OPTIMISTIC UI & DEBOUNCING FOR CHECK-IN ANALYTICS
+let isFetchingBanner = false;
+window.updateActiveEventBanner = async function() {
+    if (isFetchingBanner) return;
+    
+    const dropdown = document.getElementById('activeEventDropdown');
+    if(!dropdown) return;
+    const eventId = dropdown.value;
+    if (typeof checkedInYouthIds !== 'undefined') checkedInYouthIds.clear();
+    
+    if(eventId) {
+        isFetchingBanner = true;
+        document.getElementById('checkinCounters').style.display = 'grid';
+        
+        try {
+            const res = await fetch(`/api/events/${eventId}/analytics`);
+            const data = await res.json();
+            if(data && data.roster && data.roster.length > 0) {
+                data.roster.forEach(r => checkedInYouthIds.add(r.youth_id));
+                document.getElementById('liveTotal').innerText = data.totalTurnout || 0;
+                document.getElementById('livePreRegTotal').innerText = data.totalPreRegistered || 0;
+                document.getElementById('livePreReg').innerText = data.preReg || 0;
+                document.getElementById('liveWalkin').innerText = data.walkins || 0;
+            } else {
+                document.getElementById('liveTotal').innerText = '0';
+                document.getElementById('livePreRegTotal').innerText = (data && data.totalPreRegistered) ? data.totalPreRegistered : '0';
+                document.getElementById('livePreReg').innerText = '0';
+                document.getElementById('liveWalkin').innerText = '0';
+            }
+        } catch(e) { 
+            console.error("Failed to load active banner stats", e); 
+        } finally {
+            isFetchingBanner = false;
+        }
+    } else {
+        document.getElementById('checkinCounters').style.display = 'none';
+    }
+    if (typeof window.filterManualCheckin === 'function') window.filterManualCheckin();
+};
+
+
+
+// ==========================================
+// V57: ROGUE DOM KILLER
+// ==========================================
+
+// 1. OBLITERATE CSS CONFLICTS FOR ADMIN TABS
+window.applyGranularPermissions = function() {
+    const canAdd = (typeof window.hasPerm === 'function' && window.hasPerm('add_entries')) || currentUser === 'celsocreeriii@gmail.com';
+    const canCreateEvent = (typeof window.hasPerm === 'function' && window.hasPerm('access_events') && window.hasPerm('add_entries')) || currentUser === 'celsocreeriii@gmail.com';
+    
+    // Explicitly un-hide the parent container that the rogue script was previously destroying
+    const eventsSubNav = document.querySelector('#eventsTab .sub-nav');
+    if (eventsSubNav) eventsSubNav.style.setProperty('display', 'flex', 'important');
+
+    const targets = ['btnSubEventCreate', 'btnSubMinistryCreate', 'btnCheckinWalkin', 'addEntryAnalyticsBtn', 'btnDirectoryAddMember'];
+    targets.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            const shouldShow =
+                id === 'btnSubEventCreate'
+                    ? canCreateEvent
+                    : id === 'btnDirectoryAddMember'
+                        ? window.canCreateDirectoryMember()
+                        : canAdd;
+            if (shouldShow) {
+                el.style.setProperty('display', 'inline-flex', 'important');
+            } else {
+                el.style.setProperty('display', 'none', 'important');
+            }
+        }
+    });
+};
+
+// Re-bind to tab switches to guarantee execution
+const ogSwitchTabV57 = window.switchTab;
+window.switchTab = async function(tabId, subTabId) {
+    if (ogSwitchTabV57) await ogSwitchTabV57(tabId, subTabId);
+    if (tabId === 'eventsTab') {
+        window.applyGranularPermissions();
+        window.loadEvents();
+    }
+};
+
+// ==========================================
+// V58: BULLETPROOF EVENT DATA LOADER
+// ==========================================
+let eventsRequestInFlight = null;
+window.loadEvents = function() {
+    if (eventsRequestInFlight) return eventsRequestInFlight;
+
+    eventsRequestInFlight = (async () => {
+        // 1. Force a fresh fetch directly from the source of truth
+        const res = await fetch('/api/events');
+        if (!res.ok) throw new Error("HTTP " + res.status);
+
+        eventsData = await res.json();
+        removeLocalStorageItem('fog_events_cache');
+
+        if (window.KoinoniaOfflineData && Array.isArray(eventsData)) {
+            const summary = window.getUpcomingEvents(eventsData).slice(0, 8).map(e => ({
+                id: e.id,
+                name: e.name,
+                event_date: e.event_date,
+                time_start: e.time_start,
+                venue: e.venue
+            }));
+            window.KoinoniaOfflineData.savePublicContent('events_list', summary);
+            if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+                window.KoinoniaOfflineData.saveDashboardSnapshot('member:' + currentMember.id, {
+                    upcomingEvents: summary
+                });
+            }
+        }
+
+        // 2. Force Render the Check-In Dropdown
+        const dropdown = document.getElementById('activeEventDropdown');
+        if (dropdown) {
+            const currentVal = dropdown.value;
+            dropdown.innerHTML = '<option value="">Select an Event...</option>' + 
+                eventsData.map(e => `<option value="${e.id}">${e.name || 'Event'} (${e.event_date || ''})</option>`).join('');
+            
+            // Restore previous selection if it still exists
+            if (currentVal && eventsData.find(e => e.id == currentVal)) {
+                dropdown.value = currentVal;
+            }
+        }
+        
+        // 3. Force Render the Event Planner List
+        const eventsTab = document.getElementById('eventsTab');
+        if (eventsTab && eventsTab.classList.contains('active')) {
+            if (typeof window.setEventViewMode === 'function') {
+                window.setEventViewMode(eventViewMode || 'list');
+            }
+        }
+        
+        // 4. Force Update the Check-In Banner if active
+        const checkinTab = document.getElementById('checkinTab');
+        if (checkinTab && checkinTab.classList.contains('active')) {
+            if (typeof window.updateActiveEventBanner === 'function') {
+                window.updateActiveEventBanner();
+            }
+        }
+
+        return eventsData;
+    })().catch(e => {
+        console.error("CRITICAL: Failed to load events data from database.", e);
+        return null;
+    }).finally(() => {
+        eventsRequestInFlight = null;
+    });
+
+    return eventsRequestInFlight;
+};
+
+// ==========================================
+// V59: WEEKLY LIFE POINTS OVERRIDE
+// ==========================================
+window.updateDashboardLifePoints = function() {
+    if (typeof currentMember !== 'undefined' && currentMember && currentMember.id) {
+        fetch('/api/gamification/points/' + currentMember.id)
+            .then(res => res.json())
+            .then(data => {
+                window.currentLifePointsData = data;
+                const xpCounter = document.getElementById('dashXpCounter');
+                if (xpCounter) {
+                    const text = (data.weekly_points || 0) + ' Life Points This Week';
+                    if (xpCounter.innerText.includes('🖱️')) xpCounter.innerText = text + ' 🖱️';
+                    else xpCounter.innerText = text;
+                }
+                if (window.KoinoniaOfflineData && currentMember && currentMember.id) {
+                    window.KoinoniaOfflineData.saveDashboardSnapshot('member:' + currentMember.id, {
+                        displayName: currentMember.name,
+                        displayTier: currentMember.account_tier,
+                        hero: {
+                            welcomeName: currentMember.name,
+                            lifePoints: {
+                                weekly: data.weekly_points || 0,
+                                arcade: data.arcade_xp || 0,
+                                growth: data.growth_xp || 0,
+                                event: data.event_xp || 0
+                            }
+                        }
+                    });
+                }
+            }).catch(e => console.log('Points sync error', e));
+    }
+};
+
+const ogSwitchTabV59 = window.switchTab;
+window.switchTab = async function(tabId, subTabId) {
+    if (ogSwitchTabV59) await ogSwitchTabV59(tabId, subTabId);
+    if (tabId === 'pulseDashboardTab' && typeof window.updateDashboardLifePoints === 'function') {
+        window.updateDashboardLifePoints();
+    }
+};
+
+// ==========================================
+// V60: FOG ARCADE PRE-GAME MODAL
+// ==========================================
+window.openArcadePreGame = function(gameName, icon, desc, color) {
+    if (window.V10Expansion) {
+        window.V10Expansion.openGameLanding(gameName, 'arcade', window.V10Expansion.getPlayFunction(gameName), desc, icon);
+    }
+};
+
+// Phase 2 owns game-tile binding through V10Expansion.applyLandingPages().
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// === V55: FORM RELOCATION & PROFILE TABS ===
+window.populateProfileTab = function(member) {
+    if (!member) return;
+    const safeText = (val) => val && val !== 'null' ? val : 'N/A';
+
+    ['myMemberId','myEditName','myEditEmail','myEditAge','myEditBirthday','myEditSocial','myEditParents','myEditGender','myEditMobile','myEditAddress'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            let key = id.replace('myEdit', '').toLowerCase();
+            if(id === 'myEditParents') key = 'parents_name';
+            if(id === 'myEditSocial') key = 'social_media';
+            if(id === 'myMemberId') key = 'id';
+            el.value = member[key] || '';
+        }
+    });
+    if (typeof window.renderMyEmailVerificationStatus === 'function') {
+        window.renderMyEmailVerificationStatus(member);
+    }
+
+    if(document.getElementById('myProfileName')) document.getElementById('myProfileName').innerText = member.name || 'Community Member';
+    const av = document.getElementById('myProfileAvatar');
+    if (av) av.innerHTML = member.profile_picture ? `<img src="${member.profile_picture}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : '👤';
+
+    const codeEl = document.getElementById('myProfileCode');
+    if (codeEl) {
+        codeEl.innerHTML = `🔑 Unique Pass ID: <strong style="letter-spacing:1px; color: #D97706;">${member.qr_code || 'N/A'}</strong>`;
+        codeEl.style.display = 'inline-block';
+    }
+
+    const qrContainer = document.getElementById('myQrContainer');
+    const dlBtn = document.getElementById('myDownloadQrBtn');
+    if (qrContainer && dlBtn) {
+        if (member.qr_code) {
+            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(member.qr_code);
+            qrContainer.innerHTML = `<img src="${qrUrl}" alt="QR" style="width:100%; height:auto; border-radius:8px; border: 1px solid var(--border-color);">`;
+            dlBtn.href = qrUrl;
+            dlBtn.style.display = 'inline-block';
+        } else {
+            qrContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No QR Assigned</span>';
+            dlBtn.style.display = 'none';
+        }
+    }
+
+    let bio = document.getElementById('myBioSummaryArchitect');
+    if (!bio) {
+        bio = document.getElementById('myBioSummary');
+        if (bio) bio.id = 'myBioSummaryArchitect';
+    }
+
+    const form = document.querySelector('form[onsubmit="handleSelfProfileUpdate(event)"]');
+
+    if (bio) {
+        const currentState = [member.name, member.email, member.email_verified, member.pending_email, member.gender, member.mobile, member.address, member.age, member.birthday, member.social_media, member.parents_name].join('|');
+
+        if (bio.getAttribute('data-sync-state') !== currentState) {
+            bio.setAttribute('data-sync-state', currentState);
+            bio.style.display = 'block';
+            bio.style.padding = '0';
+
+            bio.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 12px; padding-top: 10px;">
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #EEF2FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">✉️</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Email Address</span>
+                                    ${emailVerificationBadgeHtml(member)}
+                                </div>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.email)}">${safeText(member.email)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #F0FDF4; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">👤</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Age</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.age)}">${safeText(member.age)}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #FFF1F2; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🎂</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Birthday</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.birthday)}">${safeText(member.birthday)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #F5F3FF; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🚻</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Gender</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.gender)}">${safeText(member.gender)}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #ECFDF5; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">📱</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Mobile Number</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.mobile)}">${safeText(member.mobile)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #F8FAFC; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">💬</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Social Media</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.social_media)}">${safeText(member.social_media)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #FEF2F2; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">🛡️</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Guardian</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.parents_name)}">${safeText(member.parents_name)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px; background: #F8FAFC; padding: 10px 14px; border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; min-width: 0;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: #FFF7ED; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">📍</div>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                                <span style="font-size: 0.65rem; text-transform: uppercase; color: #64748B; font-weight: 800; letter-spacing: 0.5px;">Address</span>
+                                <span style="font-size: 0.85rem; color: #0F172A; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${safeText(member.address)}">${safeText(member.address)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        if (form && !document.getElementById('architectProfileTabs')) {
+            let bWrap = bio.parentElement && bio.parentElement.tagName === 'DIV' && bio.parentElement.id !== 'profileTab' ? bio.parentElement : bio;
+            let fWrap = form.closest('.card') || form.parentElement;
+
+            const legacyTitle = fWrap.querySelector('h2');
+            if (legacyTitle) legacyTitle.style.display = 'none';
+
+            // 🚀 THE FIX: Physically relocate the Edit Form right beside the View Grid
+            if (fWrap && bWrap && fWrap.parentNode) {
+                bWrap.parentNode.insertBefore(fWrap, bWrap.nextSibling);
+            }
+
+            const tabs = document.createElement('div');
+            tabs.id = 'architectProfileTabs';
+            tabs.style.cssText = 'display: flex; gap: 8px; background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 10px; padding: 6px; margin-bottom: 20px; width: 100%; box-sizing: border-box; box-shadow: 0 2px 5px rgba(0,0,0,0.02);';
+            tabs.innerHTML = `
+                <button id="btnArchView" type="button" style="flex: 1; font-weight: 800; border-radius: 8px; font-size: 0.9rem; padding: 10px; transition: all 0.2s; background: var(--primary, #059669); color: #FFF; border: none; cursor: pointer;">👤 Personal Details</button>
+                <button id="btnArchEdit" type="button" style="flex: 1; font-weight: 800; border-radius: 8px; font-size: 0.9rem; padding: 10px; background: transparent; transition: all 0.2s; color: var(--text-main, #334155); border: none; cursor: pointer;">✏️ Edit Profile Details</button>
+            `;
+
+            bWrap.parentNode.insertBefore(tabs, bWrap);
+
+            const btnV = document.getElementById('btnArchView');
+            const btnE = document.getElementById('btnArchEdit');
+
+            btnV.onclick = () => {
+                bWrap.style.display = 'block';
+                fWrap.style.display = 'none';
+                btnV.style.background = 'var(--primary, #059669)'; btnV.style.color = '#FFF';
+                btnE.style.background = 'transparent'; btnE.style.color = 'var(--text-main, #334155)';
+            };
+
+            btnE.onclick = () => {
+                bWrap.style.display = 'none';
+                fWrap.style.display = 'block';
+                btnV.style.background = 'transparent'; btnV.style.color = 'var(--text-main, #334155)';
+                btnE.style.background = 'var(--primary, #059669)'; btnE.style.color = '#FFF';
+            };
+
+            fWrap.style.display = 'none';
+            bWrap.style.display = 'block';
+        }
+    }
+
+    if (typeof window.loadMyV3Roles === 'function') {
+        window.loadMyV3Roles(member.id, 'myMinistriesHistory');
+    }
+    if (typeof window.loadMyV3Attendance === 'function') {
+        try { window.loadMyV3Attendance(member.id, 'myAttendanceHistory'); }
+        catch (e) { window.loadMyV3Attendance(); }
+    }
+    if (typeof window.renderHomeJourney === 'function') {
+        window.renderHomeJourney();
+    }
+    if (typeof window.refreshLegalProfileStatus === 'function') {
+        window.refreshLegalProfileStatus();
+    }
+};
+
+setTimeout(() => {
+    if (document.getElementById('profileTab') && document.getElementById('profileTab').classList.contains('active') && typeof currentMember !== 'undefined') {
+        window.populateProfileTab(currentMember);
+    }
+}, 150);
+// === END V55 ===
+
+// ==========================================================
+// PHASE 2C-B3 CANONICAL NOTIFICATION CENTER UI
+// ==========================================================
+
+(() => {
+    'use strict';
+
+    if (window.__notificationCenterB3Initialized) {
+        return;
+    }
+
+    window.__notificationCenterB3Initialized = true;
+
+    const CATEGORY_LABELS = Object.freeze({
+        prayer_daily_growth: '🙏 Prayer & Daily Growth',
+        journey_progress: '🧭 Journey Progress',
+        events_formation: '📅 Events & Formation',
+        membership_community: '🏠 Membership & Community',
+        ministry_servant: '🔥 Ministry & Servant Journey',
+        prayer_partner: '🤝 Prayer Partner',
+        games_growth: '🎮 Games & Growth',
+        leadership: '📣 Leadership',
+        system: '⚙️ System'
+    });
+
+    const IMPORTANCE_LABELS = Object.freeze({
+        low: 'Low',
+        normal: 'Update',
+        important: 'Important',
+        critical: 'Critical'
+    });
+
+    const notificationInboxState = {
+        section: 'notifications',
+        filter: 'all',
+        unreadCount: 0,
+        notifications: [],
+        prayers: [],
+        announcements: [],
+        errors: {
+            notifications: null,
+            prayers: null,
+            announcements: null
+        }
+    };
+
+    let inboxLoadPromise = null;
+
+    function authenticatedNotificationMemberId() {
+        const memberId = Number(
+            typeof currentMember !== 'undefined' &&
+            currentMember
+                ? currentMember.id
+                : null
+        );
+
+        if (
+            window.koinoniaAuthStatus !== 'authenticated' ||
+            !Number.isSafeInteger(memberId) ||
+            memberId <= 0
+        ) {
+            return null;
+        }
+
+        return memberId;
+    }
+
+    function clearElement(element) {
+        if (!element) return;
+
+        while (element.firstChild) {
+            element.removeChild(element.firstChild);
+        }
+    }
+
+    function makeElement(
+        tag,
+        {
+            className = '',
+            text = null,
+            attributes = {}
+        } = {}
+    ) {
+        const element =
+            document.createElement(tag);
+
+        if (className) {
+            element.className = className;
+        }
+
+        if (text !== null && text !== undefined) {
+            element.textContent =
+                String(text);
+        }
+
+        for (
+            const [name, value]
+            of Object.entries(attributes)
+        ) {
+            if (
+                value !== null &&
+                value !== undefined
+            ) {
+                element.setAttribute(
+                    name,
+                    String(value)
+                );
+            }
+        }
+
+        return element;
+    }
+
+    function formatNotificationTime(value) {
+        if (!value) return '';
+
+        const normalized =
+            typeof value === 'string' &&
+            !/[zZ]|[+-]\d\d:\d\d$/.test(value)
+                ? value.replace(' ', 'T') + '+08:00'
+                : value;
+
+        const date =
+            new Date(normalized);
+
+        if (
+            Number.isNaN(
+                date.getTime()
+            )
+        ) {
+            return String(value);
+        }
+
+        return date.toLocaleString(
+            [],
+            {
+                dateStyle: 'medium',
+                timeStyle: 'short'
+            }
+        );
+    }
+
+    function safeNotificationActionUrl(value) {
+        if (
+            typeof value !== 'string' ||
+            !value.trim()
+        ) {
+            return null;
+        }
+
+        try {
+            const url =
+                new URL(
+                    value,
+                    window.location.origin
+                );
+
+            if (
+                url.origin !==
+                window.location.origin
+            ) {
+                return null;
+            }
+
+            return (
+                url.pathname +
+                url.search +
+                url.hash
+            );
+        } catch {
+            return null;
+        }
+    }
+
+    async function fetchNotificationJson(
+        url,
+        options = {}
+    ) {
+        const response =
+            await fetch(
+                url,
+                {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {
+                        Accept: 'application/json',
+                        ...(
+                            options.headers ||
+                            {}
+                        )
+                    },
+                    ...options
+                }
+            );
+
+        let payload = null;
+
+        try {
+            payload =
+                await response.json();
+        } catch {
+            payload = null;
+        }
+
+        if (!response.ok) {
+            const error =
+                new Error(
+                    payload &&
+                    payload.error
+                        ? payload.error
+                        : `Request failed (${response.status})`
+                );
+
+            error.status =
+                response.status;
+
+            throw error;
+        }
+
+        return payload;
+    }
+
+    function setBellCount(count) {
+        const button =
+            document.getElementById(
+                'headerNotificationBell'
+            );
+
+        const badge =
+            document.getElementById(
+                'headerNotificationBadge'
+            );
+
+        if (!button || !badge) {
+            return;
+        }
+
+        const memberId =
+            authenticatedNotificationMemberId();
+
+        if (!memberId) {
+            button.style.display = 'none';
+            badge.style.display = 'none';
+            badge.textContent = '0';
+            return;
+        }
+
+        button.style.display = 'grid';
+
+        const normalizedCount =
+            Number.isSafeInteger(
+                Number(count)
+            ) &&
+            Number(count) > 0
+                ? Number(count)
+                : 0;
+
+        if (normalizedCount > 0) {
+            badge.textContent =
+                normalizedCount > 99
+                    ? '99+'
+                    : String(
+                        normalizedCount
+                    );
+
+            badge.style.display =
+                'block';
+        } else {
+            badge.textContent = '0';
+            badge.style.display = 'none';
+        }
+
+        button.setAttribute(
+            'aria-label',
+            normalizedCount > 0
+                ? `Notifications, ${normalizedCount} unread`
+                : 'Notifications, no unread notifications'
+        );
+
+        button.title =
+            normalizedCount > 0
+                ? `${normalizedCount} unread notification${normalizedCount === 1 ? '' : 's'}`
+                : 'Notifications';
+    }
+
+    window.refreshNotificationBell =
+        async function() {
+            const memberId =
+                authenticatedNotificationMemberId();
+
+            if (!memberId) {
+                setBellCount(0);
+                return 0;
+            }
+
+            const button =
+                document.getElementById(
+                    'headerNotificationBell'
+                );
+
+            if (!navigator.onLine) {
+                if (button) {
+                    button.style.display =
+                        'grid';
+
+                    button.title =
+                        'Notifications require an internet connection';
+                }
+
+                return notificationInboxState
+                    .unreadCount;
+            }
+
+            try {
+                const payload =
+                    await fetchNotificationJson(
+                        '/api/notifications/unread-count'
+                    );
+
+                const count =
+                    Number(
+                        payload &&
+                        payload.unread_count
+                    );
+
+                notificationInboxState
+                    .unreadCount =
+                    Number.isSafeInteger(count) &&
+                    count >= 0
+                        ? count
+                        : 0;
+
+                setBellCount(
+                    notificationInboxState
+                        .unreadCount
+                );
+
+                return (
+                    notificationInboxState
+                        .unreadCount
+                );
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to refresh unread count.'
+                );
+
+                return (
+                    notificationInboxState
+                        .unreadCount
+                );
+            }
+        };
+
+    window.openNotificationCenter =
+        function() {
+            if (
+                !authenticatedNotificationMemberId()
+            ) {
+                return;
+            }
+
+            notificationInboxState.section =
+                'notifications';
+
+            notificationInboxState.filter =
+                'all';
+
+            if (
+                typeof window.switchTab ===
+                'function'
+            ) {
+                window.switchTab(
+                    'inboxTab'
+                );
+            }
+        };
+
+    function buildInboxShell() {
+        const inboxTab =
+            document.getElementById(
+                'inboxTab'
+            );
+
+        if (!inboxTab) {
+            return false;
+        }
+
+        inboxTab.innerHTML = `
+            <div class="card" style="padding:0;overflow:hidden;">
+                <div style="padding:18px 18px 14px;border-bottom:1px solid var(--border-color);background:#FFF;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                        <div>
+                            <h2 style="margin:0;border:none;padding:0;color:var(--primary);">🔔 Notification Center</h2>
+                            <p id="notificationInboxSummary" style="margin:5px 0 0;color:var(--text-muted);font-size:0.82rem;">Loading your updates…</p>
+                        </div>
+                        <button id="notificationMarkAllReadBtn" type="button" class="btn btn-outline btn-sm" onclick="markAllNotificationsRead()">Mark all read</button>
+                    </div>
+
+                    <div style="display:flex;background:#F1F5F9;border-radius:12px;padding:4px;margin-top:16px;gap:4px;">
+                        <button id="btnInboxNotifications" type="button" onclick="switchInboxSubTab('notifications')" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">🔔 Updates</button>
+                        <button id="btnInboxPrayers" type="button" onclick="switchInboxSubTab('prayers')" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">🙏 Prayers</button>
+                        <button id="btnInboxAnnounce" type="button" onclick="switchInboxSubTab('announcements')" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">📢 News</button>
+                    </div>
+                </div>
+
+                <div style="padding:16px;">
+                    <section id="inboxNotificationsView">
+                        <div style="display:flex;gap:8px;margin-bottom:14px;">
+                            <button id="notificationFilterAll" type="button" class="btn btn-outline btn-sm" onclick="setNotificationInboxFilter('all')">All</button>
+                            <button id="notificationFilterUnread" type="button" class="btn btn-outline btn-sm" onclick="setNotificationInboxFilter('unread')">Unread</button>
+                        </div>
+                        <div id="canonicalNotificationList"></div>
+                    </section>
+
+                    <section id="inboxPrayersView" style="display:none;"></section>
+                    <section id="inboxAnnounceView" style="display:none;"></section>
+                </div>
+            </div>
+        `;
+
+        return true;
+    }
+
+    function updateInboxNavigation() {
+        const sections = {
+            notifications: {
+                button:
+                    document.getElementById(
+                        'btnInboxNotifications'
+                    ),
+                view:
+                    document.getElementById(
+                        'inboxNotificationsView'
+                    )
+            },
+
+            prayers: {
+                button:
+                    document.getElementById(
+                        'btnInboxPrayers'
+                    ),
+                view:
+                    document.getElementById(
+                        'inboxPrayersView'
+                    )
+            },
+
+            announcements: {
+                button:
+                    document.getElementById(
+                        'btnInboxAnnounce'
+                    ),
+                view:
+                    document.getElementById(
+                        'inboxAnnounceView'
+                    )
+            }
+        };
+
+        for (
+            const [name, config]
+            of Object.entries(sections)
+        ) {
+            const active =
+                notificationInboxState
+                    .section === name;
+
+            if (config.button) {
+                config.button.style
+                    .background =
+                    active
+                        ? '#FFF'
+                        : 'transparent';
+
+                config.button.style
+                    .color =
+                    active
+                        ? 'var(--primary)'
+                        : 'var(--text-muted)';
+
+                config.button.style
+                    .boxShadow =
+                    active
+                        ? '0 2px 5px rgba(0,0,0,0.08)'
+                        : 'none';
+
+                config.button.setAttribute(
+                    'aria-pressed',
+                    active
+                        ? 'true'
+                        : 'false'
+                );
+            }
+
+            if (config.view) {
+                config.view.style.display =
+                    active
+                        ? 'block'
+                        : 'none';
+            }
+        }
+
+        const markAll =
+            document.getElementById(
+                'notificationMarkAllReadBtn'
+            );
+
+        if (markAll) {
+            markAll.style.display =
+                notificationInboxState
+                    .section ===
+                    'notifications'
+                    ? 'inline-flex'
+                    : 'none';
+
+            markAll.disabled =
+                notificationInboxState
+                    .unreadCount <= 0;
+        }
+    }
+
+    function updateNotificationFilters() {
+        const allButton =
+            document.getElementById(
+                'notificationFilterAll'
+            );
+
+        const unreadButton =
+            document.getElementById(
+                'notificationFilterUnread'
+            );
+
+        const allActive =
+            notificationInboxState.filter ===
+            'all';
+
+        if (allButton) {
+            allButton.className =
+                allActive
+                    ? 'btn btn-primary btn-sm'
+                    : 'btn btn-outline btn-sm';
+        }
+
+        if (unreadButton) {
+            unreadButton.className =
+                !allActive
+                    ? 'btn btn-primary btn-sm'
+                    : 'btn btn-outline btn-sm';
+        }
+    }
+
+    function appendEmptyState(
+        container,
+        message
+    ) {
+        const empty =
+            makeElement(
+                'div',
+                {
+                    text: message
+                }
+            );
+
+        empty.style.cssText =
+            'text-align:center;padding:30px 18px;color:var(--text-muted);background:#FFF;border-radius:12px;border:1px dashed #CBD5E1;';
+
+        container.appendChild(
+            empty
+        );
+    }
+
+    function notificationSourceLabel(
+        notification
+    ) {
+        if (
+            notification &&
+            typeof notification.source_actor ===
+                'string' &&
+            notification.source_actor.trim()
+        ) {
+            return (
+                notification.source_actor
+                    .trim()
+            );
+        }
+
+        if (
+            notification &&
+            notification.source_type ===
+                'growth_journey'
+        ) {
+            return 'Growth Journey';
+        }
+
+        if (
+            notification &&
+            notification.source_type ===
+                'leadership'
+        ) {
+            return 'FOG Leadership';
+        }
+
+        return 'Community Portal';
+    }
+
+    function renderCanonicalNotifications() {
+        const container =
+            document.getElementById(
+                'canonicalNotificationList'
+            );
+
+        if (!container) return;
+
+        clearElement(container);
+
+        if (
+            notificationInboxState
+                .errors.notifications
+        ) {
+            appendEmptyState(
+                container,
+                'Notifications are temporarily unavailable. Please try again.'
+            );
+
+            return;
+        }
+
+        const notifications =
+            notificationInboxState
+                .notifications
+                .filter(
+                    notification =>
+                        notificationInboxState
+                            .filter ===
+                            'all' ||
+                        !notification.is_read
+                );
+
+        if (
+            notifications.length === 0
+        ) {
+            appendEmptyState(
+                container,
+                notificationInboxState
+                    .filter ===
+                    'unread'
+                    ? 'You have no unread updates.'
+                    : 'No Portal updates yet.'
+            );
+
+            return;
+        }
+
+        for (
+            const notification
+            of notifications
+        ) {
+            const card =
+                makeElement(
+                    'article',
+                    {
+                        className:
+                            'notification-card' +
+                            (
+                                notification.is_read
+                                    ? ''
+                                    : ' unread'
+                            )
+                    }
+                );
+
+            const header =
+                makeElement(
+                    'div',
+                    {
+                        className:
+                            'notification-card-header'
+                    }
+                );
+
+            const titleWrap =
+                makeElement('div');
+
+            const category =
+                makeElement(
+                    'div',
+                    {
+                        text:
+                            CATEGORY_LABELS[
+                                notification.category
+                            ] ||
+                            '🔔 Update'
+                    }
+                );
+
+            category.style.cssText =
+                'font-size:0.72rem;font-weight:800;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px;';
+
+            const title =
+                makeElement(
+                    'h3',
+                    {
+                        className:
+                            'notification-title',
+                        text:
+                            notification.title ||
+                            'Community Update'
+                    }
+                );
+
+            titleWrap.append(
+                category,
+                title
+            );
+
+            const importance =
+                makeElement(
+                    'span',
+                    {
+                        text:
+                            IMPORTANCE_LABELS[
+                                notification.importance
+                            ] ||
+                            'Update'
+                    }
+                );
+
+            importance.style.cssText =
+                notification.importance ===
+                    'critical'
+                    ? 'font-size:.7rem;font-weight:800;background:#FEE2E2;color:#B91C1C;padding:4px 8px;border-radius:999px;'
+                    : notification.importance ===
+                        'important'
+                        ? 'font-size:.7rem;font-weight:800;background:#FEF3C7;color:#B45309;padding:4px 8px;border-radius:999px;'
+                        : 'font-size:.7rem;font-weight:700;background:#F1F5F9;color:#64748B;padding:4px 8px;border-radius:999px;';
+
+            header.append(
+                titleWrap,
+                importance
+            );
+
+            const body =
+                makeElement(
+                    'p',
+                    {
+                        className:
+                            'notification-body',
+                        text:
+                            notification.message ||
+                            ''
+                    }
+                );
+
+            const footer =
+                makeElement(
+                    'div',
+                    {
+                        className:
+                            'notification-footer'
+                    }
+                );
+
+            const source =
+                makeElement(
+                    'span',
+                    {
+                        className:
+                            'notification-author',
+                        text:
+                            notificationSourceLabel(
+                                notification
+                            )
+                    }
+                );
+
+            const time =
+                makeElement(
+                    'span',
+                    {
+                        className:
+                            'notification-date',
+                        text:
+                            formatNotificationTime(
+                                notification.created_at
+                            )
+                    }
+                );
+
+            footer.append(
+                source,
+                time
+            );
+
+            const actions =
+                makeElement('div');
+
+            actions.style.cssText =
+                'display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;';
+
+            if (!notification.is_read) {
+                const readButton =
+                    makeElement(
+                        'button',
+                        {
+                            className:
+                                'btn btn-outline btn-sm',
+                            text:
+                                'Mark read',
+                            attributes: {
+                                type: 'button'
+                            }
+                        }
+                    );
+
+                readButton.addEventListener(
+                    'click',
+                    () => {
+                        window.markNotificationRead(
+                            notification.recipient_id
+                        );
+                    }
+                );
+
+                actions.appendChild(
+                    readButton
+                );
+            }
+
+            const actionUrl =
+                safeNotificationActionUrl(
+                    notification.action_url
+                );
+
+            if (actionUrl) {
+                const openButton =
+                    makeElement(
+                        'button',
+                        {
+                            className:
+                                'btn btn-primary btn-sm',
+                            text:
+                                'Open',
+                            attributes: {
+                                type: 'button'
+                            }
+                        }
+                    );
+
+                openButton.addEventListener(
+                    'click',
+                    () => {
+                        window.openNotificationAction(
+                            notification.recipient_id,
+                            actionUrl,
+                            notification.is_read
+                        );
+                    }
+                );
+
+                actions.appendChild(
+                    openButton
+                );
+            }
+
+            card.append(
+                header,
+                body,
+                footer
+            );
+
+            if (actions.childElementCount) {
+                card.appendChild(
+                    actions
+                );
+            }
+
+            container.appendChild(
+                card
+            );
+        }
+    }
+
+    function renderPrayers() {
+        const container =
+            document.getElementById(
+                'inboxPrayersView'
+            );
+
+        if (!container) return;
+
+        clearElement(container);
+
+        if (
+            notificationInboxState
+                .errors.prayers
+        ) {
+            appendEmptyState(
+                container,
+                'Prayer messages are temporarily unavailable.'
+            );
+
+            return;
+        }
+
+        const prayers =
+            notificationInboxState
+                .prayers;
+
+        if (prayers.length === 0) {
+            appendEmptyState(
+                container,
+                'No personal prayers received yet.'
+            );
+
+            return;
+        }
+
+        for (const prayer of prayers) {
+            const card =
+                makeElement(
+                    'article'
+                );
+
+            card.style.cssText =
+                'background:#FFF;padding:15px;border-radius:16px;border:1px solid #E2E8F0;margin-bottom:15px;box-shadow:0 4px 6px rgba(0,0,0,.02);';
+
+            const heading =
+                makeElement('div');
+
+            heading.style.cssText =
+                'display:flex;align-items:center;gap:12px;margin-bottom:12px;';
+
+            const avatar =
+                makeElement(
+                    'div',
+                    {
+                        text:
+                            (
+                                prayer.sender_name ||
+                                'P'
+                            )
+                                .trim()
+                                .charAt(0)
+                                .toUpperCase() ||
+                            'P'
+                    }
+                );
+
+            avatar.style.cssText =
+                'width:45px;height:45px;border-radius:50%;background:#EEF2FF;display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--primary);border:2px solid var(--primary);font-size:1.2rem;flex:0 0 auto;';
+
+            const headingText =
+                makeElement('div');
+
+            const title =
+                makeElement(
+                    'strong',
+                    {
+                        text:
+                            prayer.title ||
+                            'Prayer Message'
+                    }
+                );
+
+            title.style.cssText =
+                'display:block;color:var(--text-main);font-size:1.02rem;';
+
+            const date =
+                makeElement(
+                    'span',
+                    {
+                        text:
+                            formatNotificationTime(
+                                prayer.created_at
+                            )
+                    }
+                );
+
+            date.style.cssText =
+                'font-size:.78rem;color:var(--text-muted);';
+
+            headingText.append(
+                title,
+                date
+            );
+
+            heading.append(
+                avatar,
+                headingText
+            );
+
+            const message =
+                makeElement(
+                    'p',
+                    {
+                        text:
+                            prayer.message ||
+                            ''
+                    }
+                );
+
+            message.style.cssText =
+                'font-size:.95rem;color:var(--text-main);line-height:1.6;margin:0;padding:12px;background:#F8FAFC;border-radius:12px;border-left:3px solid var(--primary);white-space:pre-wrap;';
+
+            card.append(
+                heading,
+                message
+            );
+
+            if (
+                typeof prayer.title ===
+                    'string' &&
+                prayer.title.includes(
+                    'A Prayer from'
+                )
+            ) {
+                const actions =
+                    makeElement('div');
+
+                actions.style.cssText =
+                    'display:flex;gap:10px;margin-top:15px;border-top:1px solid #E2E8F0;padding-top:15px;';
+
+                const status =
+                    typeof prayer.status ===
+                        'string'
+                        ? prayer.status
+                        : '';
+
+                const thanks =
+                    makeElement(
+                        'button',
+                        {
+                            className:
+                                'btn btn-outline btn-sm',
+                            text:
+                                status.includes(
+                                    'thank_you'
+                                )
+                                    ? '✓ Thanks Sent'
+                                    : '💙 Send Thanks',
+                            attributes: {
+                                type: 'button'
+                            }
+                        }
+                    );
+
+                thanks.disabled =
+                    status.includes(
+                        'thank_you'
+                    );
+
+                if (!thanks.disabled) {
+                    thanks.addEventListener(
+                        'click',
+                        () => {
+                            window.acknowledgePrayer(
+                                prayer.id,
+                                'thank_you'
+                            );
+                        }
+                    );
+                }
+
+                const praise =
+                    makeElement(
+                        'button',
+                        {
+                            className:
+                                'btn btn-outline btn-sm',
+                            text:
+                                status.includes(
+                                    'answered'
+                                )
+                                    ? '✓ Praise Shared'
+                                    : '✨ Praise Report',
+                            attributes: {
+                                type: 'button'
+                            }
+                        }
+                    );
+
+                praise.disabled =
+                    status.includes(
+                        'answered'
+                    );
+
+                if (!praise.disabled) {
+                    praise.addEventListener(
+                        'click',
+                        () => {
+                            window.acknowledgePrayer(
+                                prayer.id,
+                                'answered'
+                            );
+                        }
+                    );
+                }
+
+                actions.append(
+                    thanks,
+                    praise
+                );
+
+                card.appendChild(
+                    actions
+                );
+            }
+
+            container.appendChild(
+                card
+            );
+        }
+    }
+
+    function renderAnnouncements() {
+        const container =
+            document.getElementById(
+                'inboxAnnounceView'
+            );
+
+        if (!container) return;
+
+        clearElement(container);
+
+        if (
+            notificationInboxState
+                .errors.announcements
+        ) {
+            appendEmptyState(
+                container,
+                'Community announcements are temporarily unavailable.'
+            );
+
+            return;
+        }
+
+        const announcements =
+            notificationInboxState
+                .announcements;
+
+        if (
+            announcements.length === 0
+        ) {
+            appendEmptyState(
+                container,
+                'No community announcements.'
+            );
+
+            return;
+        }
+
+        for (
+            const announcement
+            of announcements
+        ) {
+            const card =
+                makeElement(
+                    'article',
+                    {
+                        className:
+                            'notification-card'
+                    }
+                );
+
+            const title =
+                makeElement(
+                    'h3',
+                    {
+                        className:
+                            'notification-title',
+                        text:
+                            announcement.title ||
+                            'Community Announcement'
+                    }
+                );
+
+            const body =
+                makeElement(
+                    'p',
+                    {
+                        className:
+                            'notification-body',
+                        text:
+                            announcement.message ||
+                            ''
+                    }
+                );
+
+            const footer =
+                makeElement(
+                    'div',
+                    {
+                        className:
+                            'notification-footer'
+                    }
+                );
+
+            const author =
+                makeElement(
+                    'span',
+                    {
+                        className:
+                            'notification-author',
+                        text:
+                            announcement.author ||
+                            'FOG Leadership'
+                    }
+                );
+
+            const date =
+                makeElement(
+                    'span',
+                    {
+                        className:
+                            'notification-date',
+                        text:
+                            formatNotificationTime(
+                                announcement.created_at
+                            )
+                    }
+                );
+
+            footer.append(
+                author,
+                date
+            );
+
+            card.append(
+                title,
+                body,
+                footer
+            );
+
+            container.appendChild(
+                card
+            );
+        }
+    }
+
+    function renderInboxSummary() {
+        const summary =
+            document.getElementById(
+                'notificationInboxSummary'
+            );
+
+        if (summary) {
+            summary.textContent =
+                notificationInboxState
+                    .unreadCount > 0
+                    ? `${notificationInboxState.unreadCount} unread update${notificationInboxState.unreadCount === 1 ? '' : 's'}`
+                    : 'You are all caught up.';
+        }
+
+        updateInboxNavigation();
+        updateNotificationFilters();
+    }
+
+    function renderAllInboxViews() {
+        renderCanonicalNotifications();
+        renderPrayers();
+        renderAnnouncements();
+        renderInboxSummary();
+    }
+
+    window.switchInboxSubTab =
+        function(section) {
+            if (
+                ![
+                    'notifications',
+                    'prayers',
+                    'announcements'
+                ].includes(section)
+            ) {
+                return;
+            }
+
+            notificationInboxState
+                .section =
+                section;
+
+            updateInboxNavigation();
+        };
+
+    window.setNotificationInboxFilter =
+        function(filter) {
+            if (
+                ![
+                    'all',
+                    'unread'
+                ].includes(filter)
+            ) {
+                return;
+            }
+
+            notificationInboxState.filter =
+                filter;
+
+            updateNotificationFilters();
+            renderCanonicalNotifications();
+        };
+
+    window.markNotificationRead =
+        async function(recipientId) {
+            const id =
+                Number(recipientId);
+
+            if (
+                !Number.isSafeInteger(id) ||
+                id <= 0
+            ) {
+                return false;
+            }
+
+            try {
+                await fetchNotificationJson(
+                    `/api/notifications/${id}/read`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+                        body:
+                            JSON.stringify({})
+                    }
+                );
+
+                for (
+                    const notification
+                    of notificationInboxState
+                        .notifications
+                ) {
+                    if (
+                        Number(
+                            notification.recipient_id
+                        ) === id
+                    ) {
+                        notification.is_read =
+                            true;
+                    }
+                }
+
+                notificationInboxState
+                    .unreadCount =
+                    Math.max(
+                        0,
+                        notificationInboxState
+                            .notifications
+                            .filter(
+                                item =>
+                                    !item.is_read
+                            )
+                            .length
+                    );
+
+                renderCanonicalNotifications();
+                renderInboxSummary();
+
+                await window
+                    .refreshNotificationBell();
+
+                return true;
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to mark notification read.'
+                );
+
+                return false;
+            }
+        };
+
+    window.markAllNotificationsRead =
+        async function() {
+            try {
+                await fetchNotificationJson(
+                    '/api/notifications/read-all',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+                        body:
+                            JSON.stringify({})
+                    }
+                );
+
+                for (
+                    const notification
+                    of notificationInboxState
+                        .notifications
+                ) {
+                    notification.is_read =
+                        true;
+                }
+
+                notificationInboxState
+                    .unreadCount = 0;
+
+                renderCanonicalNotifications();
+                renderInboxSummary();
+
+                await window
+                    .refreshNotificationBell();
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to mark all notifications read.'
+                );
+            }
+        };
+
+    window.openNotificationAction =
+        async function(
+            recipientId,
+            actionUrl,
+            alreadyRead
+        ) {
+            const safeUrl =
+                safeNotificationActionUrl(
+                    actionUrl
+                );
+
+            if (!safeUrl) {
+                return;
+            }
+
+            if (!alreadyRead) {
+                await window
+                    .markNotificationRead(
+                        recipientId
+                    );
+            }
+
+            window.location.assign(
+                safeUrl
+            );
+        };
+
+    window.acknowledgePrayer =
+        async function(
+            inboxId,
+            action
+        ) {
+            const id =
+                Number(inboxId);
+
+            if (
+                !Number.isSafeInteger(id) ||
+                id <= 0 ||
+                ![
+                    'thank_you',
+                    'answered'
+                ].includes(action)
+            ) {
+                return;
+            }
+
+            try {
+                const response =
+                    await fetch(
+                        `/api/inbox/personal/${id}/respond`,
+                        {
+                            method: 'POST',
+                            credentials:
+                                'same-origin',
+                            headers: {
+                                'Content-Type':
+                                    'application/json',
+                                Accept:
+                                    'application/json'
+                            },
+                            body:
+                                JSON.stringify({
+                                    action
+                                })
+                        }
+                    );
+
+                if (!response.ok) {
+                    throw new Error(
+                        'Prayer response failed'
+                    );
+                }
+
+                await window
+                    .loadPersonalInbox();
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to send Prayer response.'
+                );
+            }
+        };
+
+    window.loadPersonalInbox =
+        async function() {
+            const memberId =
+                authenticatedNotificationMemberId();
+
+            if (!memberId) {
+                return;
+            }
+
+            if (inboxLoadPromise) {
+                return inboxLoadPromise;
+            }
+
+            inboxLoadPromise =
+                (async () => {
+                    if (!buildInboxShell()) {
+                        return;
+                    }
+
+                    renderInboxSummary();
+
+                    if (!navigator.onLine) {
+                        notificationInboxState
+                            .errors.notifications =
+                            'offline';
+
+                        notificationInboxState
+                            .errors.prayers =
+                            'offline';
+
+                        notificationInboxState
+                            .errors.announcements =
+                            'offline';
+
+                        renderAllInboxViews();
+                        return;
+                    }
+
+                    const results =
+                        await Promise.allSettled([
+                            fetchNotificationJson(
+                                '/api/notifications?limit=100'
+                            ),
+
+                            fetchNotificationJson(
+                                `/api/inbox/personal/${memberId}`
+                            ),
+
+                            fetchNotificationJson(
+                                '/api/communications/inbox'
+                            ),
+
+                            fetchNotificationJson(
+                                '/api/notifications/unread-count'
+                            )
+                        ]);
+
+                    const [
+                        notificationsResult,
+                        prayersResult,
+                        announcementsResult,
+                        countResult
+                    ] = results;
+
+                    if (
+                        notificationsResult.status ===
+                        'fulfilled'
+                    ) {
+                        notificationInboxState
+                            .notifications =
+                            Array.isArray(
+                                notificationsResult
+                                    .value
+                                    ?.notifications
+                            )
+                                ? notificationsResult
+                                    .value
+                                    .notifications
+                                : [];
+
+                        notificationInboxState
+                            .errors.notifications =
+                            null;
+                    } else {
+                        notificationInboxState
+                            .notifications = [];
+
+                        notificationInboxState
+                            .errors.notifications =
+                            notificationsResult
+                                .reason ||
+                            'unavailable';
+                    }
+
+                    if (
+                        prayersResult.status ===
+                        'fulfilled'
+                    ) {
+                        notificationInboxState
+                            .prayers =
+                            Array.isArray(
+                                prayersResult.value
+                            )
+                                ? prayersResult.value
+                                : [];
+
+                        notificationInboxState
+                            .errors.prayers =
+                            null;
+                    } else {
+                        notificationInboxState
+                            .prayers = [];
+
+                        notificationInboxState
+                            .errors.prayers =
+                            prayersResult.reason ||
+                            'unavailable';
+                    }
+
+                    if (
+                        announcementsResult.status ===
+                        'fulfilled'
+                    ) {
+                        notificationInboxState
+                            .announcements =
+                            Array.isArray(
+                                announcementsResult
+                                    .value
+                            )
+                                ? announcementsResult
+                                    .value
+                                : [];
+
+                        notificationInboxState
+                            .errors.announcements =
+                            null;
+                    } else {
+                        notificationInboxState
+                            .announcements = [];
+
+                        notificationInboxState
+                            .errors.announcements =
+                            announcementsResult
+                                .reason ||
+                            'unavailable';
+                    }
+
+                    if (
+                        countResult.status ===
+                        'fulfilled'
+                    ) {
+                        const count =
+                            Number(
+                                countResult.value
+                                    ?.unread_count
+                            );
+
+                        notificationInboxState
+                            .unreadCount =
+                            Number.isSafeInteger(
+                                count
+                            ) &&
+                            count >= 0
+                                ? count
+                                : 0;
+                    } else {
+                        notificationInboxState
+                            .unreadCount =
+                            notificationInboxState
+                                .notifications
+                                .filter(
+                                    item =>
+                                        !item.is_read
+                                )
+                                .length;
+                    }
+
+                    renderAllInboxViews();
+
+                    setBellCount(
+                        notificationInboxState
+                            .unreadCount
+                    );
+                })();
+
+            try {
+                return await inboxLoadPromise;
+            } finally {
+                inboxLoadPromise = null;
+            }
+        };
+
+    const PREFERENCE_FIELDS =
+        Object.freeze({
+            notifPrefPushEnabled:
+                'push_enabled',
+
+            notifPrefEmailEnabled:
+                'email_enabled',
+
+            notifPrefPrayerDailyGrowth:
+                'prayer_daily_growth',
+
+            notifPrefJourneyProgress:
+                'journey_progress',
+
+            notifPrefEventsFormation:
+                'events_formation',
+
+            notifPrefMembershipCommunity:
+                'membership_community',
+
+            notifPrefMinistryServant:
+                'ministry_servant',
+
+            notifPrefPrayerPartner:
+                'prayer_partner',
+
+            notifPrefGamesGrowth:
+                'games_growth'
+        });
+
+    function setPreferencesStatus(
+        message,
+        isError = false
+    ) {
+        const status =
+            document.getElementById(
+                'notificationPreferencesStatus'
+            );
+
+        if (!status) return;
+
+        status.textContent =
+            message || '';
+
+        status.style.color =
+            isError
+                ? 'var(--danger)'
+                : 'var(--text-muted)';
+    }
+
+    window.loadNotificationPreferences =
+        async function() {
+            if (
+                !authenticatedNotificationMemberId()
+            ) {
+                return;
+            }
+
+            if (!navigator.onLine) {
+                setPreferencesStatus(
+                    'Notification preferences require an internet connection.',
+                    true
+                );
+
+                return;
+            }
+
+            setPreferencesStatus(
+                'Loading preferences…'
+            );
+
+            try {
+                const payload =
+                    await fetchNotificationJson(
+                        '/api/notifications/preferences'
+                    );
+
+                const preferences =
+                    payload &&
+                    payload.preferences;
+
+                if (
+                    !preferences ||
+                    typeof preferences !==
+                        'object'
+                ) {
+                    throw new Error(
+                        'Invalid preference response'
+                    );
+                }
+
+                for (
+                    const [
+                        elementId,
+                        preferenceKey
+                    ]
+                    of Object.entries(
+                        PREFERENCE_FIELDS
+                    )
+                ) {
+                    const element =
+                        document.getElementById(
+                            elementId
+                        );
+
+                    if (element) {
+                        element.checked =
+                            preferences[
+                                preferenceKey
+                            ] === true;
+                    }
+                }
+
+                const prayerTime =
+                    document.getElementById(
+                        'notifPrefPrayerTime'
+                    );
+
+                const quietStart =
+                    document.getElementById(
+                        'notifPrefQuietStart'
+                    );
+
+                const quietEnd =
+                    document.getElementById(
+                        'notifPrefQuietEnd'
+                    );
+
+                if (prayerTime) {
+                    prayerTime.value =
+                        preferences
+                            .preferred_prayer_time ||
+                        '';
+                }
+
+                if (quietStart) {
+                    quietStart.value =
+                        preferences
+                            .quiet_hours_start ||
+                        '';
+                }
+
+                if (quietEnd) {
+                    quietEnd.value =
+                        preferences
+                            .quiet_hours_end ||
+                        '';
+                }
+
+                setPreferencesStatus(
+                    preferences.stored
+                        ? 'Your saved preferences are loaded.'
+                        : 'Using recommended defaults. Save only if you want to change them.'
+                );
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to load preferences.'
+                );
+
+                setPreferencesStatus(
+                    'Unable to load notification preferences.',
+                    true
+                );
+            }
+        };
+
+    window.saveNotificationPreferences =
+        async function() {
+            if (
+                !authenticatedNotificationMemberId()
+            ) {
+                return;
+            }
+
+            if (!navigator.onLine) {
+                setPreferencesStatus(
+                    'You must be online to save notification preferences.',
+                    true
+                );
+
+                return;
+            }
+
+            const button =
+                document.getElementById(
+                    'saveNotificationPreferencesBtn'
+                );
+
+            if (button) {
+                button.disabled = true;
+            }
+
+            setPreferencesStatus(
+                'Saving…'
+            );
+
+            try {
+                const body = {};
+
+                for (
+                    const [
+                        elementId,
+                        preferenceKey
+                    ]
+                    of Object.entries(
+                        PREFERENCE_FIELDS
+                    )
+                ) {
+                    const element =
+                        document.getElementById(
+                            elementId
+                        );
+
+                    if (!element) {
+                        throw new Error(
+                            `Missing preference control ${elementId}`
+                        );
+                    }
+
+                    body[preferenceKey] =
+                        element.checked === true;
+                }
+
+                const prayerTime =
+                    document.getElementById(
+                        'notifPrefPrayerTime'
+                    )?.value || null;
+
+                const quietStart =
+                    document.getElementById(
+                        'notifPrefQuietStart'
+                    )?.value || null;
+
+                const quietEnd =
+                    document.getElementById(
+                        'notifPrefQuietEnd'
+                    )?.value || null;
+
+                body.preferred_prayer_time =
+                    prayerTime;
+
+                body.quiet_hours_start =
+                    quietStart;
+
+                body.quiet_hours_end =
+                    quietEnd;
+
+                await fetchNotificationJson(
+                    '/api/notifications/preferences',
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+                        body:
+                            JSON.stringify(
+                                body
+                            )
+                    }
+                );
+
+                setPreferencesStatus(
+                    'Notification preferences saved.'
+                );
+            } catch (error) {
+                console.warn(
+                    '[Notification Center] Unable to save preferences.'
+                );
+
+                setPreferencesStatus(
+                    'Unable to save notification preferences.',
+                    true
+                );
+            } finally {
+                if (button) {
+                    button.disabled =
+                        false;
+                }
+            }
+        };
+
+    /*
+     * Final router wrapper.
+     *
+     * app.js contains several historical switchTab
+     * wrappers. B3 intentionally wraps the effective
+     * final function rather than modifying an earlier
+     * superseded implementation.
+     */
+    const previousSwitchTabNotificationCenter =
+        window.switchTab;
+
+    window.switchTab =
+        async function(
+            tabId,
+            subTabId
+        ) {
+            const result =
+                previousSwitchTabNotificationCenter
+                    ? await previousSwitchTabNotificationCenter(
+                        tabId,
+                        subTabId
+                    )
+                    : undefined;
+
+            if (
+                tabId ===
+                'inboxTab'
+            ) {
+                setTimeout(
+                    () => {
+                        window
+                            .loadPersonalInbox();
+                    },
+                    30
+                );
+            }
+
+            if (
+                tabId ===
+                'profileTab'
+            ) {
+                setTimeout(
+                    () => {
+                        window
+                            .loadNotificationPreferences();
+                    },
+                    50
+                );
+            }
+
+            return result;
+        };
+
+    function beginNotificationBellLifecycle() {
+        Promise.resolve(
+            window.authReady
+        )
+            .catch(() => null)
+            .finally(
+                () => {
+                    window
+                        .refreshNotificationBell();
+                }
+            );
+
+        setTimeout(
+            () => {
+                window
+                    .refreshNotificationBell();
+            },
+            800
+        );
+    }
+
+    if (
+        document.readyState ===
+        'loading'
+    ) {
+        document.addEventListener(
+            'DOMContentLoaded',
+            beginNotificationBellLifecycle,
+            {
+                once: true
+            }
+        );
+    } else {
+        beginNotificationBellLifecycle();
+    }
+
+    window.addEventListener(
+        'online',
+        () => {
+            window
+                .refreshNotificationBell();
+        }
+    );
+
+    window.addEventListener(
+        'offline',
+        () => {
+            const button =
+                document.getElementById(
+                    'headerNotificationBell'
+                );
+
+            if (button) {
+                button.title =
+                    'Notifications require an internet connection';
+            }
+        }
+    );
+
+    document.addEventListener(
+        'visibilitychange',
+        () => {
+            if (
+                document.visibilityState ===
+                'visible'
+            ) {
+                window
+                    .refreshNotificationBell();
+            }
+        }
+    );
+
+    setInterval(
+        () => {
+            if (
+                document.visibilityState ===
+                    'visible' &&
+                authenticatedNotificationMemberId() &&
+                navigator.onLine
+            ) {
+                window
+                    .refreshNotificationBell();
+            }
+        },
+        60 * 1000
+    );
+})();

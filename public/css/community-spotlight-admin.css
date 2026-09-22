@@ -1,0 +1,357 @@
+/* Community Spotlight — Campaign Manager admin surface */
+
+.spotlight-admin-subnav {
+    margin-bottom: 18px;
+}
+
+.spotlight-admin-shell {
+    display: grid;
+    gap: 16px;
+}
+
+.spotlight-admin-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.spotlight-admin-heading h2,
+.spotlight-admin-heading h3 {
+    margin-top: 0;
+}
+
+.spotlight-admin-kicker {
+    margin: 0 0 5px;
+    color: #9A6A3A;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.spotlight-admin-help {
+    margin: 5px 0 0;
+    max-width: 760px;
+    color: var(--text-muted);
+    line-height: 1.55;
+}
+
+.spotlight-admin-feedback {
+    display: none;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid #FED7AA;
+    border-radius: 10px;
+    background: #FFF7ED;
+    color: #9A3412;
+    font-size: 0.88rem;
+}
+
+.spotlight-admin-feedback.active {
+    display: block;
+}
+
+.spotlight-admin-feedback.error {
+    border-color: #FECACA;
+    background: #FEF2F2;
+    color: #991B1B;
+}
+
+.spotlight-campaign-list {
+    display: grid;
+    gap: 12px;
+}
+
+.spotlight-campaign-card {
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: #FFFFFF;
+    padding: 16px;
+    box-shadow: 0 4px 16px rgba(63, 42, 24, 0.05);
+}
+
+.spotlight-campaign-card__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.spotlight-campaign-card__title {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 1.04rem;
+}
+
+.spotlight-campaign-card__meta {
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+}
+
+.spotlight-campaign-card__message {
+    margin: 12px 0;
+    color: var(--text-main);
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.spotlight-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.spotlight-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #F5F1EA;
+    color: #68472B;
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.spotlight-badge.enabled {
+    background: #ECFDF5;
+    color: #047857;
+}
+
+.spotlight-badge.paused {
+    background: #FFFBEB;
+    color: #B45309;
+}
+
+.spotlight-badge.archived {
+    background: #F1F5F9;
+    color: #64748B;
+}
+
+.spotlight-campaign-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.spotlight-empty {
+    padding: 30px 18px;
+    text-align: center;
+    border: 1px dashed #D6C6B3;
+    border-radius: 14px;
+    color: var(--text-muted);
+    background: #FFFCF8;
+}
+
+.spotlight-modal .modal-content {
+    max-width: 920px;
+    width: min(920px, calc(100vw - 24px));
+    max-height: calc(100vh - 30px);
+    overflow-y: auto;
+    background: #FFFCF8;
+}
+
+.spotlight-modal__header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    padding-bottom: 12px;
+    background: #FFFCF8;
+    border-bottom: 1px solid #E7DCCF;
+}
+
+.spotlight-modal__header h2 {
+    margin: 0;
+    color: #70451F;
+}
+
+.spotlight-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.spotlight-editor-grid .full {
+    grid-column: 1 / -1;
+}
+
+.spotlight-inline-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.spotlight-checkbox-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 12px;
+    border: 1px solid #E7DCCF;
+    border-radius: 12px;
+    background: #FFFFFF;
+}
+
+.spotlight-checkbox-row label {
+    display: inline-flex;
+    gap: 7px;
+    align-items: center;
+    margin: 0;
+}
+
+.spotlight-field-note {
+    margin: 5px 0 0;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+.spotlight-member-search-results {
+    display: none;
+    margin-top: 6px;
+    max-height: 190px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: #FFFFFF;
+}
+
+.spotlight-member-search-results.active {
+    display: block;
+}
+
+.spotlight-member-result {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+    text-align: left;
+    padding: 10px 12px;
+    background: #FFFFFF;
+    border: 0;
+    border-bottom: 1px solid #EEF2F7;
+    cursor: pointer;
+}
+
+.spotlight-member-result:last-child {
+    border-bottom: 0;
+}
+
+.spotlight-member-result:hover,
+.spotlight-member-result:focus-visible {
+    background: #FFF7ED;
+}
+
+.spotlight-selected-summary {
+    margin-top: 7px;
+    color: #70451F;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.spotlight-preview {
+    border: 1px solid #E2C8A9;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #FFFDF9;
+    box-shadow: 0 16px 42px rgba(79, 52, 29, 0.12);
+}
+
+.spotlight-preview__image {
+    width: 100%;
+    max-height: 230px;
+    object-fit: cover;
+    display: none;
+}
+
+.spotlight-preview__body {
+    padding: 20px;
+}
+
+.spotlight-preview__eyebrow {
+    margin: 0 0 7px;
+    color: #A66321;
+    font-size: 0.75rem;
+    font-weight: 900;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.spotlight-preview__title {
+    margin: 0;
+    color: #54371F;
+    font-size: 1.35rem;
+}
+
+.spotlight-preview__message {
+    white-space: pre-wrap;
+    margin: 12px 0;
+    color: #4B5563;
+    line-height: 1.58;
+}
+
+.spotlight-preview__actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.spotlight-analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.spotlight-stat {
+    padding: 14px;
+    border: 1px solid #E7DCCF;
+    border-radius: 12px;
+    background: #FFFFFF;
+}
+
+.spotlight-stat strong {
+    display: block;
+    color: #70451F;
+    font-size: 1.25rem;
+}
+
+.spotlight-stat span {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+body.koinonia-offline-readonly #spotlightNewCampaignBtn,
+body.koinonia-offline-readonly .spotlight-mutation-control {
+    display: none !important;
+}
+
+@media (max-width: 720px) {
+    .spotlight-editor-grid,
+    .spotlight-inline-grid,
+    .spotlight-analytics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .spotlight-modal .modal-content {
+        width: calc(100vw - 12px);
+        max-height: calc(100vh - 12px);
+        margin: 6px;
+        padding: 16px;
+    }
+
+    .spotlight-campaign-actions .btn {
+        flex: 1 1 130px;
+    }
+}

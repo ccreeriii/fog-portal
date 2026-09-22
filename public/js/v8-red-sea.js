@@ -348,16 +348,16 @@ window.V8RedSea = {
                 <h2 style="color: #F59E0B; font-size: 2.2rem; margin-bottom: 5px; border:none; text-align:center;">🏆 EXODUS COMPLETE!</h2>
                 <p style="color: #0F172A; font-size: 1rem; margin-bottom: 15px; text-align:center;">You guided the people across all 50 levels of the Red Sea!</p>
                 <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
-                    <span style="color: #10B981; font-weight: bold; font-size: 1.2rem;">Total XP: ${this.score}</span>
+                    <span style="color: #10B981; font-weight: bold; font-size: 1.2rem;">Game Score: ${this.score}</span>
                 </div>
-                <button class="btn btn-primary" style="background: #3B82F6;" onclick="V8RedSea.handleGameOver('Victory!')">Claim XP & Exit</button>
+                <button class="btn btn-primary" style="background: #3B82F6;" onclick="V8RedSea.handleGameOver('Victory!')">Save Score & Exit</button>
             `;
         } else {
             overlay.innerHTML = `
                 <h2 style="color: #10B981; font-size: 2rem; margin-bottom: 5px; border:none; text-align:center;">Stage ${this.level} Cleared! 🎉</h2>
                 <p style="color: #0F172A; font-size: 1rem; margin-bottom: 15px;">Manna gathered!</p>
                 <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
-                    <span style="color: #F59E0B; font-weight: bold; font-size: 1.2rem;">Current XP: ${this.score}</span>
+                    <span style="color: #F59E0B; font-weight: bold; font-size: 1.2rem;">Current Score: ${this.score}</span>
                 </div>
                 <button class="btn btn-primary" style="background: #3B82F6;" onclick="V8RedSea.level++; V8RedSea.startLevel()">Next Stage ▶</button>
             `;
@@ -370,42 +370,9 @@ window.V8RedSea = {
 
         const overlay = document.getElementById('rsOverlay');
         overlay.style.display = 'flex';
-        overlay.innerHTML = `
-            <h2 style="color: #EF4444; font-size: 2rem; margin-bottom: 5px; border:none; text-align:center;">${titleText}</h2>
-            <p style="color: #0F172A; font-size: 1rem; margin-bottom: 15px; text-align:center;">You reached Level ${this.level}.</p>
-            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
-                <span style="color: #F59E0B; font-weight: bold; font-size: 1.2rem;">${this.score} XP Earned!</span>
-            </div>
-            <div style="display:flex; gap:10px;">
-                <button class="btn btn-secondary" onclick="V8RedSea.exitGame()">Exit to Arcade</button>
-                <button class="btn btn-primary" style="background: #3B82F6;" onclick="V8RedSea.startGame()">Play Again</button>
-            </div>
-        `;
-
-        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id && this.score > 0) {
-            try {
-                await fetch('/api/arcade/submit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        youth_id: currentMember.id,
-                        game_name: "Moses' Red Sea Dash",
-                        score: this.score,
-                        actor: typeof currentUser !== 'undefined' ? currentUser : 'System'
-                    })
-                });
-
-                if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
-                if (typeof window.V8Arcade !== 'undefined') {
-                    window.V8Arcade.loadLeaderboard();
-                    window.V8Arcade.updateTotalXP();
-                }
-
-                this.score = 0;
-            } catch(e) {
-                console.error("Failed to submit score.", e);
-            }
-        }
+        const finalScore = this.score;
+        await window.V10Expansion.submitCanvasGameResult({ gameName: "Moses' Red Sea Dash", score: finalScore, overlayId: 'rsOverlay', playAgain: 'V8RedSea.startGame()' });
+        this.score = 0;
     }
 };
 

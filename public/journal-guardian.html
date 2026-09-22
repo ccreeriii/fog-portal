@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>Private Journal — Parent/Guardian Permission</title>
+    <link rel="stylesheet" href="/css/journal-guardian-guest.css">
+</head>
+<body>
+    <main class="guardian-page">
+        <section class="guardian-card" aria-labelledby="guardianTitle">
+            <p class="guardian-eyebrow">Fire Of God Ministries Community Portal</p>
+            <h1 id="guardianTitle">Private Journal — Parent/Guardian Permission</h1>
+
+            <div id="guardianLoading" role="status">
+                Opening this secure request…
+            </div>
+
+            <div id="guardianRequest" hidden>
+                <p id="guardianYouthSummary" class="guardian-lead"></p>
+                <p>You do not need to join Fire Of God Ministries or create a Community Portal account to approve or decline this request.</p>
+
+                <aside class="guardian-privacy" role="note">
+                    <strong>What your approval means</strong>
+                    <p>You are allowing this young person to use a protected reflection feature.</p>
+                    <p>You will not be able to read their Journal entries. FOG leaders do not routinely browse their entries.</p>
+                    <p>Approval does not replace talking with a trusted adult or getting immediate help when someone may be unsafe.</p>
+                </aside>
+
+                <form id="guardianForm">
+                    <label>
+                        Email address
+                        <input id="guardianEmail" type="email" autocomplete="email" maxlength="254" required>
+                    </label>
+
+                    <label>
+                        Relationship
+                        <select id="guardianRelationship" required>
+                            <option value="parent">Parent</option>
+                            <option value="legal_guardian">Legal guardian</option>
+                            <option value="other_guardian">Other authorized guardian</option>
+                        </select>
+                    </label>
+
+                    <label class="guardian-check">
+                        <input id="guardianAdult" type="checkbox" required>
+                        <span>I confirm that I am at least 18 years old.</span>
+                    </label>
+
+                    <label class="guardian-check">
+                        <input id="guardianAuthorized" type="checkbox" required>
+                        <span>I confirm that I am authorized to make this decision for the young person named above.</span>
+                    </label>
+
+                    <label class="guardian-check">
+                        <input id="guardianPermission" type="checkbox" required>
+                        <span>I give permission for this young person to use the protected reflection feature and understand that this does not give me access to their entries.</span>
+                    </label>
+
+                    <div class="guardian-actions">
+                        <button id="guardianDecline" type="button" class="secondary">Decline</button>
+                        <button id="guardianSendCode" type="submit">Email verification code</button>
+                    </div>
+                </form>
+
+                <form id="guardianVerifyForm" hidden>
+                    <p id="guardianCodeHelp"></p>
+                    <label>
+                        Six-digit verification code
+                        <input id="guardianCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+                    </label>
+                    <button id="guardianApprove" type="submit">Verify and approve</button>
+                </form>
+            </div>
+
+            <div id="guardianRevoke" hidden>
+                <p id="guardianRevokeSummary" class="guardian-lead"></p>
+                <p class="guardian-lead">Use this secure link to withdraw your guardian authorization. This does not delete or reveal any Journal entry.</p>
+                <button id="guardianRevokeButton" type="button" class="danger">Revoke authorization</button>
+            </div>
+
+            <div id="guardianComplete" hidden></div>
+            <p id="guardianStatus" class="guardian-status" role="status" aria-live="polite"></p>
+        </section>
+    </main>
+    <script src="/js/journal-guardian-guest.js"></script>
+</body>
+</html>

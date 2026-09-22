@@ -1,10 +1,1662 @@
 const express = require('express');
+const crypto = require('crypto');
+const { OAuth2Client } = require('google-auth-library');
+const googleClient = new OAuth2Client('100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const sharp = require('sharp');
+const QRCode = require('qrcode');
+const webpush = require('web-push');
+const cron = require('node-cron');
+const {
+    startScheduler: startBirthdayAgeScheduler,
+    deriveAgeFromBirthday
+} = require('./lib/birthday-age-sync');
+
+const BirthdayBlessings =
+    require('./lib/birthday-blessings');
+
+const {
+    startScheduler:
+        startBirthdayBlessingsScheduler
+} = require('./lib/birthday-blessings-scheduler');
+
+const BIRTHDAY_BLESSINGS_NOTIFICATIONS_ENABLED =
+    process.env.BIRTHDAY_BLESSINGS_NOTIFICATIONS_ENABLED === '1';
+const { createSqliteBackupManager } = require('./lib/sqlite-backup');
+const {
+    CRYPTO_VERSION: PRIVATE_JOURNAL_CRYPTO_VERSION,
+    ENTRY_ALGORITHM: PRIVATE_JOURNAL_ENTRY_ALGORITHM,
+    validateEncryptedEntryPayload,
+    validateEncryptedEntryPayloadWithFingerprint,
+    validateKeyEnvelopePayload,
+    serializePrivateJournalRow,
+    getJournalAgeBracket,
+    ensurePrivateJournalSecuritySchema,
+    resetPrivateJournalForOwner
+} = require('./lib/private-journal-security');
+const {
+    JOURNAL_GUARDIAN_POLICY_VERSION,
+    ensurePrivateJournalSafeguardingSchema,
+    getPrivateJournalAccessState,
+    getTeenGuardianPolicy,
+    setTeenGuardianPolicy,
+    acknowledgeResponsibleUse,
+    requestGuardianAuthorization,
+    previewGuardianAuthorization,
+    approveGuardianAuthorization,
+    previewGuestGuardianAuthorization,
+    beginGuardianEmailVerification,
+    cancelGuardianEmailVerification,
+    verifyGuardianEmailAndApprove,
+    declineGuardianAuthorization,
+    previewGuardianRevocation,
+    revokeGuardianAuthorization
+} = require('./lib/private-journal-safeguarding');
+const GrowthJourney = require('./lib/growth-journey');
+const MemberTransitionHttp = require('./lib/member-transition-http');
+const MemberTransitionLeadershipHttp = require('./lib/member-transition-leadership-http');
+const MinistryServiceJourney = require('./lib/ministry-service-journey');
+const CommunitySpotlight = require('./lib/community-spotlight');
+const PrayerCovenantDaily = require('./lib/prayer-covenant-daily');
+const GrowthNotifications = require('./lib/growth-notifications');
+const NotificationCenter = require('./lib/notification-center');
+const {
+    createRuntimeNotificationDeliveryEngine
+} = require('./lib/notification-delivery');
+const {
+    normalizeEmail,
+    validatePublicOrigin,
+    validateVerifiedGooglePayload,
+    findGoogleYouthIdentity,
+    findPasswordRecoveryIdentity,
+    initializeEmailRecoverySchema,
+    createAuthTokenStore,
+    createEmailOutbox,
+    createBoundedOutboxWorker,
+    createRecoveryRateLimiter,
+    invalidateSessionsForYouth,
+    invalidateSessionsForUser
+} = require('./lib/email-security');
+const {
+    initializeAccountClaimSchema,
+    createAccountClaimStore
+} = require('./lib/account-claim-security');
+const {
+    ACCOUNT_RECOVERY_TOKEN_TTL_MS,
+    initializeAccountRecoverySchema,
+    createAccountRecoveryStore
+} = require('./lib/account-recovery-security');
+const {
+    TERMS_VERSION,
+    PRIVACY_VERSION,
+    hasExplicitLegalAcceptance,
+    createCurrentPolicyEvidence,
+    initializeLegalAcceptanceSchema,
+    createLegalAcceptanceStore
+} = require('./lib/legal-acceptance');
+const {
+    ARCADE_DAILY_CAP,
+    GROWTH_GAME_DAILY_CAP,
+    PUBLIC_FAITH_QUEST_GAMES,
+    GameEconomyError,
+    getGameDefinition,
+    normalizeScore: normalizeGameScore,
+    validateAuthenticatedMemberSubmission,
+    ensureGameEconomySchema,
+    createGameEconomyService,
+    validatePublicLeaderboardSubmission
+} = require('./lib/game-economy');
 const app = express();
 
-// FORCE DISABLE CACHE FOR DEVELOPMENT
+const currentLegalPolicies = createCurrentPolicyEvidence({
+    termsContent: fs.readFileSync(path.join(__dirname, 'public', 'terms', 'index.html'), 'utf8'),
+    privacyContent: fs.readFileSync(path.join(__dirname, 'public', 'privacy', 'index.html'), 'utf8')
+});
+
+const BOOTSTRAP_STRONG_ADMIN_USERNAME = 'celsocreeriii@gmail.com';
+const BOOTSTRAP_STRONG_ADMIN_PASSWORD = typeof process.env.KOINONIA_BOOTSTRAP_ADMIN_PASSWORD === 'string'
+    ? process.env.KOINONIA_BOOTSTRAP_ADMIN_PASSWORD
+    : '';
+const VAPID_SUBJECT = typeof process.env.VAPID_SUBJECT === 'string'
+    ? process.env.VAPID_SUBJECT.trim()
+    : '';
+const VAPID_PUBLIC_KEY = typeof process.env.VAPID_PUBLIC_KEY === 'string'
+    ? process.env.VAPID_PUBLIC_KEY.trim()
+    : '';
+const VAPID_PRIVATE_KEY = typeof process.env.VAPID_PRIVATE_KEY === 'string'
+    ? process.env.VAPID_PRIVATE_KEY.trim()
+    : '';
+const PRAYER_COVENANT_REMINDERS_ENABLED =
+    /^true$/i.test(
+        process.env.PRAYER_COVENANT_REMINDERS_ENABLED || ''
+    );
+const PRAYER_COVENANT_REMINDER_HOUR =
+    process.env.PRAYER_COVENANT_REMINDER_HOUR;
+const WATCHTOWER_PRAYER_COVERAGE_ENABLED =
+    /^true$/i.test(
+        process.env.WATCHTOWER_PRAYER_COVERAGE_ENABLED || ''
+    );
+const WATCHTOWER_OPEN_HOUR =
+    process.env.WATCHTOWER_OPEN_HOUR;
+const WATCHTOWER_REPORT_HOUR =
+    process.env.WATCHTOWER_REPORT_HOUR;
+const WATCHTOWER_CLAIM_MINUTES =
+    process.env.WATCHTOWER_CLAIM_MINUTES;
+let pushNotificationsAvailable = false;
+
+if (VAPID_SUBJECT && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+    try {
+        webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+        pushNotificationsAvailable = true;
+    } catch (err) {
+        console.warn('Push notifications disabled: invalid VAPID configuration.');
+    }
+} else {
+    console.warn('Push notifications disabled: VAPID configuration is incomplete.');
+}
+
+function sendPushUnavailable(res) {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(503).json({
+        success: false,
+        error: 'Push notifications are unavailable.'
+    });
+}
+
+function requirePushAvailable(req, res, next) {
+    if (!pushNotificationsAvailable) return sendPushUnavailable(res);
+    return next();
+}
+
+const MAX_PUSH_SUBSCRIPTION_BYTES = 16 * 1024;
+const MAX_PUSH_ENDPOINT_LENGTH = 4096;
+const MAX_PUSH_KEY_LENGTH = 1024;
+
+function serializeValidatedPushSubscription(subscription) {
+    if (!subscription || typeof subscription !== 'object' || Array.isArray(subscription)) return null;
+
+    const { endpoint, expirationTime = null, keys } = subscription;
+    if (
+        typeof endpoint !== 'string' ||
+        endpoint.length === 0 ||
+        endpoint.length > MAX_PUSH_ENDPOINT_LENGTH ||
+        !keys ||
+        typeof keys !== 'object' ||
+        Array.isArray(keys) ||
+        typeof keys.p256dh !== 'string' ||
+        keys.p256dh.length === 0 ||
+        keys.p256dh.length > MAX_PUSH_KEY_LENGTH ||
+        typeof keys.auth !== 'string' ||
+        keys.auth.length === 0 ||
+        keys.auth.length > MAX_PUSH_KEY_LENGTH ||
+        (expirationTime !== null && (!Number.isFinite(expirationTime) || expirationTime < 0))
+    ) return null;
+
+    try {
+        const endpointUrl = new URL(endpoint);
+        if (endpointUrl.protocol !== 'https:' || endpointUrl.username || endpointUrl.password) return null;
+    } catch (err) {
+        return null;
+    }
+
+    const serialized = JSON.stringify({
+        endpoint,
+        expirationTime,
+        keys: {
+            p256dh: keys.p256dh,
+            auth: keys.auth
+        }
+    });
+    return Buffer.byteLength(serialized, 'utf8') <= MAX_PUSH_SUBSCRIPTION_BYTES
+        ? serialized
+        : null;
+}
+
+function getCanonicalPushSubscriptionUsername(auth) {
+    const memberQrCode = auth && auth.member && auth.member.qr_code;
+    if (typeof memberQrCode === 'string' && memberQrCode.length > 0) return memberQrCode;
+    return auth && typeof auth.username === 'string' && auth.username.length > 0
+        ? auth.username
+        : null;
+}
+const SESSION_COOKIE_NAME = 'koinonia_session';
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const SESSION_CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
+const MAX_SESSIONS = 5000;
+const PENDING_GOOGLE_SIGNUP_COOKIE_NAME = 'koinonia_pending_google_signup';
+const PENDING_GOOGLE_SIGNUP_TTL_MS = 10 * 60 * 1000;
+const MAX_PENDING_GOOGLE_SIGNUPS = 1000;
+const FORCE_SECURE_SESSION_COOKIE = /^true$/i.test(process.env.KOINONIA_SESSION_COOKIE_SECURE || '');
+const sessionStore = new Map();
+const pendingGoogleSignupStore = new Map();
+
+const PASSWORD_HASH_SCHEME = 'scrypt';
+const PASSWORD_HASH_VERSION = 'v1';
+const PASSWORD_SCRYPT_PARAMS = Object.freeze({
+    N: 32768,
+    r: 8,
+    p: 1,
+    keylen: 64,
+    saltBytes: 16,
+    maxmem: 64 * 1024 * 1024
+});
+const PASSWORD_HASH_PREFIX = `${PASSWORD_HASH_SCHEME}$${PASSWORD_HASH_VERSION}$`;
+const PASSWORD_MAX_INPUT_BYTES = 1024;
+const PASSWORD_LOGIN_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const PASSWORD_LOGIN_IP_ATTEMPT_LIMIT = 30;
+const PASSWORD_LOGIN_ACCOUNT_FAILURE_LIMIT = 6;
+const PASSWORD_LOGIN_IP_KEY_LIMIT = 2048;
+const PASSWORD_LOGIN_ACCOUNT_KEY_LIMIT = 4096;
+const PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const passwordLoginIpAttempts = new Map();
+const passwordLoginAccountFailures = new Map();
+const PASSWORD_RECOVERY_TOKEN_TTL_MS = 60 * 60 * 1000;
+const PASSWORD_RECOVERY_MINIMUM_DELIVERY_VALIDITY_MS = 15 * 60 * 1000;
+const PASSWORD_RECOVERY_MINIMUM_RESPONSE_MS = 250;
+const PASSWORD_RECOVERY_WORKER_INTERVAL_MS = 30 * 1000;
+const PASSWORD_RECOVERY_WORKER_BATCH_SIZE = 5;
+const EMAIL_VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const EMAIL_VERIFICATION_MINIMUM_DELIVERY_VALIDITY_MS = 30 * 60 * 1000;
+const PASSWORD_RECOVERY_NEUTRAL_MESSAGE = 'If an eligible account matches that email, password reset instructions will be sent shortly.';
+const PASSWORD_RESET_INVALID_MESSAGE = 'This password reset link is invalid or expired. Request a new one.';
+const EMAIL_VERIFICATION_REQUEST_MESSAGE = 'If your email needs confirmation, we’ll send you a verification link.';
+const EMAIL_VERIFICATION_INVALID_MESSAGE = 'This email verification link is invalid or expired. Request a new one.';
+const passwordRecoveryInFlight = new Set();
+const emailVerificationInFlight = new Set();
+const forgotPasswordLimiter = createRecoveryRateLimiter({
+    namespace: 'forgot-password',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 10,
+    subjectLimit: 3
+});
+const resetPasswordLimiter = createRecoveryRateLimiter({
+    namespace: 'reset-password',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
+});
+const emailVerificationRequestLimiter = createRecoveryRateLimiter({
+    namespace: 'email-verification-request',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 10,
+    subjectLimit: 3
+});
+const emailVerificationConfirmLimiter = createRecoveryRateLimiter({
+    namespace: 'email-verification-confirm',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
+});
+const emailRegistrationLimiter = createRecoveryRateLimiter({
+    namespace: 'email-registration',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 10,
+    subjectLimit: 2
+});
+const accountClaimPreviewLimiter = createRecoveryRateLimiter({
+    namespace: 'account-claim-preview',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 1
+});
+const accountClaimPreviewAuditLimiter = createRecoveryRateLimiter({
+    namespace: 'account-claim-preview-audit',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 3,
+    subjectLimit: 1
+});
+const accountClaimActivationLimiter = createRecoveryRateLimiter({
+    namespace: 'account-claim-activation',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
+});
+const accountRecoveryPreviewLimiter = createRecoveryRateLimiter({
+    namespace: 'account-recovery-preview',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
+});
+const accountRecoveryCompletionLimiter = createRecoveryRateLimiter({
+    namespace: 'account-recovery-completion',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
+});
+const contactSupportLimiter = createRecoveryRateLimiter({
+    namespace: 'contact-support',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 6,
+    subjectLimit: 3
+});
+const guardianVerificationRequestLimiter = createRecoveryRateLimiter({
+    namespace: 'journal-guardian-verification-request',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 10,
+    subjectLimit: 3
+});
+const guardianVerificationConfirmLimiter = createRecoveryRateLimiter({
+    namespace: 'journal-guardian-verification-confirm',
+    windowMs: 15 * 60 * 1000,
+    ipLimit: 20,
+    subjectLimit: 6
+});
+
+function getRecoveryClientAddress(req) {
+    // Express trust proxy remains disabled; never trust forwarding headers here.
+    if (req && typeof req.ip === 'string' && req.ip) return req.ip;
+    if (req && req.socket && typeof req.socket.remoteAddress === 'string' && req.socket.remoteAddress) {
+        return req.socket.remoteAddress;
+    }
+    return '<unknown>';
+}
+
+function deriveScryptKey(password, salt, params = PASSWORD_SCRYPT_PARAMS) {
+    return new Promise((resolve, reject) => {
+        crypto.scrypt(password, salt, params.keylen, {
+            N: params.N,
+            r: params.r,
+            p: params.p,
+            maxmem: params.maxmem
+        }, (err, derivedKey) => {
+            if (err) return reject(err);
+            resolve(derivedKey);
+        });
+    });
+}
+
+function decodeCanonicalBase64Url(value, expectedBytes) {
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
+    try {
+        const decoded = Buffer.from(value, 'base64url');
+        if (decoded.length !== expectedBytes || decoded.toString('base64url') !== value) return null;
+        return decoded;
+    } catch (err) {
+        return null;
+    }
+}
+
+function parseVersionedPasswordHash(storedValue) {
+    if (typeof storedValue !== 'string' || storedValue.length > 512) return null;
+    const parts = storedValue.split('$');
+    if (parts.length !== 5 || parts[0] !== PASSWORD_HASH_SCHEME || parts[1] !== PASSWORD_HASH_VERSION) return null;
+
+    const parameters = /^N=(\d+),r=(\d+),p=(\d+),keylen=(\d+)$/.exec(parts[2]);
+    if (!parameters) return null;
+    const parsedParams = {
+        N: Number(parameters[1]),
+        r: Number(parameters[2]),
+        p: Number(parameters[3]),
+        keylen: Number(parameters[4]),
+        maxmem: PASSWORD_SCRYPT_PARAMS.maxmem
+    };
+    if (
+        parsedParams.N !== PASSWORD_SCRYPT_PARAMS.N ||
+        parsedParams.r !== PASSWORD_SCRYPT_PARAMS.r ||
+        parsedParams.p !== PASSWORD_SCRYPT_PARAMS.p ||
+        parsedParams.keylen !== PASSWORD_SCRYPT_PARAMS.keylen
+    ) return null;
+
+    const salt = decodeCanonicalBase64Url(parts[3], PASSWORD_SCRYPT_PARAMS.saltBytes);
+    const derivedKey = decodeCanonicalBase64Url(parts[4], PASSWORD_SCRYPT_PARAMS.keylen);
+    if (!salt || !derivedKey) return null;
+    return { params: parsedParams, salt, derivedKey };
+}
+
+function isVersionedPasswordHash(storedValue) {
+    return typeof storedValue === 'string' && storedValue.startsWith(`${PASSWORD_HASH_SCHEME}$`);
+}
+
+async function hashPassword(password) {
+    if (
+        typeof password !== 'string' ||
+        password.length === 0 ||
+        Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_INPUT_BYTES
+    ) throw new TypeError('Invalid password input');
+
+    const salt = crypto.randomBytes(PASSWORD_SCRYPT_PARAMS.saltBytes);
+    const derivedKey = await deriveScryptKey(password, salt);
+    const parameters = `N=${PASSWORD_SCRYPT_PARAMS.N},r=${PASSWORD_SCRYPT_PARAMS.r},p=${PASSWORD_SCRYPT_PARAMS.p},keylen=${PASSWORD_SCRYPT_PARAMS.keylen}`;
+    return `${PASSWORD_HASH_PREFIX}${parameters}$${salt.toString('base64url')}$${derivedKey.toString('base64url')}`;
+}
+
+function timingSafeCredentialEqual(leftValue, rightValue) {
+    if (typeof leftValue !== 'string' || typeof rightValue !== 'string') return false;
+    const left = Buffer.from(leftValue, 'utf8');
+    const right = Buffer.from(rightValue, 'utf8');
+    if (left.length > PASSWORD_MAX_INPUT_BYTES || right.length > PASSWORD_MAX_INPUT_BYTES) return false;
+
+    const comparisonLength = Math.max(left.length, right.length, 1);
+    const leftPadded = Buffer.alloc(comparisonLength);
+    const rightPadded = Buffer.alloc(comparisonLength);
+    left.copy(leftPadded);
+    right.copy(rightPadded);
+
+    return crypto.timingSafeEqual(leftPadded, rightPadded) && left.length === right.length;
+}
+
+function verifyLegacyPlaintextPassword(password, storedValue) {
+    // Migration-only compatibility for existing plaintext rows.
+    return timingSafeCredentialEqual(password, storedValue);
+}
+
+async function verifyPassword(password, storedValue) {
+    if (typeof password !== 'string' || typeof storedValue !== 'string' || storedValue.length === 0) return false;
+    if (!isVersionedPasswordHash(storedValue)) {
+        return verifyLegacyPlaintextPassword(password, storedValue);
+    }
+
+    const parsed = parseVersionedPasswordHash(storedValue);
+    if (!parsed || Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_INPUT_BYTES) return false;
+    try {
+        const suppliedKey = await deriveScryptKey(password, parsed.salt, parsed.params);
+        return suppliedKey.length === parsed.derivedKey.length &&
+            crypto.timingSafeEqual(suppliedKey, parsed.derivedKey);
+    } catch (err) {
+        return false;
+    }
+}
+
+function digestPasswordLoginLimiterKey(namespace, value) {
+    return crypto.createHash('sha256')
+        .update(namespace)
+        .update('\0')
+        .update(value)
+        .digest('base64url');
+}
+
+function normalizePasswordLoginIdentifierForLimiter(value) {
+    if (typeof value !== 'string') return '<missing>';
+    const normalized = value.normalize('NFKC').trim().toLowerCase();
+    return normalized || '<empty>';
+}
+
+function getPasswordLoginIpKey(req) {
+    // Express defaults to trust proxy=false, so req.ip resolves from the socket.
+    // Do not read forwarding headers here without an explicit trusted-proxy review.
+    const address = req && typeof req.ip === 'string' && req.ip
+        ? req.ip
+        : req && req.socket && typeof req.socket.remoteAddress === 'string' && req.socket.remoteAddress
+            ? req.socket.remoteAddress
+            : '<unknown>';
+    return digestPasswordLoginLimiterKey('ip', address);
+}
+
+function getPasswordLoginAccountKey(identifier) {
+    return digestPasswordLoginLimiterKey(
+        'account',
+        normalizePasswordLoginIdentifierForLimiter(identifier)
+    );
+}
+
+function cleanupExpiredPasswordLoginLimiterEntries(store, now = Date.now()) {
+    for (const [key, entry] of store) {
+        if (!entry || !Number.isFinite(entry.resetAt) || entry.resetAt <= now) {
+            store.delete(key);
+        }
+    }
+}
+
+function getPasswordLoginRetryAfterSeconds(entry, now = Date.now()) {
+    const remainingMs = entry && Number.isFinite(entry.resetAt)
+        ? entry.resetAt - now
+        : PASSWORD_LOGIN_LIMIT_WINDOW_MS;
+    return Math.max(1, Math.ceil(Math.max(0, remainingMs) / 1000));
+}
+
+function getPasswordLoginCapacityRetryAfterSeconds(store, now = Date.now()) {
+    let earliestResetAt = Infinity;
+    for (const entry of store.values()) {
+        if (entry && Number.isFinite(entry.resetAt)) {
+            earliestResetAt = Math.min(earliestResetAt, entry.resetAt);
+        }
+    }
+    return getPasswordLoginRetryAfterSeconds(
+        Number.isFinite(earliestResetAt) ? { resetAt: earliestResetAt } : null,
+        now
+    );
+}
+
+function ensurePasswordLoginLimiterCapacity(store, maximumKeys, now = Date.now()) {
+    if (store.size < maximumKeys) return true;
+    cleanupExpiredPasswordLoginLimiterEntries(store, now);
+    return store.size < maximumKeys;
+}
+
+function consumePasswordLoginIpAttempt(req, now = Date.now()) {
+    const key = getPasswordLoginIpKey(req);
+    let entry = passwordLoginIpAttempts.get(key);
+    if (entry && entry.resetAt <= now) {
+        passwordLoginIpAttempts.delete(key);
+        entry = null;
+    }
+
+    if (!entry) {
+        if (!ensurePasswordLoginLimiterCapacity(passwordLoginIpAttempts, PASSWORD_LOGIN_IP_KEY_LIMIT, now)) {
+            return {
+                allowed: false,
+                retryAfterSeconds: getPasswordLoginCapacityRetryAfterSeconds(passwordLoginIpAttempts, now)
+            };
+        }
+        entry = { count: 0, resetAt: now + PASSWORD_LOGIN_LIMIT_WINDOW_MS };
+        passwordLoginIpAttempts.set(key, entry);
+    }
+
+    if (entry.count >= PASSWORD_LOGIN_IP_ATTEMPT_LIMIT) {
+        return { allowed: false, retryAfterSeconds: getPasswordLoginRetryAfterSeconds(entry, now) };
+    }
+
+    entry.count += 1;
+    return { allowed: true };
+}
+
+function beginPasswordLoginAccountAttempt(identifier, now = Date.now()) {
+    const key = getPasswordLoginAccountKey(identifier);
+    let entry = passwordLoginAccountFailures.get(key);
+    if (entry && entry.resetAt <= now) {
+        passwordLoginAccountFailures.delete(key);
+        entry = null;
+    }
+
+    if (!entry) {
+        if (!ensurePasswordLoginLimiterCapacity(passwordLoginAccountFailures, PASSWORD_LOGIN_ACCOUNT_KEY_LIMIT, now)) {
+            return {
+                allowed: false,
+                retryAfterSeconds: getPasswordLoginCapacityRetryAfterSeconds(passwordLoginAccountFailures, now)
+            };
+        }
+        entry = { failures: 0, pending: 0, resetAt: now + PASSWORD_LOGIN_LIMIT_WINDOW_MS };
+        passwordLoginAccountFailures.set(key, entry);
+    }
+
+    if (entry.failures + entry.pending >= PASSWORD_LOGIN_ACCOUNT_FAILURE_LIMIT) {
+        return { allowed: false, retryAfterSeconds: getPasswordLoginRetryAfterSeconds(entry, now) };
+    }
+
+    entry.pending += 1;
+    return { allowed: true, key, entry };
+}
+
+function completePasswordLoginAccountAttempt(reservation, succeeded, now = Date.now()) {
+    if (!reservation || !reservation.allowed || !reservation.key || !reservation.entry) return;
+    const entry = passwordLoginAccountFailures.get(reservation.key);
+    if (entry !== reservation.entry) return;
+
+    entry.pending = Math.max(0, entry.pending - 1);
+    if (entry.resetAt <= now) {
+        entry.failures = 0;
+        entry.resetAt = now + PASSWORD_LOGIN_LIMIT_WINDOW_MS;
+    }
+
+    if (succeeded) {
+        entry.failures = 0;
+        if (entry.pending === 0) passwordLoginAccountFailures.delete(reservation.key);
+        return;
+    }
+
+    entry.failures = Math.min(PASSWORD_LOGIN_ACCOUNT_FAILURE_LIMIT, entry.failures + 1);
+}
+
+function beginPasswordLoginAttempt(req, identifier, now = Date.now()) {
+    const ipDecision = consumePasswordLoginIpAttempt(req, now);
+    if (!ipDecision.allowed) return ipDecision;
+
+    const accountDecision = beginPasswordLoginAccountAttempt(identifier, now);
+    if (!accountDecision.allowed) return accountDecision;
+    return { allowed: true, accountReservation: accountDecision };
+}
+
+function completePasswordLoginAttempt(attempt, succeeded, now = Date.now()) {
+    if (!attempt || !attempt.allowed) return;
+    completePasswordLoginAccountAttempt(attempt.accountReservation, succeeded, now);
+}
+
+function sendPasswordLoginRateLimited(res, retryAfterSeconds) {
+    const retryAfter = Number.isFinite(retryAfterSeconds)
+        ? Math.max(1, Math.ceil(retryAfterSeconds))
+        : Math.ceil(PASSWORD_LOGIN_LIMIT_WINDOW_MS / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(429).json({
+        success: false,
+        message: 'Too many sign-in attempts. Please try again later.'
+    });
+}
+
+const passwordLoginLimiterCleanupTimer = setInterval(() => {
+    const now = Date.now();
+    cleanupExpiredPasswordLoginLimiterEntries(passwordLoginIpAttempts, now);
+    cleanupExpiredPasswordLoginLimiterEntries(passwordLoginAccountFailures, now);
+    forgotPasswordLimiter.cleanupExpired();
+    resetPasswordLimiter.cleanupExpired();
+    emailVerificationRequestLimiter.cleanupExpired();
+    emailVerificationConfirmLimiter.cleanupExpired();
+    emailRegistrationLimiter.cleanupExpired();
+    accountClaimPreviewLimiter.cleanupExpired();
+    accountClaimPreviewAuditLimiter.cleanupExpired();
+    accountClaimActivationLimiter.cleanupExpired();
+    accountRecoveryPreviewLimiter.cleanupExpired();
+    accountRecoveryCompletionLimiter.cleanupExpired();
+    contactSupportLimiter.cleanupExpired();
+}, PASSWORD_LOGIN_LIMITER_CLEANUP_INTERVAL_MS);
+passwordLoginLimiterCleanupTimer.unref();
+
+function parseCookies(req) {
+    const cookies = Object.create(null);
+    const header = req.headers.cookie;
+    if (!header) return cookies;
+
+    header.split(';').forEach(part => {
+        const separator = part.indexOf('=');
+        if (separator < 0) return;
+        const name = part.slice(0, separator).trim();
+        const value = part.slice(separator + 1).trim();
+        if (!name) return;
+        try { cookies[name] = decodeURIComponent(value); }
+        catch (err) { cookies[name] = value; }
+    });
+    return cookies;
+}
+
+function getSessionId(req) {
+    return parseCookies(req)[SESSION_COOKIE_NAME] || null;
+}
+
+function pruneExpiredSessions(now = Date.now()) {
+    for (const [sessionId, session] of sessionStore) {
+        if (!session || session.expiresAt <= now) sessionStore.delete(sessionId);
+    }
+}
+
+function appendSetCookie(res, cookie) {
+    const existing = res.getHeader('Set-Cookie');
+    if (!existing) res.setHeader('Set-Cookie', cookie);
+    else if (Array.isArray(existing)) res.setHeader('Set-Cookie', [...existing, cookie]);
+    else res.setHeader('Set-Cookie', [existing, cookie]);
+}
+
+function shouldUseSecureSessionCookie(req) {
+    return FORCE_SECURE_SESSION_COOKIE || Boolean(req.socket && req.socket.encrypted);
+}
+
+function setSessionCookie(req, res, sessionId, expiresAt) {
+    const attributes = [
+        `${SESSION_COOKIE_NAME}=${encodeURIComponent(sessionId)}`,
+        'HttpOnly',
+        'SameSite=Strict',
+        'Path=/',
+        `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+        `Expires=${new Date(expiresAt).toUTCString()}`
+    ];
+    if (shouldUseSecureSessionCookie(req)) attributes.push('Secure');
+    appendSetCookie(res, attributes.join('; '));
+}
+
+function expireSessionCookie(req, res) {
+    const attributes = [
+        `${SESSION_COOKIE_NAME}=`,
+        'HttpOnly',
+        'SameSite=Strict',
+        'Path=/',
+        'Max-Age=0',
+        'Expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    ];
+    if (shouldUseSecureSessionCookie(req)) attributes.push('Secure');
+    appendSetCookie(res, attributes.join('; '));
+}
+
+function pruneExpiredPendingGoogleSignups(now = Date.now()) {
+    for (const [pendingId, pending] of pendingGoogleSignupStore) {
+        if (!pending || pending.expiresAt <= now) pendingGoogleSignupStore.delete(pendingId);
+    }
+}
+
+function expirePendingGoogleSignupCookie(req, res) {
+    const attributes = [
+        `${PENDING_GOOGLE_SIGNUP_COOKIE_NAME}=`,
+        'HttpOnly',
+        'SameSite=Strict',
+        'Path=/api/auth/google',
+        'Max-Age=0',
+        'Expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    ];
+    if (shouldUseSecureSessionCookie(req)) attributes.push('Secure');
+    appendSetCookie(res, attributes.join('; '));
+}
+
+function clearPendingGoogleSignup(req, res) {
+    const pendingId = parseCookies(req)[PENDING_GOOGLE_SIGNUP_COOKIE_NAME];
+    if (pendingId) pendingGoogleSignupStore.delete(pendingId);
+    expirePendingGoogleSignupCookie(req, res);
+}
+
+function createPendingGoogleSignup(req, res, identity) {
+    const previousPendingId = parseCookies(req)[PENDING_GOOGLE_SIGNUP_COOKIE_NAME];
+    if (previousPendingId) pendingGoogleSignupStore.delete(previousPendingId);
+    const now = Date.now();
+    pruneExpiredPendingGoogleSignups(now);
+    while (pendingGoogleSignupStore.size >= MAX_PENDING_GOOGLE_SIGNUPS) {
+        const oldestPendingId = pendingGoogleSignupStore.keys().next().value;
+        if (!oldestPendingId) break;
+        pendingGoogleSignupStore.delete(oldestPendingId);
+    }
+
+    let pendingId;
+    do { pendingId = crypto.randomBytes(32).toString('hex'); }
+    while (pendingGoogleSignupStore.has(pendingId));
+    const expiresAt = now + PENDING_GOOGLE_SIGNUP_TTL_MS;
+    pendingGoogleSignupStore.set(pendingId, Object.freeze({
+        identity: Object.freeze({ ...identity }),
+        createdAt: now,
+        expiresAt
+    }));
+    const attributes = [
+        `${PENDING_GOOGLE_SIGNUP_COOKIE_NAME}=${encodeURIComponent(pendingId)}`,
+        'HttpOnly',
+        'SameSite=Strict',
+        'Path=/api/auth/google',
+        `Max-Age=${Math.floor(PENDING_GOOGLE_SIGNUP_TTL_MS / 1000)}`,
+        `Expires=${new Date(expiresAt).toUTCString()}`
+    ];
+    if (shouldUseSecureSessionCookie(req)) attributes.push('Secure');
+    appendSetCookie(res, attributes.join('; '));
+}
+
+function getPendingGoogleSignup(req) {
+    pruneExpiredPendingGoogleSignups();
+    const pendingId = parseCookies(req)[PENDING_GOOGLE_SIGNUP_COOKIE_NAME];
+    if (!pendingId) return null;
+    const pending = pendingGoogleSignupStore.get(pendingId);
+    return pending ? Object.freeze({ pendingId, pending }) : null;
+}
+
+function createAuthenticatedSession(req, res, identity) {
+    const previousSessionId = getSessionId(req);
+    if (previousSessionId) sessionStore.delete(previousSessionId);
+
+    const now = Date.now();
+    pruneExpiredSessions(now);
+    while (sessionStore.size >= MAX_SESSIONS) {
+        const oldestSessionId = sessionStore.keys().next().value;
+        if (!oldestSessionId) break;
+        sessionStore.delete(oldestSessionId);
+    }
+
+    let sessionId;
+    do { sessionId = crypto.randomBytes(32).toString('hex'); }
+    while (sessionStore.has(sessionId));
+
+    const expiresAt = now + SESSION_TTL_MS;
+    sessionStore.set(sessionId, {
+        userId: identity.userId == null ? null : identity.userId,
+        youthId: identity.youthId == null ? null : identity.youthId,
+        username: identity.username,
+        createdAt: now,
+        expiresAt
+    });
+    setSessionCookie(req, res, sessionId, expiresAt);
+}
+
+function getValidSession(req) {
+    const sessionId = getSessionId(req);
+    if (!sessionId) return null;
+    const session = sessionStore.get(sessionId);
+    if (!session || session.expiresAt <= Date.now()) {
+        sessionStore.delete(sessionId);
+        return null;
+    }
+    return { sessionId, session };
+}
+
+function parseStoredPermissions(value) {
+    if (Array.isArray(value)) return value;
+    try {
+        const permissions = JSON.parse(value || '[]');
+        return Array.isArray(permissions) ? permissions : [];
+    } catch (err) {
+        return [];
+    }
+}
+
+const MEMBER_RESPONSE_FIELDS = Object.freeze([
+    'id', 'name', 'age', 'email', 'mobile', 'social_media', 'birthday',
+    'parents_name', 'qr_code', 'profile_picture', 'gender', 'account_tier',
+    'address'
+]);
+
+const AUTHENTICATED_MEMBER_RESPONSE_FIELDS = Object.freeze([
+    ...MEMBER_RESPONSE_FIELDS,
+    'email_verified', 'email_verified_at', 'pending_email', 'pending_email_requested_at'
+]);
+
+const DIRECTORY_MEMBER_RESPONSE_FIELDS = Object.freeze([
+    'id', 'name', 'age', 'email', 'mobile', 'social_media', 'birthday',
+    'parents_name', 'profile_picture', 'gender', 'account_tier', 'address'
+]);
+
+const PUBLIC_MEMBER_RESPONSE_FIELDS = Object.freeze(['id', 'name']);
+
+const EVENT_LIST_RESPONSE_FIELDS = Object.freeze([
+    'id', 'name', 'event_date', 'time_start', 'venue', 'photos_url',
+    'materials_url', 'event_points', 'has_poster', 'poster_url',
+    'preregistration_available'
+]);
+
+const PUBLIC_EVENT_RESPONSE_FIELDS = Object.freeze([
+    ...EVENT_LIST_RESPONSE_FIELDS,
+    'gallery', 'prereg_info', 'additional_info', 'prereg_title',
+    'has_prereg_banner', 'prereg_banner_url',
+    'has_prereg_bottom_banner', 'prereg_bottom_banner_url'
+]);
+
+const EVENT_MEDIA_COLUMNS = Object.freeze({
+    poster: 'poster',
+    prereg_banner: 'prereg_banner',
+    prereg_bottom_banner: 'prereg_bottom_banner'
+});
+
+const PUBLIC_MINISTRY_RESPONSE_FIELDS = Object.freeze([
+    'id', 'name', 'description', 'logo', 'member_count'
+]);
+
+function projectResponseFields(record, fields) {
+    if (!record) return null;
+    return fields.reduce((projected, field) => {
+        if (Object.prototype.hasOwnProperty.call(record, field)) projected[field] = record[field];
+        return projected;
+    }, {});
+}
+
+function sanitizeMemberForClient(member) {
+    return {
+        ...projectResponseFields(member, MEMBER_RESPONSE_FIELDS),
+        membership_intent_submitted: Boolean(
+            member &&
+            typeof member.commitment_intent === 'string' &&
+            member.commitment_intent.trim()
+        )
+    };
+}
+
+function sanitizeMemberForAuth(member) {
+    return {
+        ...projectResponseFields(member, AUTHENTICATED_MEMBER_RESPONSE_FIELDS),
+        membership_intent_submitted: Boolean(
+            member &&
+            typeof member.commitment_intent === 'string' &&
+            member.commitment_intent.trim()
+        )
+    };
+}
+
+function sanitizeMemberForDirectory(member) {
+    return projectResponseFields(member, DIRECTORY_MEMBER_RESPONSE_FIELDS);
+}
+
+function sanitizeMemberForPublic(member) {
+    return projectResponseFields(member, PUBLIC_MEMBER_RESPONSE_FIELDS);
+}
+
+function sanitizeEventForPublic(event) {
+    return projectResponseFields(event, PUBLIC_EVENT_RESPONSE_FIELDS);
+}
+
+function sanitizeEventForStaff(event) {
+    return {
+        ...sanitizeEventForPublic(event),
+        roles_restricted_notes: event.roles_restricted_notes
+    };
+}
+
+function isValidPositiveInteger(value) {
+    return /^[1-9]\d*$/.test(String(value || ''));
+}
+
+function addEventMediaReferences(event) {
+    if (!event) return null;
+    const eventId = event.id;
+    return {
+        ...event,
+        has_poster: Boolean(event.has_poster),
+        poster_url: event.has_poster ? `/api/events/${eventId}/media/poster` : null,
+        preregistration_available: Boolean(event.preregistration_available),
+        has_prereg_banner: Boolean(event.has_prereg_banner),
+        prereg_banner_url: event.has_prereg_banner ? `/api/events/${eventId}/media/prereg_banner` : null,
+        has_prereg_bottom_banner: Boolean(event.has_prereg_bottom_banner),
+        prereg_bottom_banner_url: event.has_prereg_bottom_banner
+            ? `/api/events/${eventId}/media/prereg_bottom_banner`
+            : null
+    };
+}
+
+function decodeEventMediaDataUrl(value) {
+    if (typeof value !== 'string') return null;
+    const match = /^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+    if (!match || match[2].length % 4 === 1) return null;
+    const unpadded = match[2].replace(/=+$/, '');
+    const padded = unpadded.padEnd(Math.ceil(unpadded.length / 4) * 4, '=');
+    const buffer = Buffer.from(padded, 'base64');
+    if (!buffer.length || buffer.toString('base64').replace(/=+$/, '') !== unpadded) return null;
+    return { contentType: match[1], buffer };
+}
+
+function sendEventMedia(res, storedValue) {
+    const media = decodeEventMediaDataUrl(storedValue);
+    if (!media) return res.status(404).send('Media not found');
+    res.setHeader('Content-Type', media.contentType);
+    res.setHeader('Content-Length', media.buffer.length);
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.send(media.buffer);
+}
+
+const SOCIAL_PREVIEW_WIDTH = 1200;
+const SOCIAL_PREVIEW_HEIGHT = 630;
+const SOCIAL_PREVIEW_MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+const SOCIAL_PREVIEW_MAX_INPUT_PIXELS = 40 * 1000 * 1000;
+const SOCIAL_PREVIEW_CACHE_LIMIT = 24;
+const SOCIAL_PREVIEW_MAX_CONCURRENT_RENDERS = 2;
+const socialPreviewCache = new Map();
+const socialPreviewRenders = new Map();
+let activeSocialPreviewRenders = 0;
+let genericSocialPreviewPromise = null;
+
+function cacheSocialPreview(key, image) {
+    if (socialPreviewCache.has(key)) socialPreviewCache.delete(key);
+    socialPreviewCache.set(key, image);
+    while (socialPreviewCache.size > SOCIAL_PREVIEW_CACHE_LIMIT) {
+        socialPreviewCache.delete(socialPreviewCache.keys().next().value);
+    }
+    return image;
+}
+
+async function composeContainedSocialPreview(sourceBuffer) {
+    if (!Buffer.isBuffer(sourceBuffer) || !sourceBuffer.length || sourceBuffer.length > SOCIAL_PREVIEW_MAX_SOURCE_BYTES) {
+        throw new Error('Unsupported social preview source');
+    }
+
+    const source = sharp(sourceBuffer, {
+        failOn: 'error',
+        limitInputPixels: SOCIAL_PREVIEW_MAX_INPUT_PIXELS
+    }).rotate();
+    const metadata = await source.metadata();
+    if (!metadata.width || !metadata.height) throw new Error('Unsupported social preview source');
+
+    const [background, containedPoster] = await Promise.all([
+        source.clone()
+            .resize(SOCIAL_PREVIEW_WIDTH, SOCIAL_PREVIEW_HEIGHT, { fit: 'cover' })
+            .blur(28)
+            .modulate({ brightness: 0.42, saturation: 0.75 })
+            .png()
+            .toBuffer(),
+        source.clone()
+            .resize(SOCIAL_PREVIEW_WIDTH - 40, SOCIAL_PREVIEW_HEIGHT - 40, {
+                fit: 'inside',
+                withoutEnlargement: false
+            })
+            .png()
+            .toBuffer()
+    ]);
+
+    return sharp(background, { limitInputPixels: SOCIAL_PREVIEW_MAX_INPUT_PIXELS })
+        .composite([{ input: containedPoster, gravity: 'centre' }])
+        .png({ compressionLevel: 9, adaptiveFiltering: true })
+        .toBuffer();
+}
+
+function getGenericSocialPreview() {
+    if (!genericSocialPreviewPromise) {
+        genericSocialPreviewPromise = (async () => {
+            const background = {
+                create: {
+                    width: SOCIAL_PREVIEW_WIDTH,
+                    height: SOCIAL_PREVIEW_HEIGHT,
+                    channels: 4,
+                    background: { r: 25, g: 35, b: 61, alpha: 1 }
+                }
+            };
+            try {
+                const logo = await fs.promises.readFile(path.join(__dirname, 'public', 'img', 'logo.png'));
+                const resizedLogo = await sharp(logo, {
+                    failOn: 'error',
+                    limitInputPixels: SOCIAL_PREVIEW_MAX_INPUT_PIXELS
+                }).resize(320, 320, { fit: 'inside', withoutEnlargement: false }).png().toBuffer();
+                return sharp(background)
+                    .composite([{ input: resizedLogo, gravity: 'centre' }])
+                    .png({ compressionLevel: 9, adaptiveFiltering: true })
+                    .toBuffer();
+            } catch (err) {
+                return sharp(background).png({ compressionLevel: 9 }).toBuffer();
+            }
+        })().catch(err => {
+            genericSocialPreviewPromise = null;
+            throw err;
+        });
+    }
+    return genericSocialPreviewPromise;
+}
+
+async function getEventSocialPreview(storedPoster) {
+    const media = decodeEventMediaDataUrl(storedPoster);
+    if (!media || media.buffer.length > SOCIAL_PREVIEW_MAX_SOURCE_BYTES) {
+        return getGenericSocialPreview();
+    }
+
+    const cacheKey = crypto.createHash('sha256').update(media.buffer).digest('hex');
+    const cached = socialPreviewCache.get(cacheKey);
+    if (cached) {
+        socialPreviewCache.delete(cacheKey);
+        socialPreviewCache.set(cacheKey, cached);
+        return cached;
+    }
+    if (socialPreviewRenders.has(cacheKey)) return socialPreviewRenders.get(cacheKey);
+    if (activeSocialPreviewRenders >= SOCIAL_PREVIEW_MAX_CONCURRENT_RENDERS) {
+        const error = new Error('Social preview rendering is busy');
+        error.code = 'SOCIAL_PREVIEW_BUSY';
+        throw error;
+    }
+
+    activeSocialPreviewRenders += 1;
+    const render = composeContainedSocialPreview(media.buffer)
+        .catch(() => getGenericSocialPreview())
+        .then(image => cacheSocialPreview(cacheKey, image))
+        .finally(() => {
+            activeSocialPreviewRenders -= 1;
+            socialPreviewRenders.delete(cacheKey);
+        });
+    socialPreviewRenders.set(cacheKey, render);
+    return render;
+}
+
+function sendSocialPreview(res, image) {
+    const etag = `\"${crypto.createHash('sha256').update(image).digest('base64url')}\"`;
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Length', image.length);
+    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+    res.setHeader('ETag', etag);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.send(image);
+}
+
+function sanitizeMinistryForPublic(ministry) {
+    return projectResponseFields(ministry, PUBLIC_MINISTRY_RESPONSE_FIELDS);
+}
+
+function sanitizeMinistryForStaff(ministry) {
+    return {
+        ...sanitizeMinistryForPublic(ministry),
+        restricted_notes: ministry.restricted_notes
+    };
+}
+
+function resolveCanonicalSessionIdentity(session, callback) {
+    const finish = (user) => {
+        const youthId = user && user.youth_id != null ? user.youth_id : session.youthId;
+        const permissions = parseStoredPermissions(user && user.permissions);
+        const username = user && user.username ? user.username : session.username;
+        const identity = {
+            success: true,
+            username,
+            permissions,
+            member: null,
+            is_admin: Boolean(user && (user.youth_id == null || permissions.length > 0))
+        };
+
+        if (youthId == null) return callback(null, user ? identity : null, user || null);
+        db.get(`SELECT * FROM youth WHERE id = ?`, [youthId], (err, member) => {
+            if (err) return callback(err);
+            if (!member) return callback(null, null);
+            identity.member = sanitizeMemberForAuth(member);
+            callback(null, identity, user || null);
+        });
+    };
+
+    if (session.userId != null) {
+        db.get(`SELECT id, username, permissions, youth_id FROM users WHERE id = ?`, [session.userId], (err, user) => {
+            if (err) return callback(err);
+            if (!user) return callback(null, null);
+            finish(user);
+        });
+    } else if (session.youthId != null) {
+        db.get(`SELECT id, username, permissions, youth_id FROM users WHERE youth_id = ?`, [session.youthId], (err, user) => {
+            if (err) return callback(err);
+            finish(user || null);
+        });
+    } else {
+        db.get(`SELECT id, username, permissions, youth_id FROM users WHERE username = ?`, [session.username], (err, user) => {
+            if (err) return callback(err);
+            if (!user) return callback(null, null);
+            finish(user);
+        });
+    }
+}
+
+function sendAuthenticationRequired(res) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+}
+
+function sendForbidden(res) {
+    return res.status(403).json({ success: false, error: 'Forbidden' });
+}
+
+function sendAuthorizationUnavailable(res) {
+    return res.status(500).json({ success: false, error: 'Authorization unavailable' });
+}
+
+function normalizeCanonicalId(value) {
+    let normalized;
+    if (typeof value === 'number') normalized = value;
+    else if (typeof value === 'string' && /^[1-9]\d*$/.test(value)) normalized = Number(value);
+    else return null;
+    return Number.isSafeInteger(normalized) && normalized > 0 ? normalized : null;
+}
+
+function normalizeAuthorizationPermissions(value) {
+    const permissions = parseStoredPermissions(value);
+    return [...new Set(permissions
+        .filter(permission => typeof permission === 'string')
+        .map(permission => permission.trim())
+        .filter(Boolean))];
+}
+
+function normalizeRequiredPermission(permission) {
+    if (typeof permission !== 'string' || !permission.trim()) {
+        throw new TypeError('A non-empty permission name is required');
+    }
+    return permission.trim();
+}
+
+function normalizeRequiredPermissions(permissions) {
+    if (!Array.isArray(permissions) || permissions.length === 0) {
+        throw new TypeError('A non-empty permission list is required');
+    }
+    return [...new Set(permissions.map(normalizeRequiredPermission))];
+}
+
+function authorizationHasPermission(auth, permission) {
+    return Boolean(auth && Array.isArray(auth.permissions) && auth.permissions.includes(permission));
+}
+
+function invalidateAuthorizationSession(req, res, sessionId = null) {
+    const activeSessionId = sessionId || getSessionId(req);
+    if (activeSessionId) sessionStore.delete(activeSessionId);
+    if (res) expireSessionCookie(req, res);
+}
+
+async function loadAuthorizationContext(req, res = null) {
+    if (req.auth) return req.auth;
+
+    const activeSession = getValidSession(req);
+    if (!activeSession) {
+        if (getSessionId(req) && res) expireSessionCookie(req, res);
+        return null;
+    }
+
+    const resolved = await new Promise((resolve, reject) => {
+        resolveCanonicalSessionIdentity(activeSession.session, (err, identity, canonicalUser) => {
+            if (err) return reject(err);
+            resolve({ identity, canonicalUser });
+        });
+    });
+
+    if (!resolved.identity) {
+        invalidateAuthorizationSession(req, res, activeSession.sessionId);
+        return null;
+    }
+
+    const member = sanitizeMemberForAuth(resolved.identity.member);
+    const youthId = normalizeCanonicalId(member && member.id);
+    const userId = normalizeCanonicalId(resolved.canonicalUser && resolved.canonicalUser.id);
+    const username = resolved.canonicalUser && resolved.canonicalUser.username
+        ? resolved.canonicalUser.username
+        : member && (member.qr_code || member.email)
+            ? (member.qr_code || member.email)
+            : resolved.identity.username;
+    const permissions = Object.freeze(normalizeAuthorizationPermissions(
+        resolved.canonicalUser && resolved.canonicalUser.permissions
+    ));
+
+    req.auth = Object.freeze({
+        userId,
+        youthId,
+        username: typeof username === 'string' ? username : null,
+        permissions,
+        member
+    });
+    return req.auth;
+}
+
+async function loadOptionalAuthorizationContext(req) {
+    try {
+        return await loadAuthorizationContext(req);
+    } catch (err) {
+        console.error('Optional authorization context resolution failed');
+        return null;
+    }
+}
+
+async function authorizeRequest(req, res, next, isAllowed) {
+    try {
+        const auth = await loadAuthorizationContext(req, res);
+        if (!auth) return sendAuthenticationRequired(res);
+        if (isAllowed && !(await isAllowed(auth, req))) return sendForbidden(res);
+        return next();
+    } catch (err) {
+        console.error('Authorization context resolution failed');
+        return sendAuthorizationUnavailable(res);
+    }
+}
+
+function requireAuth(req, res, next) {
+    return authorizeRequest(req, res, next);
+}
+
+function requirePermission(permission) {
+    const requiredPermission = normalizeRequiredPermission(permission);
+    return (req, res, next) => authorizeRequest(
+        req,
+        res,
+        next,
+        auth => authorizationHasPermission(auth, requiredPermission)
+    );
+}
+
+function requireAnyPermission(permissions) {
+    const requiredPermissions = normalizeRequiredPermissions(permissions);
+    return (req, res, next) => authorizeRequest(
+        req,
+        res,
+        next,
+        auth => requiredPermissions.some(permission => authorizationHasPermission(auth, permission))
+    );
+}
+
+function requireAllPermissions(permissions) {
+    const requiredPermissions = normalizeRequiredPermissions(permissions);
+    return (req, res, next) => authorizeRequest(
+        req,
+        res,
+        next,
+        auth => requiredPermissions.every(permission => authorizationHasPermission(auth, permission))
+    );
+}
+
+function isStrongAdmin(auth) {
+    return Boolean(
+        auth &&
+        auth.userId !== null &&
+        auth.username === BOOTSTRAP_STRONG_ADMIN_USERNAME &&
+        authorizationHasPermission(auth, 'access_permissions')
+    );
+}
+
+function requireStrongAdmin(req, res, next) {
+    return authorizeRequest(req, res, next, isStrongAdmin);
+}
+
+function isCanonicalSelf(auth, memberId) {
+    const canonicalYouthId = normalizeCanonicalId(auth && auth.youthId);
+    const requestedYouthId = normalizeCanonicalId(memberId);
+    return canonicalYouthId !== null && requestedYouthId !== null && canonicalYouthId === requestedYouthId;
+}
+
+function requireSelfOr(permission, getRequestedMemberId) {
+    const overridePermission = normalizeRequiredPermission(permission);
+    if (typeof getRequestedMemberId !== 'function') {
+        throw new TypeError('A member ID resolver is required');
+    }
+    return (req, res, next) => authorizeRequest(
+        req,
+        res,
+        next,
+        auth => isCanonicalSelf(auth, getRequestedMemberId(req)) ||
+            authorizationHasPermission(auth, overridePermission)
+    );
+}
+
+async function getAuthorizedProfilePasswordChange(req, res) {
+    if (!Object.prototype.hasOwnProperty.call(req.body, 'password') || req.body.password === '') {
+        return { requested: false };
+    }
+    if (!isCanonicalSelf(req.auth, req.params.id)) {
+        sendForbidden(res);
+        return null;
+    }
+    if (
+        typeof req.body.password !== 'string' ||
+        req.body.password.length < 8 ||
+        req.body.password.length > 128 ||
+        !/\S/.test(req.body.password)
+    ) {
+        res.status(400).json({ success: false, error: 'Password must be 8 to 128 characters.' });
+        return null;
+    }
+    try {
+        return { requested: true, encodedPassword: await hashPassword(req.body.password) };
+    } catch (err) {
+        console.error('Password hashing failed');
+        res.status(500).json({ success: false, error: 'Unable to update password.' });
+        return null;
+    }
+}
+
+const RESOURCE_OWNERSHIP = Object.freeze({
+    journal: Object.freeze({ table: 'private_journals', ownerColumn: 'youth_id' }),
+    personalInbox: Object.freeze({ table: 'personal_inbox', ownerColumn: 'receiver_id' }),
+    notification: Object.freeze({ table: 'user_notifications', ownerColumn: 'youth_id' }),
+    prayer: Object.freeze({ table: 'prayer_requests', ownerColumn: 'youth_id' }),
+    blockout: Object.freeze({ table: 'blockout_dates', ownerColumn: 'youth_id' }),
+    eventRole: Object.freeze({ table: 'event_roles', ownerColumn: 'youth_id' }),
+    ministryMember: Object.freeze({ table: 'ministry_members', ownerColumn: 'youth_id' }),
+    smallGroup: Object.freeze({ table: 'small_groups', ownerColumn: 'leader_id' }),
+    groupSession: Object.freeze({
+        ownerQuery: `SELECT sg.leader_id AS youth_id FROM group_sessions gs JOIN small_groups sg ON sg.id = gs.group_id WHERE gs.id = ?`
+    })
+});
+
+function loadResourceOwnerYouthId(resourceType, resourceId) {
+    const ownership = RESOURCE_OWNERSHIP[resourceType];
+    const normalizedResourceId = normalizeCanonicalId(resourceId);
+    if (!ownership || normalizedResourceId === null) return Promise.resolve(null);
+
+    return new Promise((resolve, reject) => {
+        const ownerQuery = ownership.ownerQuery ||
+            `SELECT ${ownership.ownerColumn} AS youth_id FROM ${ownership.table} WHERE id = ?`;
+        db.get(
+            ownerQuery,
+            [normalizedResourceId],
+            (err, row) => {
+                if (err) return reject(err);
+                resolve(normalizeCanonicalId(row && row.youth_id));
+            }
+        );
+    });
+}
+
+async function isCanonicalResourceOwner(auth, resourceType, resourceId) {
+    const ownerYouthId = await loadResourceOwnerYouthId(resourceType, resourceId);
+    return isCanonicalSelf(auth, ownerYouthId);
+}
+
+function requireResourceOwnerOrAllPermissions(resourceType, permissions, getResourceId = req => req.params.id) {
+    if (!Object.prototype.hasOwnProperty.call(RESOURCE_OWNERSHIP, resourceType)) {
+        throw new TypeError(`Unknown resource ownership type: ${resourceType}`);
+    }
+    const requiredPermissions = normalizeRequiredPermissions(permissions);
+    if (typeof getResourceId !== 'function') {
+        throw new TypeError('A resource ID resolver is required');
+    }
+    return (req, res, next) => authorizeRequest(
+        req,
+        res,
+        next,
+        async auth => requiredPermissions.every(permission => authorizationHasPermission(auth, permission)) ||
+            isCanonicalResourceOwner(auth, resourceType, getResourceId(req))
+    );
+}
+
+function loadGroupIdForResource(resourceType, resourceId) {
+    const queries = {
+        prayer: 'SELECT group_id FROM prayer_requests WHERE id = ?',
+        thread: 'SELECT group_id FROM group_threads WHERE id = ?',
+        reply: `SELECT t.group_id FROM group_thread_replies r JOIN group_threads t ON t.id = r.thread_id WHERE r.id = ?`,
+        chat: 'SELECT group_id FROM small_group_chats WHERE id = ?',
+        memory: 'SELECT group_id FROM group_memories WHERE id = ?',
+        session: 'SELECT group_id FROM group_sessions WHERE id = ?'
+    };
+    const id = normalizeCanonicalId(resourceId);
+    if (!queries[resourceType] || !id) return Promise.resolve(null);
+    return new Promise((resolve, reject) => db.get(queries[resourceType], [id], (err, row) =>
+        err ? reject(err) : resolve(normalizeCanonicalId(row && row.group_id))));
+}
+
+function requireGroupAccess(getGroupId = req => req.params.id, managementPermissions = null) {
+    return (req, res, next) => authorizeRequest(req, res, next, async auth => {
+        const groupId = normalizeCanonicalId(await getGroupId(req));
+        const youthId = normalizeCanonicalId(auth && auth.youthId);
+        if (!groupId || (!normalizeCanonicalId(auth && auth.userId) && !youthId)) return false;
+        const group = await new Promise((resolve, reject) => db.get(
+            `SELECT g.leader_id,
+                    (SELECT status FROM small_group_members WHERE group_id = g.id AND youth_id = ?) AS member_status
+             FROM small_groups g WHERE g.id = ?`, [youthId, groupId],
+            (err, row) => err ? reject(err) : resolve(row || null)));
+        if (!group) return false;
+        if (isCanonicalSelf(auth, group.leader_id)) return true;
+        if (managementPermissions) return managementPermissions.every(permission =>
+            authorizationHasPermission(auth, permission));
+        return (youthId && group.member_status === 'Approved') ||
+            authorizationHasPermission(auth, 'access_discipleship');
+    });
+}
+
+function requireMinistryMemberDeleteAccess(req, res, next) {
+    return authorizeRequest(req, res, next, async auth => {
+        const mappingId = normalizeCanonicalId(req.params.mapping_id);
+        const ministryId = normalizeCanonicalId(req.params.ministry_id);
+        if (mappingId === null || ministryId === null) return false;
+
+        const target = await new Promise((resolve, reject) => {
+            db.get(
+                `SELECT ministry_id, youth_id, role FROM ministry_members WHERE id = ?`,
+                [mappingId],
+                (err, row) => {
+                    if (err) return reject(err);
+                    resolve(row || null);
+                }
+            );
+        });
+
+        if (!target || normalizeCanonicalId(target.ministry_id) !== ministryId) return false;
+        req.ministryMemberTarget = target;
+
+        const canAccessMinistries = authorizationHasPermission(auth, 'access_ministries');
+        const canDeleteEntries = authorizationHasPermission(auth, 'delete_entries');
+        if (canAccessMinistries && canDeleteEntries) {
+            req.ministryMemberDeleteMode = 'staff';
+            return true;
+        }
+        if (target.role === 'Applicant' && canAccessMinistries) {
+            req.ministryMemberDeleteMode = 'pending';
+            return true;
+        }
+        if (target.role !== 'Applicant' && isCanonicalSelf(auth, target.youth_id)) {
+            req.ministryMemberDeleteMode = 'owner';
+            return true;
+        }
+        return false;
+    });
+}
+
+function getCanonicalAuditActor(req) {
+    const auth = req && req.auth;
+    if (!auth) return null;
+    if (typeof auth.username === 'string' && auth.username) return auth.username;
+    if (auth.member && typeof auth.member.name === 'string' && auth.member.name) return auth.member.name;
+    return auth.youthId === null ? null : `Member ${auth.youthId}`;
+}
+
+function getCanonicalDisplayActor(req) {
+    const auth = req && req.auth;
+    if (!auth) return null;
+    if (auth.member && typeof auth.member.name === 'string' && auth.member.name.trim()) {
+        return auth.member.name.trim();
+    }
+    if (
+        typeof auth.username === 'string' &&
+        auth.username.trim() &&
+        !auth.username.includes('@')
+    ) {
+        return auth.username.trim();
+    }
+    return auth.youthId === null ? null : `Member ${auth.youthId}`;
+}
+
+async function resolveLegalUserIdForLogin(identity) {
+    const directUserId = normalizeCanonicalId(identity && identity.userId);
+    if (directUserId) return directUserId;
+    const youthId = normalizeCanonicalId(identity && identity.youthId);
+    if (!youthId) return null;
+    const user = await new Promise((resolve, reject) => {
+        db.get('SELECT id FROM users WHERE youth_id = ? ORDER BY id ASC LIMIT 1', [youthId], (error, row) => (
+            error ? reject(error) : resolve(row || null)
+        ));
+    });
+    return normalizeCanonicalId(user && user.id);
+}
+
+async function sendAuthenticatedLogin(req, res, identity, responseBody) {
+    createAuthenticatedSession(req, res, identity);
+    const clientResponse = { ...responseBody };
+    if (Object.prototype.hasOwnProperty.call(clientResponse, 'member')) {
+        clientResponse.member = sanitizeMemberForAuth(clientResponse.member);
+    }
+    try {
+        const userId = await resolveLegalUserIdForLogin(identity);
+        clientResponse.legal_acceptance_required = !userId ||
+            await legalAcceptanceStore.requiresCurrentAcceptance(userId);
+    } catch (error) {
+        console.error('Login legal acceptance status resolution failed');
+        clientResponse.legal_acceptance_required = true;
+    }
+    if (clientResponse.legal_acceptance_required) {
+        clientResponse.terms_version = TERMS_VERSION;
+        clientResponse.privacy_version = PRIVACY_VERSION;
+    }
+    return res.json(clientResponse);
+}
+
+const sessionCleanupTimer = setInterval(pruneExpiredSessions, SESSION_CLEANUP_INTERVAL_MS);
+sessionCleanupTimer.unref();
+
+
+
+
+
+
+
+
+
+
+
+
+
+const LEGAL_GATE_ALLOWED_API_PATHS = Object.freeze([
+    '/api/login',
+    '/api/logout',
+    '/api/push/config',
+    '/api/legal/status',
+    '/api/legal/accept',
+    '/api/help/faq',
+    '/api/help/contact-support'
+]);
+const LEGAL_GATE_ALLOWED_API_PREFIXES = Object.freeze([
+    '/api/public',
+    '/api/auth/google',
+    '/api/auth/forgot-password',
+    '/api/auth/reset-password',
+    '/api/auth/email-verification',
+    '/api/account-claim',
+    '/api/admin/account-claims',
+    '/api/account-recovery',
+    '/api/admin/account-recovery'
+]);
+
+function isLegalGateAllowedApiPath(requestPath) {
+    if (LEGAL_GATE_ALLOWED_API_PATHS.includes(requestPath)) return true;
+    return LEGAL_GATE_ALLOWED_API_PREFIXES.some(prefix => (
+        requestPath === prefix || requestPath.startsWith(`${prefix}/`)
+    ));
+}
+
+function sendLegalAcceptanceRequired(res) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Vary', 'Cookie');
+    return res.status(428).json({
+        success: false,
+        legal_acceptance_required: true,
+        terms_version: TERMS_VERSION,
+        privacy_version: PRIVACY_VERSION
+    });
+}
+
+async function enforceCurrentLegalAcceptance(req, res, next) {
+    if (!req.path.startsWith('/api/') || isLegalGateAllowedApiPath(req.path)) return next();
+
+    const activeSession = getValidSession(req);
+    if (!activeSession) return next();
+
+    try {
+        const auth = await loadAuthorizationContext(req, res);
+        if (!auth) return next();
+        if (!auth.userId) return sendAuthorizationUnavailable(res);
+        if (await legalAcceptanceStore.requiresCurrentAcceptance(auth.userId)) {
+            return sendLegalAcceptanceRequired(res);
+        }
+        return next();
+    } catch (error) {
+        console.error('Legal acceptance gate resolution failed');
+        return sendAuthorizationUnavailable(res);
+    }
+}
+
+// Register before every API route, including legacy early routes, so active sessions cannot bypass the gate.
+app.use(enforceCurrentLegalAcceptance);
+
+// [KOINONIA PATCH] SUPER ADMIN PASS-ID BY NAME
+app.get('/api/admin/pass-id-by-name/:name', requireStrongAdmin, (req, res) => {
+    if (typeof db !== 'undefined') {
+        const decodedName = decodeURIComponent(req.params.name).trim();
+        db.get("SELECT unique_pass_id FROM youth WHERE name = ?", [decodedName], (err, row) => {
+            if (!err && row) res.json({ unique_pass_id: row.unique_pass_id });
+            else res.status(404).json({ error: 'Not found' });
+        });
+    }
+});
+
+// [KOINONIA PATCH] SUPER ADMIN PASS-ID BY EMAIL
+app.get('/api/admin/pass-id-by-email/:email', requireStrongAdmin, (req, res) => {
+    if (typeof db !== 'undefined') {
+        db.get("SELECT unique_pass_id FROM youth WHERE email = ?", [req.params.email], (err, row) => {
+            if (!err && row) res.json({ unique_pass_id: row.unique_pass_id });
+            else res.status(404).json({ error: 'Not found' });
+        });
+    }
+});
+
+// [KOINONIA PATCH] SUPER ADMIN PASS-ID OVERRIDE
+app.get('/api/admin/pass-id/:id', requireStrongAdmin, (req, res) => {
+    const userId = req.params.id;
+    if (typeof db !== 'undefined') {
+        db.get("SELECT unique_pass_id FROM youth WHERE id = ?", [userId], (err, row) => {
+            if (!err && row) res.json({ unique_pass_id: row.unique_pass_id });
+            else res.status(404).json({ error: 'Not found' });
+        });
+    }
+});
+
+// --- V115: PUBLIC ARCADE LEADERBOARDS ---
+app.get('/api/public/arcade-leaderboards', (req, res) => {
+    const queries = {
+        daily: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND date(p.created_at, 'localtime') = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        weekly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        lastWeek: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-14 days') AND p.created_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        monthly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND strftime('%Y-%m', p.created_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        allTime: "SELECT y.name, gp.arcade_xp as score FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' ORDER BY gp.arcade_xp DESC LIMIT 5",
+        topGames: "SELECT a.game_name, y.name, MAX(a.score) as score FROM game_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.category = 'arcade' AND lower(trim(y.name)) <> 'fire of god ministries' GROUP BY a.game_name, a.youth_id ORDER BY a.game_name, score DESC"
+    };
+    let results = {};
+    let pending = Object.keys(queries).length;
+    Object.keys(queries).forEach(key => {
+        db.all(queries[key], [], (err, rows) => {
+            results[key] = rows || [];
+            pending--;
+            if (pending === 0) res.json(results);
+        });
+    });
+});
+
 app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private'); next(); });
 const PORT = process.env.PORT || 3000;
 
@@ -14,7 +1666,733 @@ process.on('unhandledRejection', (reason, promise) => console.error('Unhandled R
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-// Standardize GMT+8 Manila Time Engine
+app.get('/api/push/config', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({
+        enabled: pushNotificationsAvailable,
+        publicKey: pushNotificationsAvailable ? VAPID_PUBLIC_KEY : null
+    });
+});
+
+
+// --- V114: BULLETPROOF COMMUNICATION ENGINE ---
+const sendCustomPush = (db, webpush, youthId, title, message, urlPath) => {
+    if (!pushNotificationsAvailable || !webpush) return false;
+    db.get("SELECT qr_code FROM youth WHERE id = ?", [youthId], (err, y) => {
+        if (y && y.qr_code) {
+            db.all("SELECT subscription FROM push_subscriptions WHERE username = ?", [y.qr_code], (err, subs) => {
+                if (subs && subs.length > 0) {
+                    const payload = JSON.stringify({ title, body: message, url: urlPath });
+                    subs.forEach(row => {
+                        try {
+                            webpush.sendNotification(JSON.parse(row.subscription), payload).catch(e => {
+                                if (e.statusCode === 404 || e.statusCode === 410) {
+                                    db.run("DELETE FROM push_subscriptions WHERE subscription = ?", [row.subscription]);
+                                }
+                            });
+                        } catch(e){}
+                    });
+                }
+            });
+        }
+    });
+};
+
+async function processPrayerCovenantReadyNotification(
+    youthId,
+    phaseProgress
+) {
+    return processJourneyReadyNotification({
+        youthId,
+        phaseProgress,
+        source: 'prayer_covenant_completion'
+    });
+}
+
+app.post('/api/prayer-pals/send', requireAuth, async (req, res) => {
+    try {
+        if (!req.body || !req.body.sender_id) {
+            return res.status(400).json({ success: false, error: 'Missing body data.' });
+        }
+
+        const authenticatedYouthId = Number(req.auth && req.auth.youthId);
+        const senderId = Number(req.body.sender_id);
+        const receiverId = Number(req.body.receiver_id);
+
+        if (!Number.isInteger(authenticatedYouthId) || authenticatedYouthId <= 0) {
+            return res.status(401).json({ success: false, error: 'Authentication required.' });
+        }
+        /*
+         * sender_id remains accepted for compatibility, but the canonical
+         * authenticated youth identity is authoritative.
+         */
+        if (!Number.isInteger(senderId) || senderId <= 0 || senderId !== authenticatedYouthId) {
+            return res.status(403).json({
+                success: false,
+                error: 'You can only send prayer as your own account.'
+            });
+        }
+        if (!Number.isInteger(receiverId) || receiverId <= 0) {
+            return res.status(400).json({ success: false, error: 'Invalid prayer recipient.' });
+        }
+
+        const message = typeof req.body.message === 'string' ? req.body.message.trim() : '';
+        if (!message) {
+            return res.status(400).json({ success: false, error: 'Prayer message is required.' });
+        }
+
+        const canonicalSenderName = req.auth && req.auth.member &&
+            typeof req.auth.member.name === 'string' && req.auth.member.name.trim()
+            ? req.auth.member.name.trim()
+            : (req.auth && typeof req.auth.username === 'string'
+                ? req.auth.username
+                : 'FOG Member');
+
+        /*
+         * The CURRENT-WEEK assignment is authoritative.
+         *
+         * A member who joined after the normal weekly rotation may not
+         * have a row yet. Ensure it now without changing anybody else's
+         * existing Prayer Partner.
+         */
+        const ensuredPrayerPartner =
+            await GrowthJourney.ensureOnboardingPrayerPartner(
+                db,
+                authenticatedYouthId,
+                {
+                    assignedAt: new Date()
+                }
+            );
+
+        if (
+            !ensuredPrayerPartner ||
+            ensuredPrayerPartner.available !== true
+        ) {
+            return res.status(409).json({
+                success: false,
+                error: 'No Prayer Partner is currently assigned.'
+            });
+        }
+
+        const assignment =
+            await GrowthJourney.get(
+                db,
+                `SELECT pal_youth_id
+                 FROM secret_prayer_pals
+                 WHERE youth_id = ?
+                   AND week_start = ?
+                 ORDER BY id DESC
+                 LIMIT 1`,
+                [
+                    authenticatedYouthId,
+                    ensuredPrayerPartner.assignmentDate
+                ]
+            );
+
+        if (!assignment) {
+            return res.status(409).json({
+                success: false,
+                error: 'No Prayer Partner is currently assigned.'
+            });
+        }
+
+        const assignedPrayerPartnerId =
+            Number(assignment.pal_youth_id);
+        if (!Number.isInteger(assignedPrayerPartnerId) || assignedPrayerPartnerId !== receiverId) {
+            return res.status(403).json({
+                success: false,
+                error: 'Prayer can only be sent to your assigned Prayer Partner.'
+            });
+        }
+
+        const timeNow = getManilaTime();
+        let inboxId = null;
+        let growthJourney = null;
+
+        try {
+            growthJourney = await GrowthJourney.withPrayerRhythmMutation(db, async () => {
+                await GrowthJourney.run(db, 'BEGIN IMMEDIATE');
+                try {
+                    const inbox = await GrowthJourney.run(
+                        db,
+                        `INSERT INTO personal_inbox (
+                            sender_id, receiver_id, title, message, status, created_at
+                         ) VALUES (?, ?, ?, ?, ?, ?)`,
+                        [
+                            authenticatedYouthId,
+                            assignedPrayerPartnerId,
+                            '🙏 A Prayer from ' + canonicalSenderName,
+                            message,
+                            'Delivered',
+                            timeNow
+                        ]
+                    );
+                    inboxId = inbox.lastID;
+                    const result = await GrowthJourney.recordPrayerCovenantCompletion(
+                        db,
+                        authenticatedYouthId,
+                        {
+                            sourceKey: `personal-inbox:${inboxId}`,
+                            sourceTable: 'personal_inbox',
+                            sourceId: inboxId,
+                            completedAt: timeNow,
+                            actor: req.auth.username || canonicalSenderName,
+                            details: { prayerRecipientId: assignedPrayerPartnerId },
+                            useExistingTransaction: true
+                        }
+                    );
+                    await GrowthJourney.run(db, 'COMMIT');
+                    return result;
+                } catch (error) {
+                    await GrowthJourney.run(db, 'ROLLBACK').catch(() => {});
+                    throw error;
+                }
+            });
+        } catch (growthError) {
+            console.error('[Growth Journey] Prayer Covenant transaction failed:', growthError);
+            return res.status(500).json({
+                success: false,
+                error: 'Unable to record Prayer Covenant activity.'
+            });
+        }
+
+        /* Preserve the existing once-per-Manila-day Growth XP behavior. */
+        const todayStr = timeNow.split(' ')[0];
+        db.get(
+            `SELECT id FROM point_transactions
+             WHERE youth_id = ?
+               AND game_name = 'Daily Prayer Covenant'
+               AND created_at LIKE ?`,
+            [authenticatedYouthId, todayStr + '%'],
+            (pointError, pointRow) => {
+                if (!pointError && !pointRow && typeof awardPoints === 'function') {
+                    awardPoints(
+                        authenticatedYouthId,
+                        'growth',
+                        50,
+                        canonicalSenderName,
+                        'Daily Prayer Covenant'
+                    );
+                }
+            }
+        );
+
+        const phaseTransitions = growthJourney && Array.isArray(growthJourney.phaseTransitions)
+            ? growthJourney.phaseTransitions
+            : [];
+        for (const phaseProgress of phaseTransitions) {
+            await processPrayerCovenantReadyNotification(
+                authenticatedYouthId,
+                phaseProgress
+            );
+        }
+
+        if (typeof webpush !== 'undefined') {
+            sendCustomPush(
+                db,
+                webpush,
+                assignedPrayerPartnerId,
+                '🙏 Prayer Received',
+                'Prayers sent to you by a prayer covenant.',
+                '/?tab=inbox'
+            );
+        }
+
+        return res.json({
+            success: true,
+            growthJourney,
+            growthJourneyWarning: null
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: 'Unable to send Prayer Covenant activity.'
+        });
+    }
+});
+
+app.post('/api/inbox/personal/:id/respond', requireAuth, (req, res) => {
+    try {
+        const authenticatedYouthId =
+            Number(req.auth && req.auth.youthId);
+
+        const inboxId =
+            Number(req.params.id);
+
+        const action =
+            req.body &&
+            typeof req.body.action === 'string'
+                ? req.body.action.trim()
+                : '';
+
+        if (
+            !Number.isInteger(authenticatedYouthId) ||
+            authenticatedYouthId <= 0
+        ) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required.'
+            });
+        }
+
+        if (
+            !Number.isInteger(inboxId) ||
+            inboxId <= 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid inbox message.'
+            });
+        }
+
+        const allowedActions =
+            new Set([
+                'thank_you',
+                'answered'
+            ]);
+
+        if (!allowedActions.has(action)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid prayer response.'
+            });
+        }
+
+        db.get(
+            `SELECT
+                id,
+                sender_id,
+                receiver_id,
+                title,
+                status
+             FROM personal_inbox
+             WHERE id = ?`,
+            [inboxId],
+            (lookupErr, inboxMessage) => {
+                if (lookupErr) {
+                    return res.status(500).json({
+                        success: false,
+                        error:
+                            'Unable to load inbox message.'
+                    });
+                }
+
+                if (!inboxMessage) {
+                    return res.status(404).json({
+                        success: false,
+                        error:
+                            'Inbox message was not found.'
+                    });
+                }
+
+                if (
+                    Number(
+                        inboxMessage.receiver_id
+                    ) !== authenticatedYouthId
+                ) {
+                    return res.status(403).json({
+                        success: false,
+                        error:
+                            'You can only respond to prayers sent to your own inbox.'
+                    });
+                }
+
+                if (
+                    typeof inboxMessage.title !==
+                        'string' ||
+                    !inboxMessage.title.includes(
+                        'A Prayer from'
+                    )
+                ) {
+                    return res.status(400).json({
+                        success: false,
+                        error:
+                            'This inbox message is not a Prayer Covenant message.'
+                    });
+                }
+
+                const statusTokens =
+                    String(
+                        inboxMessage.status ||
+                        ''
+                    )
+                        .split(',')
+                        .map(
+                            item =>
+                                item.trim()
+                        )
+                        .filter(Boolean);
+
+                if (
+                    statusTokens.includes(action)
+                ) {
+                    return res.json({
+                        success: true,
+                        alreadyRecorded: true
+                    });
+                }
+
+                const canonicalSenderName =
+                    req.auth &&
+                    req.auth.member &&
+                    typeof req.auth.member.name ===
+                        'string' &&
+                    req.auth.member.name.trim()
+                        ? req.auth.member.name.trim()
+                        : (
+                            req.auth &&
+                            typeof req.auth.username ===
+                                'string'
+                                ? req.auth.username
+                                : 'FOG Member'
+                        );
+
+                const title =
+                    action === 'thank_you'
+                        ? '💙 Thank You!'
+                        : '✨ Praise Report!';
+
+                const message =
+                    action === 'thank_you'
+                        ? `Thank you for covering me in prayer! - ${canonicalSenderName}`
+                        : `God answered the prayer you prayed for me! Praise God! - ${canonicalSenderName}`;
+
+                const nextStatus =
+                    (
+                        !inboxMessage.status ||
+                        inboxMessage.status ===
+                            'Delivered'
+                    )
+                        ? action
+                        : [
+                            inboxMessage.status,
+                            action
+                        ].join(',');
+
+                const timeNow =
+                    getManilaTime();
+
+                /*
+                 * Conditional update also makes repeated/concurrent
+                 * taps idempotent for the same response action.
+                 */
+                db.run(
+                    `UPDATE personal_inbox
+                     SET status = ?
+                     WHERE id = ?
+                       AND receiver_id = ?
+                       AND instr(
+                            ',' ||
+                            COALESCE(status, '') ||
+                            ',',
+                            ',' || ? || ','
+                       ) = 0`,
+                    [
+                        nextStatus,
+                        inboxId,
+                        authenticatedYouthId,
+                        action
+                    ],
+                    function(updateErr) {
+                        if (updateErr) {
+                            return res.status(500).json({
+                                success: false,
+                                error:
+                                    'Unable to save prayer response.'
+                            });
+                        }
+
+                        if (this.changes === 0) {
+                            return res.json({
+                                success: true,
+                                alreadyRecorded: true
+                            });
+                        }
+
+                        const originalSenderId =
+                            Number(
+                                inboxMessage.sender_id
+                            );
+
+                        db.run(
+                            `INSERT INTO personal_inbox (
+                                sender_id,
+                                receiver_id,
+                                title,
+                                message,
+                                status,
+                                created_at
+                             )
+                             VALUES (
+                                ?,
+                                ?,
+                                ?,
+                                ?,
+                                'Delivered',
+                                ?
+                             )`,
+                            [
+                                authenticatedYouthId,
+                                originalSenderId,
+                                title,
+                                message,
+                                timeNow
+                            ],
+                            function(insertErr) {
+                                if (insertErr) {
+                                    return res
+                                        .status(500)
+                                        .json({
+                                            success: false,
+                                            error:
+                                                'Unable to send prayer response.'
+                                        });
+                                }
+
+                                if (
+                                    typeof webpush !==
+                                    'undefined'
+                                ) {
+                                    sendCustomPush(
+                                        db,
+                                        webpush,
+                                        originalSenderId,
+                                        title,
+                                        message,
+                                        '/?tab=inbox'
+                                    );
+                                }
+
+                                return res.json({
+                                    success: true,
+                                    alreadyRecorded: false
+                                });
+                            }
+                        );
+                    }
+                );
+            }
+        );
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Legacy duplicate Communications broadcast route removed.
+// Canonical route is defined in the Communications API section.
+// --- END V114 ---
+
+
+
+
+// FOG Prayer Partner rotation - authorized manual ensure/rebuild
+app.post('/api/admin/trigger-prayer-pals', requirePermission('edit_entries'), async (req, res) => {
+    if (typeof db === 'undefined') {
+        return res.status(500).json({
+            success: false,
+            error: 'DB not initialized'
+        });
+    }
+
+    try {
+        const force =
+            Boolean(
+                req.body &&
+                req.body.force_rebuild === true
+            );
+
+        const result =
+            await GrowthJourney.rotatePrayerPartners(
+                db,
+                {
+                    force
+                }
+            );
+
+        try {
+            if (
+                typeof logActivity ===
+                'function'
+            ) {
+                logActivity(
+                    (
+                        req.auth &&
+                        req.auth.username
+                    ) ||
+                    'System',
+                    'PRAYER_PARTNER_ROTATION',
+                    [
+                        result.status,
+                        result.weekStart,
+                        result.assignedCount
+                    ].join(' | ')
+                );
+            }
+        } catch (_) {
+            // Rotation success does not depend on
+            // optional activity logging.
+        }
+
+        return res.json({
+            success: true,
+            message:
+                result.changed
+                    ? `Prayer Partner assignments ${result.status} for ${result.weekStart}.`
+                    : `Prayer Partner assignments are already complete for ${result.weekStart}.`,
+            ...result
+        });
+    } catch (error) {
+        console.error(
+            '[Prayer Partner] Manual rotation failed:',
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            error: 'Unable to rotate Prayer Partners.'
+        });
+    }
+});
+
+// [KOINONIA PATCH V107] PENDING MEMBER REQUESTS FIX ONLY
+app.get('/api/small-groups/:id/roster-status', requireGroupAccess(), (req, res) => {
+    if(typeof db !== 'undefined') {
+        db.all("SELECT y.id, y.name, y.profile_picture, sgm.status, (SELECT MAX(created_at) FROM activity_logs WHERE username = y.qr_code) as last_active FROM small_group_members sgm JOIN youth y ON sgm.youth_id = y.id WHERE sgm.group_id = ? ORDER BY sgm.status DESC, y.name ASC", [req.params.id], (err, rows) => {
+            res.json(rows || []);
+        });
+    }
+});
+
+
+// ==========================================
+// KOINONIA PHASE B: URL QUERY INTERCEPTOR
+// ==========================================
+app.use((req, res, next) => {
+    if (req.path === '/') {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        if (req.query.read === 'daily-manna') return res.sendFile(require('path').join(__dirname, 'public', 'seeker-manna.html'));
+        
+        // Catch faith=quest, fate=quest, or play=arcade gracefully
+        if (req.query.faith === 'quest' || req.query.fate === 'quest' || req.query.play === 'arcade') {
+            try {
+                let html = require('fs').readFileSync(require('path').join(__dirname, 'public', 'seeker-arcade.html'), 'utf8');
+                if (req.query.game) {
+                    const safeGame = escapeSocialMeta(req.query.game);
+                    const ogTitle = `<meta property="og:title" content="${safeGame} | Play Now!">`;
+                    html = html.replace(/<meta property="og:title" content=".*?">/, ogTitle);
+                }
+                return res.send(html);
+            } catch(e) {
+                return res.sendFile(require('path').join(__dirname, 'public', 'seeker-arcade.html'));
+            }
+        }
+    }
+    next();
+});
+
+
+
+
+
+// ==========================================
+// V112: THE PERFECTED ROUTER (POST-BODY-PARSER)
+// ==========================================
+
+app.post('/api/small-groups/react-v2', requireGroupAccess(req => {
+    const type = req.body && req.body.type;
+    return loadGroupIdForResource(type === 'chat' ? 'chat' : type === 'prayer' ? 'prayer' :
+        type === 'memory' ? 'memory' : '', req.body && req.body.id);
+}), (req, res) => {
+    try {
+        const { type, id, emoji } = req.body;
+        const user_name = req.auth.member && req.auth.member.name;
+        if (!type || !id || !emoji || !user_name) return res.status(400).json({success: false, error: 'Missing body parameters'});
+        
+        let table = type === 'chat' ? 'small_group_chats' : (type === 'prayer' ? 'prayer_requests' : (type === 'memory' ? 'group_memories' : ''));
+        if (!table) return res.status(400).json({success: false, error: 'Invalid type'});
+
+        db.get(`SELECT reactions FROM ${table} WHERE id = ?`, [id], (err, row) => {
+            if(err) return res.status(500).json({success: false, error: err.message});
+            if(!row) return res.status(404).json({success: false, error: 'Post not found'});
+            
+            let reactions = {};
+            try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
+
+            let removed = false;
+            for (let key in reactions) {
+                if (!Array.isArray(reactions[key])) reactions[key] = [];
+                const idx = reactions[key].indexOf(user_name);
+                if (idx > -1) {
+                    reactions[key].splice(idx, 1);
+                    if (key === emoji) removed = true;
+                }
+            }
+
+            if(!removed) {
+                if(!reactions[emoji]) reactions[emoji] = [];
+                reactions[emoji].push(user_name);
+            }
+
+            for (let key in reactions) {
+                if (reactions[key].length === 0) delete reactions[key];
+            }
+
+            db.run(`UPDATE ${table} SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), id], (err2) => {
+                if (err2) return res.status(500).json({success:false, error: err2.message});
+                res.json({success: true, reactions});
+            });
+        });
+    } catch (err) { res.status(500).json({success: false, error: err.message}); }
+});
+
+app.get('/api/small-groups/:id/chat', requireGroupAccess(), (req, res) => {
+    const lastId = parseInt(req.query.last_id) || 0;
+    db.all(`SELECT c.id, c.message, c.reactions, c.created_at, y.name, y.profile_picture FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? AND c.id > ? ORDER BY c.id ASC`, [req.params.id, lastId], (err, rows) => {
+        if (err) return res.status(500).json({error: err.message});
+        res.json(rows || []);
+    });
+});
+
+app.get('/api/small-groups/:id/memories', requireGroupAccess(), (req, res) => {
+    db.all(`SELECT m.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_memories m LEFT JOIN youth y ON m.youth_id = y.id WHERE m.group_id = ? ORDER BY m.created_at DESC LIMIT 50`, [req.params.id], (err, rows) => { 
+        if (err) return res.status(500).json({error: err.message});
+        res.json(rows || []); 
+    });
+});
+
+// Legacy duplicate Communications broadcast route removed.
+
+// FOG Prayer Partner weekly rotation
+cron.schedule('0 9 * * 1', async () => {
+    try {
+        const result =
+            await GrowthJourney.rotatePrayerPartners(
+                db,
+                {
+                    force: false
+                }
+            );
+
+        console.log(
+            '[CRON] Prayer Partner rotation:',
+            result.status,
+            result.weekStart,
+            result.assignedCount
+        );
+    } catch (error) {
+        console.error(
+            '[CRON] Prayer Partner rotation failed:',
+            error
+        );
+    }
+}, {
+    scheduled: true,
+    timezone: 'Asia/Manila'
+});
+
 const getManilaTime = () => {
     const d = new Date();
     const manila = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
@@ -22,874 +2400,14778 @@ const getManilaTime = () => {
     return `${manila.getFullYear()}-${pad(manila.getMonth()+1)}-${pad(manila.getDate())} ${pad(manila.getHours())}:${pad(manila.getMinutes())}:${pad(manila.getSeconds())}`;
 };
 
-// Automated Daily Database Backup Engine
+const databasePath = path.join(__dirname, 'fog_community.db');
 const backupDir = path.join(__dirname, 'backups');
 if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir);
-
-// Auto-Create Image Directory for Uploads
+const backupManager = createSqliteBackupManager({ applicationRoot: __dirname, sqlite3 });
 const imgDir = path.join(__dirname, 'public', 'img');
 if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
 
-function runDatabaseBackup() {
-    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    const pad = (n) => String(n).padStart(2, '0');
-    const dateStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-    const backupFile = path.join(backupDir, `fog_community_${dateStr}.db`);
+function resolveBackupRestorePath(filename) {
+    if (
+        typeof filename !== 'string' ||
+        filename.length === 0 ||
+        filename.length > 255 ||
+        filename !== filename.trim() ||
+        filename !== path.basename(filename) ||
+        !/^[A-Za-z0-9][A-Za-z0-9._-]*\.db$/.test(filename)
+    ) {
+        return null;
+    }
 
-    if (!fs.existsSync(backupFile) && fs.existsSync('./fog_community.db')) {
-        try {
-            fs.copyFileSync('./fog_community.db', backupFile);
-            console.log(`[BACKUP] Auto-backup completed: ${backupFile}`);
-        } catch (e) {
-            console.error('[BACKUP ERROR]', e);
-        }
+    const resolvedBackupDir = path.resolve(backupDir);
+    const resolvedTargetFile = path.resolve(resolvedBackupDir, filename);
+    return path.dirname(resolvedTargetFile) === resolvedBackupDir ? resolvedTargetFile : null;
+}
+
+function getManilaBackupClock() {
+    const now = new Date();
+    const d = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const pad = (n) => String(n).padStart(2, '0');
+    return {
+        dateKey: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,
+        timeKey: `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}${String(now.getMilliseconds()).padStart(3, '0')}`,
+        restoreKey: `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+    };
+}
+
+let verifiedDailyBackupDate = null;
+
+async function runDatabaseBackup() {
+    const clock = getManilaBackupClock();
+    if (verifiedDailyBackupDate === clock.dateKey) return;
+    try {
+        await backupManager.ensureDailyBackup(clock);
+        verifiedDailyBackupDate = clock.dateKey;
+    } catch (err) {
+        const code = err && typeof err.code === 'string' && /^[A-Z0-9_]+$/.test(err.code)
+            ? err.code
+            : 'BACKUP_FAILURE';
+        console.error(`[BACKUP ERROR] Daily verified backup failed code=${code}`);
     }
 }
-runDatabaseBackup();
-setInterval(runDatabaseBackup, 1000 * 60 * 60); // Check every 1 hour
+void runDatabaseBackup();
+setInterval(() => { void runDatabaseBackup(); }, 1000 * 60 * 60);
 
-const db = new sqlite3.Database('./fog_community.db', (err) => {
+const db = new sqlite3.Database(databasePath, (err) => {
     if (err) console.error('Database connection error:', err.message);
     else console.log('Connected to local SQLite database: fog_community.db');
+    db.run('PRAGMA journal_mode = WAL;');
+    console.log('[SCALABILITY] WAL Mode Activated for High Concurrency.');
 });
 
+// Keep game cap transactions on their own connection so unrelated application
+// writes cannot be accidentally queued inside a game BEGIN/COMMIT boundary.
+const gameDatabase = new sqlite3.Database(databasePath, err => {
+    if (err) console.error('[GAME ECONOMY] Database connection failed:', err.message);
+});
+gameDatabase.configure('busyTimeout', 5000);
+const gameEconomy = createGameEconomyService({ database: gameDatabase });
+
+const authTokenStore = createAuthTokenStore({ database: db });
+const accountClaimStore = createAccountClaimStore({ database: db });
+const accountRecoveryStore = createAccountRecoveryStore({ database: db });
+const legalAcceptanceStore = createLegalAcceptanceStore({
+    database: db,
+    currentPolicies: currentLegalPolicies
+});
+
+// Member Transition / Existing Member Journey.
+//
+// The legal acceptance middleware was registered earlier in server startup,
+// so these routes remain behind the Terms / Privacy gate. Binding happens
+// here because the SQLite handle must exist before the controller receives it.
+MemberTransitionHttp.registerMemberTransitionRoutes({
+    app,
+    db,
+    requireAuth
+});
+
+MemberTransitionLeadershipHttp.registerMemberTransitionLeadershipRoutes({
+    app,
+    db,
+    requireAllPermissions,
+    getActorName: getCanonicalDisplayActor
+});
+let emailRecoveryPublicOrigin = null;
+let emailRecoveryOutbox = null;
+let emailRecoveryWorker = null;
+let emailRecoveryWorkerTimer = null;
+let emailRecoveryRuntimeInitialized = false;
+
+function getSafeEmailRecoveryErrorCode(error, fallback = 'EMAIL_RECOVERY_UNAVAILABLE') {
+    return error && typeof error.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(error.code)
+        ? error.code
+        : fallback;
+}
+
+async function runEmailRecoveryWorkerTick() {
+    if (!emailRecoveryWorker) return;
+    try {
+        await emailRecoveryWorker.runOnce();
+    } catch (error) {
+        console.warn(`[EMAIL] Worker tick failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_WORKER_FAILED')}`);
+    }
+}
+
+async function initializeEmailRecoveryRuntime() {
+    if (emailRecoveryRuntimeInitialized) return;
+    emailRecoveryRuntimeInitialized = true;
+    try {
+        const publicOrigin = validatePublicOrigin(process.env.KOINONIA_PUBLIC_ORIGIN);
+        if (!publicOrigin) {
+            throw Object.assign(new Error('Password recovery public origin is unavailable'), {
+                code: 'EMAIL_PUBLIC_ORIGIN_INVALID'
+            });
+        }
+        const { createEmailTransportFromEnv } = require('./lib/email-transport');
+        const transport = createEmailTransportFromEnv(process.env);
+        const outbox = createEmailOutbox({
+            database: db,
+            encryptionKey: process.env.EMAIL_OUTBOX_ENCRYPTION_KEY,
+            transport,
+            logger: console
+        });
+        await outbox.recoverStaleSending();
+
+        emailRecoveryPublicOrigin = publicOrigin;
+        emailRecoveryOutbox = outbox;
+        emailRecoveryWorker = createBoundedOutboxWorker({
+            outbox,
+            batchSize: PASSWORD_RECOVERY_WORKER_BATCH_SIZE
+        });
+        emailRecoveryWorkerTimer = setInterval(
+            () => { void runEmailRecoveryWorkerTick(); },
+            PASSWORD_RECOVERY_WORKER_INTERVAL_MS
+        );
+        emailRecoveryWorkerTimer.unref();
+        console.log('[EMAIL] Secure recovery outbox enabled.');
+    } catch (error) {
+        console.warn(`[EMAIL] Secure recovery email disabled code=${getSafeEmailRecoveryErrorCode(error)}`);
+    }
+}
+
 db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS youth (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT, age INTEGER, email TEXT, mobile TEXT,
-        social_media TEXT, birthday TEXT, parents_name TEXT,
-        qr_code TEXT UNIQUE, password TEXT, profile_picture TEXT,
-        created_at DATETIME
-    )`);
 
-    db.run(`CREATE TABLE IF NOT EXISTS events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT, event_date TEXT, time_start TEXT, venue TEXT,
-        poster TEXT, photos_url TEXT, materials_url TEXT, created_at DATETIME
-    )`);
+    // AUTO-HEAL SUPERADMIN CONFLICT
+    db.get(`SELECT id FROM youth WHERE email = ?`, [BOOTSTRAP_STRONG_ADMIN_USERNAME], (err, yRow) => {
+        if (yRow) {
+            db.run(`UPDATE users SET youth_id = ? WHERE username = ?`, [yRow.id, BOOTSTRAP_STRONG_ADMIN_USERNAME]);
+            db.run(`DELETE FROM users WHERE youth_id = ? AND username != ?`, [yRow.id, BOOTSTRAP_STRONG_ADMIN_USERNAME]);
+        }
+    });
 
-    db.run(`CREATE TABLE IF NOT EXISTS attendance (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        youth_id INTEGER, event_id INTEGER, is_walkin INTEGER DEFAULT 0,
-        checked_in_at DATETIME,
-        UNIQUE(youth_id, event_id)
-    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS youth (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, age INTEGER, email TEXT, mobile TEXT, social_media TEXT, birthday TEXT, parents_name TEXT, qr_code TEXT UNIQUE, password TEXT, profile_picture TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, event_date TEXT, time_start TEXT, venue TEXT, poster TEXT, photos_url TEXT, materials_url TEXT, event_points INTEGER DEFAULT 10, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS attendance (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, event_id INTEGER, is_walkin INTEGER DEFAULT 0, checked_in_at DATETIME, UNIQUE(youth_id, event_id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, permissions TEXT, youth_id INTEGER, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS activity_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, action TEXT, details TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS pre_registrations (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, event_id INTEGER, created_at DATETIME, UNIQUE(youth_id, event_id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS ministries (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, description TEXT, restricted_notes TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS ministry_members (id INTEGER PRIMARY KEY AUTOINCREMENT, ministry_id INTEGER, youth_id INTEGER, role TEXT, assigned_at DATETIME, UNIQUE(ministry_id, youth_id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS event_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER, youth_id INTEGER, role_name TEXT, assigned_at DATETIME, UNIQUE(event_id, youth_id, role_name))`);
 
-    db.run(`CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE, password TEXT, permissions TEXT, youth_id INTEGER,
-        created_at DATETIME
-    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS discipleship_pathways (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, step_order INTEGER, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS member_milestones (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, pathway_id INTEGER, status TEXT DEFAULT 'In Progress', completed_at DATETIME, notes TEXT, UNIQUE(youth_id, pathway_id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS private_journals (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, title TEXT, content TEXT, mood TEXT, created_at DATETIME)`);
 
-    db.run(`CREATE TABLE IF NOT EXISTS activity_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT, action TEXT, details TEXT,
-        created_at DATETIME
-    )`);
+    /*
+     * Private Journal schemas are initialized through the
+     * fail-closed readiness promise near the Journal routes.
+     */
+    db.run(`CREATE TABLE IF NOT EXISTS prayer_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, title TEXT, request TEXT, is_anonymous INTEGER DEFAULT 0, status TEXT DEFAULT 'Open', created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS prayer_intercessions (id INTEGER PRIMARY KEY AUTOINCREMENT, prayer_id INTEGER, youth_id INTEGER, prayed_at DATETIME, UNIQUE(prayer_id, youth_id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS small_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, leader_id INTEGER, meeting_schedule TEXT, venue TEXT, group_type TEXT DEFAULT 'campfire', created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS group_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, title TEXT, scheduled_at DATETIME, meet_link TEXT, recording_url TEXT, notified INTEGER DEFAULT 0, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS small_group_chats (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, message TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS small_group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, joined_at DATETIME, UNIQUE(group_id, youth_id))`);
 
-    db.run(`CREATE TABLE IF NOT EXISTS pre_registrations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        youth_id INTEGER, event_id INTEGER, created_at DATETIME,
-        UNIQUE(youth_id, event_id)
-    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS group_threads (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, title TEXT, content TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS group_thread_replies (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER, youth_id INTEGER, reply_text TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS group_memories (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, youth_id INTEGER, image_data TEXT, caption TEXT, created_at DATETIME)`);
+    db.run(`ALTER TABLE small_group_chats ADD COLUMN reactions TEXT DEFAULT '{}'`, (err)=>{});
+    
 
-    db.run(`CREATE TABLE IF NOT EXISTS ministries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT, description TEXT, restricted_notes TEXT, created_at DATETIME
-    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS songs (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, artist TEXT, song_key TEXT, bpm TEXT, audio_url TEXT, youtube_url TEXT, chord_chart_url TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS setlists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, scheduled_date TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS setlist_songs (id INTEGER PRIMARY KEY AUTOINCREMENT, setlist_id INTEGER, song_id INTEGER, sort_order INTEGER, UNIQUE(setlist_id, song_id))`);
 
-    db.run(`CREATE TABLE IF NOT EXISTS ministry_members (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ministry_id INTEGER, youth_id INTEGER, role TEXT, assigned_at DATETIME,
-        UNIQUE(ministry_id, youth_id)
-    )`);
-
-    db.run(`CREATE TABLE IF NOT EXISTS event_roles (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_id INTEGER, youth_id INTEGER, role_name TEXT, assigned_at DATETIME,
-        UNIQUE(event_id, youth_id, role_name)
-    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, message TEXT, target_audience TEXT, author TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS user_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, announcement_id INTEGER, is_read INTEGER DEFAULT 0, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS personal_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER, receiver_id INTEGER, title TEXT, message TEXT, is_read INTEGER DEFAULT 0, created_at DATETIME, status TEXT DEFAULT 'Delivered')`);
+    db.run(`CREATE TABLE IF NOT EXISTS push_subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, subscription TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS blockout_dates (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, block_date TEXT, reason TEXT, created_at DATETIME, UNIQUE(youth_id, block_date))`);
+    db.run(`CREATE TABLE IF NOT EXISTS gamification_points (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER UNIQUE, points INTEGER DEFAULT 0, arcade_xp INTEGER DEFAULT 0, growth_xp INTEGER DEFAULT 0, event_xp INTEGER DEFAULT 0, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS weekly_challenges (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, points INTEGER, is_active INTEGER DEFAULT 1, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS user_challenge_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, challenge_id INTEGER, completed_at DATETIME, UNIQUE(youth_id, challenge_id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS point_transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, type TEXT, game_name TEXT, amount INTEGER, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS ai_chat_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, persona TEXT, prompt TEXT, response TEXT, is_private INTEGER DEFAULT 0, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS ai_communication_drafts (id INTEGER PRIMARY KEY AUTOINCREMENT, target_youth_id INTEGER, draft_type TEXT, suggested_message TEXT, status TEXT DEFAULT 'Pending', created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS arcade_score_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, game_name TEXT, score INTEGER, played_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_trivia_questions (id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT, options TEXT, correct_index INTEGER, category TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_polls (id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT, option_a TEXT, option_b TEXT, votes_a INTEGER DEFAULT 0, votes_b INTEGER DEFAULT 0, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_user_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, game_type TEXT, game_id INTEGER, played_at DATETIME, UNIQUE(youth_id, game_type, game_id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_whoami_questions (id INTEGER PRIMARY KEY AUTOINCREMENT, clue1 TEXT, clue2 TEXT, clue3 TEXT, answer TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_verse_chain (id INTEGER PRIMARY KEY AUTOINCREMENT, reference TEXT, verse_text TEXT, missing_words TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_verse_contributions (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER, verse_id INTEGER, youth_id INTEGER, word_index INTEGER, guessed_word TEXT, created_at DATETIME, UNIQUE(group_id, verse_id, word_index))`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_verse_scramble (id INTEGER PRIMARY KEY AUTOINCREMENT, reference TEXT, verse_text TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_emoji_translation (id INTEGER PRIMARY KEY AUTOINCREMENT, emojis TEXT, answer TEXT, options TEXT, created_at DATETIME)`);
+    db.run(`CREATE TABLE IF NOT EXISTS brain_crosswords (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, grid_size INTEGER, words_json TEXT, created_at DATETIME)`);
 
     // SCHEMA AUTO-HEALING
-    db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
+    db.run("ALTER TABLE ministry_members ADD COLUMN is_priority INTEGER DEFAULT 0", ()=>{});
+    db.run("ALTER TABLE youth ADD COLUMN gender TEXT", ()=>{});
+    db.run("ALTER TABLE youth ADD COLUMN commitment_intent TEXT", ()=>{});
+    db.run("ALTER TABLE ministry_members ADD COLUMN intent_message TEXT", ()=>{});
+
+    db.run("CREATE TABLE IF NOT EXISTS secret_prayer_pals (id INTEGER PRIMARY KEY AUTOINCREMENT, youth_id INTEGER, pal_youth_id INTEGER, week_start TEXT, UNIQUE(youth_id, week_start))", ()=>{});
+    db.run(`ALTER TABLE youth ADD COLUMN google_id TEXT`, () => {});
+    db.run(`ALTER TABLE youth ADD COLUMN facebook_id TEXT`, () => {});
+
+    db.run("ALTER TABLE prayer_requests ADD COLUMN reactions TEXT DEFAULT '{}'", ()=>{});
+    db.run("ALTER TABLE group_memories ADD COLUMN reactions TEXT DEFAULT '{}'", ()=>{});
+    
+    db.run("ALTER TABLE small_groups ADD COLUMN privacy_level TEXT DEFAULT 'Open'", (err)=>{});
+    db.run("ALTER TABLE small_groups ADD COLUMN group_type TEXT DEFAULT 'campfire'", () => {});
+    db.run(
+        `UPDATE small_groups
+         SET group_type = 'campfire'
+         WHERE group_type IS NULL
+            OR TRIM(group_type) = ''
+            OR group_type NOT IN ('campfire', 'fire_circle')`,
+        () => {}
+    );
+    db.run("ALTER TABLE small_group_members ADD COLUMN status TEXT DEFAULT 'Approved'", (err)=>{});
+    db.run("ALTER TABLE prayer_requests ADD COLUMN group_id INTEGER", (err)=>{});
+    db.run("ALTER TABLE prayer_requests ADD COLUMN is_answered INTEGER DEFAULT 0", (err)=>{});
+    
+    
+    db.run(`ALTER TABLE prayer_requests ADD COLUMN group_id INTEGER`, () => {});
+    db.run(`ALTER TABLE prayer_requests ADD COLUMN is_answered INTEGER DEFAULT 0`, () => {});
+db.run(`ALTER TABLE youth ADD COLUMN profile_picture TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN photos_url TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN materials_url TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_banner TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_bottom_banner TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_title TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN prereg_info TEXT`, () => {});
+    db.run(`ALTER TABLE events ADD COLUMN event_points INTEGER DEFAULT 10`, () => {});
     db.run(`ALTER TABLE users ADD COLUMN youth_id INTEGER`, () => {});
     db.run(`ALTER TABLE ministry_members ADD COLUMN sub_role TEXT`, () => {});
     db.run(`ALTER TABLE event_roles ADD COLUMN sub_role TEXT`, () => {});
     db.run(`ALTER TABLE events ADD COLUMN roles_restricted_notes TEXT`, () => {});
-    
-    // NEW: MINISTRY LOGO HEALING
     db.run(`ALTER TABLE ministries ADD COLUMN logo TEXT`, () => {});
+    db.run(`ALTER TABLE songs ADD COLUMN youtube_url TEXT`, () => {});
+    db.run(`ALTER TABLE gamification_points ADD COLUMN arcade_xp INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE gamification_points ADD COLUMN growth_xp INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE gamification_points ADD COLUMN event_xp INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE discipleship_pathways ADD COLUMN points INTEGER DEFAULT 50`, () => {});
+    db.run(`ALTER TABLE small_groups ADD COLUMN points INTEGER DEFAULT 20`, () => {});
+    db.run(`ALTER TABLE small_groups ADD COLUMN logo TEXT`, () => {});
 
-    // Ensure access_ministries is granted automatically to the Superadmin
-    const superadminPermissions = JSON.stringify([
-        'access_checkin', 'access_directory', 'access_events',
-        'access_attendance', 'access_activity', 'access_permissions',
-        'access_ministries', 
-        'add_entries', 'edit_entries', 'delete_entries'
-    ]);
+    db.run(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('journal_points', '10')`);
+    db.run(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('prayer_points', '5')`);
 
-    db.run(`INSERT OR IGNORE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
-        ['celsocreeriii@gmail.com', 'JesusisLord', superadminPermissions, getManilaTime()]
-    );
-    // Force update the superadmin to ensure they always have all checkboxes
-    db.run(`UPDATE users SET permissions = ? WHERE username = 'celsocreeriii@gmail.com'`, [superadminPermissions]);
+    db.get(`SELECT COUNT(*) as cnt FROM point_transactions`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at) SELECT youth_id, 'arcade', 'Legacy Points', arcade_xp, created_at FROM gamification_points WHERE arcade_xp > 0`);
+            db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at) SELECT youth_id, 'growth', 'Legacy Points', growth_xp, created_at FROM gamification_points WHERE growth_xp > 0`);
+            db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at) SELECT youth_id, 'event', 'Legacy Points', event_xp, created_at FROM gamification_points WHERE event_xp > 0`);
+        }
+    });
 
-    // ARMORED: Background Auto-Sync Engine
+    const superadminPermissions = JSON.stringify(['access_checkin', 'access_directory', 'access_events', 'access_attendance', 'access_activity', 'access_permissions', 'access_ministries', 'access_discipleship', 'access_ai', 'access_worship', 'access_communications', 'access_prayer', 'access_prayer_journey', 'add_entries', 'edit_entries', 'delete_entries']);
+    db.get(`SELECT id FROM users WHERE username = ?`, [BOOTSTRAP_STRONG_ADMIN_USERNAME], (err, existingAdmin) => {
+        if (err) return console.error('Unable to verify bootstrap administrator');
+        if (existingAdmin) return;
+        if (
+            BOOTSTRAP_STRONG_ADMIN_PASSWORD.length < 8 ||
+            BOOTSTRAP_STRONG_ADMIN_PASSWORD.length > 128 ||
+            !/\S/.test(BOOTSTRAP_STRONG_ADMIN_PASSWORD)
+        ) {
+            console.warn('Bootstrap administrator not created: password configuration is missing or invalid.');
+            return;
+        }
+        hashPassword(BOOTSTRAP_STRONG_ADMIN_PASSWORD).then(encodedPassword => {
+            db.run(
+                `INSERT OR IGNORE INTO users (username, password, permissions, created_at) VALUES (?, ?, ?, ?)`,
+                [BOOTSTRAP_STRONG_ADMIN_USERNAME, encodedPassword, superadminPermissions, getManilaTime()],
+                insertErr => { if (insertErr) console.error('Unable to create bootstrap administrator'); }
+            );
+        }).catch(() => console.error('Unable to prepare bootstrap administrator credential'));
+    });
+    db.run(`UPDATE users SET permissions = ? WHERE username = ?`, [superadminPermissions, BOOTSTRAP_STRONG_ADMIN_USERNAME]);
+
     db.all(`SELECT id, qr_code FROM youth WHERE id NOT IN (SELECT youth_id FROM users WHERE youth_id IS NOT NULL)`, [], (err, rows) => {
-        if (rows && rows.length > 0) {
-            const stmt = db.prepare(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`);
-            let addedCount = 0;
-            rows.forEach(r => {
-                if(r.qr_code) {
-                    stmt.run([r.qr_code, r.qr_code, r.id, getManilaTime()]);
-                    addedCount++;
-                }
-            });
+        if (rows && rows?.length || 0 > 0) {
+            const stmt = db.prepare(`INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at) VALUES (?, '[]', ?, ?)`);
+            rows.forEach(r => { if(r.qr_code) stmt.run([r.qr_code, r.id, getManilaTime()]); });
             stmt.finalize();
-            console.log(`[SYNC ENGINE] Auto-created login accounts for ${addedCount} community members.`);
+        }
+    });
+
+    db.get(`SELECT COUNT(*) as cnt FROM discipleship_pathways`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            const defaultSteps = [
+                ["Encounter", "Come & See. Explore faith at your own pace.", 1, 50],
+                ["Connect & Belong", "Find your circle. Walk with brothers and sisters.", 2, 50],
+                ["Step In", "Choose this family as your spiritual home.", 3, 50],
+                ["Discover Your Gifts", "Unpack the talents God has entrusted to you.", 4, 50],
+                ["Equip & Form", "Deepen your roots in character and skills.", 5, 50],
+                ["Serve with Joy", "Step into the harvest and build the Kingdom.", 6, 50],
+                ["Commissioned", "Sent forth with passion for God and compassion for all.", 7, 100]
+            ];
+            const stmt = db.prepare(`INSERT INTO discipleship_pathways (title, description, step_order, points, created_at) VALUES (?, ?, ?, ?, ?)`);
+            defaultSteps.forEach(step => stmt.run([step[0], step[1], step[2], step[3], getManilaTime()]));
+            stmt.finalize();
+        }
+    });
+
+    
+    db.get(`SELECT COUNT(*) as cnt FROM brain_trivia_questions`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            console.log('[INIT] Seeding Database with 75 Unique Bible Trivia Questions...');
+            const qList = [
+                ["How many days and nights did it rain during the flood?", '["40", "7", "30", "12"]', 0],
+                ["Who was swallowed by a great fish?", '["Moses", "Jonah", "Peter", "David"]', 1],
+                ["What is the first book of the New Testament?", '["Genesis", "Mark", "Matthew", "John"]', 2],
+                ["Who defeated Goliath?", '["Samson", "Saul", "Jonathan", "David"]', 3],
+                ["What did Jesus turn water into at the wedding in Cana?", '["Wine", "Blood", "Milk", "Honey"]', 0],
+                ["Who parted the Red Sea?", '["Joshua", "Moses", "Aaron", "Elijah"]', 1],
+                ["What was the name of the garden where Adam and Eve lived?", '["Gethsemane", "Babylon", "Eden", "Zion"]', 2],
+                ["How many disciples did Jesus choose?", '["10", "12", "7", "40"]', 1],
+                ["Who built the Ark?", '["Noah", "Abraham", "Lot", "Job"]', 0],
+                ["Who was Jesus' earthly father?", '["John", "Zacharias", "Joseph", "James"]', 2],
+                ["What animal tempted Eve?", '["Lion", "Serpent", "Eagle", "Dragon"]', 1],
+                ["Who was thrown into the lion's den?", '["Shadrach", "Meshach", "Daniel", "Abednego"]', 2],
+                ["Which apostle denied Jesus three times?", '["Judas", "Thomas", "John", "Peter"]', 3],
+                ["What sea did Jesus walk on?", '["Red Sea", "Dead Sea", "Sea of Galilee", "Mediterranean Sea"]', 2],
+                ["Who received the Ten Commandments?", '["Moses", "Aaron", "Joshua", "David"]', 0],
+                ["Who was the first man created?", '["Noah", "Adam", "Enoch", "Seth"]', 1],
+                ["What food did God provide the Israelites in the desert?", '["Bread", "Manna", "Fruit", "Fish"]', 1],
+                ["Who betrayed Jesus?", '["Peter", "Thomas", "Judas Iscariot", "Matthew"]', 2],
+                ["What is the longest book in the Bible?", '["Genesis", "Isaiah", "Psalms", "Jeremiah"]', 2],
+                ["Who was the giant killed by a sling and stone?", '["Samson", "Goliath", "Og", "Anak"]', 1],
+                ["What day did God rest during creation?", '["Sixth", "Seventh", "First", "Third"]', 1],
+                ["Who was sold into slavery by his brothers?", '["Benjamin", "Reuben", "Joseph", "Judah"]', 2],
+                ["What did David use to kill Goliath?", '["Sword", "Spear", "Sling", "Bow"]', 2],
+                ["Who baptized Jesus?", '["John the Baptist", "Peter", "James", "Matthew"]', 0],
+                ["What bird brought an olive branch to Noah?", '["Raven", "Dove", "Eagle", "Sparrow"]', 1],
+                ["Who was the wisest king of Israel?", '["David", "Saul", "Solomon", "Hezekiah"]', 2],
+                ["Where was Jesus born?", '["Nazareth", "Jerusalem", "Bethlehem", "Jericho"]', 2],
+                ["How many plagues did God send on Egypt?", '["7", "10", "12", "40"]', 1],
+                ["Who was the mother of Jesus?", '["Elizabeth", "Martha", "Mary", "Sarah"]', 2],
+                ["What sign did God give to promise no more global floods?", '["Cloud", "Dove", "Star", "Rainbow"]', 3],
+                ["Who interpreted Pharaoh's dreams?", '["Moses", "Joseph", "Daniel", "Jacob"]', 1],
+                ["What was Matthew's profession before following Jesus?", '["Fisherman", "Carpenter", "Tax Collector", "Tentmaker"]', 2],
+                ["Who climbed a sycamore tree to see Jesus?", '["Zacchaeus", "Nicodemus", "Bartimaeus", "Lazarus"]', 0],
+                ["What did Jesus feed the 5,000 with?", '["Bread and Wine", "5 Loaves and 2 Fish", "7 Loaves", "Manna"]', 1],
+                ["Who wore a coat of many colors?", '["David", "Joseph", "Jacob", "Esau"]', 1],
+                ["Who was blinded on the road to Damascus?", '["Peter", "Saul (Paul)", "Stephen", "Barnabas"]', 1],
+                ["What flowed from Jesus' side on the cross?", '["Blood and Water", "Tears", "Wine", "Oil"]', 0],
+                ["What type of wood was the Ark made of?", '["Cedar", "Gopher", "Oak", "Acacia"]', 1],
+                ["How many stones did David pick up to fight Goliath?", '["1", "3", "5", "7"]', 2],
+                ["Who lived to be 969 years old?", '["Noah", "Adam", "Enoch", "Methuselah"]', 3],
+                ["What was the name of Abraham's promised son?", '["Ishmael", "Isaac", "Jacob", "Esau"]', 1],
+                ["Who led the Israelites after Moses died?", '["Aaron", "Caleb", "Joshua", "Gideon"]', 2],
+                ["What weapon did Samson use to slay 1,000 Philistines?", '["Sword", "Jawbone of an ass", "Spear", "Club"]', 1],
+                ["Who washed the disciples' feet?", '["Peter", "John", "Jesus", "Mary"]', 2],
+                ["What is the last book of the Bible?", '["Jude", "Revelation", "Acts", "Hebrews"]', 1],
+                ["What insect did Jesus say John the Baptist ate?", '["Beetles", "Locusts", "Ants", "Moths"]', 1],
+                ["Who was known as the beloved physician?", '["Matthew", "Mark", "Luke", "John"]', 2],
+                ["How many days was Jesus in the tomb?", '["1", "2", "3", "4"]', 2],
+                ["Who was the first king of Israel?", '["David", "Solomon", "Saul", "Samuel"]', 2],
+                ["What river was Jesus baptized in?", '["Nile", "Tigris", "Euphrates", "Jordan"]', 3],
+                ["Who recognized Jesus as the Messiah as a baby in the temple?", '["Simeon", "Zechariah", "Nicodemus", "Herod"]', 0],
+                ["What did the Israelites worship while Moses was on Mount Sinai?", '["Golden Calf", "Baal", "Asherah", "Bronze Serpent"]', 0],
+                ["Who killed Abel?", '["Seth", "Enoch", "Cain", "Lamech"]', 2],
+                ["Where did Jesus pray before his arrest?", '["Mount Sinai", "Mount of Olives", "Gethsemane", "Golgotha"]', 2],
+                ["What happened to Lot's wife?", '["Turned to stone", "Turned to a pillar of salt", "Swallowed by the earth", "Struck by lightning"]', 1],
+                ["What was the profession of Peter and Andrew?", '["Carpenters", "Tax Collectors", "Fishermen", "Shepherds"]', 2],
+                ["Who wrote the book of Revelation?", '["Paul", "Peter", "James", "John"]', 3],
+                ["Who survived the fiery furnace?", '["Daniel", "Shadrach, Meshach, Abednego", "Elijah", "Jeremiah"]', 1],
+                ["What instrument did David play for Saul?", '["Flute", "Harp (Lyre)", "Trumpet", "Cymbals"]', 1],
+                ["What did Judas receive for betraying Jesus?", '["30 pieces of silver", "100 denarii", "A gold chain", "A purple robe"]', 0],
+                ["Who helped carry Jesus' cross?", '["Simon of Cyrene", "Joseph of Arimathea", "Nicodemus", "John"]', 0],
+                ["What was Paul's original name?", '["Silas", "Saul", "Stephen", "Simeon"]', 1],
+                ["What bird crowed after Peter denied Jesus?", '["Dove", "Raven", "Rooster", "Eagle"]', 2],
+                ["Who was the sister of Moses and Aaron?", '["Miriam", "Zipporah", "Jochebed", "Sarah"]', 0],
+                ["What did God create on the first day?", '["Land", "Light", "Animals", "Sun and Moon"]', 1],
+                ["Who was David's best friend?", '["Saul", "Abner", "Jonathan", "Joab"]', 2],
+                ["What town did Mary, Martha, and Lazarus live in?", '["Bethany", "Jerusalem", "Nazareth", "Capernaum"]', 0],
+                ["How many tribes of Israel were there?", '["10", "12", "7", "40"]', 1],
+                ["Who asked Pilate for Jesus' body?", '["Peter", "John", "Joseph of Arimathea", "Nicodemus"]', 2],
+                ["What language was the Old Testament mostly written in?", '["Greek", "Aramaic", "Latin", "Hebrew"]', 3],
+                ["What language was the New Testament mostly written in?", '["Hebrew", "Greek", "Latin", "Aramaic"]', 1],
+                ["Who cut Samson's hair?", '["Jezebel", "Delilah", "Ruth", "Esther"]', 1],
+                ["Who led the Israelites to rebuild the walls of Jerusalem?", '["Ezra", "Nehemiah", "Zerubbabel", "Haggai"]', 1],
+                ["What fell from the sky to feed Israel in the desert?", '["Apples", "Manna", "Locusts", "Corn"]', 1],
+                ["Who was the first Christian martyr?", '["James", "Peter", "Paul", "Stephen"]', 3]
+            ];
+            const stmt = db.prepare(`INSERT INTO brain_trivia_questions (question, options, correct_index, category, created_at) VALUES (?, ?, ?, 'Bible', ?)`);
+            qList.forEach(q => stmt.run([q[0], q[1], q[2], getManilaTime()]));
+            stmt.finalize();
+        }
+    });
+
+    db.get(`SELECT COUNT(*) as cnt FROM weekly_challenges`, [], (err, row) => {
+        if (row && row.cnt === 0) {
+            const stmt = db.prepare(`INSERT INTO weekly_challenges (title, description, points, created_at) VALUES (?, ?, ?, ?)`);
+            stmt.run(["Read Proverbs 1", "Spend time reading the first chapter of Proverbs and reflecting on wisdom.", 50, getManilaTime()]);
+            stmt.finalize();
         }
     });
 });
 
-function logActivity(username, action, details) {
-    db.run(`INSERT INTO activity_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)`,
-        [username || 'System', action, details, getManilaTime()]
-    );
+const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
+    youth: Object.freeze([
+        'id', 'name', 'email', 'qr_code', 'password', 'profile_picture', 'gender',
+        'commitment_intent', 'google_id', 'facebook_id', 'account_tier',
+        'commitment_date', 'commitment_accepted_at', 'commitment_accepted_by', 'address',
+        'email_verified', 'email_verified_at', 'pending_email', 'pending_email_requested_at'
+    ]),
+    users: Object.freeze([
+        'id', 'username', 'password', 'permissions', 'youth_id',
+        'account_claimed_at', 'account_claim_method', 'account_claim_token_id'
+    ]),
+    events: Object.freeze(['id', 'name', 'event_date', 'event_points', 'roles_restricted_notes']),
+    attendance: Object.freeze(['id', 'youth_id', 'event_id', 'checked_in_at']),
+    pre_registrations: Object.freeze(['id', 'youth_id', 'event_id']),
+    ministries: Object.freeze(['id', 'name', 'restricted_notes', 'logo']),
+    ministry_members: Object.freeze(['id', 'ministry_id', 'youth_id', 'role', 'sub_role', 'is_priority', 'intent_message']),
+    event_roles: Object.freeze(['id', 'event_id', 'youth_id', 'role_name', 'sub_role', 'status']),
+    activity_logs: Object.freeze(['id', 'username', 'action', 'details', 'created_at']),
+    app_settings: Object.freeze(['key', 'value']),
+    personal_inbox: Object.freeze(['id', 'sender_id', 'receiver_id', 'status']),
+    ministry_role_history: Object.freeze(['id', 'ministry_id', 'youth_id', 'role', 'actor', 'timestamp', 'intent_message']),
+    push_subscriptions: Object.freeze(['id', 'username', 'subscription']),
+    discipleship_pathways: Object.freeze(['id', 'title', 'step_order', 'points']),
+    member_milestones: Object.freeze(['id', 'youth_id', 'pathway_id', 'status']),
+    gamification_points: Object.freeze(['id', 'youth_id', 'points', 'arcade_xp', 'growth_xp', 'event_xp']),
+    point_transactions: Object.freeze(['id', 'youth_id', 'type', 'amount']),
+    secret_prayer_pals: Object.freeze(['id', 'youth_id', 'pal_youth_id', 'week_start']),
+    watchtower_prayer_claims: Object.freeze([
+        'id', 'coverage_date', 'covered_youth_id', 'claimant_youth_id',
+        'claimed_at', 'expires_at', 'completed_at'
+    ]),
+    watchtower_prayer_coverage: Object.freeze([
+        'id', 'coverage_date', 'covered_youth_id', 'coverage_source',
+        'intercessor_youth_id', 'claim_id', 'completed_at'
+    ]),
+    watchtower_daily_reports: Object.freeze([
+        'id', 'coverage_date', 'eligible_population', 'normal_coverage',
+        'watchtower_coverage', 'total_covered', 'uncovered',
+        'coverage_percent', 'generated_at'
+    ]),
+    growth_legacy_transitions: Object.freeze([
+        'id', 'youth_id', 'transition_version', 'standing_class',
+        'completion_basis', 'source_summary_json',
+        'phases_grandfathered_json', 'previous_journey_json',
+        'resulting_journey_json', 'applied_at', 'operator_actor',
+        'idempotency_key'
+    ]),
+    auth_one_time_tokens: Object.freeze([
+        'id', 'token_hash', 'purpose', 'youth_id', 'target_email', 'created_at',
+        'expires_at', 'used_at', 'revoked_at'
+    ]),
+    email_outbox: Object.freeze([
+        'id', 'recipient', 'message_type', 'payload_ciphertext', 'payload_iv',
+        'payload_tag', 'encryption_version', 'status', 'retry_count',
+        'next_attempt_at', 'created_at', 'updated_at', 'locked_at', 'sent_at',
+        'provider_message_id', 'last_error_code', 'dedupe_key'
+    ]),
+    account_claim_tokens: Object.freeze([
+        'id', 'youth_id', 'token_hash', 'created_at', 'expires_at',
+        'created_by_user_id', 'revoked_at', 'revoked_by_user_id', 'used_at',
+        'consumed_by_user_id'
+    ]),
+    account_recovery_tokens: Object.freeze([
+        'id', 'youth_id', 'token_hash', 'created_at', 'expires_at',
+        'created_by_user_id', 'revoked_at', 'revoked_by_user_id', 'used_at'
+    ]),
+    legal_acceptances: Object.freeze([
+        'id', 'user_id', 'terms_version', 'privacy_version', 'terms_sha256',
+        'privacy_sha256', 'accepted_at', 'source'
+    ]),
+    legal_policy_versions: Object.freeze([
+        'id', 'policy_type', 'version', 'content_sha256', 'content_snapshot', 'published_at'
+    ]),
+    community_spotlight_campaigns: Object.freeze([
+        'id', 'campaign_key', 'version', 'internal_name', 'template_type',
+        'eyebrow', 'title', 'message', 'image_url', 'primary_label',
+        'primary_action_type', 'primary_action_value', 'secondary_label',
+        'audience_type', 'audience_json', 'priority', 'display_frequency',
+        'allow_dont_show_again', 'is_enabled', 'is_paused', 'is_archived',
+        'start_at', 'end_at', 'created_by', 'created_at', 'updated_at'
+    ]),
+    community_spotlight_member_state: Object.freeze([
+        'id', 'campaign_id', 'youth_id', 'first_seen_at', 'last_seen_at',
+        'view_count', 'clicked_at', 'dismissed_at', 'completed_at',
+        'last_action_at'
+    ]),
+    game_score_logs: Object.freeze([
+        'id', 'youth_id', 'game_id', 'game_name', 'category', 'score',
+        'played_at', 'submission_id', 'legacy_source', 'legacy_id'
+    ]),
+    game_reward_claims: Object.freeze([
+        'id', 'youth_id', 'submission_id', 'game_id', 'category', 'score',
+        'requested_life_points', 'life_points_awarded', 'created_at'
+    ])
+});
+
+function quoteMigrationIdentifier(value) {
+    return `"${String(value).replaceAll('"', '""')}"`;
 }
 
-// ==============================================================================
-// DYNAMIC OPEN GRAPH INJECTOR FOR FACEBOOK / MESSENGER SHARING
-// ==============================================================================
+function runMigrationStatement(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function(err) {
+            if (err) return reject(err);
+            resolve({ changes: this.changes });
+        });
+    });
+}
+
+function queryMigrationRows(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows || []));
+    });
+}
+
+async function ensureRuntimeColumn(table, column, declaration) {
+    const columns = await queryMigrationRows(`PRAGMA table_info(${quoteMigrationIdentifier(table)})`);
+    if (columns.some(existing => existing.name === column)) return false;
+    await runMigrationStatement(
+        `ALTER TABLE ${quoteMigrationIdentifier(table)} ADD COLUMN ${declaration}`
+    );
+    return true;
+}
+
+async function assertRuntimeSchema() {
+    for (const [table, requiredColumns] of Object.entries(REQUIRED_RUNTIME_SCHEMA)) {
+        const columns = await queryMigrationRows(`PRAGMA table_info(${quoteMigrationIdentifier(table)})`);
+        if (columns.length === 0) throw new Error(`required table is missing: ${table}`);
+        const available = new Set(columns.map(column => column.name));
+        const missing = requiredColumns.filter(column => !available.has(column));
+        if (missing.length > 0) {
+            throw new Error(`required columns are missing from ${table}: ${missing.join(', ')}`);
+        }
+    }
+}
+
+async function applyDeterministicRuntimeMigration() {
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS ministry_role_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ministry_id INTEGER,
+        youth_id INTEGER,
+        role TEXT,
+        actor TEXT,
+        timestamp DATETIME,
+        intent_message TEXT
+    )`);
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS personal_inbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER,
+        receiver_id INTEGER,
+        title TEXT,
+        message TEXT,
+        is_read INTEGER DEFAULT 0,
+        created_at DATETIME,
+        status TEXT DEFAULT 'Delivered'
+    )`);
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS watchtower_prayer_claims (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        coverage_date TEXT NOT NULL,
+        covered_youth_id INTEGER NOT NULL,
+        claimant_youth_id INTEGER NOT NULL,
+        claimed_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        completed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(coverage_date, covered_youth_id),
+        FOREIGN KEY (covered_youth_id) REFERENCES youth(id),
+        FOREIGN KEY (claimant_youth_id) REFERENCES youth(id)
+    )`);
+    await runMigrationStatement(`CREATE INDEX IF NOT EXISTS watchtower_claim_owner_expiry_idx
+        ON watchtower_prayer_claims(claimant_youth_id, coverage_date, expires_at)`);
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS watchtower_prayer_coverage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        coverage_date TEXT NOT NULL,
+        covered_youth_id INTEGER NOT NULL,
+        coverage_source TEXT NOT NULL DEFAULT 'watchtower'
+            CHECK (coverage_source = 'watchtower'),
+        intercessor_youth_id INTEGER NOT NULL,
+        claim_id INTEGER NOT NULL UNIQUE,
+        completed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(coverage_date, covered_youth_id),
+        FOREIGN KEY (covered_youth_id) REFERENCES youth(id),
+        FOREIGN KEY (intercessor_youth_id) REFERENCES youth(id),
+        FOREIGN KEY (claim_id) REFERENCES watchtower_prayer_claims(id)
+    )`);
+    await runMigrationStatement(`CREATE INDEX IF NOT EXISTS watchtower_coverage_date_idx
+        ON watchtower_prayer_coverage(coverage_date, covered_youth_id)`);
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS watchtower_daily_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        coverage_date TEXT NOT NULL UNIQUE,
+        eligible_population INTEGER NOT NULL,
+        normal_coverage INTEGER NOT NULL,
+        watchtower_coverage INTEGER NOT NULL,
+        total_covered INTEGER NOT NULL,
+        uncovered INTEGER NOT NULL,
+        coverage_percent REAL NOT NULL,
+        generated_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
+    /* Schema only: legacy Journey transitions are never run at startup. */
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS growth_legacy_transitions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        youth_id INTEGER NOT NULL,
+        transition_version TEXT NOT NULL,
+        standing_class TEXT NOT NULL
+            CHECK (standing_class IN ('formal_member', 'active_servant')),
+        completion_basis TEXT NOT NULL
+            CHECK (completion_basis IN (
+                'legacy_membership_standing',
+                'legacy_service_standing'
+            )),
+        source_summary_json TEXT NOT NULL,
+        phases_grandfathered_json TEXT NOT NULL,
+        previous_journey_json TEXT NOT NULL,
+        resulting_journey_json TEXT NOT NULL,
+        applied_at TEXT NOT NULL,
+        operator_actor TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (youth_id) REFERENCES youth(id),
+        UNIQUE(youth_id, transition_version, standing_class)
+    )`);
+    await runMigrationStatement(`CREATE INDEX IF NOT EXISTS growth_legacy_transitions_member_idx
+        ON growth_legacy_transitions(youth_id, applied_at)`);
+
+    /*
+     * Community Spotlight is a permanent reusable campaign platform.
+     * Startup performs schema-only, additive, replay-safe preparation.
+     * No campaign is created, enabled, shown, or actioned here.
+     */
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS community_spotlight_campaigns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_key TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+        internal_name TEXT NOT NULL,
+        template_type TEXT NOT NULL,
+        eyebrow TEXT,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        image_url TEXT,
+        primary_label TEXT,
+        primary_action_type TEXT NOT NULL DEFAULT 'none',
+        primary_action_value TEXT,
+        secondary_label TEXT,
+        audience_type TEXT NOT NULL DEFAULT 'all',
+        audience_json TEXT NOT NULL DEFAULT '{}',
+        priority INTEGER NOT NULL DEFAULT 0,
+        display_frequency TEXT NOT NULL DEFAULT 'once',
+        allow_dont_show_again INTEGER NOT NULL DEFAULT 1
+            CHECK (allow_dont_show_again IN (0, 1)),
+        is_enabled INTEGER NOT NULL DEFAULT 0
+            CHECK (is_enabled IN (0, 1)),
+        is_paused INTEGER NOT NULL DEFAULT 0
+            CHECK (is_paused IN (0, 1)),
+        is_archived INTEGER NOT NULL DEFAULT 0
+            CHECK (is_archived IN (0, 1)),
+        start_at TEXT,
+        end_at TEXT,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(campaign_key, version)
+    )`);
+    await runMigrationStatement(`CREATE INDEX IF NOT EXISTS community_spotlight_campaign_active_idx
+        ON community_spotlight_campaigns(
+            is_enabled, is_paused, is_archived, priority, start_at, end_at
+        )`);
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS community_spotlight_member_state (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id INTEGER NOT NULL,
+        youth_id INTEGER NOT NULL,
+        first_seen_at TEXT,
+        last_seen_at TEXT,
+        view_count INTEGER NOT NULL DEFAULT 0 CHECK (view_count >= 0),
+        clicked_at TEXT,
+        dismissed_at TEXT,
+        completed_at TEXT,
+        last_action_at TEXT,
+        UNIQUE(campaign_id, youth_id),
+        FOREIGN KEY (campaign_id) REFERENCES community_spotlight_campaigns(id),
+        FOREIGN KEY (youth_id) REFERENCES youth(id)
+    )`);
+    await runMigrationStatement(`CREATE INDEX IF NOT EXISTS community_spotlight_member_state_member_idx
+        ON community_spotlight_member_state(youth_id, campaign_id)`);
+
+    await ensureRuntimeColumn('personal_inbox', 'status', "status TEXT DEFAULT 'Delivered'");
+    await ensureRuntimeColumn('youth', 'address', 'address TEXT');
+    await ensureRuntimeColumn('youth', 'commitment_date', 'commitment_date TEXT');
+    await ensureRuntimeColumn('youth', 'commitment_accepted_at', 'commitment_accepted_at TEXT');
+    await ensureRuntimeColumn('youth', 'commitment_accepted_by', 'commitment_accepted_by TEXT');
+    await ensureRuntimeColumn('youth', 'email_verified', 'email_verified INTEGER NOT NULL DEFAULT 0');
+    await ensureRuntimeColumn('youth', 'email_verified_at', 'email_verified_at INTEGER');
+    await ensureRuntimeColumn('youth', 'pending_email', 'pending_email TEXT');
+    await ensureRuntimeColumn('youth', 'pending_email_requested_at', 'pending_email_requested_at INTEGER');
+    await ensureRuntimeColumn('users', 'account_claimed_at', 'account_claimed_at INTEGER');
+    await ensureRuntimeColumn('users', 'account_claim_method', 'account_claim_method TEXT');
+    await ensureRuntimeColumn('users', 'account_claim_token_id', 'account_claim_token_id INTEGER');
+
+    /*
+     * Birthday Blessings schema is additive and replay-safe.
+     * No celebration, greeting, or notification is generated
+     * during migration.
+     */
+    await BirthdayBlessings.ensureSchema(
+        db
+    );
+
+    const eventRoleStatusAdded = await ensureRuntimeColumn(
+        'event_roles',
+        'status',
+        "status TEXT DEFAULT 'Pending'"
+    );
+    if (eventRoleStatusAdded) {
+        await runMigrationStatement("UPDATE event_roles SET status = 'Accepted'");
+    }
+
+    const accountTierAdded = await ensureRuntimeColumn(
+        'youth',
+        'account_tier',
+        "account_tier TEXT DEFAULT 'New Member'"
+    );
+    if (accountTierAdded) {
+        await runMigrationStatement('UPDATE youth SET account_tier = NULL');
+    }
+
+    await initializeEmailRecoverySchema(db);
+    await initializeAccountClaimSchema(db);
+    await initializeAccountRecoverySchema(db);
+    await initializeLegalAcceptanceSchema(db, { currentPolicies: currentLegalPolicies });
+    await ensureGameEconomySchema(db);
+
+    /*
+     * Covenant-only DAILY Prayer Pals are intentionally isolated from
+     * the existing Monday-keyed Prayer Partner / Watchtower snapshot.
+     */
+    await PrayerCovenantDaily.initializeSchema(db);
+
+    await initializeEmailRecoveryRuntime();
+    await assertRuntimeSchema();
+}
+
+async function ensurePrayerPartnerSnapshotAtStartup() {
+    try {
+        const result = await GrowthJourney.rotatePrayerPartners(
+            db,
+            {
+                force: false
+            }
+        );
+
+        console.log(
+            '[STARTUP] Prayer Partner snapshot ensure:',
+            result.status,
+            result.weekStart,
+            result.assignedCount
+        );
+
+        return result;
+    } catch (error) {
+        console.error(
+            '[STARTUP] Prayer Partner snapshot ensure failed:',
+            error
+        );
+
+        // Prayer Partner recovery must not take the whole Community Portal
+        // offline. The canonical Monday cron remains available to retry.
+        return null;
+    }
+}
+
+async function startServerAfterRuntimeSchemaReady() {
+    try {
+        await applyDeterministicRuntimeMigration();
+        console.log('[MIGRATION] Runtime database schema verified.');
+
+        // Recover a missed Monday Prayer Partner rotation before HTTP traffic
+        // begins. rotatePrayerPartners({ force:false }) is intentionally
+        // idempotent and leaves an already-complete weekly snapshot unchanged.
+        await ensurePrayerPartnerSnapshotAtStartup();
+
+        app.listen(PORT, () => { console.log(`Server running safely on Port ${PORT}`); });
+        startPrayerCovenantReminderScheduler();
+        startWatchtowerPrayerCoverageScheduler();
+        startBirthdayAgeSyncScheduler();
+        startBirthdayBlessingsNotificationScheduler();
+    } catch (err) {
+        console.error(`[MIGRATION] Runtime database schema verification failed: ${err.message}`);
+        db.close(() => process.exit(1));
+    }
+}
+
+function logActivity(username, action, details) {
+    db.run(`INSERT INTO activity_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)`, [username || 'System', action, details, getManilaTime()]);
+}
+
+function recordLegalAcceptanceActivity(acceptance) {
+    const userId = normalizeCanonicalId(acceptance && acceptance.user_id);
+    const acceptanceId = normalizeCanonicalId(acceptance && acceptance.id);
+    if (!userId || !acceptanceId) return Promise.reject(new TypeError('Canonical legal acceptance is required'));
+    const details = JSON.stringify({
+        acceptance_id: acceptanceId,
+        user_id: userId,
+        terms_version: acceptance.terms_version,
+        privacy_version: acceptance.privacy_version,
+        source: acceptance.source,
+        terms_sha256: acceptance.terms_sha256,
+        privacy_sha256: acceptance.privacy_sha256
+    });
+    return new Promise((resolve, reject) => {
+        db.run(
+            `INSERT INTO activity_logs (username, action, details, created_at)
+             SELECT ?, 'LEGAL_ACCEPTANCE_RECORDED', ?, ?
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM activity_logs
+                 WHERE action = 'LEGAL_ACCEPTANCE_RECORDED' AND details = ?
+             )`,
+            [`User ${userId}`, details, getManilaTime(), details],
+            error => error ? reject(error) : resolve()
+        );
+    });
+}
+
+async function getCanonicalLegalStatus(userId) {
+    const current = await legalAcceptanceStore.getCurrentAcceptance(userId);
+    const latest = current || await legalAcceptanceStore.getLatestAcceptance(userId);
+    return Object.freeze({
+        legal_acceptance_required: !current,
+        current: Boolean(current),
+        terms: Object.freeze({
+            current_version: TERMS_VERSION,
+            accepted_version: latest ? latest.terms_version : null,
+            accepted_at: current ? current.accepted_at : latest ? latest.accepted_at : null,
+            status: current ? 'Current' : 'Action Required'
+        }),
+        privacy: Object.freeze({
+            current_version: PRIVACY_VERSION,
+            accepted_version: latest ? latest.privacy_version : null,
+            accepted_at: current ? current.accepted_at : latest ? latest.accepted_at : null,
+            status: current ? 'Current' : 'Action Required'
+        }),
+        latest_source: latest ? latest.source : null
+    });
+}
+
+function pushToUser(youthId, title, message, urlPath = '/') {
+    if (!pushNotificationsAvailable) return false;
+    db.get(`SELECT qr_code FROM youth WHERE id = ?`, [youthId], (err, y) => {
+        if (y && y.qr_code) {
+            db.all(`SELECT subscription FROM push_subscriptions WHERE username = ?`, [y.qr_code], (err, subs) => {
+                if (subs && subs?.length || 0 > 0) {
+                    const payload = JSON.stringify({ title, body: message, url: '/' });
+                    subs.forEach(row => {
+                        try {
+                            webpush.sendNotification(JSON.parse(row.subscription), payload).catch(e => {
+                                if (e.statusCode === 404 || e.statusCode === 410) db.run(`DELETE FROM push_subscriptions WHERE subscription = ?`, [row.subscription]);
+                            });
+                        } catch(e){}
+                    });
+                }
+            });
+        }
+    });
+}
+
+function awardPoints(youthId, type, amount, actor, gameName = null) {
+    const amt = parseInt(amount) || 0;
+    db.run(`INSERT INTO point_transactions (youth_id, type, game_name, amount, created_at) VALUES (?, ?, ?, ?, ?)`, [youthId, type, gameName, amt, getManilaTime()]);
+    db.get(`SELECT SUM(CASE WHEN type='arcade' THEN amount ELSE 0 END) as arc, SUM(CASE WHEN type='growth' THEN amount ELSE 0 END) as gro, SUM(CASE WHEN type='event' THEN amount ELSE 0 END) as eve FROM point_transactions WHERE youth_id = ?`, [youthId], (err, row) => {
+        let arcade = row ? (row.arc || 0) : 0; let growth = row ? (row.gro || 0) : 0; let event = row ? (row.eve || 0) : 0;
+        const overall = arcade + growth + event;
+        db.run(`INSERT INTO gamification_points (youth_id, arcade_xp, growth_xp, event_xp, points, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(youth_id) DO UPDATE SET arcade_xp = excluded.arcade_xp, growth_xp = excluded.growth_xp, event_xp = excluded.event_xp, points = excluded.points`,
+            [youthId, arcade, growth, event, overall, getManilaTime()],
+            function(err2) { if(!err2 && actor) logActivity(actor, 'POINTS_AWARDED', `Awarded ${amt} ${type} XP to Youth ID ${youthId}. Game: ${gameName||'N/A'}`); }
+        );
+    });
+}
+
+function requireAuthenticatedGameMember(req, res, next) {
+    const hasSuppliedYouthId = Boolean(req.body && req.body.youth_id !== undefined);
+    const identity = validateAuthenticatedMemberSubmission(
+        req.auth && req.auth.youthId,
+        hasSuppliedYouthId ? req.body.youth_id : null,
+        hasSuppliedYouthId
+    );
+    if (identity.error) {
+        return res.status(identity.statusCode).json({ success: false, error: identity.error });
+    }
+    req.gameMemberId = identity.youthId;
+    return next();
+}
+
+function sendGameEconomyError(res, error) {
+    if (error instanceof GameEconomyError) {
+        return res.status(error.statusCode).json({
+            success: false,
+            error: error.message,
+            code: error.code
+        });
+    }
+    console.error('[GAME ECONOMY] Submission failed:', error && error.message ? error.message : error);
+    return res.status(500).json({ success: false, error: 'Unable to save game result.' });
+}
+
+function withLegacyPointsAlias(result) {
+    return {
+        ...result,
+        // Temporary compatibility alias. Unlike the legacy response, this is
+        // the actual capped LP award and never the raw gameplay score.
+        pointsAwarded: result.lifePointsAwarded
+    };
+}
+
+async function submitCanonicalGameResult(req, options) {
+    const game = getGameDefinition(options.gameName);
+    if (!game) throw new GameEconomyError('Unknown game.', 'INVALID_GAME', 400);
+    const score = normalizeGameScore(options.score);
+    if (score === null) throw new GameEconomyError('Invalid game score.', 'INVALID_SCORE', 400);
+    const requestedLifePoints = options.requestedLifePoints === undefined
+        ? Math.min(Math.floor(score), game.maxLifePoints)
+        : options.requestedLifePoints;
+    return gameEconomy.submit({
+        youthId: req.gameMemberId,
+        gameName: game.name,
+        category: game.category,
+        score,
+        requestedLifePoints,
+        submissionId: req.body && req.body.submission_id,
+        beforeRecord: options.beforeRecord
+    });
+}
+
+function normalizeGameRouteInteger(value, minimum = 1, maximum = 1_000_000_000) {
+    const number = typeof value === 'number'
+        ? value
+        : typeof value === 'string' && /^\d+$/.test(value)
+            ? Number(value)
+            : NaN;
+    return Number.isSafeInteger(number) && number >= minimum && number <= maximum
+        ? number
+        : null;
+}
+
+function requireCanonicalGameQueryMember(req, res, next) {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youthId) return sendForbidden(res);
+    if (req.query.youth_id !== undefined) {
+        const supplied = normalizeCanonicalId(req.query.youth_id);
+        if (supplied !== youthId) {
+            return res.status(403).json({
+                success: false,
+                error: 'Game data may only be requested for the authenticated member.'
+            });
+        }
+    }
+    req.gameMemberId = youthId;
+    return next();
+}
+
+function runGameDatabase(database, sql, params = []) {
+    return new Promise((resolve, reject) => {
+        database.run(sql, params, function gameDatabaseCallback(error) {
+            if (error) return reject(error);
+            return resolve({ lastID: this.lastID, changes: this.changes });
+        });
+    });
+}
+
+async function recordBrainGameOnce(database, youthId, gameType, gameId, timestamp = getManilaTime()) {
+    try {
+        await runGameDatabase(
+            database,
+            `INSERT INTO brain_user_logs (youth_id, game_type, game_id, played_at)
+             VALUES (?, ?, ?, ?)`,
+            [youthId, gameType, gameId, timestamp]
+        );
+    } catch (error) {
+        if (error && error.code === 'SQLITE_CONSTRAINT') {
+            throw new GameEconomyError('This game result was already submitted.', 'DUPLICATE_GAME_RESULT', 409);
+        }
+        throw error;
+    }
+}
+
+
+// --- V118: FUNNEL ILLUSION ENGINE ---
+
+// --- ARCHITECT INJECTION: FQ LEADERBOARD ---
+// 1. Automatically provision a dedicated, constraint-free table for Faith Quest
+db.run(`CREATE TABLE IF NOT EXISTS fq_daily_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, 
+    player_name TEXT, 
+    game_name TEXT, 
+    score REAL, 
+    avatar TEXT, 
+    date_played TEXT
+)`);
+
+// 2. Public score submission. This never awards authenticated member LP.
+app.post('/api/fq-leaderboard/submit', (req, res) => {
+    const validated = validatePublicLeaderboardSubmission(req.body || {});
+    if (validated.error) {
+        return res.status(400).json({ success: false, error: validated.error });
+    }
+    const { playerName, gameName, score, avatar } = validated.value;
+    const today = getManilaTime().split(' ')[0];
+    db.run(`INSERT INTO fq_daily_scores (player_name, game_name, score, avatar, date_played) VALUES (?, ?, ?, ?, ?)`,
+        [playerName, gameName, score, avatar, today],
+        err => {
+            if (err) return res.status(500).json({ success: false, error: 'Unable to save score.' });
+            return res.json({ success: true, score, lifePointsAwarded: 0 });
+        }
+    );
+});
+
+// 3. Fetch Route (No complex JOINs required)
+app.get('/api/fq-leaderboard/top3', (req, res) => {
+    const gameName = typeof req.query.game === 'string' ? req.query.game.trim() : '';
+    if (!PUBLIC_FAITH_QUEST_GAMES.has(gameName)) {
+        return res.status(400).json({ success: false, error: 'Unknown Faith Quest game.' });
+    }
+    const today = getManilaTime().split(' ')[0];
+    
+    db.all(`SELECT player_name as name, MAX(score) as score, avatar FROM fq_daily_scores WHERE game_name = ? AND date_played = ? AND lower(trim(player_name)) <> 'fire of god ministries' GROUP BY player_name ORDER BY score DESC LIMIT 3`,
+        [gameName, today], 
+        (err, rows) => {
+            if (err) return res.status(500).json({ success: false, error: 'Unable to load scores.' });
+            return res.json({ top3: rows || [] });
+        }
+    );
+});
+// --- END ARCHITECT INJECTION ---
+
+app.get('/api/growth-games/funnel', (req, res) => {
+    const game = req.query.game || '';
+    
+    // Helper to shuffle arrays
+    const shuffle = (arr) => arr.sort(() => 0.5 - Math.random());
+    
+    if (game.includes('Scramble')) {
+        const words = ["FAITH","HOPE","LOVE","PEACE","GRACE","MERCY","TRUTH","LIGHT","GLORY","JESUS","CHRIST","SAVIOR","HEAVEN","GOSPEL","BIBLE","CHURCH","CROSS","PRAYER","AMEN","HOLY","SPIRIT","WATER","BLOOD","WINE","BREAD","FISH","SHEEP","LAMB","LION","DOVE","MOSES","DAVID","MARY","PETER","JOHN","PAUL","SAUL","ROMANS","ACTS","LUKE","MARK","PSALM","PROVERB","WISDOM","JOY","CALM","REST","HEAL","KING","LORD"];
+        let pool = words.map(w => {
+            let scrambled = w.split('').sort(() => 0.5 - Math.random()).join('');
+            while(scrambled === w) scrambled = w.split('').sort(() => 0.5 - Math.random()).join(''); // Ensure it's actually scrambled
+            let options = shuffle([w, "BIBLE", "FAITH", "GRACE", "JESUS", "PEACE", "MERCY"].filter(x => x !== w).slice(0,3));
+            options.push(w);
+            options = shuffle(options);
+            return { question: "Unscramble: " + scrambled.split('').join('-'), options: options, correct_index: options.indexOf(w) };
+        });
+        res.json(shuffle(pool).slice(0, 10));
+    } else if (game.includes('Emoji')) {
+        const emojiPool = [
+            {q: "🍎🐍🌳", a: "Adam & Eve"}, {q: "🌊🚶‍♂️💨", a: "Walking on Water"}, {q: "🍞🐟🐟", a: "Feeding 5000"}, {q: "🦁🕳️🙏", a: "Daniel in Lion's Den"}, {q: "👑⭐👶🐪", a: "Birth of Jesus"},
+            {q: "🚢🌈🕊️", a: "Noah's Ark"}, {q: "🔥🌳🗣️", a: "Burning Bush"}, {q: "✝️🩸👑", a: "The Crucifixion"}, {q: "🪨👦🎯", a: "David & Goliath"}, {q: "🐋🌊🏃", a: "Jonah"},
+            {q: "🍞🍷🙏", a: "Last Supper"}, {q: "🔥🌪️👅", a: "Pentecost"}, {q: "🎺🧱💥", a: "Walls of Jericho"}, {q: "☀️🌑🛑", a: "Joshua stops the Sun"}, {q: "🔥🌋🐴", a: "Elijah's Chariot"},
+            {q: "💰🐖💋", a: "Judas Betrayal"}, {q: "💧👶🕊️", a: "Jesus Baptism"}, {q: "🐍🔥⛺", a: "Paul & the Viper"}, {q: "🥖🐦🦅", a: "Elijah fed by Ravens"}, {q: "🐑👑🛡️", a: "The Lord is my Shepherd"}
+        ];
+        // Duplicate/Expand pool dynamically to reach 50 for depth
+        let expandedPool = [];
+        for(let i=0; i<50; i++) expandedPool.push(emojiPool[i % emojiPool.length]);
+        
+        let finalPool = expandedPool.map(item => {
+            let options = shuffle([item.a, "Moses", "Resurrection", "Samson", "Exodus"].filter(x => x !== item.a).slice(0,3));
+            options.push(item.a);
+            options = shuffle(options);
+            return { question: "Decode: " + item.q, options: options, correct_index: options.indexOf(item.a) };
+        });
+        res.json(shuffle(finalPool).slice(0, 10));
+    } else if (game.includes('Fruits')) {
+        const fruits = ["Love","Joy","Peace","Patience","Kindness","Goodness","Faithfulness","Gentleness","Self-Control"];
+        let pool = [];
+        for(let i=0; i<50; i++) {
+            let f = fruits[i % fruits.length];
+            let options = shuffle([f, "Wealth", "Power", "Fame", "Anger", "Pride"].filter(x => x !== f).slice(0,3));
+            options.push(f);
+            options = shuffle(options);
+            pool.push({ question: "Which is a Fruit of the Spirit?", options: options, correct_index: options.indexOf(f) });
+        }
+        res.json(shuffle(pool).slice(0, 10));
+    } else {
+        db.all("SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 10", [], (err, rows) => {
+            if(err || !rows) return res.json([]);
+            rows.forEach(r => { if(typeof r.options === 'string') { try{ r.options=JSON.parse(r.options); }catch(e){r.options=["A","B","C","D"];} } });
+            res.json(rows);
+        });
+    }
+});
+function escapeSocialMeta(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getPublicPortalOrigin() {
+    const configuredOrigin = typeof process.env.KOINONIA_PUBLIC_ORIGIN === 'string'
+        ? process.env.KOINONIA_PUBLIC_ORIGIN.trim()
+        : '';
+    if (configuredOrigin) {
+        const validatedOrigin = validatePublicOrigin(configuredOrigin);
+        if (validatedOrigin) return validatedOrigin;
+    }
+    return __dirname.includes('staging') ? 'https://staging.fogmin.site' : 'https://fogmin.site';
+}
+
 app.get('/', (req, res, next) => {
     const eventId = req.query.event;
-    if (!eventId) return next();
+    if (!isValidPositiveInteger(eventId)) return next();
 
-    db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
-        if (err || !event) return next();
-
+    const socialQuery = `SELECT id, name, prereg_title, prereg_info FROM events WHERE id = ?`;
+    db.get(socialQuery, [eventId], (eventError, event) => {
+        if (eventError || !event) return next();
         const filePath = path.join(__dirname, 'public', 'index.html');
-        fs.readFile(filePath, 'utf8', (err, data) => {
-            if (err) return next();
+        fs.readFile(filePath, 'utf8', (fileError, html) => {
+            if (fileError) return next();
 
-            const title = (event.prereg_title || event.name || 'Community Event').replace(/"/g, '&quot;');
-            const description = (event.prereg_info || `Join me at ${title}!`).replace(/"/g, '&quot;');
-
-            const host = req.get('host');
-            const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-            const imageUrl = `${protocol}://${host}/api/events/${eventId}/poster.jpg`;
-
-            const metaTags = `
-    <meta property="og:title" content="${title}" />
-    <meta property="og:description" content="${description}" />
-    <meta property="og:image" content="${imageUrl}" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:url" content="${protocol}://${host}/?event=${eventId}" />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${title}" />
-    <meta name="twitter:description" content="${description}" />
-    <meta name="twitter:image" content="${imageUrl}" />
-            `;
-
-            const modifiedHtml = data.replace('</head>', `${metaTags}\n</head>`);
-            res.send(modifiedHtml);
+            const origin = getPublicPortalOrigin();
+            const titleText = event.prereg_title || event.name || 'Community Event';
+            const descriptionText = event.prereg_info || `Join me at ${event.name || 'this community event'}!`;
+            const canonicalUrl = `${origin}/?event=${event.id}`;
+            const imageUrl = `${origin}/api/events/${event.id}/social-preview.png`;
+            const title = escapeSocialMeta(titleText);
+            const description = escapeSocialMeta(descriptionText);
+            const metaTags = [
+                `<meta property="og:title" content="${title}">`,
+                `<meta property="og:description" content="${description}">`,
+                `<meta property="og:url" content="${escapeSocialMeta(canonicalUrl)}">`,
+                '<meta property="og:type" content="website">',
+                '<meta name="twitter:card" content="summary_large_image">',
+                `<meta name="twitter:title" content="${title}">`,
+                `<meta name="twitter:description" content="${description}">`
+            ];
+            const escapedImageUrl = escapeSocialMeta(imageUrl);
+            metaTags.push(`<meta property="og:image" content="${escapedImageUrl}">`);
+            metaTags.push(`<meta property="og:image:width" content="${SOCIAL_PREVIEW_WIDTH}">`);
+            metaTags.push(`<meta property="og:image:height" content="${SOCIAL_PREVIEW_HEIGHT}">`);
+            metaTags.push('<meta property="og:image:type" content="image/png">');
+            metaTags.push(`<meta name="twitter:image" content="${escapedImageUrl}">`);
+            res.setHeader('Cache-Control', 'no-store');
+            res.type('html').send(html.replace('</head>', `${metaTags.join('\n')}\n</head>`));
         });
     });
 });
 
-// ==============================================================================
-// DYNAMIC PWA MANIFEST & ICON ROUTER (ENVIRONMENT AWARE)
-// ==============================================================================
-app.get('/manifest.json', (req, res) => {
-    const isStaging = __dirname.includes('staging');
-
-    res.json({
-        "name": isStaging ? "FOG MINISTRIES (STAGING)" : "FIRE OF GOD MINISTRIES",
-        "short_name": isStaging ? "FOG Staging" : "FOG Portal",
-        "description": "Community Portal, CRM, and Event Check-In",
-        "start_url": "/",
-        "display": "standalone",
-        "background_color": "#F8FAFC",
-        "theme_color": isStaging ? "#10B981" : "#FF6B00",
-        "icons": [
-            {
-                "src": isStaging ? "/img/icon-staging.png" : "/img/icon-prod.png",
-                "sizes": "192x192",
-                "type": "image/png"
-            },
-            {
-                "src": isStaging ? "/img/icon-staging.png" : "/img/icon-prod.png",
-                "sizes": "512x512",
-                "type": "image/png"
-            }
-        ]
-    });
+app.get('/reset-password', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    return res.sendFile(path.join(__dirname, 'public', 'reset-password.html'));
 });
 
-app.get('/apple-touch-icon.png', (req, res) => {
-    const isStaging = __dirname.includes('staging');
-    const iconPath = isStaging ? '/img/icon-staging.png' : '/img/icon-prod.png';
-    const absolutePath = path.join(__dirname, 'public', iconPath);
-
-    if (fs.existsSync(absolutePath)) {
-        res.sendFile(absolutePath);
-    } else {
-        res.status(404).send('Icon not uploaded yet.');
-    }
+app.get('/verify-email', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    return res.sendFile(path.join(__dirname, 'public', 'verify-email.html'));
 });
 
-// ==============================================================================
-// SUPERADMIN BRAND UPLOADER API
-// ==============================================================================
-app.post('/api/settings/images', (req, res) => {
-    const { logo, prodIcon, stagingIcon, actor } = req.body;
+app.get(['/claim', '/claim/'], (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    return res.sendFile(path.join(__dirname, 'public', 'claim', 'index.html'));
+});
 
-    if (actor !== 'celsocreeriii@gmail.com') {
-        return res.status(403).json({ error: 'Unauthorized: Only Superadmin can modify system images.' });
+app.get(['/recover-account', '/recover-account/'], (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    return res.sendFile(path.join(__dirname, 'public', 'recover-account.html'));
+});
+
+app.get('/api/help/faq', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Vary', 'Cookie');
+    const auth = await loadOptionalAuthorizationContext(req);
+    const canPreview = Boolean(auth && authorizationHasPermission(auth, 'access_permissions'));
+    const hasPreviewRequest = Object.prototype.hasOwnProperty.call(req.query, 'preview');
+    const requestedPreview = typeof req.query.preview === 'string'
+        ? req.query.preview.trim()
+        : null;
+
+    if (hasPreviewRequest && !canPreview) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
     }
 
     try {
-        const saveImageToDisk = (base64Str, filename) => {
-            if (!base64Str) return;
-            const base64Data = base64Str.replace(/^data:image\/\w+;base64,/, "");
-            const buffer = Buffer.from(base64Data, 'base64');
-            const targetPath = path.join(__dirname, 'public', 'img', filename);
-            fs.writeFileSync(targetPath, buffer);
-        };
+        // Keep the FAQ model server-only so filtered-out help text never reaches the browser.
+        const { FAQ_PREVIEW_PROFILES, getFaqSectionsForAccess } = require('./lib/help-faq');
+        if (hasPreviewRequest && (!requestedPreview || !FAQ_PREVIEW_PROFILES.has(requestedPreview))) {
+            return res.status(400).json({ success: false, error: 'Unknown preview profile' });
+        }
 
-        saveImageToDisk(logo, 'logo.png');
-        saveImageToDisk(prodIcon, 'icon-prod.png');
-        saveImageToDisk(stagingIcon, 'icon-staging.png');
+        const sections = getFaqSectionsForAccess({
+            authenticated: Boolean(auth),
+            hasPermission: permission => authorizationHasPermission(auth, permission),
+            isAdministrator: isStrongAdmin(auth),
+            preview: requestedPreview
+        });
 
-        logActivity(actor, 'UPDATE_BRANDING', 'Updated global site logo and PWA app icons');
-        res.json({ success: true });
-    } catch (err) {
-        console.error("Image Upload Error:", err);
-        res.status(500).json({ error: 'Failed to write files to disk: ' + err.message });
+        return res.json({
+            success: true,
+            canPreview,
+            preview: requestedPreview || 'actual',
+            sections
+        });
+    } catch (error) {
+        console.error('FAQ delivery failed');
+        return res.status(500).json({ success: false, error: 'Help is temporarily unavailable.' });
+    }
+});
+
+const CONTACT_SUPPORT_RECIPIENT = 'support@fogmin.site';
+const CONTACT_SUPPORT_CATEGORIES = Object.freeze([
+    'Account & Sign-in',
+    'Profile & Member Record',
+    'Events & Attendance',
+    'Ministry & Community',
+    'Technical Problem',
+    'Other'
+]);
+const CONTACT_SUPPORT_CATEGORY_SET = new Set(CONTACT_SUPPORT_CATEGORIES);
+const CONTACT_SUPPORT_SUCCESS_MESSAGE = 'Your message has been sent to Fire Of God Ministries Support. We’ll get back to you through the email you provided.';
+const CONTACT_SUPPORT_VALIDATION_MESSAGE = 'Please check your name, email, category, and message, then try again.';
+
+function escapeContactSupportHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function validateContactSupportInput(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+    const { name, email, category, message } = body;
+    if (
+        typeof name !== 'string' || typeof email !== 'string' ||
+        typeof category !== 'string' || typeof message !== 'string' ||
+        name.length > 100 || email.length > 320 || message.length > 4000
+    ) return null;
+
+    const trimmedName = name.trim();
+    const normalizedEmail = normalizeEmail(email);
+    const trimmedMessage = message.trim();
+    if (
+        trimmedName.length < 2 || trimmedName.length > 100 ||
+        /[\u0000-\u001f\u007f]/.test(trimmedName) ||
+        !normalizedEmail || !CONTACT_SUPPORT_CATEGORY_SET.has(category) ||
+        trimmedMessage.length < 20 || trimmedMessage.length > 4000 ||
+        trimmedMessage.includes('\u0000')
+    ) return null;
+
+    return Object.freeze({
+        name: trimmedName,
+        email: normalizedEmail,
+        category,
+        message: trimmedMessage
+    });
+}
+
+function buildContactSupportMessage(input, auth) {
+    const authenticatedYouthId = normalizeCanonicalId(auth && auth.youthId);
+    const canonicalSignInId = auth && typeof auth.username === 'string' && auth.username.trim()
+        ? auth.username.trim().slice(0, 320)
+        : null;
+    const submittedAt = new Date().toISOString();
+    const authenticated = Boolean(auth);
+    const safeName = escapeContactSupportHtml(input.name);
+    const safeEmail = escapeContactSupportHtml(input.email);
+    const safeCategory = escapeContactSupportHtml(input.category);
+    const safeMessage = escapeContactSupportHtml(input.message);
+    const safeOrigin = escapeContactSupportHtml(emailRecoveryPublicOrigin);
+    const safeSignInId = canonicalSignInId ? escapeContactSupportHtml(canonicalSignInId) : null;
+    const text = [
+        'Fire Of God Ministries Community Portal support request',
+        '',
+        `Contact name: ${input.name}`,
+        `Contact email: ${input.email}`,
+        `Category: ${input.category}`,
+        `Message:\n${input.message}`,
+        '',
+        `Authenticated: ${authenticated ? 'Yes' : 'No'}`,
+        ...(authenticatedYouthId ? [`Member ID: ${authenticatedYouthId}`] : []),
+        ...(canonicalSignInId ? [`Canonical Sign-in ID: ${canonicalSignInId}`] : []),
+        `Submitted at: ${submittedAt}`,
+        `Environment: ${emailRecoveryPublicOrigin}`
+    ].join('\n');
+    const html = [
+        '<h2>Community Portal support request</h2>',
+        `<p><strong>Contact name:</strong> ${safeName}</p>`,
+        `<p><strong>Contact email:</strong> <a href="mailto:${encodeURIComponent(input.email)}">${safeEmail}</a></p>`,
+        `<p><strong>Category:</strong> ${safeCategory}</p>`,
+        `<p><strong>Message:</strong></p><div style="white-space:pre-wrap">${safeMessage}</div>`,
+        `<p><strong>Authenticated:</strong> ${authenticated ? 'Yes' : 'No'}</p>`,
+        ...(authenticatedYouthId ? [`<p><strong>Member ID:</strong> ${authenticatedYouthId}</p>`] : []),
+        ...(safeSignInId ? [`<p><strong>Canonical Sign-in ID:</strong> ${safeSignInId}</p>`] : []),
+        `<p><strong>Submitted at:</strong> ${escapeContactSupportHtml(submittedAt)}</p>`,
+        `<p><strong>Environment:</strong> ${safeOrigin}</p>`
+    ].join('');
+    return Object.freeze({
+        subject: `[FOG Portal Support] ${input.category}`,
+        text,
+        html
+    });
+}
+
+app.post('/api/help/contact-support', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Vary', 'Cookie');
+
+    const input = validateContactSupportInput(req.body);
+    if (!input) {
+        return res.status(400).json({ success: false, message: CONTACT_SUPPORT_VALIDATION_MESSAGE });
+    }
+
+    const auth = await loadOptionalAuthorizationContext(req);
+    const canonicalYouthId = normalizeCanonicalId(auth && auth.youthId);
+    const canonicalUserId = normalizeCanonicalId(auth && auth.userId);
+    const subject = canonicalYouthId
+        ? `member:${canonicalYouthId}`
+        : canonicalUserId
+            ? `user:${canonicalUserId}`
+            : `email:${input.email}`;
+    if (!contactSupportLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject
+    })) {
+        res.setHeader('Retry-After', String(15 * 60));
+        return res.status(429).json({
+            success: false,
+            message: 'Too many support requests were submitted. Please wait a little while and try again.'
+        });
+    }
+
+    if (!emailRecoveryPublicOrigin || !emailRecoveryOutbox) {
+        return res.status(503).json({
+            success: false,
+            message: 'Support messaging is temporarily unavailable. Please try again later.'
+        });
+    }
+
+    try {
+        await emailRecoveryOutbox.enqueue({
+            recipient: CONTACT_SUPPORT_RECIPIENT,
+            messageType: 'support_request',
+            payload: buildContactSupportMessage(input, auth)
+        });
+        logActivity(
+            canonicalYouthId ? `Member ${canonicalYouthId}` : 'Anonymous',
+            'SUPPORT_REQUEST_QUEUED',
+            'Support request queued for encrypted email delivery'
+        );
+        return res.status(202).json({ success: true, message: CONTACT_SUPPORT_SUCCESS_MESSAGE });
+    } catch (error) {
+        console.warn(`[EMAIL] Support request enqueue failed code=${getSafeEmailRecoveryErrorCode(error, 'SUPPORT_REQUEST_QUEUE_FAILED')}`);
+        return res.status(503).json({
+            success: false,
+            message: 'Support messaging is temporarily unavailable. Please try again later.'
+        });
+    }
+});
+
+app.get('/api/legal/status', requireAuth, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Vary', 'Cookie');
+    if (!req.auth.userId) return sendAuthorizationUnavailable(res);
+    try {
+        return res.json({ success: true, ...(await getCanonicalLegalStatus(req.auth.userId)) });
+    } catch (error) {
+        console.error('Legal status lookup failed');
+        return res.status(500).json({ success: false, error: 'Legal status is temporarily unavailable.' });
+    }
+});
+
+app.post('/api/legal/accept', requireAuth, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Vary', 'Cookie');
+    if (!hasExplicitLegalAcceptance(req.body && req.body.legal_accepted)) {
+        return res.status(400).json({
+            success: false,
+            error: 'You must agree to the Terms of Service and acknowledge the Privacy Policy to continue.'
+        });
+    }
+    if (!req.auth.userId) return sendAuthorizationUnavailable(res);
+
+    try {
+        const result = await legalAcceptanceStore.acceptCurrentPolicies({
+            userId: req.auth.userId,
+            accepted: true
+        });
+        await recordLegalAcceptanceActivity(result.acceptance);
+        return res.json({ success: true, ...(await getCanonicalLegalStatus(req.auth.userId)) });
+    } catch (error) {
+        console.error('Legal acceptance recording failed');
+        return res.status(500).json({ success: false, error: 'Unable to record legal acceptance safely.' });
+    }
+});
+
+app.get('/api/admin/legal-acceptances', requirePermission('access_permissions'), async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Vary', 'Cookie');
+    try {
+        const currentParams = [
+            TERMS_VERSION,
+            PRIVACY_VERSION,
+            currentLegalPolicies.terms.contentSha256,
+            currentLegalPolicies.privacy.contentSha256
+        ];
+        const [summary, rows] = await Promise.all([
+            googleAuthDatabaseGet(
+                `SELECT COUNT(*) AS total_users,
+                        SUM(CASE WHEN EXISTS (
+                            SELECT 1 FROM legal_acceptances current
+                            WHERE current.user_id = users.id
+                              AND current.terms_version = ? AND current.privacy_version = ?
+                              AND current.terms_sha256 = ? AND current.privacy_sha256 = ?
+                        ) THEN 1 ELSE 0 END) AS accepted_current
+                 FROM users`,
+                currentParams
+            ),
+            googleAuthDatabaseAll(
+                `SELECT u.id AS user_id, u.youth_id, u.username, y.name AS member_name,
+                        latest.terms_version, latest.privacy_version, latest.accepted_at, latest.source,
+                        CASE WHEN current.id IS NULL THEN 0 ELSE 1 END AS current
+                 FROM users u
+                 LEFT JOIN youth y ON y.id = u.youth_id
+                 LEFT JOIN legal_acceptances latest ON latest.id = (
+                     SELECT id FROM legal_acceptances
+                     WHERE user_id = u.id ORDER BY accepted_at DESC, id DESC LIMIT 1
+                 )
+                 LEFT JOIN legal_acceptances current ON current.id = (
+                     SELECT id FROM legal_acceptances
+                     WHERE user_id = u.id AND terms_version = ? AND privacy_version = ?
+                       AND terms_sha256 = ? AND privacy_sha256 = ?
+                     ORDER BY accepted_at DESC, id DESC LIMIT 1
+                 )
+                 ORDER BY u.id ASC LIMIT 1000`,
+                currentParams
+            )
+        ]);
+        const totalUsers = Number(summary && summary.total_users) || 0;
+        const acceptedCurrent = Number(summary && summary.accepted_current) || 0;
+        return res.json({
+            success: true,
+            summary: {
+                total_users: totalUsers,
+                accepted_current: acceptedCurrent,
+                action_required: Math.max(0, totalUsers - acceptedCurrent)
+            },
+            results_limited: totalUsers > rows.length,
+            users: rows.map(row => ({
+                user_id: row.user_id,
+                youth_id: row.youth_id,
+                username: row.username,
+                member_name: row.member_name,
+                current: row.current === 1,
+                latest_terms_version: row.terms_version || null,
+                latest_privacy_version: row.privacy_version || null,
+                latest_accepted_at: row.accepted_at || null,
+                source: row.source || null
+            }))
+        });
+    } catch (error) {
+        console.error('Legal acceptance administration report failed');
+        return res.status(500).json({ success: false, error: 'Legal acceptance report is unavailable.' });
     }
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// BACKUP & RESTORE API
-app.get('/api/backups', (req, res) => {
-    if (!fs.existsSync(backupDir)) return res.json([]);
-    const files = fs.readdirSync(backupDir)
-        .filter(f => f.endsWith('.db'))
-        .map(f => {
-            const stats = fs.statSync(path.join(backupDir, f));
-            return {
-                name: f,
-                time: stats.mtime,
-                size: (stats.size / 1024 / 1024).toFixed(2) + ' MB'
-            };
-        })
-        .sort((a, b) => b.time - a.time)
-        .slice(0, 10);
-
-    files.forEach(f => {
-        f.time = new Date(f.time).toLocaleString('en-US', { timeZone: 'Asia/Manila' });
+app.get('/manifest.json', (req, res) => {
+    const isStaging = __dirname.includes('staging');
+    res.json({
+        "name": isStaging ? "FOG MINISTRIES (STAGING)" : "FIRE OF GOD MINISTRIES",
+        "short_name": isStaging ? "FOG Staging" : "FOG Portal",
+        "description": "Community Portal, CRM, and Transformational Discipleship Engine",
+        "start_url": "/", "display": "standalone", "background_color": "#F8FAFC",
+        "theme_color": isStaging ? "#10B981" : "#FF6B00",
+        "icons": [ { "src": isStaging ? "/img/icon-staging.png" : "/img/icon-prod.png", "sizes": "192x192", "type": "image/png" }, { "src": isStaging ? "/img/icon-staging.png" : "/img/icon-prod.png", "sizes": "512x512", "type": "image/png" } ]
     });
+});
+
+app.get('/apple-touch-icon.png', (req, res) => {
+    const iconPath = __dirname.includes('staging') ? '/img/icon-staging.png' : '/img/icon-prod.png';
+    const absolutePath = path.join(__dirname, 'public', iconPath);
+    if (fs.existsSync(absolutePath)) res.sendFile(absolutePath); else res.status(404).send('Icon not uploaded yet.');
+});
+
+
+/* =========================================================
+   Premium page banner settings
+   Super Admin write access; public read of static banner URLs.
+   ========================================================= */
+
+const PREMIUM_BANNER_SETTING_KEYS = Object.freeze({
+    prayer: Object.freeze({
+        settingKey: 'premium_banner_prayer',
+        basename: 'prayer-page-banner'
+    }),
+    journal: Object.freeze({
+        settingKey: 'premium_banner_journal',
+        basename: 'journal-page-banner'
+    }),
+    groups: Object.freeze({
+        settingKey: 'premium_banner_groups',
+        basename: 'groups-page-banner'
+    }),
+
+    growth: {
+        settingKey: 'premium_banner_growth',
+        basename: 'growth-page-banner'
+    },
+    events: {
+        settingKey: 'premium_banner_events',
+        basename: 'events-page-banner'
+    },
+    arcade: {
+        settingKey: 'premium_banner_arcade',
+        basename: 'arcade-page-banner'
+    }
+
+});
+
+const PREMIUM_BANNER_MAX_BYTES = 2 * 1024 * 1024;
+
+const PREMIUM_BANNER_DIRECTORY = require('path').join(
+    __dirname,
+    'runtime-data',
+    'premium-banners'
+);
+
+app.use(
+    '/runtime-media/premium-banners',
+    express.static(
+        PREMIUM_BANNER_DIRECTORY,
+        {
+            index: false,
+            dotfiles: 'deny',
+            fallthrough: true,
+            maxAge: '1h'
+        }
+    )
+);
+
+function decodePremiumBannerDataUrl(value) {
+    if (typeof value !== 'string' || !value.length) {
+        const error = new Error('Banner image payload is required.');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+
+    if (!match) {
+        const error = new Error(
+            'Banner must be a WebP, JPG/JPEG, or PNG image.'
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const mime = match[1];
+    const encoded = match[2];
+
+    let buffer;
+
+    try {
+        buffer = Buffer.from(encoded, 'base64');
+    } catch (_) {
+        const error = new Error('Banner image data is invalid.');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (!buffer.length) {
+        const error = new Error('Banner image is empty.');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (buffer.length > PREMIUM_BANNER_MAX_BYTES) {
+        const error = new Error(
+            'Banner image exceeds the 2 MB upload limit.'
+        );
+        error.statusCode = 413;
+        throw error;
+    }
+
+    const isPng =
+        buffer.length >= 8 &&
+        buffer[0] === 0x89 &&
+        buffer[1] === 0x50 &&
+        buffer[2] === 0x4E &&
+        buffer[3] === 0x47 &&
+        buffer[4] === 0x0D &&
+        buffer[5] === 0x0A &&
+        buffer[6] === 0x1A &&
+        buffer[7] === 0x0A;
+
+    const isJpeg =
+        buffer.length >= 3 &&
+        buffer[0] === 0xFF &&
+        buffer[1] === 0xD8 &&
+        buffer[2] === 0xFF;
+
+    const isWebp =
+        buffer.length >= 12 &&
+        buffer.toString('ascii', 0, 4) === 'RIFF' &&
+        buffer.toString('ascii', 8, 12) === 'WEBP';
+
+    const validMagic =
+        (mime === 'image/png' && isPng) ||
+        (mime === 'image/jpeg' && isJpeg) ||
+        (mime === 'image/webp' && isWebp);
+
+    if (!validMagic) {
+        const error = new Error(
+            'Banner file content does not match its declared image type.'
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const extension =
+        mime === 'image/png'
+            ? 'png'
+            : mime === 'image/webp'
+                ? 'webp'
+                : 'jpg';
+
+    return {
+        mime,
+        extension,
+        buffer
+    };
+}
+
+function readPremiumBannerSettings() {
+    const entries =
+        Object.entries(PREMIUM_BANNER_SETTING_KEYS);
+
+    const keys =
+        entries.map(([, definition]) =>
+            definition.settingKey
+        );
+
+    const placeholders =
+        keys.map(() => '?').join(',');
+
+    return new Promise((resolve, reject) => {
+        db.all(
+            `SELECT key, value
+             FROM app_settings
+             WHERE key IN (${placeholders})`,
+            keys,
+            (err, rows) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+
+                const byKey =
+                    new Map(
+                        (rows || []).map(row => [
+                            row.key,
+                            row.value
+                        ])
+                    );
+
+                const result = {};
+
+                for (
+                    const [name, definition]
+                    of entries
+                ) {
+                    result[name] =
+                        byKey.get(
+                            definition.settingKey
+                        ) || '';
+                }
+
+                resolve(result);
+            }
+        );
+    });
+}
+
+function persistPremiumBannerSetting(key, value) {
+    return new Promise((resolve, reject) => {
+        db.run(
+            `INSERT OR REPLACE
+             INTO app_settings (key, value)
+             VALUES (?, ?)`,
+            [key, value],
+            err => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+
+                resolve();
+            }
+        );
+    });
+}
+
+app.get(
+    '/api/settings/premium-banners',
+    async (req, res) => {
+        try {
+            const settings =
+                await readPremiumBannerSettings();
+
+            res.setHeader(
+                'Cache-Control',
+                'no-store'
+            );
+
+            res.json(settings);
+        } catch (error) {
+            console.error(
+                '[PREMIUM BANNERS] Read failed:',
+                error
+            );
+
+            res.status(500).json({
+                error:
+                    'Unable to load page banner settings.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/settings/premium-banners',
+    requireStrongAdmin,
+    async (req, res) => {
+        const body =
+            req.body &&
+            typeof req.body === 'object'
+                ? req.body
+                : {};
+
+        const allowedKeys =
+            new Set([
+                'target',
+                'image'
+            ]);
+
+        if (
+            Object.keys(body).some(
+                key => !allowedKeys.has(key)
+            )
+        ) {
+            return res.status(400).json({
+                error:
+                    'Unsupported banner upload field.'
+            });
+        }
+
+        const target =
+            typeof body.target === 'string'
+                ? body.target.trim()
+                : '';
+
+        const definition =
+            PREMIUM_BANNER_SETTING_KEYS[target];
+
+        if (!definition) {
+            return res.status(400).json({
+                error:
+                    'A valid banner target is required.'
+            });
+        }
+
+        let decoded;
+
+        try {
+            decoded =
+                decodePremiumBannerDataUrl(
+                    body.image
+                );
+        } catch (error) {
+            return res
+                .status(
+                    Number.isInteger(error.statusCode)
+                        ? error.statusCode
+                        : 400
+                )
+                .json({
+                    error:
+                        error.message ||
+                        'Invalid banner image.'
+                });
+        }
+
+        const fs = require('fs');
+        const path = require('path');
+
+        try {
+            fs.mkdirSync(
+                PREMIUM_BANNER_DIRECTORY,
+                {
+                    recursive: true
+                }
+            );
+
+            const filename =
+                `${definition.basename}.${decoded.extension}`;
+
+            const finalPath =
+                path.join(
+                    PREMIUM_BANNER_DIRECTORY,
+                    filename
+                );
+
+            const temporaryPath =
+                path.join(
+                    PREMIUM_BANNER_DIRECTORY,
+                    `.${filename}.tmp-${process.pid}-${Date.now()}`
+                );
+
+            fs.writeFileSync(
+                temporaryPath,
+                decoded.buffer,
+                {
+                    mode: 0o644
+                }
+            );
+
+            fs.renameSync(
+                temporaryPath,
+                finalPath
+            );
+
+            for (
+                const extension
+                of ['webp', 'jpg', 'png']
+            ) {
+                if (
+                    extension ===
+                    decoded.extension
+                ) {
+                    continue;
+                }
+
+                const stalePath =
+                    path.join(
+                        PREMIUM_BANNER_DIRECTORY,
+                        `${definition.basename}.${extension}`
+                    );
+
+                try {
+                    if (fs.existsSync(stalePath)) {
+                        fs.unlinkSync(stalePath);
+                    }
+                } catch (cleanupError) {
+                    console.warn(
+                        '[PREMIUM BANNERS] Stale image cleanup failed:',
+                        cleanupError
+                    );
+                }
+            }
+
+            const publicUrl =
+                `/runtime-media/premium-banners/${filename}?v=${Date.now()}`;
+
+            await persistPremiumBannerSetting(
+                definition.settingKey,
+                publicUrl
+            );
+
+            const settings =
+                await readPremiumBannerSettings();
+
+            res.json(settings);
+        } catch (error) {
+            console.error(
+                '[PREMIUM BANNERS] Save failed:',
+                error
+            );
+
+            res.status(500).json({
+                error:
+                    'Unable to save page banner image.'
+            });
+        }
+    }
+);
+
+app.post('/api/settings/images', requireStrongAdmin, (req, res) => {
+    const { logo, prodIcon, stagingIcon, faithQuestThumb, faithRegBanner } = req.body;
+    try {
+        const saveImageToDisk = (base64Str, filename) => {
+            if (!base64Str) return; // Safely aborts if no file was uploaded!
+            const base64Data = base64Str.replace(/^data:image\/\w+;base64,/, "");
+            require('fs').writeFileSync(require('path').join(__dirname, 'public', 'img', filename), Buffer.from(base64Data, 'base64'));
+        };
+        saveImageToDisk(logo, 'logo.png'); 
+        saveImageToDisk(prodIcon, 'icon-prod.png'); 
+        saveImageToDisk(stagingIcon, 'icon-staging.png');
+        saveImageToDisk(faithQuestThumb, 'faith-quest-thumb.png'); saveImageToDisk(faithRegBanner, 'faith-reg-banner.png');
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: 'Failed to write files to disk: ' + err.message }); }
+});
+app.get('/api/backups', requireStrongAdmin, (req, res) => {
+    if (!fs.existsSync(backupDir)) return res.json([]);
+    const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.db')).map(f => {
+        const stats = fs.statSync(path.join(backupDir, f));
+        return { name: f, time: stats.mtime, size: (stats.size / 1024 / 1024).toFixed(2) + ' MB' };
+    }).sort((a, b) => b.time - a.time).slice(0, 10);
+    files.forEach(f => f.time = new Date(f.time).toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
     res.json(files);
 });
 
-app.post('/api/backups/restore', (req, res) => {
-    const { filename, actor } = req.body;
-    const targetFile = path.join(backupDir, filename);
-    const currentDb = './fog_community.db';
-
+app.post('/api/backups/restore', requireStrongAdmin, async (req, res) => {
+    const { filename } = req.body;
+    const actor = getCanonicalAuditActor(req);
+    const targetFile = resolveBackupRestorePath(filename);
+    if (!targetFile) return res.status(400).json({ error: 'Invalid backup filename' });
     if (!fs.existsSync(targetFile)) return res.status(404).json({ error: 'File not found' });
-
     try {
-        const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-        const pad = (n) => String(n).padStart(2, '0');
-        const timeStr = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-        const autoBackup = path.join(backupDir, `fog_community_pre_restore_${timeStr}.db`);
-
-        fs.copyFileSync(currentDb, autoBackup);
-        logActivity(actor, 'RESTORE_DB', `Restored from ${filename}. Pre-restore saved to ${path.basename(autoBackup)}`);
-
+        const targetStats = fs.lstatSync(targetFile);
+        const realBackupDir = fs.realpathSync(backupDir);
+        const realTargetFile = fs.realpathSync(targetFile);
+        if (!targetStats.isFile() || targetStats.isSymbolicLink() || path.dirname(realTargetFile) !== realBackupDir) {
+            return res.status(400).json({ error: 'Invalid backup file' });
+        }
+        let safetyBackup;
+        try {
+            safetyBackup = await backupManager.createPreRestoreBackup(getManilaBackupClock().restoreKey);
+        } catch (err) {
+            const code = err && typeof err.code === 'string' && /^[A-Z0-9_]+$/.test(err.code)
+                ? err.code
+                : 'BACKUP_FAILURE';
+            console.error(`[BACKUP ERROR] Pre-restore verified backup failed code=${code}`);
+            return res.status(500).json({ error: 'Failed to create a verified pre-restore backup' });
+        }
+        logActivity(actor, 'RESTORE_DB', `Restored from ${filename}. Pre-restore saved to ${safetyBackup.filename}`);
         db.close((err) => {
-            fs.copyFileSync(targetFile, currentDb);
+            fs.copyFileSync(realTargetFile, databasePath);
             res.json({ success: true });
             setTimeout(() => { process.exit(0); }, 1000);
         });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// AUTH & LOGIN
-app.post('/api/login', (req, res) => {
-    const { username, password } = req.body;
-    db.get(`SELECT * FROM users WHERE (username = ? OR username = (SELECT email FROM youth WHERE qr_code = ?)) AND password = ?`, [username, username, password], (err, user) => {
-        if (user) {
-            const permissions = JSON.parse(user.permissions || '[]');
-            logActivity(username, 'LOGIN', 'User logged in');
-            if (user.youth_id) {
-                db.get(`SELECT * FROM youth WHERE id = ?`, [user.youth_id], (e, member) => {
-                    return res.json({ success: true, username: user.username, permissions, member, is_admin: true });
-                });
-            } else return res.json({ success: true, username: user.username, permissions, member: null, is_admin: true });
-            return;
-        }
-
-        db.get(`SELECT * FROM youth WHERE (qr_code = ? OR email = ? OR name = ?) AND password = ?`,
-            [username, username, username, password], (err2, member) => {
-            if (member) {
-                logActivity(member.name, 'LOGIN', 'Member logged into profile');
-                return res.json({ success: true, username: member.qr_code, permissions: [], member, is_admin: false });
-            }
-            logActivity(username, 'FAILED_LOGIN', 'Invalid credentials attempt');
-            res.status(401).json({ success: false, message: 'Invalid credentials' });
-        });
+app.get('/api/settings/featured', (req, res) => {
+    db.all(`SELECT key, value FROM app_settings WHERE key IN ('featured_arcade', 'featured_growth')`, [], (err, rows) => {
+        let settings = { featured_arcade: '', featured_growth: '' };
+        if (rows) rows.forEach(r => settings[r.key] = r.value);
+        res.json(settings);
     });
 });
 
-app.post('/api/logout', (req, res) => {
-    const { username } = req.body;
-    logActivity(username, 'LOGOUT', 'User logged out');
+app.post('/api/settings/featured', requirePermission('edit_entries'), (req, res) => {
+    const { featured_arcade, featured_growth } = req.body;
+    db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('featured_arcade', ?)`, [featured_arcade || '']);
+    db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('featured_growth', ?)`, [featured_growth || '']);
+    logActivity(getCanonicalAuditActor(req), 'UPDATE_FEATURED_GAMES', `Updated featured games to: Arcade=${featured_arcade}, Growth=${featured_growth}`);
     res.json({ success: true });
 });
-// PROFILE EDIT API
-app.put('/api/youth/profile/:id', (req, res) => {
-    const { name, age, birthday, social_media, parents_name, password, email, profile_picture, actor } = req.body;
-    let sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, password=?, email=? WHERE id=?`;
-    let params = [name, age, birthday, social_media, parents_name, password, email, req.params.id];
 
-    if (profile_picture !== undefined) {
-        sql = `UPDATE youth SET name=?, age=?, birthday=?, social_media=?, parents_name=?, password=?, email=?, profile_picture=? WHERE id=?`;
-        params = [name, age, birthday, social_media, parents_name, password, email, profile_picture, req.params.id];
-    }
-
-    db.run(sql, params, function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        db.run(`UPDATE users SET password = ? WHERE youth_id = ?`, [password, req.params.id]);
-        logActivity(actor || name, 'UPDATE_PROFILE', `Updated profile details for ID ${req.params.id}`);
-        db.get(`SELECT * FROM youth WHERE id = ?`, [req.params.id], (e, member) => {
-            res.json({ success: true, member });
-        });
+// NEW HABITS SETTINGS API
+app.get('/api/settings/growth-habits', (req, res) => {
+    db.all(`SELECT key, value FROM app_settings WHERE key IN ('journal_points', 'prayer_points')`, [], (err, rows) => {
+        let settings = { journal_points: 10, prayer_points: 5 };
+        if (rows) rows.forEach(r => settings[r.key] = parseInt(r.value) || 0);
+        res.json(settings);
     });
 });
 
-app.put('/api/youth/:id/permissions', (req, res) => {
-    const youthId = parseInt(req.params.id, 10);
-    const permissions = req.body.permissions || [];
-    const permString = JSON.stringify(permissions);
-    const actor = req.body.actor || 'System';
+app.post('/api/settings/growth-habits', requirePermission('edit_entries'), (req, res) => {
+    const { journal_points, prayer_points } = req.body;
+    db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('journal_points', ?)`, [journal_points]);
+    db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('prayer_points', ?)`, [prayer_points]);
+    logActivity(getCanonicalAuditActor(req), 'UPDATE_HABIT_SETTINGS', `Updated Daily Habit Points: Journal=${journal_points}, Prayer=${prayer_points}`);
+    res.json({ success: true });
+});
 
-    db.get('SELECT * FROM youth WHERE id = ?', [youthId], (err, youth) => {
-        if (err) return res.json({ success: false, error: 'DB select error: ' + err.message });
-        if (!youth) return res.json({ success: false, error: 'Member not found in directory.' });
 
-        const targetQr = youth.qr_code || `FOG-MEMBER-${String(youthId).padStart(3, '0')}`;
+function googleAuthDatabaseGet(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => err ? reject(err) : resolve(row || null));
+    });
+}
 
-        db.get(`SELECT id FROM users WHERE youth_id = ? OR username = ?`, [youthId, targetQr], (err2, existingUser) => {
-            if (err2) return res.json({ success: false, error: 'DB user check error: ' + err2.message });
+function googleAuthDatabaseAll(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows || []));
+    });
+}
 
-            if (existingUser) {
-                db.run(`UPDATE users SET permissions = ?, youth_id = ? WHERE id = ?`, [permString, youthId, existingUser.id], function(err3) {
-                    if (err3) return res.json({ success: false, error: 'Permissions update failed: ' + err3.message });
-                    logActivity(actor, 'UPDATE_PERMISSIONS', `Updated permissions for Member ID ${youthId}`);
-                    return res.json({ success: true });
-                });
+function googleAuthDatabaseRun(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function(err) {
+            if (err) return reject(err);
+            resolve({ lastID: this.lastID, changes: this.changes });
+        });
+    });
+}
+
+function rejectGoogleAuthentication(res) {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(401).json({ success: false, error: 'Invalid Google Token' });
+}
+
+async function associateVerifiedGoogleIdentity(member, identity) {
+    if (!member || !identity) return null;
+    if (member.google_id && member.google_id !== identity.googleId) return null;
+
+    const verificationTimestamp = Date.now();
+    const markExactEmailVerified = async currentMember => {
+        if (normalizeEmail(currentMember && currentMember.email) !== identity.normalizedEmail) {
+            return currentMember;
+        }
+        await googleAuthDatabaseRun(
+            `UPDATE youth
+             SET email_verified = 1,
+                 email_verified_at = COALESCE(email_verified_at, ?)
+             WHERE id = ? AND google_id = ? AND LOWER(TRIM(email)) = ?`,
+            [verificationTimestamp, currentMember.id, identity.googleId, identity.normalizedEmail]
+        );
+        return googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [currentMember.id]);
+    };
+
+    if (member.google_id === identity.googleId) return markExactEmailVerified(member);
+
+    const associated = await googleAuthDatabaseRun(
+        `UPDATE youth
+         SET google_id = ?, profile_picture = ?,
+             email_verified = CASE WHEN LOWER(TRIM(email)) = ? THEN 1 ELSE email_verified END,
+             email_verified_at = CASE
+                 WHEN LOWER(TRIM(email)) = ? THEN COALESCE(email_verified_at, ?)
+                 ELSE email_verified_at
+             END
+         WHERE id = ? AND (google_id IS NULL OR google_id = '')`,
+        [identity.googleId, identity.picture, identity.normalizedEmail,
+            identity.normalizedEmail, verificationTimestamp, member.id]
+    );
+    if (associated.changes === 1) {
+        return googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [member.id]);
+    }
+
+    const currentMember = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [member.id]);
+    return currentMember && currentMember.google_id === identity.googleId
+        ? markExactEmailVerified(currentMember)
+        : null;
+}
+
+async function sendExistingGoogleMemberLogin(req, res, identity, member, matchedUser = null) {
+    const linkedUser = matchedUser || await googleAuthDatabaseGet(
+        'SELECT id, username, permissions, youth_id FROM users WHERE youth_id = ? ORDER BY id ASC LIMIT 1',
+        [member.id]
+    );
+    const permissions = parseStoredPermissions(linkedUser && linkedUser.permissions);
+    const emailUsername = linkedUser && linkedUser.username &&
+        linkedUser.username.trim().toLowerCase() === identity.normalizedEmail;
+    const username = emailUsername ? linkedUser.username : (member.qr_code || identity.normalizedEmail);
+    logActivity(`Member ${member.id}`, 'OAUTH_LOGIN', 'Logged in via Google');
+    return sendAuthenticatedLogin(
+        req,
+        res,
+        { userId: linkedUser ? linkedUser.id : null, youthId: member.id, username },
+        {
+            success: true,
+            username,
+            permissions,
+            member: sanitizeMemberForAuth(member),
+            is_admin: permissions.length > 0
+        }
+    );
+}
+
+app.post('/api/auth/google', async (req, res) => {
+    const token = req.body && req.body.token;
+    let identity;
+    try {
+        const ticket = await googleClient.verifyIdToken({
+            idToken: token,
+            audience: '100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com',
+        });
+        identity = validateVerifiedGooglePayload(ticket.getPayload());
+    } catch (error) {
+        return rejectGoogleAuthentication(res);
+    }
+    if (!identity) return rejectGoogleAuthentication(res);
+
+    try {
+        const resolvedYouth = await findGoogleYouthIdentity(
+            db,
+            identity.googleId,
+            identity.normalizedEmail
+        );
+        if (resolvedYouth.status === 'ambiguous') return rejectGoogleAuthentication(res);
+
+        if (resolvedYouth.status === 'matched') {
+            const member = await associateVerifiedGoogleIdentity(resolvedYouth.member, identity);
+            if (!member) return rejectGoogleAuthentication(res);
+            return sendExistingGoogleMemberLogin(req, res, identity, member);
+        }
+
+        const matchingUsers = await googleAuthDatabaseAll(
+            `SELECT * FROM users WHERE LOWER(TRIM(username)) = ? ORDER BY id ASC LIMIT 2`,
+            [identity.normalizedEmail]
+        );
+        if (matchingUsers.length > 1) return rejectGoogleAuthentication(res);
+
+        if (matchingUsers.length === 1) {
+            const adminUser = matchingUsers[0];
+            let member = adminUser.youth_id
+                ? await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [adminUser.youth_id])
+                : null;
+            if (member) {
+                member = await associateVerifiedGoogleIdentity(member, identity);
+                if (!member) return rejectGoogleAuthentication(res);
             } else {
-                db.run(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, ?, ?, ?)`,
-                    [targetQr, targetQr, permString, youthId, getManilaTime()],
-                    function(err4) {
-                        if (err4) {
-                            const safeQr = `FOG-MEMBER-${youthId}-${Date.now()}`;
-                            db.run(`INSERT INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, ?, ?, ?)`,
-                                [safeQr, safeQr, permString, youthId, getManilaTime()],
-                                function(err5) {
-                                    if (err5) return res.json({ success: false, error: 'Insert account failed: ' + err5.message });
-                                    db.run(`UPDATE youth SET qr_code = ?, password = ? WHERE id = ?`, [safeQr, safeQr, youthId]);
-                                    logActivity(actor, 'UPDATE_PERMISSIONS', `Created user & assigned permissions for Member ID ${youthId}`);
-                                    return res.json({ success: true });
-                                }
-                            );
-                        } else {
-                            if (!youth.qr_code) {
-                                db.run(`UPDATE youth SET qr_code = ?, password = ? WHERE id = ?`, [targetQr, targetQr, youthId]);
-                            }
-                            logActivity(actor, 'UPDATE_PERMISSIONS', `Created user & assigned permissions for Member ID ${youthId}`);
-                            return res.json({ success: true });
+                const inserted = await googleAuthDatabaseRun(
+                    `INSERT INTO youth
+                        (name, email, profile_picture, google_id, account_tier,
+                         email_verified, email_verified_at, created_at)
+                     VALUES (?, ?, ?, ?, 'Leader', 1, ?, ?)`,
+                    [identity.name, identity.normalizedEmail, identity.picture, identity.googleId,
+                        Date.now(), getManilaTime()]
+                );
+                await googleAuthDatabaseRun('UPDATE users SET youth_id = ? WHERE id = ?', [inserted.lastID, adminUser.id]);
+                member = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [inserted.lastID]);
+            }
+            if (!member) throw new Error('Google-linked member unavailable');
+            return sendExistingGoogleMemberLogin(req, res, identity, member, adminUser);
+        }
+
+        createPendingGoogleSignup(req, res, identity);
+        return sendNoStoreJson(res, 202, {
+            success: false,
+            legal_acceptance_required: true,
+            terms_url: '/terms/',
+            privacy_url: '/privacy/'
+        });
+    } catch (error) {
+        console.error('Google authentication database operation failed');
+        return res.status(500).json({ success: false, error: 'Unable to complete Google sign-in' });
+    }
+});
+
+function createGoogleSignupConflict() {
+    return Object.assign(new Error('Google signup identity is no longer available'), {
+        code: 'GOOGLE_SIGNUP_IDENTITY_CONFLICT'
+    });
+}
+
+function formatFogPassId(youthId) {
+    const numericId = Number(youthId);
+
+    if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+        throw new Error('Invalid youth ID for FOG Pass generation');
+    }
+
+    return `FOG-PASS-${String(numericId).padStart(3, '0')}`;
+}
+
+app.post('/api/auth/google/complete-signup', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const pendingState = getPendingGoogleSignup(req);
+    if (!pendingState) {
+        expirePendingGoogleSignupCookie(req, res);
+        return res.status(400).json({
+            success: false,
+            error: 'Google account setup expired. Please continue with Google again.'
+        });
+    }
+    if (!hasExplicitLegalAcceptance(req.body && req.body.legal_accepted)) {
+        return res.status(400).json({
+            success: false,
+            error: 'You must agree to the Terms of Service and acknowledge the Privacy Policy to create an account.'
+        });
+    }
+
+    const identity = pendingState.pending.identity;
+    try {
+        const accepted = await legalAcceptanceStore.createAcceptedAccount({
+            accepted: true,
+            source: 'google_signup',
+            createAccount: async transaction => {
+                const youthConflict = await transaction.get(
+                    `SELECT id FROM youth
+                     WHERE google_id = ? OR LOWER(TRIM(email)) = ?
+                     LIMIT 1`,
+                    [identity.googleId, identity.normalizedEmail]
+                );
+                const accountConflict = await transaction.get(
+                    `SELECT id FROM users
+                     WHERE LOWER(TRIM(username)) = ?
+                     LIMIT 1`,
+                    [identity.normalizedEmail]
+                );
+                if (youthConflict || accountConflict) throw createGoogleSignupConflict();
+
+                const memberInsert = await transaction.run(
+                    `INSERT INTO youth
+                        (name, email, profile_picture, google_id, account_tier, qr_code,
+                         email_verified, email_verified_at, created_at)
+                     VALUES (?, ?, ?, ?, 'New Member', NULL, 1, ?, ?)`,
+                    [
+                        identity.name,
+                        identity.normalizedEmail,
+                        identity.picture,
+                        identity.googleId,
+                        Date.now(),
+                        getManilaTime()
+                    ]
+                );
+
+                if (!memberInsert.lastID) {
+                    throw createGoogleSignupConflict();
+                }
+
+                const qrCode = formatFogPassId(memberInsert.lastID);
+
+                const qrUpdate = await transaction.run(
+                    'UPDATE youth SET qr_code = ? WHERE id = ?',
+                    [qrCode, memberInsert.lastID]
+                );
+
+                if (!qrUpdate || Number(qrUpdate.changes) !== 1) {
+                    throw createGoogleSignupConflict();
+                }
+
+                const userInsert = await transaction.run(
+                    `INSERT INTO users (username, permissions, youth_id, created_at)
+                     VALUES (?, '[]', ?, ?)`,
+                    [qrCode, memberInsert.lastID, getManilaTime()]
+                );
+
+                if (!userInsert.lastID) {
+                    throw createGoogleSignupConflict();
+                }
+                return Object.freeze({
+                    userId: userInsert.lastID,
+                    youthId: memberInsert.lastID,
+                    username: qrCode
+                });
+            }
+        });
+        if (!accepted.accepted) throw new Error('Legal acceptance was not recorded');
+
+        const created = accepted.result;
+        const newMember = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [created.youthId]);
+        if (!newMember) throw new Error('Provisioned member unavailable');
+
+        let growthJourney = null;
+        let growthJourneyWarning = null;
+
+        try {
+            growthJourney =
+                await GrowthJourney.recordAccountCreated(
+                    db,
+                    created.youthId,
+                    {
+                        sourceTable: 'users',
+                        sourceId: created.userId,
+                        sourceKey:
+                            `account-created:youth:${created.youthId}`,
+                        occurredAt:
+                            newMember.created_at ||
+                            getManilaTime(),
+                        actor: created.username,
+                        details: {
+                            method: 'google_signup'
                         }
                     }
                 );
+
+            await processJourneyReadyNotification({
+                youthId:
+                    created.youthId,
+                phaseProgress:
+                    growthJourney &&
+                    growthJourney.encounter,
+                source:
+                    'google_account_created'
+            });
+        } catch (growthErr) {
+            growthJourneyWarning =
+                'Your account was created, but your Growth Journey could not be started automatically.';
+
+            console.error(
+                '[Growth Journey] Google account-start hook failed:',
+                growthErr
+            );
+        }
+
+        clearPendingGoogleSignup(req, res);
+        await recordLegalAcceptanceActivity(await legalAcceptanceStore.getCurrentAcceptance(created.userId));
+        logActivity('System', 'NEW_MEMBER_CREATED', 'Auto-provisioned a new member via Google');
+        return sendAuthenticatedLogin(
+            req,
+            res,
+            { userId: created.userId, youthId: created.youthId, username: created.username },
+            {
+                success: true,
+                username: created.username,
+                permissions: [],
+                member: sanitizeMemberForAuth(newMember),
+                is_admin: false,
+                is_new: true,
+                growthJourney,
+                growthJourneyWarning
+            }
+        );
+    } catch (error) {
+        if (error && error.code === 'GOOGLE_SIGNUP_IDENTITY_CONFLICT') {
+            clearPendingGoogleSignup(req, res);
+            return res.status(409).json({
+                success: false,
+                error: 'This Google identity is already connected. Please continue with Google again.'
+            });
+        }
+        console.error('Google account setup database operation failed');
+        return res.status(500).json({ success: false, error: 'Unable to complete Google account setup.' });
+    }
+});
+
+function sendNoStoreJson(res, status, body) {
+    if (!res.hasHeader('Cache-Control')) res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    return res.status(status).json(body);
+}
+
+function auditRejectedAccountClaimPreview(req) {
+    const clientAddress = getRecoveryClientAddress(req);
+    if (accountClaimPreviewAuditLimiter.check({ ip: clientAddress, subject: null })) {
+        logActivity('Anonymous', 'ACCOUNT_CLAIM_PREVIEW_REJECTED', 'Invalid or inactive account claim preview');
+    }
+}
+
+function createAccountClaimTargetConflict(reason = 'ACCOUNT_CLAIM_TARGET_CONFLICT') {
+    return Object.assign(new Error('Account claim target is not claimable'), { code: reason });
+}
+
+function accountHasClaimAttestation(account) {
+    return Boolean(account && (
+        account.account_claimed_at !== null ||
+        account.account_claim_method !== null ||
+        account.account_claim_token_id !== null
+    ));
+}
+
+async function inspectAccountClaimTarget(youthId, database = null) {
+    const reader = database || Object.freeze({
+        get: (sql, params = []) => googleAuthDatabaseGet(sql, params),
+        all: (sql, params = []) => googleAuthDatabaseAll(sql, params)
+    });
+    const member = await reader.get(
+        'SELECT id, name, qr_code, google_id, email FROM youth WHERE id = ?',
+        [youthId]
+    );
+    if (!member) return Object.freeze({ status: 'missing', member: null, account: null });
+
+    const accounts = await reader.all(
+        `SELECT id, username, permissions, youth_id, account_claimed_at,
+                account_claim_method, account_claim_token_id
+         FROM users WHERE youth_id = ? ORDER BY id ASC LIMIT 2`,
+        [youthId]
+    );
+    if (accounts.length > 1) {
+        return Object.freeze({ status: 'conflict', member, account: null });
+    }
+    if (accounts.length === 0) {
+        return Object.freeze({ status: 'needs_account', member, account: null });
+    }
+    const account = accounts[0];
+    if (typeof account.username !== 'string' || !account.username.trim()) {
+        return Object.freeze({ status: 'conflict', member, account: null });
+    }
+    if (accountHasClaimAttestation(account)) {
+        return Object.freeze({ status: 'claimed', member, account });
+    }
+    return Object.freeze({ status: 'claimable', member, account });
+}
+
+function requireClaimableAccountTarget(state) {
+    if (!state || state.status !== 'claimable' || !state.member || !state.account) {
+        throw createAccountClaimTargetConflict(
+            state && state.status === 'claimed'
+                ? 'ACCOUNT_CLAIM_ALREADY_CLAIMED'
+                : 'ACCOUNT_CLAIM_TARGET_CONFLICT'
+        );
+    }
+    return state;
+}
+
+function checkAccountClaimActivationLimit(req, res) {
+    const token = req.body && typeof req.body.token === 'string' ? req.body.token : null;
+    const allowed = accountClaimActivationLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: token && /^[A-Za-z0-9_-]{43}$/.test(token) ? token : null
+    });
+    if (allowed) return true;
+    res.setHeader('Retry-After', String(15 * 60));
+    sendNoStoreJson(res, 429, {
+        success: false,
+        error: 'Too many account connection attempts. Please try again later.'
+    });
+    return false;
+}
+
+function rejectPublicAccountClaim(res) {
+    return sendNoStoreJson(res, 400, {
+        success: false,
+        error: 'This account invitation is invalid or cannot be completed.'
+    });
+}
+
+function setAccountClaimResponsePrivacy(req, res, next) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    next();
+}
+
+app.use('/api/admin/account-claims', setAccountClaimResponsePrivacy);
+app.use('/api/account-claim', setAccountClaimResponsePrivacy);
+app.use('/api/admin/account-recovery', setAccountClaimResponsePrivacy);
+app.use('/api/account-recovery', setAccountClaimResponsePrivacy);
+
+app.post('/api/admin/account-claims', requirePermission('access_permissions'), async (req, res) => {
+    const youthId = normalizeCanonicalId(req.body && req.body.youth_id);
+    const actorUserId = normalizeCanonicalId(req.auth && req.auth.userId);
+    if (!youthId) {
+        return sendNoStoreJson(res, 400, { success: false, error: 'A valid member ID is required.' });
+    }
+    if (!actorUserId) return sendForbidden(res);
+
+    const publicOrigin = validatePublicOrigin(process.env.KOINONIA_PUBLIC_ORIGIN);
+    if (!publicOrigin) {
+        return sendNoStoreJson(res, 503, { success: false, error: 'Account claim issuance is unavailable.' });
+    }
+
+    let issued = null;
+    try {
+        const member = await googleAuthDatabaseGet('SELECT id, name FROM youth WHERE id = ?', [youthId]);
+        if (!member) {
+            return sendNoStoreJson(res, 404, { success: false, error: 'Member not found.' });
+        }
+        issued = await accountClaimStore.issue({
+            youthId,
+            createdByUserId: actorUserId,
+            validate: async (claim, transaction) => {
+                const state = await inspectAccountClaimTarget(claim.youthId, transaction);
+                requireClaimableAccountTarget(state);
+            }
+        });
+        const claimUrl = `${publicOrigin}/claim#${issued.rawToken}`;
+        const claimQrDataUrl = await QRCode.toDataURL(claimUrl, {
+            type: 'image/png',
+            width: 320,
+            margin: 2,
+            errorCorrectionLevel: 'M'
+        });
+        logActivity(
+            `User ${actorUserId}`,
+            issued.replaced ? 'ACCOUNT_CLAIM_REPLACED' : 'ACCOUNT_CLAIM_ISSUED',
+            `${issued.replaced ? 'Replaced' : 'Issued'} account claim for Member ID ${youthId}`
+        );
+        return sendNoStoreJson(res, 201, {
+            success: true,
+            youth_id: youthId,
+            member_name: member.name,
+            expires_at: issued.expiresAt,
+            claim_url: claimUrl,
+            claim_qr_data_url: claimQrDataUrl
+        });
+    } catch (error) {
+        if (issued) {
+            try {
+                await accountClaimStore.revoke({ youthId, revokedByUserId: actorUserId });
+            } catch (revocationError) {
+                console.error('Unrenderable account claim revocation failed');
+            }
+        }
+        if (error && error.code === 'ACCOUNT_CLAIM_ALREADY_CLAIMED') {
+            return sendNoStoreJson(res, 409, {
+                success: false,
+                error: 'This member already has a connected Community Portal account.',
+                account_status: 'claimed'
+            });
+        }
+        if (error && error.code === 'ACCOUNT_CLAIM_TARGET_CONFLICT') {
+            return sendNoStoreJson(res, 409, {
+                success: false,
+                error: 'This member account needs administrator review before a claim can be issued.',
+                account_status: 'conflict'
+            });
+        }
+        console.error('Account claim issuance failed');
+        return sendNoStoreJson(res, 500, { success: false, error: 'Unable to issue account claim.' });
+    }
+});
+
+app.get('/api/admin/account-claims/:youth_id', requirePermission('access_permissions'), async (req, res) => {
+    const youthId = normalizeCanonicalId(req.params.youth_id);
+    if (!youthId) {
+        return sendNoStoreJson(res, 400, { success: false, error: 'A valid member ID is required.' });
+    }
+    try {
+        const target = await inspectAccountClaimTarget(youthId);
+        if (!target.member) {
+            return sendNoStoreJson(res, 404, { success: false, error: 'Member not found.' });
+        }
+        const claim = await accountClaimStore.getStatus(youthId);
+        const accountStatus = target.status === 'claimable' && claim && claim.status === 'active'
+            ? 'active'
+            : target.status === 'claimable' && claim && ['expired', 'revoked'].includes(claim.status)
+                ? claim.status
+                : target.status;
+        return sendNoStoreJson(res, 200, {
+            success: true,
+            youth_id: youthId,
+            member_name: target.member.name,
+            account_status: accountStatus,
+            claim: claim ? {
+                id: claim.id,
+                status: claim.status,
+                created_at: claim.created_at,
+                expires_at: claim.expires_at,
+                created_by_user_id: claim.created_by_user_id,
+                revoked_at: claim.revoked_at,
+                revoked_by_user_id: claim.revoked_by_user_id,
+                used_at: claim.used_at,
+                consumed_by_user_id: claim.consumed_by_user_id
+            } : null
+        });
+    } catch (error) {
+        console.error('Account claim status lookup failed');
+        return sendNoStoreJson(res, 500, { success: false, error: 'Unable to load account claim status.' });
+    }
+});
+
+app.delete('/api/admin/account-claims/:youth_id', requirePermission('access_permissions'), async (req, res) => {
+    const youthId = normalizeCanonicalId(req.params.youth_id);
+    const actorUserId = normalizeCanonicalId(req.auth && req.auth.userId);
+    if (!youthId) {
+        return sendNoStoreJson(res, 400, { success: false, error: 'A valid member ID is required.' });
+    }
+    if (!actorUserId) return sendForbidden(res);
+
+    try {
+        const member = await googleAuthDatabaseGet('SELECT id FROM youth WHERE id = ?', [youthId]);
+        if (!member) {
+            return sendNoStoreJson(res, 404, { success: false, error: 'Member not found.' });
+        }
+        const result = await accountClaimStore.revoke({
+            youthId,
+            revokedByUserId: actorUserId
+        });
+        if (result.revoked) {
+            logActivity(
+                `User ${actorUserId}`,
+                'ACCOUNT_CLAIM_REVOKED',
+                `Revoked account claim for Member ID ${youthId}`
+            );
+        }
+        return sendNoStoreJson(res, 200, { success: true, revoked: result.revoked });
+    } catch (error) {
+        console.error('Account claim revocation failed');
+        return sendNoStoreJson(res, 500, { success: false, error: 'Unable to revoke account claim.' });
+    }
+});
+
+
+function requireClaimedAccountRecoveryTarget(state) {
+    if (
+        !state ||
+        state.status !== 'claimed' ||
+        !state.member ||
+        !state.account
+    ) {
+        throw Object.assign(
+            new Error('Account recovery target is not recoverable'),
+            { code: 'ACCOUNT_RECOVERY_TARGET_CONFLICT' }
+        );
+    }
+
+    return state;
+}
+
+function rejectPublicAccountRecovery(res) {
+    return sendNoStoreJson(res, 400, {
+        success: false,
+        error: 'This recovery link is invalid or no longer active.'
+    });
+}
+
+app.post(
+    '/api/admin/account-recovery',
+    requirePermission('access_permissions'),
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.body && req.body.youth_id
+            );
+
+        const actorUserId =
+            normalizeCanonicalId(
+                req.auth && req.auth.userId
+            );
+
+        if (!youthId) {
+            return sendNoStoreJson(
+                res,
+                400,
+                {
+                    success: false,
+                    error: 'A valid member ID is required.'
+                }
+            );
+        }
+
+        if (!actorUserId) {
+            return sendForbidden(res);
+        }
+
+        const publicOrigin =
+            validatePublicOrigin(
+                process.env.KOINONIA_PUBLIC_ORIGIN
+            );
+
+        if (!publicOrigin) {
+            return sendNoStoreJson(
+                res,
+                503,
+                {
+                    success: false,
+                    error: 'Account recovery issuance is unavailable.'
+                }
+            );
+        }
+
+        let issued = null;
+
+        try {
+            let validatedTarget = null;
+
+            issued =
+                await accountRecoveryStore.issue({
+                    youthId,
+                    createdByUserId:
+                        actorUserId,
+                    ttlMs:
+                        ACCOUNT_RECOVERY_TOKEN_TTL_MS,
+                    validate:
+                        async (
+                            recovery,
+                            transaction
+                        ) => {
+                            const state =
+                                await inspectAccountClaimTarget(
+                                    recovery.youthId,
+                                    transaction
+                                );
+
+                            validatedTarget =
+                                requireClaimedAccountRecoveryTarget(
+                                    state
+                                );
+                        }
+                });
+
+            if (!validatedTarget) {
+                validatedTarget =
+                    requireClaimedAccountRecoveryTarget(
+                        await inspectAccountClaimTarget(
+                            youthId
+                        )
+                    );
+            }
+
+            const recoveryUrl =
+                `${publicOrigin}/recover-account#${issued.rawToken}`;
+
+            const recoveryQrDataUrl =
+                await QRCode.toDataURL(
+                    recoveryUrl,
+                    {
+                        type: 'image/png',
+                        width: 320,
+                        margin: 2,
+                        errorCorrectionLevel:
+                            'M'
+                    }
+                );
+
+            logActivity(
+                `User ${actorUserId}`,
+                issued.replaced
+                    ? 'ACCOUNT_RECOVERY_REPLACED'
+                    : 'ACCOUNT_RECOVERY_ISSUED',
+                `${
+                    issued.replaced
+                        ? 'Replaced'
+                        : 'Issued'
+                } account recovery for Member ID ${youthId}`
+            );
+
+            return sendNoStoreJson(
+                res,
+                201,
+                {
+                    success: true,
+                    youth_id:
+                        youthId,
+                    member_name:
+                        validatedTarget.member.name,
+                    login_identifier:
+                        validatedTarget.account.username,
+                    expires_at:
+                        issued.expiresAt,
+                    recovery_url:
+                        recoveryUrl,
+                    recovery_qr_data_url:
+                        recoveryQrDataUrl
+                }
+            );
+        } catch (error) {
+            if (issued) {
+                try {
+                    await accountRecoveryStore.revoke({
+                        youthId,
+                        revokedByUserId:
+                            actorUserId
+                    });
+                } catch (revocationError) {
+                    console.error(
+                        'Unrenderable account recovery revocation failed'
+                    );
+                }
+            }
+
+            if (
+                error &&
+                error.code ===
+                    'ACCOUNT_RECOVERY_TARGET_CONFLICT'
+            ) {
+                return sendNoStoreJson(
+                    res,
+                    409,
+                    {
+                        success: false,
+                        error:
+                            'Account Recovery is available only for an already-connected member account that does not have an account conflict.'
+                    }
+                );
+            }
+
+            console.error(
+                'Account recovery issuance failed'
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    error:
+                        'Unable to issue account recovery.'
+                }
+            );
+        }
+    }
+);
+
+app.get(
+    '/api/admin/account-recovery/:youth_id',
+    requirePermission('access_permissions'),
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.params.youth_id
+            );
+
+        if (!youthId) {
+            return sendNoStoreJson(
+                res,
+                400,
+                {
+                    success: false,
+                    error: 'A valid member ID is required.'
+                }
+            );
+        }
+
+        try {
+            const target =
+                await inspectAccountClaimTarget(
+                    youthId
+                );
+
+            if (!target.member) {
+                return sendNoStoreJson(
+                    res,
+                    404,
+                    {
+                        success: false,
+                        error: 'Member not found.'
+                    }
+                );
+            }
+
+            const recovery =
+                await accountRecoveryStore.getStatus(
+                    youthId
+                );
+
+            return sendNoStoreJson(
+                res,
+                200,
+                {
+                    success: true,
+                    youth_id:
+                        youthId,
+                    account_status:
+                        target.status,
+                    recovery:
+                        recovery
+                            ? {
+                                id:
+                                    recovery.id,
+                                status:
+                                    recovery.status,
+                                created_at:
+                                    recovery.created_at,
+                                expires_at:
+                                    recovery.expires_at,
+                                created_by_user_id:
+                                    recovery.created_by_user_id,
+                                revoked_at:
+                                    recovery.revoked_at,
+                                revoked_by_user_id:
+                                    recovery.revoked_by_user_id,
+                                used_at:
+                                    recovery.used_at
+                            }
+                            : null
+                }
+            );
+        } catch (error) {
+            console.error(
+                'Account recovery status lookup failed'
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    error:
+                        'Unable to load account recovery status.'
+                }
+            );
+        }
+    }
+);
+
+app.delete(
+    '/api/admin/account-recovery/:youth_id',
+    requirePermission('access_permissions'),
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.params.youth_id
+            );
+
+        const actorUserId =
+            normalizeCanonicalId(
+                req.auth && req.auth.userId
+            );
+
+        if (!youthId) {
+            return sendNoStoreJson(
+                res,
+                400,
+                {
+                    success: false,
+                    error: 'A valid member ID is required.'
+                }
+            );
+        }
+
+        if (!actorUserId) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const result =
+                await accountRecoveryStore.revoke({
+                    youthId,
+                    revokedByUserId:
+                        actorUserId
+                });
+
+            if (result.revoked) {
+                logActivity(
+                    `User ${actorUserId}`,
+                    'ACCOUNT_RECOVERY_REVOKED',
+                    `Revoked account recovery for Member ID ${youthId}`
+                );
+            }
+
+            return sendNoStoreJson(
+                res,
+                200,
+                {
+                    success: true,
+                    revoked:
+                        result.revoked
+                }
+            );
+        } catch (error) {
+            console.error(
+                'Account recovery revocation failed'
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    error:
+                        'Unable to revoke account recovery.'
+                }
+            );
+        }
+    }
+);
+
+app.post(
+    '/api/account-recovery/preview',
+    async (req, res) => {
+        const rawToken =
+            req.body &&
+            typeof req.body.token === 'string'
+                ? req.body.token
+                : '';
+
+        const allowed =
+            accountRecoveryPreviewLimiter.check({
+                ip:
+                    getRecoveryClientAddress(
+                        req
+                    ),
+                subject:
+                    /^[A-Za-z0-9_-]{43}$/.test(
+                        rawToken
+                    )
+                        ? rawToken
+                        : null
+            });
+
+        if (!allowed) {
+            res.setHeader(
+                'Retry-After',
+                String(15 * 60)
+            );
+
+            return sendNoStoreJson(
+                res,
+                429,
+                {
+                    success: false,
+                    error:
+                        'Too many account recovery attempts. Please try again later.'
+                }
+            );
+        }
+
+        try {
+            const recovery =
+                await accountRecoveryStore.getUsable(
+                    rawToken
+                );
+
+            if (!recovery) {
+                return rejectPublicAccountRecovery(
+                    res
+                );
+            }
+
+            const target =
+                await inspectAccountClaimTarget(
+                    recovery.youthId
+                );
+
+            if (target.status !== 'claimed') {
+                return rejectPublicAccountRecovery(
+                    res
+                );
+            }
+
+            return sendNoStoreJson(
+                res,
+                200,
+                {
+                    success: true,
+                    member: {
+                        name:
+                            target.member.name
+                    },
+                    login_identifier:
+                        target.account.username,
+                    expires_at:
+                        recovery.expiresAt
+                }
+            );
+        } catch (error) {
+            console.error(
+                'Account recovery preview failed'
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    error:
+                        'Unable to preview account recovery.'
+                }
+            );
+        }
+    }
+);
+
+app.post(
+    '/api/account-recovery/complete',
+    async (req, res) => {
+        const rawToken =
+            req.body &&
+            typeof req.body.token === 'string'
+                ? req.body.token
+                : '';
+
+        const password =
+            req.body &&
+            typeof req.body.password === 'string'
+                ? req.body.password
+                : '';
+
+        const tokenIsValid =
+            /^[A-Za-z0-9_-]{43}$/.test(
+                rawToken
+            );
+
+        const passwordIsValid =
+            password.length >= 8 &&
+            password.length <= 128 &&
+            /\S/.test(password);
+
+        const allowed =
+            accountRecoveryCompletionLimiter.check({
+                ip:
+                    getRecoveryClientAddress(
+                        req
+                    ),
+                subject:
+                    tokenIsValid
+                        ? rawToken
+                        : null
+            });
+
+        if (!allowed) {
+            res.setHeader(
+                'Retry-After',
+                String(15 * 60)
+            );
+
+            return sendNoStoreJson(
+                res,
+                429,
+                {
+                    success: false,
+                    error:
+                        'Too many account recovery attempts. Please try again later.'
+                }
+            );
+        }
+
+        if (!tokenIsValid) {
+            return rejectPublicAccountRecovery(
+                res
+            );
+        }
+
+        if (!passwordIsValid) {
+            return sendNoStoreJson(
+                res,
+                400,
+                {
+                    success: false,
+                    error:
+                        'Password must be 8 to 128 characters and contain meaningful content.'
+                }
+            );
+        }
+
+        let consumed;
+
+        try {
+            consumed =
+                await accountRecoveryStore.consumeWithMutation(
+                    {
+                        rawToken
+                    },
+                    async (
+                        recovery,
+                        transaction
+                    ) => {
+                        const target =
+                            requireClaimedAccountRecoveryTarget(
+                                await inspectAccountClaimTarget(
+                                    recovery.youthId,
+                                    transaction
+                                )
+                            );
+
+                        const encodedPassword =
+                            await hashPassword(
+                                password
+                            );
+
+                        const memberUpdated =
+                            await transaction.run(
+                                `UPDATE youth
+                                 SET password = ?
+                                 WHERE id = ?`,
+                                [
+                                    encodedPassword,
+                                    target.member.id
+                                ]
+                            );
+
+                        const accountUpdated =
+                            await transaction.run(
+                                `UPDATE users
+                                 SET password = ?
+                                 WHERE id = ?
+                                   AND youth_id = ?`,
+                                [
+                                    encodedPassword,
+                                    target.account.id,
+                                    target.member.id
+                                ]
+                            );
+
+                        if (
+                            memberUpdated.changes !==
+                                1 ||
+                            accountUpdated.changes !==
+                                1
+                        ) {
+                            throw Object.assign(
+                                new Error(
+                                    'Account recovery credential update rejected'
+                                ),
+                                {
+                                    code:
+                                        'ACCOUNT_RECOVERY_TARGET_CONFLICT'
+                                }
+                            );
+                        }
+
+                        return Object.freeze({
+                            youthId:
+                                target.member.id,
+                            accountId:
+                                target.account.id,
+                            loginIdentifier:
+                                target.account.username
+                        });
+                    }
+                );
+        } catch (error) {
+            if (
+                error &&
+                typeof error.code === 'string' &&
+                error.code.startsWith(
+                    'ACCOUNT_RECOVERY_'
+                )
+            ) {
+                return rejectPublicAccountRecovery(
+                    res
+                );
+            }
+
+            console.error(
+                'Account recovery completion failed'
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    error:
+                        'Unable to recover the account safely. Please try again.'
+                }
+            );
+        }
+
+        if (!consumed) {
+            return rejectPublicAccountRecovery(
+                res
+            );
+        }
+
+        const {
+            youthId,
+            loginIdentifier
+        } = consumed.mutationResult;
+
+        invalidateSessionsForYouth(
+            sessionStore,
+            youthId
+        );
+
+        logActivity(
+            `Member ${youthId}`,
+            'ACCOUNT_RECOVERY_COMPLETED',
+            'Admin-assisted account recovery completed; password replaced and active sessions invalidated'
+        );
+
+        return sendNoStoreJson(
+            res,
+            200,
+            {
+                success: true,
+                login_identifier:
+                    loginIdentifier,
+                message:
+                    'Account recovered successfully. Sign in with your username and new password.'
+            }
+        );
+    }
+);
+
+app.post('/api/account-claim/preview', async (req, res) => {
+    const clientAddress = getRecoveryClientAddress(req);
+    if (!accountClaimPreviewLimiter.check({ ip: clientAddress, subject: null })) {
+        res.setHeader('Retry-After', String(15 * 60));
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            error: 'Too many account claim attempts. Please try again later.'
+        });
+    }
+
+    try {
+        const claim = await accountClaimStore.getUsable(req.body && req.body.token);
+        if (!claim) {
+            auditRejectedAccountClaimPreview(req);
+            return sendNoStoreJson(res, 404, {
+                success: false,
+                error: 'This account claim is invalid or no longer active.'
+            });
+        }
+        const target = await inspectAccountClaimTarget(claim.youthId);
+        if (target.status !== 'claimable') {
+            auditRejectedAccountClaimPreview(req);
+            return sendNoStoreJson(res, 404, {
+                success: false,
+                error: 'This account claim is invalid or no longer active.'
+            });
+        }
+        return sendNoStoreJson(res, 200, {
+            success: true,
+            member: { name: target.member.name },
+            login_identifier: target.account.username
+        });
+    } catch (error) {
+        console.error('Account claim preview failed');
+        return sendNoStoreJson(res, 500, { success: false, error: 'Unable to preview account claim.' });
+    }
+});
+
+async function resolveUsableClaimAccount(rawToken) {
+    const claim = await accountClaimStore.getUsable(rawToken);
+    if (!claim) return null;
+    const target = await inspectAccountClaimTarget(claim.youthId);
+    return target.status === 'claimable'
+        ? Object.freeze({ claim, target })
+        : null;
+}
+
+async function consumeFirstTimeAccountClaim({ rawToken, accountId, method }, mutation) {
+    return accountClaimStore.consumeWithMutation(
+        { rawToken, consumedByUserId: accountId },
+        async (claim, transaction) => {
+            const target = requireClaimableAccountTarget(
+                await inspectAccountClaimTarget(claim.youthId, transaction)
+            );
+            if (target.account.id !== accountId) throw createAccountClaimTargetConflict();
+            const mutationResult = await mutation({ claim, target, transaction });
+            const claimedAt = Date.now();
+            const attested = await transaction.run(
+                `UPDATE users
+                 SET account_claimed_at = ?, account_claim_method = ?, account_claim_token_id = ?
+                 WHERE id = ? AND youth_id = ?
+                   AND account_claimed_at IS NULL
+                   AND account_claim_method IS NULL
+                   AND account_claim_token_id IS NULL`,
+                [claimedAt, method, claim.id, target.account.id, claim.youthId]
+            );
+            if (attested.changes !== 1) throw createAccountClaimTargetConflict();
+            return Object.freeze({
+                userId: target.account.id,
+                youthId: claim.youthId,
+                loginIdentifier: target.account.username,
+                ...mutationResult
+            });
+        }
+    );
+}
+
+function completeFirstTimeAccountClaim(req, res, completion, auditMethod) {
+    invalidateSessionsForYouth(sessionStore, completion.youthId);
+    invalidateSessionsForUser(sessionStore, completion.userId);
+    invalidateAuthorizationSession(req, res);
+    logActivity(
+        `User ${completion.userId}`,
+        'ACCOUNT_CLAIM_ACTIVATED',
+        `Community Portal account activated for Member ID ${completion.youthId} using ${auditMethod}`
+    );
+    return sendNoStoreJson(res, 200, {
+        success: true,
+        login_identifier: completion.loginIdentifier,
+        reauthentication_required: true
+    });
+}
+
+app.post('/api/account-claim/activate-password', async (req, res) => {
+    if (!checkAccountClaimActivationLimit(req, res)) return;
+    const rawToken = req.body && req.body.token;
+    const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+    if (password.length < 8 || password.length > 128 || !/\S/.test(password)) {
+        return sendNoStoreJson(res, 400, {
+            success: false,
+            error: 'Password must be 8 to 128 characters and contain meaningful content.'
+        });
+    }
+
+    try {
+        const resolved = await resolveUsableClaimAccount(rawToken);
+        if (!resolved) return rejectPublicAccountClaim(res);
+        const encodedPassword = await hashPassword(password);
+        const consumed = await consumeFirstTimeAccountClaim({
+            rawToken,
+            accountId: resolved.target.account.id,
+            method: 'claim_password'
+        }, async ({ target, transaction }) => {
+            const memberUpdated = await transaction.run(
+                'UPDATE youth SET password = ? WHERE id = ?',
+                [encodedPassword, target.member.id]
+            );
+            const accountUpdated = await transaction.run(
+                'UPDATE users SET password = ? WHERE id = ? AND youth_id = ?',
+                [encodedPassword, target.account.id, target.member.id]
+            );
+            if (memberUpdated.changes !== 1 || accountUpdated.changes !== 1) {
+                throw createAccountClaimTargetConflict();
+            }
+            return {};
+        });
+        if (!consumed) return rejectPublicAccountClaim(res);
+        return completeFirstTimeAccountClaim(req, res, consumed.mutationResult, 'private password');
+    } catch (error) {
+        if (error && typeof error.code === 'string' && error.code.startsWith('ACCOUNT_CLAIM_')) {
+            return rejectPublicAccountClaim(res);
+        }
+        console.error('Account claim password activation failed');
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            error: 'Unable to connect this account safely. Please try again.'
+        });
+    }
+});
+
+app.post('/api/account-claim/activate-google', async (req, res) => {
+    if (!checkAccountClaimActivationLimit(req, res)) return;
+    const rawToken = req.body && req.body.token;
+    const googleToken = req.body && req.body.google_token;
+    if (typeof googleToken !== 'string' || googleToken.length === 0 || googleToken.length > 8192) {
+        return rejectPublicAccountClaim(res);
+    }
+
+    let resolved;
+    let identity;
+    try {
+        resolved = await resolveUsableClaimAccount(rawToken);
+        if (!resolved) return rejectPublicAccountClaim(res);
+        const ticket = await googleClient.verifyIdToken({
+            idToken: googleToken,
+            audience: '100122228838-c3f4kfv31pakgc0o6vstrrngo8h3uhvn.apps.googleusercontent.com'
+        });
+        identity = validateVerifiedGooglePayload(ticket.getPayload());
+    } catch (error) {
+        return rejectPublicAccountClaim(res);
+    }
+    if (!identity) return rejectPublicAccountClaim(res);
+
+    try {
+        const consumed = await consumeFirstTimeAccountClaim({
+            rawToken,
+            accountId: resolved.target.account.id,
+            method: 'claim_google'
+        }, async ({ target, transaction }) => {
+            const conflictingIdentity = await transaction.get(
+                'SELECT id FROM youth WHERE google_id = ? AND id <> ? LIMIT 1',
+                [identity.googleId, target.member.id]
+            );
+            if (conflictingIdentity) throw createAccountClaimTargetConflict();
+            if (target.member.google_id && target.member.google_id !== identity.googleId) {
+                throw createAccountClaimTargetConflict();
+            }
+
+            const exactEmailMatch = normalizeEmail(target.member.email) === identity.normalizedEmail;
+            const linked = await transaction.run(
+                `UPDATE youth
+                 SET google_id = ?,
+                     profile_picture = CASE
+                         WHEN profile_picture IS NULL OR TRIM(profile_picture) = '' THEN ?
+                         ELSE profile_picture
+                     END,
+                     email_verified = CASE WHEN ? THEN 1 ELSE email_verified END,
+                     email_verified_at = CASE
+                         WHEN ? THEN COALESCE(email_verified_at, ?)
+                         ELSE email_verified_at
+                     END
+                 WHERE id = ? AND (google_id IS NULL OR google_id = '' OR google_id = ?)`,
+                [identity.googleId, identity.picture, exactEmailMatch ? 1 : 0,
+                    exactEmailMatch ? 1 : 0, Date.now(), target.member.id, identity.googleId]
+            );
+            if (linked.changes !== 1) throw createAccountClaimTargetConflict();
+            const confirmed = await transaction.get('SELECT google_id FROM youth WHERE id = ?', [target.member.id]);
+            if (!confirmed || confirmed.google_id !== identity.googleId) {
+                throw createAccountClaimTargetConflict();
+            }
+            return {};
+        });
+        if (!consumed) return rejectPublicAccountClaim(res);
+        return completeFirstTimeAccountClaim(req, res, consumed.mutationResult, 'Google');
+    } catch (error) {
+        if (error && typeof error.code === 'string' && error.code.startsWith('ACCOUNT_CLAIM_')) {
+            return rejectPublicAccountClaim(res);
+        }
+        console.error('Account claim Google activation failed');
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            error: 'Unable to connect this account safely. Please try again.'
+        });
+    }
+});
+
+function createAccountClaimCompletionConflict() {
+    return Object.assign(new Error('Account claim completion rejected'), {
+        code: 'ACCOUNT_CLAIM_IDENTITY_CONFLICT'
+    });
+}
+
+app.post('/api/account-claim/complete', requireAuth, async (req, res) => {
+    const authenticatedUserId = normalizeCanonicalId(req.auth && req.auth.userId);
+    if (!authenticatedUserId) return sendForbidden(res);
+
+    let completed;
+    try {
+        completed = await accountClaimStore.consumeWithMutation(
+            {
+                rawToken: req.body && req.body.token,
+                consumedByUserId: authenticatedUserId
+            },
+            async (claim, transaction) => {
+                const member = await transaction.get('SELECT id FROM youth WHERE id = ?', [claim.youthId]);
+                const account = await transaction.get(
+                    `SELECT id, youth_id, account_claimed_at, account_claim_method,
+                            account_claim_token_id
+                     FROM users WHERE id = ?`,
+                    [authenticatedUserId]
+                );
+                const targetAccounts = await transaction.all(
+                    `SELECT id FROM users WHERE youth_id = ? ORDER BY id ASC LIMIT 2`,
+                    [claim.youthId]
+                );
+                if (!member || !account || targetAccounts.length > 1) {
+                    throw createAccountClaimCompletionConflict();
+                }
+
+                const accountYouthId = normalizeCanonicalId(account.youth_id);
+                if (account.youth_id !== null && accountYouthId === null) {
+                    throw createAccountClaimCompletionConflict();
+                }
+                if (accountYouthId !== null && accountYouthId !== claim.youthId) {
+                    throw createAccountClaimCompletionConflict();
+                }
+                if (targetAccounts.length === 1 && targetAccounts[0].id !== authenticatedUserId) {
+                    throw createAccountClaimCompletionConflict();
+                }
+                if (
+                    account.account_claimed_at !== null ||
+                    account.account_claim_method !== null ||
+                    account.account_claim_token_id !== null
+                ) {
+                    throw createAccountClaimCompletionConflict();
+                }
+
+                const claimedAt = Date.now();
+                const linked = await transaction.run(
+                    `UPDATE users
+                     SET youth_id = ?, account_claimed_at = ?,
+                         account_claim_method = 'claim_token', account_claim_token_id = ?
+                     WHERE id = ?
+                       AND (youth_id IS NULL OR youth_id = ?)
+                       AND account_claimed_at IS NULL
+                       AND account_claim_method IS NULL
+                       AND account_claim_token_id IS NULL`,
+                    [claim.youthId, claimedAt, claim.id, authenticatedUserId, claim.youthId]
+                );
+                if (linked.changes !== 1) throw createAccountClaimCompletionConflict();
+                return Object.freeze({
+                    userId: authenticatedUserId,
+                    youthId: claim.youthId,
+                    claimTokenId: claim.id
+                });
+            }
+        );
+    } catch (error) {
+        if (error && error.code === 'ACCOUNT_CLAIM_IDENTITY_CONFLICT') {
+            return sendNoStoreJson(res, 400, {
+                success: false,
+                error: 'This account claim is invalid or cannot be completed.'
+            });
+        }
+        console.error('Account claim completion failed');
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            error: 'Unable to complete account claim.'
+        });
+    }
+
+    if (!completed) {
+        return sendNoStoreJson(res, 400, {
+            success: false,
+            error: 'This account claim is invalid or cannot be completed.'
+        });
+    }
+
+    const completion = completed.mutationResult;
+    invalidateSessionsForYouth(sessionStore, completion.youthId);
+    invalidateSessionsForUser(sessionStore, completion.userId);
+    invalidateAuthorizationSession(req, res);
+    logActivity(
+        `User ${completion.userId}`,
+        'ACCOUNT_CLAIM_COMPLETED',
+        `Secure account claim completed for Member ID ${completion.youthId}`
+    );
+    return sendNoStoreJson(res, 200, {
+        success: true,
+        reauthentication_required: true
+    });
+});
+
+async function waitForRecoveryMinimumResponse(startedAt) {
+    const remaining = PASSWORD_RECOVERY_MINIMUM_RESPONSE_MS - (Date.now() - startedAt);
+    if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining));
+}
+
+function buildPasswordResetMessage(resetUrl, expiresAt) {
+    return {
+        subject: 'Reset your Fire Of God Ministries Community Portal password',
+        text: [
+            'A password reset was requested for your Fire Of God Ministries Community Portal account.',
+            '',
+            `Reset your password: ${resetUrl}`,
+            '',
+            'This link expires in 60 minutes. If you did not request this, you can ignore this email.'
+        ].join('\n'),
+        html: [
+            '<p>A password reset was requested for your Fire Of God Ministries Community Portal account.</p>',
+            `<p><a href="${resetUrl}">Reset your password</a></p>`,
+            '<p>This link expires in 60 minutes. If you did not request this, you can ignore this email.</p>'
+        ].join(''),
+        deliveryNotAfter: expiresAt,
+        minimumRemainingValidityMs: PASSWORD_RECOVERY_MINIMUM_DELIVERY_VALIDITY_MS
+    };
+}
+
+function buildPasswordChangedMessage() {
+    return {
+        subject: 'Your Fire Of God Ministries Community Portal password was changed',
+        text: [
+            'Your Community Portal password was changed successfully.',
+            '',
+            'If you did not make this change, contact support@fogmin.site immediately.'
+        ].join('\n'),
+        html: [
+            '<p>Your Community Portal password was changed successfully.</p>',
+            '<p>If you did not make this change, contact <a href="mailto:support@fogmin.site">support@fogmin.site</a> immediately.</p>'
+        ].join('')
+    };
+}
+
+function getEmailVerificationDedupeKey(youthId, targetEmail) {
+    const targetDigest = crypto.createHash('sha256')
+        .update('koinonia-email-verification-target-v1\0')
+        .update(targetEmail)
+        .digest('base64url');
+    return `email-verification:${youthId}:${targetDigest}`;
+}
+
+function buildEmailVerificationMessage(verificationUrl, expiresAt) {
+    return {
+        subject: 'Verify your Fire Of God Ministries Community Portal email',
+        text: [
+            'Please confirm the email connected to your Community Portal account.',
+            '',
+            `Verify my email: ${verificationUrl}`,
+            '',
+            'This link expires in 24 hours. If you did not request this, you may ignore it.',
+            'For help, contact support@fogmin.site.'
+        ].join('\n'),
+        html: [
+            '<p>Please confirm the email connected to your Community Portal account.</p>',
+            `<p><a href="${verificationUrl}">Verify my email</a></p>`,
+            '<p>This link expires in 24 hours. If you did not request this, you may ignore it.</p>',
+            '<p>For help, contact <a href="mailto:support@fogmin.site">support@fogmin.site</a>.</p>'
+        ].join(''),
+        deliveryNotAfter: expiresAt,
+        minimumRemainingValidityMs: EMAIL_VERIFICATION_MINIMUM_DELIVERY_VALIDITY_MS
+    };
+}
+
+function buildEmailChangedMessage() {
+    return {
+        subject: 'Your Community Portal email was changed',
+        text: [
+            'The email connected to your Community Portal account was changed.',
+            '',
+            'If you made this change, no action is needed.',
+            'If you did not make this change, contact support@fogmin.site.'
+        ].join('\n'),
+        html: [
+            '<p>The email connected to your Community Portal account was changed.</p>',
+            '<p>If you made this change, no action is needed.</p>',
+            '<p>If you did not make this change, contact <a href="mailto:support@fogmin.site">support@fogmin.site</a>.</p>'
+        ].join('')
+    };
+}
+
+async function revokeUnqueuedAuthToken(tokenId) {
+    if (!Number.isInteger(tokenId) || tokenId <= 0) return;
+    await googleAuthDatabaseRun(
+        `UPDATE auth_one_time_tokens SET revoked_at = ?
+         WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL`,
+        [Date.now(), tokenId]
+    );
+}
+
+async function queueEmailVerification({ youthId, targetEmail }) {
+    const normalizedYouthId = normalizeCanonicalId(youthId);
+    const normalizedTarget = normalizeEmail(targetEmail);
+    if (!normalizedYouthId || !normalizedTarget) {
+        throw Object.assign(new Error('Email verification target is invalid'), {
+            code: 'EMAIL_VERIFICATION_TARGET_INVALID'
+        });
+    }
+    if (!emailRecoveryPublicOrigin || !emailRecoveryOutbox) {
+        throw Object.assign(new Error('Email verification delivery is unavailable'), {
+            code: 'EMAIL_RECOVERY_UNAVAILABLE'
+        });
+    }
+
+    const lockKey = String(normalizedYouthId);
+    if (emailVerificationInFlight.has(lockKey)) return { queued: false, reason: 'REQUEST_IN_PROGRESS' };
+    emailVerificationInFlight.add(lockKey);
+    let issuedTokenId = null;
+    try {
+        const dedupeKey = getEmailVerificationDedupeKey(normalizedYouthId, normalizedTarget);
+        const activeToken = await googleAuthDatabaseGet(
+            `SELECT id FROM auth_one_time_tokens
+             WHERE purpose = 'email_verification' AND youth_id = ? AND target_email = ?
+               AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?
+             ORDER BY id DESC LIMIT 1`,
+            [normalizedYouthId, normalizedTarget, Date.now()]
+        );
+        const activeOutbox = await emailRecoveryOutbox.hasActiveDedupeKey(dedupeKey);
+        if (activeToken && activeOutbox) return { queued: false, reason: 'DUPLICATE_ACTIVE' };
+        if (activeOutbox) {
+            await emailRecoveryOutbox.cancelActiveDedupeKey(dedupeKey, 'EMAIL_SUPERSEDED');
+        }
+
+        const issued = await authTokenStore.issue({
+            purpose: 'email_verification',
+            youthId: normalizedYouthId,
+            email: normalizedTarget,
+            ttlMs: EMAIL_VERIFICATION_TOKEN_TTL_MS
+        });
+        issuedTokenId = issued.id;
+        const verificationUrl = `${emailRecoveryPublicOrigin}/verify-email#${issued.rawToken}`;
+        const queued = await emailRecoveryOutbox.enqueue({
+            recipient: normalizedTarget,
+            messageType: 'email_verification',
+            payload: buildEmailVerificationMessage(verificationUrl, issued.expiresAt),
+            dedupeKey
+        });
+        issuedTokenId = null;
+        return { queued: queued.enqueued, reason: queued.reason || null };
+    } catch (error) {
+        if (issuedTokenId !== null) {
+            try { await revokeUnqueuedAuthToken(issuedTokenId); }
+            catch (revocationError) {
+                console.warn(`[EMAIL] Unqueued verification token revocation failed code=${getSafeEmailRecoveryErrorCode(revocationError)}`);
+            }
+        }
+        throw error;
+    } finally {
+        emailVerificationInFlight.delete(lockKey);
+    }
+}
+
+async function cancelVerificationDelivery(youthId, targetEmail) {
+    const normalizedTarget = normalizeEmail(targetEmail);
+    if (!emailRecoveryOutbox || !normalizeCanonicalId(youthId) || !normalizedTarget) return;
+    await emailRecoveryOutbox.cancelActiveDedupeKey(
+        getEmailVerificationDedupeKey(Number(youthId), normalizedTarget),
+        'EMAIL_SUPERSEDED'
+    );
+}
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+    const startedAt = Date.now();
+    const submittedEmail = req.body && typeof req.body.email === 'string' && req.body.email.length <= 320
+        ? req.body.email
+        : null;
+    const normalizedEmail = normalizeEmail(submittedEmail);
+    const allowed = forgotPasswordLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: normalizedEmail
+    });
+
+    if (allowed && normalizedEmail && emailRecoveryPublicOrigin && emailRecoveryOutbox) {
+        let lockKey = null;
+        let ownsLock = false;
+        let issuedTokenId = null;
+        try {
+            const resolution = await findPasswordRecoveryIdentity(db, normalizedEmail);
+            if (resolution.status === 'ambiguous') {
+                logActivity('System', 'PASSWORD_RESET_REQUEST_AMBIGUOUS', 'Recovery request rejected because identity resolution was ambiguous');
+            } else if (resolution.status === 'eligible') {
+                const { youthId } = resolution.identity;
+                lockKey = String(youthId);
+                const dedupeKey = `password-reset:${youthId}`;
+                if (!passwordRecoveryInFlight.has(lockKey)) {
+                    passwordRecoveryInFlight.add(lockKey);
+                    ownsLock = true;
+                    if (!await emailRecoveryOutbox.hasActiveDedupeKey(dedupeKey)) {
+                        const issued = await authTokenStore.issue({
+                            purpose: 'password_reset',
+                            youthId,
+                            email: normalizedEmail,
+                            ttlMs: PASSWORD_RECOVERY_TOKEN_TTL_MS
+                        });
+                        issuedTokenId = issued.id;
+                        const resetUrl = `${emailRecoveryPublicOrigin}/reset-password#${issued.rawToken}`;
+                        await emailRecoveryOutbox.enqueue({
+                            recipient: normalizedEmail,
+                            messageType: 'password_reset',
+                            payload: buildPasswordResetMessage(resetUrl, issued.expiresAt),
+                            dedupeKey
+                        });
+                        issuedTokenId = null;
+                        logActivity(`Member ${youthId}`, 'PASSWORD_RESET_REQUEST_QUEUED', 'Encrypted password reset email queued');
+                    }
+                }
+            }
+        } catch (error) {
+            if (issuedTokenId !== null) {
+                try {
+                    await googleAuthDatabaseRun(
+                        `UPDATE auth_one_time_tokens SET revoked_at = ?
+                         WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL`,
+                        [Date.now(), issuedTokenId]
+                    );
+                } catch (revocationError) {
+                    console.warn(`[EMAIL] Unqueued reset token revocation failed code=${getSafeEmailRecoveryErrorCode(revocationError)}`);
+                }
+            }
+            console.warn(`[EMAIL] Password reset request failed code=${getSafeEmailRecoveryErrorCode(error, 'PASSWORD_RESET_REQUEST_FAILED')}`);
+        } finally {
+            if (ownsLock) passwordRecoveryInFlight.delete(lockKey);
+        }
+    }
+
+    await waitForRecoveryMinimumResponse(startedAt);
+    return sendNoStoreJson(res, 200, {
+        success: true,
+        message: PASSWORD_RECOVERY_NEUTRAL_MESSAGE
+    });
+});
+
+function rejectInvalidPasswordReset(res) {
+    return sendNoStoreJson(res, 400, { success: false, message: PASSWORD_RESET_INVALID_MESSAGE });
+}
+
+function rejectPasswordResetMutation(code = 'PASSWORD_RESET_REJECTED') {
+    throw Object.assign(new Error('Password reset rejected'), { code });
+}
+
+app.post('/api/auth/reset-password', async (req, res) => {
+    const token = req.body && typeof req.body.token === 'string' ? req.body.token : '';
+    const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+    const tokenIsValid = /^[A-Za-z0-9_-]{43}$/.test(token);
+    const passwordIsValid = password.length >= 8 && password.length <= 128 && /\S/.test(password);
+    const allowed = resetPasswordLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: tokenIsValid ? token : null
+    });
+    if (!allowed) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Too many password reset attempts. Please try again later.'
+        });
+    }
+    if (!tokenIsValid) return rejectInvalidPasswordReset(res);
+    if (!passwordIsValid) {
+        return sendNoStoreJson(res, 400, {
+            success: false,
+            message: 'Password must be 8 to 128 characters and contain meaningful content.'
+        });
+    }
+
+    let consumed;
+    try {
+        consumed = await authTokenStore.consumeWithMutation(
+            { rawToken: token, purpose: 'password_reset' },
+            async (tokenRecord, transaction) => {
+                if (!Number.isInteger(tokenRecord.youthId) || tokenRecord.youthId <= 0) {
+                    rejectPasswordResetMutation();
+                }
+                const member = await transaction.get(
+                    'SELECT id, email, password FROM youth WHERE id = ?',
+                    [tokenRecord.youthId]
+                );
+                const currentEmail = member ? normalizeEmail(member.email) : null;
+                if (!member || !currentEmail || currentEmail !== tokenRecord.targetEmail) {
+                    rejectPasswordResetMutation('PASSWORD_RESET_EMAIL_CHANGED');
+                }
+                const linkedUsers = await transaction.all(
+                    'SELECT id, password FROM users WHERE youth_id = ? ORDER BY id ASC',
+                    [member.id]
+                );
+                const hasLocalCredential = (
+                    typeof member.password === 'string' && member.password.length > 0
+                ) || linkedUsers.some(user => typeof user.password === 'string' && user.password.length > 0);
+                if (!hasLocalCredential) rejectPasswordResetMutation('PASSWORD_RESET_NO_LOCAL_CREDENTIAL');
+
+                const encodedPassword = await hashPassword(password);
+                const memberUpdate = await transaction.run(
+                    'UPDATE youth SET password = ? WHERE id = ?',
+                    [encodedPassword, member.id]
+                );
+                if (memberUpdate.changes !== 1) rejectPasswordResetMutation();
+                await transaction.run(
+                    'UPDATE users SET password = ? WHERE youth_id = ?',
+                    [encodedPassword, member.id]
+                );
+                return { youthId: member.id, normalizedEmail: currentEmail };
+            }
+        );
+    } catch (error) {
+        if (error && typeof error.code === 'string' && error.code.startsWith('PASSWORD_RESET_')) {
+            return rejectInvalidPasswordReset(res);
+        }
+        console.warn(`[EMAIL] Password reset transaction failed code=${getSafeEmailRecoveryErrorCode(error, 'PASSWORD_RESET_TRANSACTION_FAILED')}`);
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            message: 'Unable to reset the password safely. Please try again.'
+        });
+    }
+    if (!consumed) return rejectInvalidPasswordReset(res);
+
+    const { youthId, normalizedEmail } = consumed.mutationResult;
+    invalidateSessionsForYouth(sessionStore, youthId);
+    logActivity(`Member ${youthId}`, 'PASSWORD_RESET_COMPLETED', 'Password reset completed and active member sessions invalidated');
+
+    if (emailRecoveryOutbox) {
+        try {
+            await emailRecoveryOutbox.enqueue({
+                recipient: normalizedEmail,
+                messageType: 'password_changed',
+                payload: buildPasswordChangedMessage(),
+                dedupeKey: `password-changed:${youthId}:${consumed.usedAt}`
+            });
+        } catch (error) {
+            console.warn(`[EMAIL] Password change notice enqueue failed code=${getSafeEmailRecoveryErrorCode(error, 'PASSWORD_NOTICE_QUEUE_FAILED')}`);
+        }
+    } else {
+        console.warn('[EMAIL] Password change notice not queued code=EMAIL_RECOVERY_UNAVAILABLE');
+    }
+
+    return sendNoStoreJson(res, 200, {
+        success: true,
+        message: 'Password changed successfully. Sign in with your new password.'
+    });
+});
+
+app.post('/api/auth/email-verification/request', requireAuth, async (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (youthId === null) return sendForbidden(res);
+    const allowed = emailVerificationRequestLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: String(youthId)
+    });
+    if (!allowed) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Please wait before requesting another verification email.'
+        });
+    }
+
+    try {
+        const member = await googleAuthDatabaseGet(
+            `SELECT id, email, email_verified, pending_email FROM youth WHERE id = ?`,
+            [youthId]
+        );
+        if (!member) return sendAuthenticationRequired(res);
+        const pendingEmail = normalizeEmail(member.pending_email);
+        const currentEmail = normalizeEmail(member.email);
+        const targetEmail = pendingEmail || currentEmail;
+        if (!targetEmail) {
+            return sendNoStoreJson(res, 400, {
+                success: false,
+                message: 'Add a valid email to your profile before requesting verification.'
+            });
+        }
+        if (member.email_verified === 1 && !pendingEmail) {
+            return sendNoStoreJson(res, 200, {
+                success: true,
+                message: EMAIL_VERIFICATION_REQUEST_MESSAGE
+            });
+        }
+        await queueEmailVerification({ youthId, targetEmail });
+        logActivity(`Member ${youthId}`, 'EMAIL_VERIFICATION_REQUESTED', 'Email verification message queued');
+        return sendNoStoreJson(res, 200, {
+            success: true,
+            message: EMAIL_VERIFICATION_REQUEST_MESSAGE
+        });
+    } catch (error) {
+        console.warn(`[EMAIL] Verification request failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_REQUEST_FAILED')}`);
+        return sendNoStoreJson(res, 503, {
+            success: false,
+            message: 'We could not send the verification email right now. Please try again later.'
+        });
+    }
+});
+
+app.post('/api/auth/email-verification/cancel', requireAuth, async (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (youthId === null) return sendForbidden(res);
+    try {
+        const member = await googleAuthDatabaseGet('SELECT pending_email FROM youth WHERE id = ?', [youthId]);
+        if (!member) return sendAuthenticationRequired(res);
+        await authTokenStore.revoke({ youthId, purpose: 'email_verification' });
+        await cancelVerificationDelivery(youthId, member.pending_email);
+        await googleAuthDatabaseRun(
+            `UPDATE youth SET pending_email = NULL, pending_email_requested_at = NULL WHERE id = ?`,
+            [youthId]
+        );
+        logActivity(`Member ${youthId}`, 'EMAIL_CHANGE_CANCELLED', 'Pending email change cancelled');
+        return sendNoStoreJson(res, 200, {
+            success: true,
+            message: 'Your pending email change was cancelled.'
+        });
+    } catch (error) {
+        console.warn(`[EMAIL] Verification cancellation failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_CANCEL_FAILED')}`);
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            message: 'The email change could not be cancelled right now.'
+        });
+    }
+});
+
+function rejectInvalidEmailVerification(res) {
+    return sendNoStoreJson(res, 400, {
+        success: false,
+        message: EMAIL_VERIFICATION_INVALID_MESSAGE
+    });
+}
+
+function rejectEmailVerificationMutation(code = 'EMAIL_VERIFICATION_REJECTED') {
+    throw Object.assign(new Error('Email verification rejected'), { code });
+}
+
+app.post('/api/auth/email-verification/confirm', async (req, res) => {
+    const token = req.body && typeof req.body.token === 'string' ? req.body.token : '';
+    const tokenIsValid = /^[A-Za-z0-9_-]{43}$/.test(token);
+    const allowed = emailVerificationConfirmLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: tokenIsValid ? token : null
+    });
+    if (!allowed) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Too many verification attempts. Please try again later.'
+        });
+    }
+    if (!tokenIsValid) return rejectInvalidEmailVerification(res);
+
+    let consumed;
+    try {
+        consumed = await authTokenStore.consumeWithMutation(
+            { rawToken: token, purpose: 'email_verification' },
+            async (tokenRecord, transaction) => {
+                if (!Number.isInteger(tokenRecord.youthId) || tokenRecord.youthId <= 0) {
+                    rejectEmailVerificationMutation();
+                }
+                const member = await transaction.get(
+                    `SELECT id, email, email_verified, pending_email
+                     FROM youth WHERE id = ?`,
+                    [tokenRecord.youthId]
+                );
+                if (!member) rejectEmailVerificationMutation();
+                const currentEmail = normalizeEmail(member.email);
+                const pendingEmail = normalizeEmail(member.pending_email);
+                const verifiedAt = Date.now();
+
+                if (pendingEmail && tokenRecord.targetEmail === pendingEmail) {
+                    const update = await transaction.run(
+                        `UPDATE youth
+                         SET email = ?, email_verified = 1, email_verified_at = ?,
+                             pending_email = NULL, pending_email_requested_at = NULL
+                         WHERE id = ? AND pending_email = ?`,
+                        [pendingEmail, verifiedAt, member.id, member.pending_email]
+                    );
+                    if (update.changes !== 1) rejectEmailVerificationMutation();
+                    await transaction.run(
+                        `UPDATE auth_one_time_tokens SET revoked_at = ?
+                         WHERE youth_id = ? AND purpose = 'password_reset'
+                           AND used_at IS NULL AND revoked_at IS NULL`,
+                        [verifiedAt, member.id]
+                    );
+                    return {
+                        youthId: member.id,
+                        changedEmail: true,
+                        oldVerifiedEmail: member.email_verified === 1 ? currentEmail : null
+                    };
+                }
+
+                if (!pendingEmail && currentEmail && tokenRecord.targetEmail === currentEmail) {
+                    const update = await transaction.run(
+                        `UPDATE youth SET email_verified = 1, email_verified_at = ? WHERE id = ?`,
+                        [verifiedAt, member.id]
+                    );
+                    if (update.changes !== 1) rejectEmailVerificationMutation();
+                    return { youthId: member.id, changedEmail: false, oldVerifiedEmail: null };
+                }
+
+                rejectEmailVerificationMutation('EMAIL_VERIFICATION_TARGET_MISMATCH');
+            }
+        );
+    } catch (error) {
+        if (error && typeof error.code === 'string' && error.code.startsWith('EMAIL_VERIFICATION_')) {
+            return rejectInvalidEmailVerification(res);
+        }
+        console.warn(`[EMAIL] Verification transaction failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_TRANSACTION_FAILED')}`);
+        return sendNoStoreJson(res, 500, {
+            success: false,
+            message: 'Unable to verify the email safely. Please try again.'
+        });
+    }
+    if (!consumed) return rejectInvalidEmailVerification(res);
+
+    const result = consumed.mutationResult;
+    logActivity(
+        `Member ${result.youthId}`,
+        result.changedEmail ? 'EMAIL_CHANGE_CONFIRMED' : 'EMAIL_VERIFIED',
+        result.changedEmail ? 'Pending email confirmed' : 'Current email confirmed'
+    );
+    if (result.oldVerifiedEmail && emailRecoveryOutbox) {
+        try {
+            await emailRecoveryOutbox.enqueue({
+                recipient: result.oldVerifiedEmail,
+                messageType: 'email_changed',
+                payload: buildEmailChangedMessage(),
+                dedupeKey: `email-changed:${result.youthId}:${consumed.usedAt}`
+            });
+        } catch (error) {
+            console.warn(`[EMAIL] Email change notice enqueue failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_CHANGE_NOTICE_QUEUE_FAILED')}`);
+        }
+    }
+
+    return sendNoStoreJson(res, 200, {
+        success: true,
+        message: result.changedEmail
+            ? 'Your new email is confirmed and connected to your account.'
+            : 'Your email is now verified.'
+    });
+});
+
+/*
+ * Community Spotlight Phase 1B API foundation.
+ *
+ * This is the server-authoritative API layer only.
+ * No campaign is automatically created or enabled here.
+ * No member UI is activated here.
+ * Prayer Covenant actions remain record-only until the dedicated
+ * canonical integration phase.
+ */
+
+function sendCommunitySpotlightJson(res, status, body) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Vary', 'Cookie');
+    return res.status(status).json(body);
+}
+
+function projectCommunitySpotlightCampaignForMember(campaign) {
+    if (!campaign) return null;
+
+    return {
+        id: campaign.id,
+        campaign_key: campaign.campaign_key,
+        version: campaign.version,
+        template_type: campaign.template_type,
+        eyebrow: campaign.eyebrow,
+        title: campaign.title,
+        message: campaign.message,
+        image_url: campaign.image_url,
+        primary_label: campaign.primary_label,
+        primary_action_type: campaign.primary_action_type,
+        primary_action_value: campaign.primary_action_value,
+        secondary_label: campaign.secondary_label,
+        allow_dont_show_again: Boolean(campaign.allow_dont_show_again)
+    };
+}
+
+function projectCommunitySpotlightStateForMember(state) {
+    if (!state) return null;
+
+    return {
+        first_seen_at: state.first_seen_at,
+        last_seen_at: state.last_seen_at,
+        view_count: Number(state.view_count || 0),
+        clicked_at: state.clicked_at,
+        dismissed_at: state.dismissed_at,
+        completed_at: state.completed_at,
+        last_action_at: state.last_action_at
+    };
+}
+
+function getCommunitySpotlightActor(req) {
+    return getCanonicalAuditActor(req) ||
+        (
+            req &&
+            req.auth &&
+            normalizeCanonicalId(req.auth.userId)
+                ? `User ${normalizeCanonicalId(req.auth.userId)}`
+                : 'System'
+        );
+}
+
+function parseCommunitySpotlightCampaignId(value) {
+    return normalizeCanonicalId(value);
+}
+
+function isCommunitySpotlightCampaignActive(campaign, now = getManilaTime()) {
+    if (!campaign) return false;
+    if (Number(campaign.is_enabled) !== 1) return false;
+    if (Number(campaign.is_paused) === 1) return false;
+    if (Number(campaign.is_archived) === 1) return false;
+
+    const current = String(now);
+
+    if (campaign.start_at && String(campaign.start_at) > current) {
+        return false;
+    }
+
+    if (campaign.end_at && String(campaign.end_at) <= current) {
+        return false;
+    }
+
+    return true;
+}
+
+function getCommunitySpotlightMemberState(campaignId, youthId) {
+    return new Promise((resolve, reject) => {
+        db.get(
+            `SELECT *
+             FROM community_spotlight_member_state
+             WHERE campaign_id = ?
+               AND youth_id = ?
+             LIMIT 1`,
+            [campaignId, youthId],
+            (error, row) => error ? reject(error) : resolve(row || null)
+        );
+    });
+}
+
+async function requireCommunitySpotlightLegalAcceptance(req, res, next) {
+    try {
+        const userId =
+            await resolveLegalUserIdForLogin(req && req.auth);
+
+        if (!userId) {
+            return sendCommunitySpotlightJson(res, 428, {
+                success: false,
+                error: 'Legal acceptance is required before Community Spotlight can be used.',
+                legal_acceptance_required: true,
+                terms_version: TERMS_VERSION,
+                privacy_version: PRIVACY_VERSION
+            });
+        }
+
+        const required =
+            await legalAcceptanceStore.requiresCurrentAcceptance(userId);
+
+        if (required) {
+            return sendCommunitySpotlightJson(res, 428, {
+                success: false,
+                error: 'Legal acceptance is required before Community Spotlight can be used.',
+                legal_acceptance_required: true,
+                terms_version: TERMS_VERSION,
+                privacy_version: PRIVACY_VERSION
+            });
+        }
+
+        return next();
+    } catch (error) {
+        console.error(
+            '[Community Spotlight] Legal acceptance check failed'
+        );
+
+        return sendCommunitySpotlightJson(res, 500, {
+            success: false,
+            error: 'Community Spotlight is temporarily unavailable.'
+        });
+    }
+}
+
+function requireCommunitySpotlightMember(req, res, next) {
+    const youthId =
+        normalizeCanonicalId(
+            req &&
+            req.auth &&
+            req.auth.youthId
+        );
+
+    if (!youthId) {
+        return sendCommunitySpotlightJson(res, 403, {
+            success: false,
+            error: 'A member account is required for Community Spotlight.'
+        });
+    }
+
+    req.communitySpotlightYouthId = youthId;
+    return next();
+}
+
+async function loadShownCommunitySpotlightContext(
+    campaignId,
+    youthId,
+    member
+) {
+    const campaign =
+        await CommunitySpotlight.getCampaign(
+            db,
+            campaignId
+        );
+
+    if (!campaign) {
+        return {
+            status: 'not_found',
+            campaign: null,
+            state: null
+        };
+    }
+
+    if (
+        !isCommunitySpotlightCampaignActive(campaign) ||
+        !CommunitySpotlight.audienceEligible(campaign, member)
+    ) {
+        return {
+            status: 'unavailable',
+            campaign,
+            state: null
+        };
+    }
+
+    const state =
+        await getCommunitySpotlightMemberState(
+            campaignId,
+            youthId
+        );
+
+    if (!state || Number(state.view_count || 0) < 1) {
+        return {
+            status: 'not_shown',
+            campaign,
+            state
+        };
+    }
+
+    return {
+        status: 'shown',
+        campaign,
+        state
+    };
+}
+
+function isCommunitySpotlightValidationError(error) {
+    if (!error || typeof error.message !== 'string') {
+        return false;
+    }
+
+    if (
+        error instanceof TypeError ||
+        error instanceof RangeError
+    ) {
+        return true;
+    }
+
+    return /required|invalid|allowed|must|https|min_age|max_age|audience|priority|frequency|action|campaign key/i
+        .test(error.message);
+}
+
+function sendCommunitySpotlightAdminError(
+    res,
+    error,
+    fallback
+) {
+    if (
+        error &&
+        typeof error.code === 'string' &&
+        error.code.startsWith('SQLITE_CONSTRAINT')
+    ) {
+        return sendCommunitySpotlightJson(res, 409, {
+            success: false,
+            error: 'The campaign conflicts with an existing campaign version.'
+        });
+    }
+
+    if (isCommunitySpotlightValidationError(error)) {
+        return sendCommunitySpotlightJson(res, 400, {
+            success: false,
+            error: 'The campaign configuration is invalid.'
+        });
+    }
+
+    console.error(
+        `[Community Spotlight] ${fallback}`,
+        error
+    );
+
+    return sendCommunitySpotlightJson(res, 500, {
+        success: false,
+        error: 'Community Spotlight is temporarily unavailable.'
+    });
+}
+
+async function isCommunitySpotlightCampaignEligibleForMember(
+    campaign,
+    youthId
+) {
+    if (
+        !campaign ||
+        campaign.primary_action_type !== 'prayer_covenant_join'
+    ) {
+        return true;
+    }
+
+    /*
+     * Prayer Covenant invitations are meaningful only when a member
+     * can genuinely opt in. Reuse canonical Growth Journey state;
+     * never infer participation from Spotlight clicks.
+     */
+    try {
+        const onboarding =
+            await GrowthJourney.getDefaultOnboardingStatus(
+                db,
+                youthId
+            );
+
+        if (!onboarding) {
+            return false;
+        }
+
+        if (Boolean(onboarding.paused)) {
+            return false;
+        }
+
+        /*
+         * Any existing canonical enrollment means this is no longer
+         * a join invitation. This covers active/completed members and
+         * safely avoids duplicate or misleading invitations.
+         */
+        if (onboarding.enrollment) {
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        /*
+         * Fail closed for this Prayer Covenant invitation only.
+         * The campaign selector may continue to lower-priority items.
+         */
+        console.error(
+            '[Community Spotlight] Prayer Covenant eligibility check failed',
+            error
+        );
+
+        return false;
+    }
+}
+
+app.get(
+    '/api/community-spotlight/next',
+    requireAuth,
+    requireCommunitySpotlightMember,
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        try {
+            const youthId =
+                req.communitySpotlightYouthId;
+
+            const result =
+                await CommunitySpotlight
+                    .getNextEligibleCampaign(
+                        db,
+                        youthId,
+                        {
+                            now: getManilaTime(),
+                            campaignFilter: campaign =>
+                                isCommunitySpotlightCampaignEligibleForMember(
+                                    campaign,
+                                    youthId
+                                )
+                        }
+                    );
+
+            return sendCommunitySpotlightJson(
+                res,
+                200,
+                {
+                    success: true,
+                    campaign:
+                        result
+                            ? projectCommunitySpotlightCampaignForMember(
+                                result.campaign
+                            )
+                            : null
+                }
+            );
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Next campaign lookup failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'Community Spotlight is temporarily unavailable.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/community-spotlight/:campaignId/impression',
+    requireAuth,
+    requireCommunitySpotlightMember,
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        try {
+            const youthId =
+                req.communitySpotlightYouthId;
+
+            const eligible =
+                await CommunitySpotlight
+                    .getNextEligibleCampaign(
+                        db,
+                        youthId,
+                        {
+                            now: getManilaTime(),
+                            campaignFilter: campaign =>
+                                isCommunitySpotlightCampaignEligibleForMember(
+                                    campaign,
+                                    youthId
+                                )
+                        }
+                    );
+
+            if (
+                !eligible ||
+                Number(eligible.campaign.id) !== campaignId
+            ) {
+                return sendCommunitySpotlightJson(res, 409, {
+                    success: false,
+                    error: 'This campaign is not currently eligible to be shown.'
+                });
+            }
+
+            const state =
+                await CommunitySpotlight
+                    .recordImpression(
+                        db,
+                        campaignId,
+                        youthId,
+                        {
+                            now: getManilaTime()
+                        }
+                    );
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                state:
+                    projectCommunitySpotlightStateForMember(
+                        state
+                    )
+            });
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Impression recording failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'The campaign view could not be recorded.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/community-spotlight/:campaignId/dismiss',
+    requireAuth,
+    requireCommunitySpotlightMember,
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        try {
+            const youthId =
+                req.communitySpotlightYouthId;
+
+            const context =
+                await loadShownCommunitySpotlightContext(
+                    campaignId,
+                    youthId,
+                    req.auth.member
+                );
+
+            if (context.status === 'not_found') {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            if (context.status !== 'shown') {
+                return sendCommunitySpotlightJson(res, 409, {
+                    success: false,
+                    error: 'This campaign is not available for dismissal.'
+                });
+            }
+
+            const permanent =
+                Boolean(
+                    req.body &&
+                    req.body.dont_show_again === true
+                );
+
+            const state =
+                await CommunitySpotlight
+                    .recordDismissal(
+                        db,
+                        campaignId,
+                        youthId,
+                        {
+                            permanent,
+                            now: getManilaTime()
+                        }
+                    );
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                dont_show_again: permanent,
+                state:
+                    projectCommunitySpotlightStateForMember(
+                        state
+                    )
+            });
+        } catch (error) {
+            if (isCommunitySpotlightValidationError(error)) {
+                return sendCommunitySpotlightJson(res, 400, {
+                    success: false,
+                    error: 'This dismissal option is not available for the campaign.'
+                });
+            }
+
+            console.error(
+                '[Community Spotlight] Dismissal recording failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'The campaign dismissal could not be recorded.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/community-spotlight/:campaignId/action',
+    requireAuth,
+    requireCommunitySpotlightMember,
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        try {
+            const youthId =
+                req.communitySpotlightYouthId;
+
+            const context =
+                await loadShownCommunitySpotlightContext(
+                    campaignId,
+                    youthId,
+                    req.auth.member
+                );
+
+            if (context.status === 'not_found') {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            if (context.status !== 'shown') {
+                return sendCommunitySpotlightJson(res, 409, {
+                    success: false,
+                    error: 'This campaign action is not currently available.'
+                });
+            }
+
+            const result =
+                await CommunitySpotlight
+                    .recordAction(
+                        db,
+                        campaignId,
+                        youthId,
+                        {
+                            now: getManilaTime()
+                        }
+                    );
+
+            /*
+             * Spotlight records the member's campaign response only.
+             * Enrollment actions remain owned by their canonical domain
+             * endpoint. For prayer_covenant_join the authenticated member
+             * client explicitly calls the existing Growth Journey join
+             * route after the member presses the CTA.
+             */
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                action: {
+                    type:
+                        result.campaign
+                            .primary_action_type,
+                    value:
+                        result.campaign
+                            .primary_action_value ||
+                        null,
+                    executed: false
+                },
+                state:
+                    projectCommunitySpotlightStateForMember(
+                        result.state
+                    )
+            });
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Action recording failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'The campaign action could not be recorded.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/community-spotlight/:campaignId/complete',
+    requireAuth,
+    requireCommunitySpotlightMember,
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        try {
+            const youthId =
+                req.communitySpotlightYouthId;
+
+            const context =
+                await loadShownCommunitySpotlightContext(
+                    campaignId,
+                    youthId,
+                    req.auth.member
+                );
+
+            if (context.status === 'not_found') {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            if (context.status !== 'shown') {
+                return sendCommunitySpotlightJson(res, 409, {
+                    success: false,
+                    error: 'This campaign cannot be completed from the current state.'
+                });
+            }
+
+            if (!context.state.clicked_at) {
+                return sendCommunitySpotlightJson(res, 409, {
+                    success: false,
+                    error: 'The campaign action must be recorded before completion.'
+                });
+            }
+
+            const state =
+                await CommunitySpotlight
+                    .recordCompletion(
+                        db,
+                        campaignId,
+                        youthId,
+                        {
+                            now: getManilaTime()
+                        }
+                    );
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                state:
+                    projectCommunitySpotlightStateForMember(
+                        state
+                    )
+            });
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Completion recording failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'The campaign completion could not be recorded.'
+            });
+        }
+    }
+);
+
+app.get(
+    '/api/admin/community-spotlight/campaigns',
+    requirePermission('access_communications'),
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        try {
+            const campaigns =
+                await CommunitySpotlight
+                    .listCampaigns(db);
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                campaigns
+            });
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Campaign list failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'Campaigns could not be loaded.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/admin/community-spotlight/campaigns',
+    requireAllPermissions(['access_communications', 'edit_entries']),
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const actor =
+            getCommunitySpotlightActor(req);
+
+        try {
+            const campaign =
+                await CommunitySpotlight
+                    .createCampaign(
+                        db,
+                        req.body &&
+                        typeof req.body === 'object'
+                            ? req.body
+                            : {},
+                        {
+                            actor,
+                            now: getManilaTime()
+                        }
+                    );
+
+            logActivity(
+                actor,
+                'COMMUNITY_SPOTLIGHT_CREATED',
+                `Campaign ${campaign.id} ${campaign.campaign_key} v${campaign.version}`
+            );
+
+            return sendCommunitySpotlightJson(res, 201, {
+                success: true,
+                campaign
+            });
+        } catch (error) {
+            return sendCommunitySpotlightAdminError(
+                res,
+                error,
+                'Campaign creation failed'
+            );
+        }
+    }
+);
+
+app.put(
+    '/api/admin/community-spotlight/campaigns/:campaignId',
+    requireAllPermissions(['access_communications', 'edit_entries']),
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        const actor =
+            getCommunitySpotlightActor(req);
+
+        try {
+            const campaign =
+                await CommunitySpotlight
+                    .updateCampaign(
+                        db,
+                        campaignId,
+                        req.body &&
+                        typeof req.body === 'object'
+                            ? req.body
+                            : {},
+                        {
+                            actor,
+                            now: getManilaTime()
+                        }
+                    );
+
+            if (!campaign) {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            logActivity(
+                actor,
+                'COMMUNITY_SPOTLIGHT_UPDATED',
+                `Campaign ${campaign.id} ${campaign.campaign_key} v${campaign.version}`
+            );
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                campaign
+            });
+        } catch (error) {
+            return sendCommunitySpotlightAdminError(
+                res,
+                error,
+                'Campaign update failed'
+            );
+        }
+    }
+);
+
+app.post(
+    '/api/admin/community-spotlight/campaigns/:campaignId/relaunch',
+    requireAllPermissions(['access_communications', 'edit_entries']),
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        const actor =
+            getCommunitySpotlightActor(req);
+
+        try {
+            const campaign =
+                await CommunitySpotlight
+                    .relaunchCampaign(
+                        db,
+                        campaignId,
+                        req.body &&
+                        typeof req.body === 'object'
+                            ? req.body
+                            : {},
+                        {
+                            actor,
+                            now: getManilaTime()
+                        }
+                    );
+
+            if (!campaign) {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            logActivity(
+                actor,
+                'COMMUNITY_SPOTLIGHT_RELAUNCHED',
+                `Campaign ${campaign.id} ${campaign.campaign_key} v${campaign.version}`
+            );
+
+            return sendCommunitySpotlightJson(res, 201, {
+                success: true,
+                campaign
+            });
+        } catch (error) {
+            return sendCommunitySpotlightAdminError(
+                res,
+                error,
+                'Campaign relaunch failed'
+            );
+        }
+    }
+);
+
+app.get(
+    '/api/admin/community-spotlight/campaigns/:campaignId/analytics',
+    requirePermission('access_communications'),
+    requireCommunitySpotlightLegalAcceptance,
+    async (req, res) => {
+        const campaignId =
+            parseCommunitySpotlightCampaignId(
+                req.params.campaignId
+            );
+
+        if (!campaignId) {
+            return sendCommunitySpotlightJson(res, 400, {
+                success: false,
+                error: 'Invalid campaign.'
+            });
+        }
+
+        try {
+            const analytics =
+                await CommunitySpotlight
+                    .getAnalytics(
+                        db,
+                        campaignId
+                    );
+
+            if (!analytics) {
+                return sendCommunitySpotlightJson(res, 404, {
+                    success: false,
+                    error: 'Campaign not found.'
+                });
+            }
+
+            return sendCommunitySpotlightJson(res, 200, {
+                success: true,
+                analytics
+            });
+        } catch (error) {
+            console.error(
+                '[Community Spotlight] Analytics load failed',
+                error
+            );
+
+            return sendCommunitySpotlightJson(res, 500, {
+                success: false,
+                error: 'Campaign analytics could not be loaded.'
+            });
+        }
+    }
+);
+
+app.get('/api/auth/me', (req, res) => {
+    const activeSession = getValidSession(req);
+    if (!activeSession) {
+        expireSessionCookie(req, res);
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+
+    resolveCanonicalSessionIdentity(activeSession.session, (err, identity) => {
+        if (err) return res.status(500).json({ success: false, error: 'Unable to resolve session' });
+        if (!identity) {
+            sessionStore.delete(activeSession.sessionId);
+            expireSessionCookie(req, res);
+            return res.status(401).json({ success: false, error: 'Invalid session' });
+        }
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json(identity);
+    });
+});
+
+
+// Normalize legacy login field names; credential verification remains centralized below.
+const koinoniaAuthMiddleware = (req, res, next) => {
+    if (req.method === 'POST' && req.body && typeof req.body.username !== 'string') {
+        const legacyUsername = typeof req.body.unique_pass_id === 'string'
+            ? req.body.unique_pass_id
+            : typeof req.body.email === 'string'
+                ? req.body.email
+                : null;
+        if (legacyUsername) req.body.username = legacyUsername;
+    }
+    return next();
+};
+app.use('/api/login', koinoniaAuthMiddleware);
+
+app.post('/api/login', (req, res) => {
+    const username = req.body && typeof req.body.username === 'string' ? req.body.username : '';
+    const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+    const loginAttempt = beginPasswordLoginAttempt(req, username);
+    if (!loginAttempt.allowed) {
+        return sendPasswordLoginRateLimited(res, loginAttempt.retryAfterSeconds);
+    }
+
+    let loginAttemptCompleted = false;
+    const completeLoginAttempt = (succeeded) => {
+        if (loginAttemptCompleted) return;
+        loginAttemptCompleted = true;
+        completePasswordLoginAttempt(loginAttempt, succeeded);
+    };
+    const rejectInvalidCredentials = () => {
+        completeLoginAttempt(false);
+        logActivity(username, 'FAILED_LOGIN', 'Invalid credentials attempt');
+        res.status(401).json({ success: false, message: 'Invalid credentials' });
+    };
+    const rejectLoginUnavailable = () => {
+        completeLoginAttempt(true);
+        return res.status(500).json({ success: false, message: 'Unable to complete sign-in.' });
+    };
+    const finishVerifiedPasswordLogin = ({
+        auditActor,
+        auditDetails,
+        sessionIdentity,
+        responseBody
+    }) => {
+        completeLoginAttempt(true);
+        logActivity(auditActor, 'LOGIN', auditDetails);
+        return sendAuthenticatedLogin(req, res, sessionIdentity, responseBody);
+    };
+
+    db.get(`SELECT * FROM users WHERE username = ? OR username = (SELECT email FROM youth WHERE qr_code = ?)`, [username, username], async (err, user) => {
+        if (!err && user && await verifyPassword(password, user.password)) {
+            if (user.youth_id) {
+                return db.get(`SELECT * FROM youth WHERE id = ?`, [user.youth_id], (memberErr, member) => {
+                    if (memberErr) return rejectLoginUnavailable();
+                    return finishVerifiedPasswordLogin({
+                        auditActor: username,
+                        auditDetails: 'User logged in',
+                        sessionIdentity: { userId: user.id, youthId: user.youth_id, username: user.username },
+                        responseBody: { success: true, username: user.username, permissions: JSON.parse(user.permissions || '[]'), member, is_admin: true }
+                    });
+                });
+            }
+            return finishVerifiedPasswordLogin({
+                auditActor: username,
+                auditDetails: 'User logged in',
+                sessionIdentity: { userId: user.id, youthId: null, username: user.username },
+                responseBody: { success: true, username: user.username, permissions: JSON.parse(user.permissions || '[]'), member: null, is_admin: true }
+            });
+        }
+        db.get(`SELECT * FROM youth WHERE qr_code = ? OR email = ? OR name = ?`, [username, username, username], async (err2, member) => {
+            if (!err2 && member && await verifyPassword(password, member.password)) {
+                return finishVerifiedPasswordLogin({
+                    auditActor: member.name,
+                    auditDetails: 'Member logged into profile',
+                    sessionIdentity: { userId: null, youthId: member.id, username: member.qr_code },
+                    responseBody: { success: true, username: member.qr_code, permissions: [], member, is_admin: false }
+                });
+            }
+            rejectInvalidCredentials();
+        });
+    });
+});
+app.post('/api/logout', (req, res) => {
+    const activeSession = getValidSession(req);
+    const sessionId = getSessionId(req);
+    if (sessionId) sessionStore.delete(sessionId);
+    expireSessionCookie(req, res);
+    const requestedUsername = req.body && req.body.username;
+    logActivity(activeSession ? activeSession.session.username : requestedUsername, 'LOGOUT', 'User logged out');
+    res.json({ success: true });
+});
+
+async function updateYouthProfileWithEmailPolicy(req, res, fields) {
+    const targetId = normalizeCanonicalId(req.params.id);
+    if (targetId === null) return res.status(400).json({ success: false, error: 'Invalid member.' });
+    const existing = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [targetId]);
+    if (!existing) return res.status(404).json({ success: false, error: 'Member not found.' });
+
+    const selfUpdate = isCanonicalSelf(req.auth, targetId);
+    const emailProvided = Object.prototype.hasOwnProperty.call(req.body, 'email');
+    const requestedEmailValue = emailProvided && typeof req.body.email === 'string'
+        ? req.body.email.trim()
+        : emailProvided
+            ? null
+            : existing.email;
+    if (emailProvided && requestedEmailValue === null) {
+        return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+    }
+    const requestedEmail = requestedEmailValue ? normalizeEmail(requestedEmailValue) : null;
+    if (requestedEmailValue && !requestedEmail) {
+        return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+    }
+    const currentEmail = normalizeEmail(existing.email);
+    const emailChanged = requestedEmail !== currentEmail;
+    const previousPendingEmail = normalizeEmail(existing.pending_email);
+
+    if (selfUpdate && emailChanged && !emailVerificationRequestLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: String(targetId)
+    })) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Please wait before requesting another email change.'
+        });
+    }
+
+    const assignments = [];
+    const values = [];
+    for (const [column, value] of Object.entries(fields)) {
+        assignments.push(`${column} = ?`);
+        values.push(value);
+    }
+
+    let pendingEmailChange = false;
+    if (selfUpdate && emailChanged) {
+        if (!requestedEmail) {
+            return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+        }
+        assignments.push('email = ?', 'pending_email = ?', 'pending_email_requested_at = ?');
+        values.push(existing.email, requestedEmail, Date.now());
+        pendingEmailChange = true;
+    } else if (!selfUpdate && emailChanged) {
+        assignments.push(
+            'email = ?',
+            'email_verified = 0',
+            'email_verified_at = NULL',
+            'pending_email = NULL',
+            'pending_email_requested_at = NULL'
+        );
+        values.push(requestedEmail);
+    } else {
+        assignments.push('email = ?');
+        values.push(existing.email);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'profile_picture') && req.body.profile_picture !== undefined) {
+        assignments.push('profile_picture = ?');
+        values.push(req.body.profile_picture);
+    }
+    const passwordChange = await getAuthorizedProfilePasswordChange(req, res);
+    if (!passwordChange) return;
+    if (passwordChange.requested) {
+        assignments.push('password = ?');
+        values.push(passwordChange.encodedPassword);
+    }
+    values.push(targetId);
+
+    try {
+        const updated = await googleAuthDatabaseRun(
+            `UPDATE youth SET ${assignments.join(', ')} WHERE id = ?`,
+            values
+        );
+        if (updated.changes !== 1) throw new Error('Profile update failed');
+        if (passwordChange.requested) {
+            await googleAuthDatabaseRun('UPDATE users SET password = ? WHERE youth_id = ?', [
+                passwordChange.encodedPassword,
+                targetId
+            ]);
+        }
+
+        let verificationQueued = null;
+        if (pendingEmailChange) {
+            await authTokenStore.revoke({ youthId: targetId, purpose: 'email_verification' });
+            await cancelVerificationDelivery(targetId, previousPendingEmail);
+            await cancelVerificationDelivery(targetId, currentEmail);
+            try {
+                await queueEmailVerification({ youthId: targetId, targetEmail: requestedEmail });
+                verificationQueued = true;
+                logActivity(`Member ${targetId}`, 'EMAIL_CHANGE_REQUESTED', 'Pending email change requested');
+            } catch (error) {
+                verificationQueued = false;
+                console.warn(`[EMAIL] Pending email verification queue failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_REQUEST_FAILED')}`);
+            }
+        } else if (!selfUpdate && emailChanged) {
+            await authTokenStore.revoke({ youthId: targetId, purpose: 'email_verification' });
+            await authTokenStore.revoke({ youthId: targetId, purpose: 'password_reset' });
+            await cancelVerificationDelivery(targetId, previousPendingEmail);
+            await cancelVerificationDelivery(targetId, currentEmail);
+            logActivity(`Member ${targetId}`, 'EMAIL_ADMIN_CHANGED', 'Member email changed and verification cleared');
+        }
+
+        logActivity(getCanonicalAuditActor(req), 'UPDATE_PROFILE', `Updated profile details for ID ${targetId}`);
+        const member = await googleAuthDatabaseGet('SELECT * FROM youth WHERE id = ?', [targetId]);
+        const response = {
+            success: true,
+            member: selfUpdate ? sanitizeMemberForAuth(member) : sanitizeMemberForClient(member)
+        };
+        if (pendingEmailChange) {
+            response.email_verification_queued = verificationQueued;
+            response.message = verificationQueued
+                ? 'We sent a confirmation link to your new email. Your current email will stay in place until the new one is confirmed.'
+                : 'Your profile was saved, but we could not send the confirmation email. Please use Resend verification email later.';
+        }
+        return res.json(response);
+    } catch (error) {
+        console.error('Profile update failed');
+        return res.status(500).json({ success: false, error: 'Unable to update profile.' });
+    }
+}
+
+
+/*
+ * BIRTHDAY AGE DERIVATION
+ *
+ * The full birthday is the source of truth for age.
+ *
+ * Both legacy and V37 profile forms still submit an age
+ * field for compatibility, but when a valid birthday is
+ * present the server derives the correct current age in
+ * Asia/Manila and ignores any stale submitted age.
+ *
+ * This also means that changing a birthday after midnight
+ * immediately reconciles age rather than waiting for the
+ * next daily scheduler run.
+ */
+function applyBirthdayDerivedAgeToProfileUpdate(
+    req,
+    res,
+    next
+) {
+    if (
+        req.method !== 'PUT' &&
+        req.method !== 'PATCH'
+    ) {
+        return next();
+    }
+
+    const body =
+        req.body &&
+        typeof req.body === 'object' &&
+        !Array.isArray(req.body)
+            ? req.body
+            : null;
+
+    if (
+        !body ||
+        !Object.prototype
+            .hasOwnProperty.call(
+                body,
+                'birthday'
+            )
+    ) {
+        return next();
+    }
+
+    const birthday =
+        typeof body.birthday === 'string'
+            ? body.birthday.trim()
+            : '';
+
+    /*
+     * Preserve existing legacy behavior when birthday is
+     * intentionally blank. Age can still exist for older
+     * records that do not yet have a recorded DOB.
+     */
+    if (!birthday) {
+        return next();
+    }
+
+    const derivedAge =
+        deriveAgeFromBirthday(
+            birthday,
+            new Date()
+        );
+
+    /*
+     * Invalid birthdays remain for the existing route's
+     * normal validation/error handling. We do not weaken
+     * authentication or expose a new pre-auth error.
+     */
+    if (
+        !Number.isInteger(
+            derivedAge
+        )
+    ) {
+        return next();
+    }
+
+    body.age =
+        derivedAge;
+
+    return next();
+}
+
+
+app.use(
+    [
+        '/api/youth/profile/:id',
+        '/api/youth-v37/profile/:id'
+    ],
+    applyBirthdayDerivedAgeToProfileUpdate
+);
+
+
+app.put('/api/youth/profile/:id', requireSelfOr('edit_entries', req => req.params.id), async (req, res) => {
+    return updateYouthProfileWithEmailPolicy(req, res, {
+        name: req.body.name,
+        age: req.body.age,
+        birthday: req.body.birthday,
+        social_media: req.body.social_media,
+        parents_name: req.body.parents_name,
+        gender: req.body.gender
+    });
+});
+
+app.put('/api/youth/:id/permissions', requireStrongAdmin, (req, res) => {
+    const youthId = parseInt(req.params.id, 10);
+    const permString = JSON.stringify(req.body.permissions || []);
+    const actor = getCanonicalAuditActor(req) || 'System';
+    db.get('SELECT * FROM youth WHERE id = ?', [youthId], (err, youth) => {
+        if (err || !youth) return res.json({ success: false });
+        const targetQr = youth.qr_code || `FOG-MEMBER-${String(youthId).padStart(3, '0')}`;
+        db.get(`SELECT id FROM users WHERE youth_id = ? OR username = ?`, [youthId, targetQr], (err2, existingUser) => {
+            if (existingUser) {
+                db.run(`UPDATE users SET permissions = ?, youth_id = ? WHERE id = ?`, [permString, youthId, existingUser.id], function(err3) { logActivity(actor, 'UPDATE_PERMISSIONS', `Updated permissions for Member ID ${youthId}`); return res.json({ success: true }); });
+            } else {
+                db.run(`INSERT INTO users (username, permissions, youth_id, created_at) VALUES (?, ?, ?, ?)`, [targetQr, permString, youthId, getManilaTime()], function(err4) {
+                    if (err4) {
+                        const safeQr = `FOG-MEMBER-${youthId}-${Date.now()}`;
+                        db.run(`INSERT INTO users (username, permissions, youth_id, created_at) VALUES (?, ?, ?, ?)`, [safeQr, permString, youthId, getManilaTime()], function(err5) { db.run(`UPDATE youth SET qr_code = ? WHERE id = ?`, [safeQr, youthId]); return res.json({ success: true }); });
+                    } else {
+                        if (!youth.qr_code) db.run(`UPDATE youth SET qr_code = ? WHERE id = ?`, [targetQr, youthId]);
+                        logActivity(actor, 'UPDATE_PERMISSIONS', `Created user & assigned permissions for Member ID ${youthId}`);
+                        return res.json({ success: true });
+                    }
+                });
             }
         });
     });
 });
 
-app.get('/api/activity-logs', (req, res) => {
-    db.all(`SELECT * FROM activity_logs ORDER BY id DESC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+app.get('/api/activity-logs', requirePermission('access_activity'), (req, res) => {
+    db.all(
+        `WITH ResolvedActors AS (
+         SELECT
+            a.id,
+            CASE WHEN INSTR(COALESCE(a.username, ''), '@') > 0
+                 THEN '[email identifier]'
+                 ELSE NULLIF(TRIM(a.username), '')
+            END AS actor_identifier,
+            COALESCE(
+                NULLIF(TRIM(qr_member.name), ''),
+                NULLIF(TRIM(account_member.name), ''),
+                NULLIF(TRIM(id_member.name), ''),
+                NULLIF(TRIM(email_member.name), ''),
+                CASE
+                    WHEN a.username IN ('System', 'Anonymous') THEN a.username
+                    WHEN a.username LIKE 'FOG-%' OR a.username LIKE 'Member %' THEN 'Member'
+                    ELSE 'System'
+                END,
+                'System'
+            ) AS actor_display_name,
+            a.action,
+            a.details,
+            a.created_at
+         FROM activity_logs a
+         LEFT JOIN youth qr_member ON qr_member.qr_code = a.username
+         LEFT JOIN (
+             SELECT LOWER(TRIM(username)) AS login_key, MIN(youth_id) AS youth_id,
+                    COUNT(DISTINCT youth_id) AS member_count
+             FROM users
+             WHERE youth_id IS NOT NULL AND NULLIF(TRIM(username), '') IS NOT NULL
+             GROUP BY LOWER(TRIM(username))
+         ) account ON account.login_key = LOWER(TRIM(a.username))
+         LEFT JOIN youth account_member ON account_member.id = account.youth_id
+            AND account.member_count = 1
+         LEFT JOIN youth id_member ON a.username = 'Member ' || id_member.id
+         LEFT JOIN (
+             SELECT LOWER(TRIM(email)) AS email_key, MIN(id) AS youth_id
+             FROM youth
+             WHERE NULLIF(TRIM(email), '') IS NOT NULL
+             GROUP BY LOWER(TRIM(email))
+             HAVING COUNT(*) = 1
+         ) email_account ON email_account.email_key = LOWER(TRIM(a.username))
+            AND INSTR(COALESCE(a.username, ''), '@') > 0
+            AND account.login_key IS NULL
+         LEFT JOIN youth email_member ON email_member.id = email_account.youth_id
+         )
+         SELECT id, actor_identifier, actor_display_name,
+                actor_display_name AS username, action, details, created_at
+         FROM ResolvedActors ORDER BY id DESC`,
+        [],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Unable to load audit logs.' });
+            return res.json(rows || []);
+        }
+    );
+});
+app.get('/api/youth', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const sql = auth
+        ? `SELECT id, name, age, email, mobile, social_media, birthday, parents_name, profile_picture, gender, account_tier, address FROM youth ORDER BY name ASC`
+        : `SELECT id, name FROM youth ORDER BY name ASC`;
+    db.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load member directory.' });
+        const sanitizeMember = auth ? sanitizeMemberForDirectory : sanitizeMemberForPublic;
+        res.json((rows || []).map(sanitizeMember));
     });
 });
+app.get('/api/youth/:id/history', (req, res) => { db.all(`SELECT a.checked_in_at, a.is_walkin, e.name as event_name, e.event_date FROM attendance a JOIN events e ON a.event_id = e.id WHERE a.youth_id = ? ORDER BY a.checked_in_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 
-app.get('/api/youth', (req, res) => {
-    db.all(`SELECT * FROM youth ORDER BY name ASC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
+/*
+ * Canonical leadership-only Directory creation.
+ *
+ * This route intentionally does NOT:
+ * - accept a browser-supplied audit actor
+ * - record legal acceptance
+ * - start Growth Journey
+ * - set a password
+ * - queue email verification
+ *
+ * It creates one Directory identity plus one empty-permission,
+ * claimable account stub. The member personally activates that
+ * account later through the existing account-claim workflow.
+ */
+app.post(
+    '/api/admin/directory/members',
+    requireAllPermissions([
+        'access_directory',
+        'add_entries'
+    ]),
+    async (req, res) => {
+        const actorName =
+            getCanonicalDisplayActor(req);
 
-app.get('/api/youth/:id/history', (req, res) => {
-    const sql = `SELECT a.checked_in_at, a.is_walkin, e.name as event_name, e.event_date FROM attendance a JOIN events e ON a.event_id = e.id WHERE a.youth_id = ? ORDER BY a.checked_in_at DESC`;
-    db.all(sql, [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
+        try {
+            /*
+             * Required lazily so unrelated isolated server fixtures
+             * do not gain another startup dependency.
+             */
+            const DirectoryMemberCreation =
+                require('./lib/directory-member-creation');
 
-app.post('/api/youth', (req, res) => {
+            const created =
+                await DirectoryMemberCreation
+                    .createDirectoryMember(
+                        db,
+                        {
+                            member:
+                                req.body || {},
+
+                            actorName,
+
+                            normalizeEmail,
+
+                            formatMemberCode:
+                                formatFogPassId,
+
+                            now:
+                                getManilaTime
+                        }
+                    );
+
+            return sendNoStoreJson(
+                res,
+                201,
+                {
+                    success: true,
+                    id:
+                        created.id,
+                    youth_id:
+                        created.youth_id,
+                    user_id:
+                        created.user_id,
+                    name:
+                        created.name,
+                    email:
+                        created.email,
+                    qr_code:
+                        created.qr_code,
+                    account_status:
+                        created.account_status,
+                    permissions:
+                        created.permissions,
+                    legal_acceptance_recorded:
+                        false,
+                    growth_started:
+                        false,
+                    email_verification_queued:
+                        false
+                }
+            );
+        } catch (error) {
+            const code =
+                error &&
+                typeof error.code === 'string'
+                    ? error.code
+                    : 'DIRECTORY_MEMBER_CREATE_FAILED';
+
+            if (
+                code ===
+                    'DIRECTORY_MEMBER_EMAIL_EXISTS'
+            ) {
+                return sendNoStoreJson(
+                    res,
+                    409,
+                    {
+                        success: false,
+                        code,
+                        error:
+                            'A member with this email already exists.'
+                    }
+                );
+            }
+
+            const badRequestCodes =
+                new Set([
+                    'DIRECTORY_MEMBER_NAME_REQUIRED',
+                    'DIRECTORY_MEMBER_INVALID_AGE',
+                    'DIRECTORY_MEMBER_INVALID_BIRTHDAY',
+                    'DIRECTORY_MEMBER_INVALID_EMAIL',
+                    'DIRECTORY_MEMBER_FIELD_TOO_LONG',
+                    'DIRECTORY_ACTOR_REQUIRED'
+                ]);
+
+            if (
+                badRequestCodes.has(code)
+            ) {
+                return sendNoStoreJson(
+                    res,
+                    400,
+                    {
+                        success: false,
+                        code,
+                        error:
+                            error &&
+                            error.message
+                                ? error.message
+                                : 'Invalid member information.'
+                    }
+                );
+            }
+
+            console.error(
+                `[DIRECTORY] Secure member creation failed code=${code}`
+            );
+
+            return sendNoStoreJson(
+                res,
+                500,
+                {
+                    success: false,
+                    code:
+                        'DIRECTORY_MEMBER_CREATE_FAILED',
+                    error:
+                        'Unable to create the Directory member.'
+                }
+            );
+        }
+    }
+);
+
+app.post('/api/youth', async (req, res) => {
     const { name, age, email, mobile, social_media, birthday, parents_name, profile_picture, actor } = req.body;
-    db.get(`SELECT MAX(id) as maxId FROM youth`, [], (err, row) => {
+    const normalizedEmail = email ? normalizeEmail(email) : null;
+    if (email && !normalizedEmail) return res.status(400).json({ error: 'Enter a valid email address.' });
+    if (normalizedEmail && !emailRegistrationLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: normalizedEmail
+    })) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Please wait before submitting another registration.'
+        });
+    }
+    try {
+        if (normalizedEmail) {
+            const existingEmail = await googleAuthDatabaseGet(
+                'SELECT id FROM youth WHERE LOWER(TRIM(email)) = ? LIMIT 1',
+                [normalizedEmail]
+            );
+            if (existingEmail) {
+                return res.status(409).json({ error: 'An account with this email already exists.' });
+            }
+        }
+        const row = await googleAuthDatabaseGet('SELECT MAX(id) as maxId FROM youth');
         const nextId = (row && row.maxId ? row.maxId : 0) + 1;
         const qrCode = `FOG-MEMBER-${String(nextId).padStart(3, '0')}`;
-        const defaultUsername = qrCode;
-        const defaultPassword = qrCode;
+        const inserted = await googleAuthDatabaseRun(
+            `INSERT INTO youth
+                (name, age, email, mobile, social_media, birthday, parents_name, qr_code,
+                 profile_picture, email_verified, email_verified_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)`,
+            [name, age, normalizedEmail, mobile, social_media, birthday, parents_name,
+                qrCode, profile_picture || null, getManilaTime()]
+        );
+        const youthId = inserted.lastID;
+        await googleAuthDatabaseRun(
+            `INSERT OR IGNORE INTO users (username, permissions, youth_id, created_at)
+             VALUES (?, '[]', ?, ?)`,
+            [qrCode, youthId, getManilaTime()]
+        );
+        logActivity(actor, 'CREATE_MEMBER', `Registered member (${qrCode})`);
+        let verificationQueued = false;
+        if (normalizedEmail) {
+            try {
+                await queueEmailVerification({ youthId, targetEmail: normalizedEmail });
+                verificationQueued = true;
+                logActivity(`Member ${youthId}`, 'EMAIL_VERIFICATION_REQUESTED', 'Registration verification message queued');
+            } catch (error) {
+                console.warn(`[EMAIL] Registration verification queue failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_REQUEST_FAILED')}`);
+            }
+        }
+        return res.json({ id: youthId, qr_code: qrCode, email_verification_queued: verificationQueued });
+    } catch (error) {
+        console.error('Member registration failed');
+        return res.status(500).json({ error: 'Unable to register the member.' });
+    }
+});
+app.delete('/api/youth/:id', requireAllPermissions(['access_directory', 'delete_entries']), (req, res) => {
+    const actor = getCanonicalAuditActor(req);
+    db.run(`DELETE FROM youth WHERE id=?`, [req.params.id], function (err) {
+        db.run(`DELETE FROM users WHERE youth_id=?`, [req.params.id]);
+        logActivity(actor, 'DELETE_MEMBER', `Deleted member record`);
+        res.json({ deleted: this.changes });
+    });
+});
+app.get('/api/users/list', requirePermission('access_permissions'), (req, res) => { db.all(`SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`, [], (err, rows) => { res.json(rows.map(r => ({ id: r.id, username: r.username, display_name: r.member_name ? `${r.member_name}` : r.username, qr_code: r.member_code || r.username, youth_id: r.youth_id, permissions: r.permissions || '[]' }))); }); });
 
-        db.run(`INSERT INTO youth (name, age, email, mobile, social_media, birthday, parents_name, qr_code, password, profile_picture, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [name, age, email || null, mobile, social_media, birthday, parents_name, qrCode, defaultPassword, profile_picture || null, getManilaTime()],
-            function (err) {
-                if (err) return res.status(500).json({ error: err.message });
-                const youthId = this.lastID;
-                db.run(`INSERT OR IGNORE INTO users (username, password, permissions, youth_id, created_at) VALUES (?, ?, '[]', ?, ?)`, [defaultUsername, defaultPassword, youthId, getManilaTime()]);
-                logActivity(actor, 'CREATE_MEMBER', `Registered member '${name}' (${qrCode})`);
-                res.json({ id: youthId, qr_code: qrCode, email });
+app.post('/api/checkin', requirePermission('access_checkin'), (req, res) => {
+    const {
+        youth_id,
+        event_id,
+        is_walkin,
+        qr_code
+    } = req.body;
+
+    const actor = getCanonicalAuditActor(req);
+
+    const processCheckin = (targetYouthId) => {
+        db.get(
+            `SELECT id
+             FROM attendance
+             WHERE youth_id = ?
+               AND event_id = ?`,
+            [targetYouthId, event_id],
+            (err, row) => {
+                if (err) {
+                    console.error('Check-in lookup failed');
+                    return res.status(500).json({
+                        error: 'Unable to process check-in.'
+                    });
+                }
+
+                if (row) {
+                    return res.status(400).json({
+                        error:
+                            'Member is ALREADY checked in for this event.'
+                    });
+                }
+
+                const checkedInAt = getManilaTime();
+
+                db.run(
+                    `INSERT INTO attendance (
+                        youth_id,
+                        event_id,
+                        is_walkin,
+                        checked_in_at
+                    )
+                    VALUES (?, ?, ?, ?)`,
+                    [
+                        targetYouthId,
+                        event_id,
+                        is_walkin ? 1 : 0,
+                        checkedInAt
+                    ],
+                    async function (insertErr) {
+                        if (insertErr) {
+                            console.error(
+                                'Check-in attendance insert failed'
+                            );
+
+                            return res.status(500).json({
+                                error: 'Unable to record check-in.'
+                            });
+                        }
+
+                        const logId = this.lastID;
+
+                        /*
+                         * Attendance is authoritative.
+                         *
+                         * Growth Journey processing happens only after the
+                         * attendance row has successfully committed.
+                         * A Growth error is logged but must never undo or
+                         * hide a valid attendance check-in.
+                         */
+                        try {
+                            const growthResult =
+                                await GrowthJourney
+                                    .recordEventAttendanceGrowthEvidence(
+                                        db,
+                                        {
+                                            youthId: targetYouthId,
+                                            eventId: event_id,
+                                            attendanceId: logId,
+                                            isWalkin: Boolean(is_walkin),
+                                            occurredAt: checkedInAt,
+                                            actor
+                                        }
+                                    );
+
+                            const phaseTransitions =
+                                growthResult &&
+                                Array.isArray(
+                                    growthResult.phaseTransitions
+                                )
+                                    ? growthResult.phaseTransitions
+                                    : [];
+
+                            for (
+                                const phaseProgress
+                                of phaseTransitions
+                            ) {
+                                await processJourneyReadyNotification({
+                                    youthId:
+                                        targetYouthId,
+                                    phaseProgress,
+                                    source:
+                                        'event_attendance'
+                                });
+                            }
+                        } catch (growthError) {
+                            console.error(
+                                '[Growth Journey] Attendance evidence hook failed:',
+                                growthError &&
+                                growthError.message
+                                    ? growthError.message
+                                    : growthError
+                            );
+                        }
+
+                        db.get(
+                            `SELECT event_points
+                             FROM events
+                             WHERE id = ?`,
+                            [event_id],
+                            (eventErr, evt) => {
+                                const pts =
+                                    (
+                                        evt &&
+                                        evt.event_points !== null
+                                    )
+                                        ? evt.event_points
+                                        : 10;
+
+                                db.get(
+                                    `SELECT id
+                                     FROM pre_registrations
+                                     WHERE youth_id = ?
+                                       AND event_id = ?`,
+                                    [
+                                        targetYouthId,
+                                        event_id
+                                    ],
+                                    (preErr, pre) => {
+                                        const preRegBonus =
+                                            pre
+                                                ? Math.floor(
+                                                    pts * 0.5
+                                                )
+                                                : 0;
+
+                                        const finalPts =
+                                            pts + preRegBonus;
+
+                                        awardPoints(
+                                            targetYouthId,
+                                            'event',
+                                            finalPts,
+                                            actor,
+                                            pre
+                                                ? 'Event Check-In + Pre-Reg Bonus'
+                                                : 'Event Check-In'
+                                        );
+
+                                        db.get(
+                                            `SELECT name
+                                             FROM youth
+                                             WHERE id = ?`,
+                                            [targetYouthId],
+                                            (nameErr, youth) => {
+                                                res.json({
+                                                    success: true,
+                                                    member_name:
+                                                        youth
+                                                            ? youth.name
+                                                            : 'Member',
+                                                    youth_id:
+                                                        targetYouthId,
+                                                    log_id: logId,
+                                                    points: finalPts
+                                                });
+                                            }
+                                        );
+                                    }
+                                );
+                            }
+                        );
+                    }
+                );
+            }
+        );
+    };
+
+    if (qr_code) {
+        db.get(
+            `SELECT id
+             FROM youth
+             WHERE qr_code = ?`,
+            [qr_code],
+            (err, row) => {
+                if (err) {
+                    return res.status(500).json({
+                        error: 'Unable to process QR check-in.'
+                    });
+                }
+
+                if (!row) {
+                    return res.status(404).json({
+                        error: 'Invalid QR Pass Code.'
+                    });
+                }
+
+                processCheckin(row.id);
+            }
+        );
+
+        return;
+    }
+
+    if (youth_id) {
+        processCheckin(youth_id);
+        return;
+    }
+
+    return res.status(400).json({
+        error: 'Missing youth identifier for check-in.'
+    });
+});
+
+app.get('/api/attendance/logs', requirePermission('access_attendance'), (req, res) => {
+    db.all(
+        `SELECT
+            a.id,
+            a.checked_in_at,
+            a.is_walkin,
+            COALESCE(NULLIF(TRIM(y.name), ''), 'Unknown member (ID ' || a.youth_id || ')') AS member_name,
+            COALESCE(NULLIF(TRIM(e.name), ''), 'Unknown event (ID ' || a.event_id || ')') AS event_name,
+            a.youth_id,
+            a.event_id,
+            CASE WHEN y.id IS NULL OR e.id IS NULL THEN 1 ELSE 0 END AS has_missing_reference
+         FROM attendance a
+         LEFT JOIN youth y ON a.youth_id = y.id
+         LEFT JOIN events e ON a.event_id = e.id
+         ORDER BY a.checked_in_at DESC, a.id DESC`,
+        [],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Unable to load attendance logs.' });
+            return res.json(rows || []);
+        }
+    );
+});
+app.put('/api/attendance/:id', requireAllPermissions(['access_attendance', 'edit_entries']), (req, res) => { db.run(`UPDATE attendance SET checked_in_at = ?, is_walkin = ? WHERE id = ?`, [req.body.checked_in_at, req.body.is_walkin ? 1 : 0, req.params.id], function (err) { res.json({ updated: this.changes }); }); });
+app.delete('/api/attendance/:id', requireAllPermissions(['access_attendance', 'delete_entries']), (req, res) => { db.run(`DELETE FROM attendance WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
+
+const requireGrowthEventConfiguration = requireAllPermissions(['access_events', 'edit_entries']);
+const GROWTH_EVENT_EVIDENCE_MODES = new Set(['registration', 'attendance', 'event_role', 'completion']);
+const GROWTH_FORMATION_AREAS = new Set(['', 'spiritual', 'community', 'servanthood', 'ministry', 'mission']);
+
+function normalizeGrowthActiveFlag(value, fallback) {
+    if (value === undefined) return fallback;
+    if (value === true || value === 1 || value === '1') return 1;
+    if (value === false || value === 0 || value === '0') return 0;
+    return null;
+}
+
+function normalizeGrowthSeriesFields(body, current = {}) {
+    const seriesKey = String(body.series_key === undefined ? (current.series_key || '') : body.series_key).trim();
+    const name = String(body.name === undefined ? (current.name || '') : body.name).trim();
+    const descriptionValue = body.description === undefined ? current.description : body.description;
+    const description = descriptionValue == null ? null : String(descriptionValue).trim();
+    const audience = String(body.audience === undefined ? (current.audience || 'all') : body.audience).trim();
+    const isActive = normalizeGrowthActiveFlag(body.is_active, current.is_active === undefined ? 1 : current.is_active);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(seriesKey) || seriesKey.length > 100) {
+        return { error: 'Series key must be a lowercase slug.' };
+    }
+    if (!name || name.length > 160) return { error: 'Series name is required.' };
+    if (description && description.length > 2000) return { error: 'Series description is too long.' };
+    if (!['all', 'youth', 'adult'].includes(audience)) return { error: 'Invalid series audience.' };
+    if (isActive === null) return { error: 'Invalid active status.' };
+    return { seriesKey, name, description, audience, isActive };
+}
+
+async function getGrowthMappingRows(sourceColumn, sourceId) {
+    return GrowthJourney.all(
+        db,
+        `SELECT mapping.id, mapping.task_id, mapping.event_id, mapping.series_id,
+                mapping.evidence_mode, mapping.formation_area, mapping.credit_value,
+                mapping.is_active, mapping.created_at,
+                task.task_key, task.title AS task_title, task.evidence_type AS task_evidence_type,
+                phase.phase_key, phase.title AS phase_title, phase.journey_segment
+         FROM growth_event_task_map mapping
+         JOIN growth_tasks task ON task.id = mapping.task_id
+         JOIN growth_journey_phases phase ON phase.id = task.phase_id
+         WHERE mapping.${sourceColumn} = ?
+         ORDER BY phase.phase_order ASC, task.id ASC, mapping.id ASC`,
+        [sourceId]
+    );
+}
+
+async function validateGrowthMappingSource(eventId, seriesId) {
+    if ((eventId !== null) === (seriesId !== null)) {
+        return { status: 400, error: 'Choose exactly one event or event series.' };
+    }
+    if (eventId !== null) {
+        const event = await GrowthJourney.get(db, 'SELECT id FROM events WHERE id = ?', [eventId]);
+        return event ? null : { status: 404, error: 'Event not found.' };
+    }
+    const series = await GrowthJourney.get(db, 'SELECT id FROM growth_event_series WHERE id = ?', [seriesId]);
+    return series ? null : { status: 404, error: 'Event series not found.' };
+}
+
+function normalizeGrowthMappingFields(body, current = {}) {
+    const taskId = normalizeCanonicalId(body.task_id === undefined ? current.task_id : body.task_id);
+    const evidenceMode = String(body.evidence_mode === undefined
+        ? (current.evidence_mode || 'attendance')
+        : body.evidence_mode).trim();
+    const formationArea = String(body.formation_area === undefined
+        ? (current.formation_area || '')
+        : body.formation_area).trim().toLowerCase();
+    const rawCreditValue = body.credit_value === undefined ? (current.credit_value ?? 1) : body.credit_value;
+    const creditValue = Number(rawCreditValue);
+    const isActive = normalizeGrowthActiveFlag(body.is_active, current.is_active === undefined ? 1 : current.is_active);
+    if (!taskId) return { error: 'A valid Growth task is required.' };
+    if (!GROWTH_EVENT_EVIDENCE_MODES.has(evidenceMode)) return { error: 'Invalid evidence mode.' };
+    if (!GROWTH_FORMATION_AREAS.has(formationArea)) return { error: 'Invalid formation area.' };
+    if (!Number.isFinite(creditValue) || creditValue <= 0) return { error: 'Credit value must be positive.' };
+    if (isActive === null) return { error: 'Invalid active status.' };
+    return { taskId, evidenceMode, formationArea, creditValue, isActive };
+}
+
+app.get('/api/admin/growth/tasks', requireGrowthEventConfiguration, async (req, res) => {
+    try {
+        const tasks = await GrowthJourney.all(
+            db,
+            `SELECT task.id, task.task_key, task.title, task.classification,
+                    task.evidence_type, task.audience,
+                    phase.phase_key, phase.title AS phase_title, phase.phase_order,
+                    phase.journey_segment
+             FROM growth_tasks task
+             JOIN growth_journey_phases phase ON phase.id = task.phase_id
+             WHERE task.is_active = 1 AND phase.is_active = 1
+             ORDER BY phase.phase_order ASC, task.id ASC`
+        );
+        return res.json(tasks);
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to load Growth tasks.' });
+    }
+});
+
+app.get('/api/admin/growth/event-series', requireGrowthEventConfiguration, async (req, res) => {
+    try {
+        const series = await GrowthJourney.all(
+            db,
+            `SELECT series.*,
+                    (SELECT COUNT(*) FROM growth_event_series_events assignment
+                     WHERE assignment.series_id = series.id) AS event_count,
+                    (SELECT COUNT(*) FROM growth_event_task_map mapping
+                     WHERE mapping.series_id = series.id) AS mapping_count
+             FROM growth_event_series series
+             ORDER BY series.is_active DESC, series.name COLLATE NOCASE ASC, series.id ASC`
+        );
+        return res.json(series);
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to load event series.' });
+    }
+});
+
+app.post('/api/admin/growth/event-series', requireGrowthEventConfiguration, async (req, res) => {
+    const fields = normalizeGrowthSeriesFields(req.body || {});
+    if (fields.error) return res.status(400).json({ error: fields.error });
+    try {
+        const result = await GrowthJourney.run(
+            db,
+            `INSERT INTO growth_event_series
+                (series_key, name, description, audience, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [fields.seriesKey, fields.name, fields.description, fields.audience, fields.isActive,
+                getManilaTime(), getManilaTime()]
+        );
+        logActivity(getCanonicalAuditActor(req), 'CREATE_GROWTH_EVENT_SERIES', `Created Growth event series ID ${result.lastID}`);
+        return res.status(201).json({ id: result.lastID });
+    } catch (error) {
+        if (error && error.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ error: 'That series key is already in use.' });
+        }
+        return res.status(500).json({ error: 'Unable to create event series.' });
+    }
+});
+
+app.put('/api/admin/growth/event-series/:id', requireGrowthEventConfiguration, async (req, res) => {
+    const seriesId = normalizeCanonicalId(req.params.id);
+    if (!seriesId) return res.status(404).json({ error: 'Event series not found.' });
+    try {
+        const current = await GrowthJourney.get(db, 'SELECT * FROM growth_event_series WHERE id = ?', [seriesId]);
+        if (!current) return res.status(404).json({ error: 'Event series not found.' });
+        const fields = normalizeGrowthSeriesFields(req.body || {}, current);
+        if (fields.error) return res.status(400).json({ error: fields.error });
+        await GrowthJourney.run(
+            db,
+            `UPDATE growth_event_series
+             SET series_key = ?, name = ?, description = ?, audience = ?, is_active = ?, updated_at = ?
+             WHERE id = ?`,
+            [fields.seriesKey, fields.name, fields.description, fields.audience, fields.isActive,
+                getManilaTime(), seriesId]
+        );
+        logActivity(getCanonicalAuditActor(req), 'UPDATE_GROWTH_EVENT_SERIES', `Updated Growth event series ID ${seriesId}`);
+        return res.json({ updated: 1 });
+    } catch (error) {
+        if (error && error.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ error: 'That series key is already in use.' });
+        }
+        return res.status(500).json({ error: 'Unable to update event series.' });
+    }
+});
+
+app.patch('/api/admin/growth/event-series/:id/active', requireGrowthEventConfiguration, async (req, res) => {
+    const seriesId = normalizeCanonicalId(req.params.id);
+    const isActive = normalizeGrowthActiveFlag(req.body && req.body.is_active, null);
+    if (!seriesId) return res.status(404).json({ error: 'Event series not found.' });
+    if (isActive === null) return res.status(400).json({ error: 'Invalid active status.' });
+    try {
+        const result = await GrowthJourney.run(
+            db,
+            'UPDATE growth_event_series SET is_active = ?, updated_at = ? WHERE id = ?',
+            [isActive, getManilaTime(), seriesId]
+        );
+        if (result.changes !== 1) return res.status(404).json({ error: 'Event series not found.' });
+        logActivity(getCanonicalAuditActor(req), isActive ? 'ACTIVATE_GROWTH_EVENT_SERIES' : 'DEACTIVATE_GROWTH_EVENT_SERIES', `Changed Growth event series ID ${seriesId}`);
+        return res.json({ updated: 1, is_active: isActive });
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to change event series status.' });
+    }
+});
+
+app.get('/api/admin/growth/events/:eventId/series', requireGrowthEventConfiguration, async (req, res) => {
+    const eventId = normalizeCanonicalId(req.params.eventId);
+    if (!eventId) return res.status(404).json({ error: 'Event not found.' });
+    try {
+        const event = await GrowthJourney.get(db, 'SELECT id FROM events WHERE id = ?', [eventId]);
+        if (!event) return res.status(404).json({ error: 'Event not found.' });
+        const assignments = await GrowthJourney.all(
+            db,
+            `SELECT series.id, series.series_key, series.name, series.description,
+                    series.audience, series.is_active, assignment.created_at
+             FROM growth_event_series_events assignment
+             JOIN growth_event_series series ON series.id = assignment.series_id
+             WHERE assignment.event_id = ?
+             ORDER BY assignment.id ASC`,
+            [eventId]
+        );
+        return res.json({ series: assignments[0] || null, assignments });
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to load the event series assignment.' });
+    }
+});
+
+app.put('/api/admin/growth/events/:eventId/series', requireGrowthEventConfiguration, async (req, res) => {
+    const eventId = normalizeCanonicalId(req.params.eventId);
+    const rawSeriesId = req.body && req.body.series_id;
+    const seriesId = rawSeriesId === null || rawSeriesId === undefined || rawSeriesId === ''
+        ? null
+        : normalizeCanonicalId(rawSeriesId);
+    if (!eventId) return res.status(404).json({ error: 'Event not found.' });
+    if (rawSeriesId !== null && rawSeriesId !== undefined && rawSeriesId !== '' && !seriesId) {
+        return res.status(400).json({ error: 'Invalid event series.' });
+    }
+    try {
+        const event = await GrowthJourney.get(db, 'SELECT id FROM events WHERE id = ?', [eventId]);
+        if (!event) return res.status(404).json({ error: 'Event not found.' });
+        if (seriesId) {
+            const series = await GrowthJourney.get(db, 'SELECT id FROM growth_event_series WHERE id = ?', [seriesId]);
+            if (!series) return res.status(404).json({ error: 'Event series not found.' });
+        }
+        await GrowthJourney.run(db, 'BEGIN IMMEDIATE');
+        try {
+            await GrowthJourney.run(db, 'DELETE FROM growth_event_series_events WHERE event_id = ?', [eventId]);
+            if (seriesId) {
+                await GrowthJourney.run(
+                    db,
+                    `INSERT INTO growth_event_series_events (series_id, event_id, created_at)
+                     VALUES (?, ?, ?)`,
+                    [seriesId, eventId, getManilaTime()]
+                );
+            }
+            await GrowthJourney.run(db, 'COMMIT');
+        } catch (error) {
+            await GrowthJourney.run(db, 'ROLLBACK').catch(() => {});
+            throw error;
+        }
+        logActivity(getCanonicalAuditActor(req), 'ASSIGN_GROWTH_EVENT_SERIES', seriesId
+            ? `Assigned event ID ${eventId} to Growth event series ID ${seriesId}`
+            : `Removed Growth event series assignment from event ID ${eventId}`);
+        return res.json({ event_id: eventId, series_id: seriesId });
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to save the event series assignment.' });
+    }
+});
+
+app.get('/api/admin/growth/event-series/:seriesId/mappings', requireGrowthEventConfiguration, async (req, res) => {
+    const seriesId = normalizeCanonicalId(req.params.seriesId);
+    if (!seriesId) return res.status(404).json({ error: 'Event series not found.' });
+    try {
+        const series = await GrowthJourney.get(db, 'SELECT id FROM growth_event_series WHERE id = ?', [seriesId]);
+        if (!series) return res.status(404).json({ error: 'Event series not found.' });
+        return res.json(await getGrowthMappingRows('series_id', seriesId));
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to load event series mappings.' });
+    }
+});
+
+app.get('/api/admin/growth/events/:eventId/mappings', requireGrowthEventConfiguration, async (req, res) => {
+    const eventId = normalizeCanonicalId(req.params.eventId);
+    if (!eventId) return res.status(404).json({ error: 'Event not found.' });
+    try {
+        const event = await GrowthJourney.get(db, 'SELECT id FROM events WHERE id = ?', [eventId]);
+        if (!event) return res.status(404).json({ error: 'Event not found.' });
+        const [directMappings, effectiveMappings] = await Promise.all([
+            getGrowthMappingRows('event_id', eventId),
+            GrowthJourney.effectiveGrowthMappingsForEvent(db, eventId)
+        ]);
+        return res.json({ direct_mappings: directMappings, effective_mappings: effectiveMappings });
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to load event Growth mappings.' });
+    }
+});
+
+app.post('/api/admin/growth/event-mappings', requireGrowthEventConfiguration, async (req, res) => {
+    const eventId = normalizeCanonicalId(req.body && req.body.event_id);
+    const seriesId = normalizeCanonicalId(req.body && req.body.series_id);
+    const fields = normalizeGrowthMappingFields(req.body || {});
+    if (fields.error) return res.status(400).json({ error: fields.error });
+    try {
+        const sourceError = await validateGrowthMappingSource(eventId, seriesId);
+        if (sourceError) return res.status(sourceError.status).json({ error: sourceError.error });
+        const task = await GrowthJourney.get(db, 'SELECT id FROM growth_tasks WHERE id = ? AND is_active = 1', [fields.taskId]);
+        if (!task) return res.status(404).json({ error: 'Growth task not found.' });
+        const result = await GrowthJourney.run(
+            db,
+            `INSERT INTO growth_event_task_map
+                (task_id, event_id, series_id, evidence_mode, formation_area, credit_value, is_active, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [fields.taskId, eventId || 0, seriesId || 0, fields.evidenceMode, fields.formationArea,
+                fields.creditValue, fields.isActive, getManilaTime()]
+        );
+        logActivity(getCanonicalAuditActor(req), 'CREATE_GROWTH_EVENT_MAPPING', `Created Growth event mapping ID ${result.lastID}`);
+        return res.status(201).json({ id: result.lastID });
+    } catch (error) {
+        if (error && error.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ error: 'That Growth mapping already exists.' });
+        }
+        return res.status(500).json({ error: 'Unable to create Growth mapping.' });
+    }
+});
+
+app.put('/api/admin/growth/event-mappings/:id', requireGrowthEventConfiguration, async (req, res) => {
+    const mappingId = normalizeCanonicalId(req.params.id);
+    if (!mappingId) return res.status(404).json({ error: 'Growth mapping not found.' });
+    try {
+        const current = await GrowthJourney.get(db, 'SELECT * FROM growth_event_task_map WHERE id = ?', [mappingId]);
+        if (!current) return res.status(404).json({ error: 'Growth mapping not found.' });
+        const fields = normalizeGrowthMappingFields(req.body || {}, current);
+        if (fields.error) return res.status(400).json({ error: fields.error });
+        const task = await GrowthJourney.get(db, 'SELECT id FROM growth_tasks WHERE id = ? AND is_active = 1', [fields.taskId]);
+        if (!task) return res.status(404).json({ error: 'Growth task not found.' });
+        await GrowthJourney.run(
+            db,
+            `UPDATE growth_event_task_map
+             SET task_id = ?, evidence_mode = ?, formation_area = ?, credit_value = ?, is_active = ?
+             WHERE id = ?`,
+            [fields.taskId, fields.evidenceMode, fields.formationArea, fields.creditValue, fields.isActive, mappingId]
+        );
+        logActivity(getCanonicalAuditActor(req), 'UPDATE_GROWTH_EVENT_MAPPING', `Updated Growth event mapping ID ${mappingId}`);
+        return res.json({ updated: 1 });
+    } catch (error) {
+        if (error && error.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ error: 'That Growth mapping already exists.' });
+        }
+        return res.status(500).json({ error: 'Unable to update Growth mapping.' });
+    }
+});
+
+app.delete('/api/admin/growth/event-mappings/:id', requireGrowthEventConfiguration, async (req, res) => {
+    const mappingId = normalizeCanonicalId(req.params.id);
+    if (!mappingId) return res.status(404).json({ error: 'Growth mapping not found.' });
+    try {
+        const result = await GrowthJourney.run(db, 'DELETE FROM growth_event_task_map WHERE id = ?', [mappingId]);
+        if (result.changes !== 1) return res.status(404).json({ error: 'Growth mapping not found.' });
+        logActivity(getCanonicalAuditActor(req), 'DELETE_GROWTH_EVENT_MAPPING', `Deleted Growth event mapping ID ${mappingId}`);
+        return res.json({ deleted: 1 });
+    } catch (error) {
+        return res.status(500).json({ error: 'Unable to delete Growth mapping.' });
+    }
+});
+
+app.get('/api/events', async (req, res) => {
+    db.all(
+        `SELECT id, name, event_date, time_start, venue, photos_url, materials_url,
+                event_points,
+                CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster,
+                1 AS preregistration_available
+         FROM events
+         ORDER BY event_date DESC`,
+        [],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Unable to load events.' });
+            return res.json((rows || []).map(row => projectResponseFields(
+                addEventMediaReferences(row),
+                EVENT_LIST_RESPONSE_FIELDS
+            )));
+        }
+    );
+});
+app.get('/api/events/:id', async (req, res) => {
+    if (!isValidPositiveInteger(req.params.id)) return res.status(404).json({ error: 'Event not found' });
+    const auth = await loadOptionalAuthorizationContext(req);
+    const canViewRestrictedNotes = authorizationHasPermission(auth, 'edit_entries');
+    const sql = `SELECT id, name, event_date, time_start, venue, photos_url, materials_url,
+                        gallery, prereg_info, additional_info, prereg_title, event_points,
+                        CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster,
+                        1 AS preregistration_available,
+                        CASE WHEN prereg_banner IS NOT NULL AND prereg_banner <> '' THEN 1 ELSE 0 END AS has_prereg_banner,
+                        CASE WHEN prereg_bottom_banner IS NOT NULL AND prereg_bottom_banner <> '' THEN 1 ELSE 0 END AS has_prereg_bottom_banner
+                        ${canViewRestrictedNotes ? ', roles_restricted_notes' : ''}
+                 FROM events WHERE id = ?`;
+    db.get(sql, [req.params.id], (err, event) => {
+        if (err) return res.status(500).json({ error: 'Unable to load event.' });
+        if (!event) return res.status(404).json({ error: 'Event not found' });
+        const eventWithMedia = addEventMediaReferences(event);
+        return res.json(canViewRestrictedNotes
+            ? sanitizeEventForStaff(eventWithMedia)
+            : sanitizeEventForPublic(eventWithMedia));
+    });
+});
+app.get('/api/events/:id/analytics', requireAnyPermission(['access_events', 'access_attendance', 'access_checkin']), (req, res) => {
+    const eventId = req.params.id;
+    db.get(
+        `SELECT id, name, event_date, time_start, venue, photos_url, materials_url,
+                gallery, prereg_info, additional_info, prereg_title, event_points,
+                roles_restricted_notes,
+                CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster,
+                CASE WHEN prereg_banner IS NOT NULL AND prereg_banner <> '' THEN 1 ELSE 0 END AS has_prereg_banner,
+                CASE WHEN prereg_bottom_banner IS NOT NULL AND prereg_bottom_banner <> '' THEN 1 ELSE 0 END AS has_prereg_bottom_banner
+        FROM events WHERE id = ?`,
+        [eventId],
+        (err, event) => {
+            if (err) return res.status(500).json({ error: 'Unable to load event analytics.' });
+            if (!event) return res.status(404).json({ error: 'Event not found' });
+            const eventWithMedia = addEventMediaReferences(event);
+            db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
+                const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
+                db.all(`SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM attendance a JOIN youth y ON a.youth_id = y.id WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`, [eventId], (err3, roster) => {
+                    db.all(`SELECT p.youth_id, p.created_at, y.name, y.age, y.email, y.qr_code, y.profile_picture FROM pre_registrations p JOIN youth y ON p.youth_id = y.id WHERE p.event_id = ? ORDER BY p.created_at DESC`, [eventId], (err4, preRegList) => {
+                        const totalTurnout = roster?.length || 0; const walkins = roster.filter(r => r.is_walkin === 1)?.length || 0; const checkedInPreRegs = totalTurnout - walkins; const totalPreRegistered = preRegList?.length || 0;
+                        const eventResponse = authorizationHasPermission(req.auth, 'edit_entries')
+                            ? sanitizeEventForStaff(eventWithMedia)
+                            : sanitizeEventForPublic(eventWithMedia);
+                        res.json({ event: eventResponse, totalDirectory, totalTurnout, turnoutPercentage: totalPreRegistered > 0 ? ((checkedInPreRegs / totalPreRegistered) * 100).toFixed(1) : '0.0', walkins, preReg: checkedInPreRegs, totalPreRegistered, roster, preRegList });
+                    });
+                });
+            });
+        }
+    );
+});
+app.get('/api/events/:id/media/:type', (req, res) => {
+    if (!isValidPositiveInteger(req.params.id)) return res.status(404).send('Media not found');
+    const column = EVENT_MEDIA_COLUMNS[req.params.type];
+    if (!column) return res.status(404).send('Media not found');
+    db.get(`SELECT ${column} AS media FROM events WHERE id = ?`, [req.params.id], (err, event) => {
+        if (err || !event) return res.status(404).send('Media not found');
+        return sendEventMedia(res, event.media);
+    });
+});
+app.get('/api/events/:id/social-preview.png', (req, res) => {
+    if (!isValidPositiveInteger(req.params.id)) return res.status(404).send('Preview not found');
+    db.get('SELECT poster FROM events WHERE id = ?', [req.params.id], async (err, event) => {
+        if (err) return res.status(500).send('Preview unavailable');
+        if (!event) return res.status(404).send('Preview not found');
+        try {
+            const image = await getEventSocialPreview(event.poster);
+            return sendSocialPreview(res, image);
+        } catch (previewError) {
+            if (previewError && previewError.code === 'SOCIAL_PREVIEW_BUSY') {
+                res.setHeader('Retry-After', '1');
+                return res.status(503).send('Preview temporarily unavailable');
+            }
+            return res.status(500).send('Preview unavailable');
+        }
+    });
+});
+app.get('/api/events/:id/poster.jpg', (req, res) => {
+    if (!isValidPositiveInteger(req.params.id)) return res.status(404).send('Media not found');
+    db.get(`SELECT poster, prereg_banner FROM events WHERE id = ?`, [req.params.id], (err, event) => {
+        if (err || !event) return res.status(404).send('Media not found');
+        return sendEventMedia(res, event.poster || event.prereg_banner);
+    });
+});
+app.post('/api/events', requireAllPermissions(['access_events', 'add_entries']), (req, res) => { db.run(`INSERT INTO events (name, event_date, time_start, venue, poster, photos_url, materials_url, event_points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, getManilaTime()], function (err) { res.json({ id: this.lastID }); }); });
+app.put('/api/events/:id', requireAllPermissions(['access_events', 'edit_entries']), (req, res) => { if (req.body.poster !== undefined && req.body.poster !== null) { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, poster=?, photos_url=?, materials_url=?, event_points=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.poster, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, req.params.id], function(err) { res.json({ updated: this.changes }); }); } else { db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, photos_url=?, materials_url=?, event_points=? WHERE id=?`, [req.body.name, req.body.event_date, req.body.time_start, req.body.venue, req.body.photos_url, req.body.materials_url, req.body.event_points || 10, req.params.id], function(err) { res.json({ updated: this.changes }); }); } });
+app.delete('/api/events/:id', requireAllPermissions(['access_events', 'delete_entries']), (req, res) => { db.run(`DELETE FROM events WHERE id=?`, [req.params.id], function (err) { res.json({ deleted: this.changes }); }); });
+app.post('/api/events/:id/prereg-settings', requireAllPermissions(['access_events', 'edit_entries']), (req, res) => {
+    const hasBanner = Object.prototype.hasOwnProperty.call(req.body, 'banner');
+    const hasBottomBanner = Object.prototype.hasOwnProperty.call(req.body, 'bottom_banner');
+    db.run(
+        `UPDATE events
+         SET prereg_banner = CASE WHEN ? = 1 THEN ? ELSE prereg_banner END,
+             prereg_bottom_banner = CASE WHEN ? = 1 THEN ? ELSE prereg_bottom_banner END,
+             prereg_title = ?, prereg_info = ?
+         WHERE id = ?`,
+        [hasBanner ? 1 : 0, req.body.banner, hasBottomBanner ? 1 : 0, req.body.bottom_banner,
+            req.body.title, req.body.info, req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: 'Unable to save pre-registration settings.' });
+            if (this.changes !== 1) return res.status(404).json({ error: 'Event not found.' });
+            return res.json({ success: true, updated: this.changes });
+        }
+    );
+});
+app.get('/api/events/:id/preregs', (req, res) => { db.all(`SELECT youth_id FROM pre_registrations WHERE event_id = ?`, [req.params.id], (err, rows) => { res.json(rows.map(r => r.youth_id)); }); });
+app.post('/api/preregister', (req, res) => { db.run(`INSERT OR IGNORE INTO pre_registrations (event_id, youth_id, created_at) VALUES (?, ?, ?)`, [req.body.event_id, req.body.youth_id, getManilaTime()], function(err) { res.json({ success: true }); }); });
+app.delete('/api/events/:event_id/preregs/:youth_id', requireAllPermissions(['access_events', 'delete_entries']), (req, res) => { db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`, [req.params.event_id, req.params.youth_id], function(err) { res.json({ success: true, deleted: this.changes }); }); });
+
+app.get('/api/ministries', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const canViewRestrictedNotes = authorizationHasPermission(auth, 'edit_entries');
+    const sql = canViewRestrictedNotes
+        ? `SELECT m.id, m.name, m.description, m.restricted_notes, m.logo, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = m.id) as member_count FROM ministries m ORDER BY m.name ASC`
+        : `SELECT m.id, m.name, m.description, m.logo, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = m.id) as member_count FROM ministries m ORDER BY m.name ASC`;
+    db.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load ministries.' });
+        const sanitizeMinistry = canViewRestrictedNotes ? sanitizeMinistryForStaff : sanitizeMinistryForPublic;
+        res.json((rows || []).map(sanitizeMinistry));
+    });
+});
+app.post('/api/ministries', requireAllPermissions(['access_ministries', 'add_entries']), (req, res) => { db.run(`INSERT INTO ministries (name, description, logo, created_at) VALUES (?, ?, ?, ?)`, [req.body.name, req.body.description, req.body.logo, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
+app.put('/api/ministries/:id', requireAllPermissions(['access_ministries', 'edit_entries']), (req, res) => { let sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ? WHERE id = ?`; let params = [req.body.name, req.body.description, req.body.restricted_notes, req.params.id]; if (req.body.logo !== undefined) { sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ?, logo = ? WHERE id = ?`; params = [req.body.name, req.body.description, req.body.restricted_notes, req.body.logo, req.params.id]; } db.run(sql, params, function(err) { res.json({ success: true }); }); });
+app.delete('/api/ministries/:id', requireAllPermissions(['access_ministries', 'delete_entries']), (req, res) => { db.run(`DELETE FROM ministries WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM ministry_members WHERE ministry_id = ?`, [req.params.id]); res.json({ success: true }); }); });
+app.get('/api/ministries/:id/members', requireAuth, (req, res) => { db.all(`SELECT mm.id as mapping_id, mm.role, mm.sub_role, mm.assigned_at, y.id, y.name, y.profile_picture FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id WHERE mm.ministry_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+app.post('/api/ministries/:id/members', requireAllPermissions(['access_ministries', 'add_entries']), (req, res) => {
+    const ministryId = normalizeCanonicalId(req.params.id);
+    const youthId = normalizeCanonicalId(req.body && req.body.youth_id);
+    const role = typeof req.body.role === 'string' && req.body.role.trim() ? req.body.role.trim() : 'Member';
+    const subRole = typeof req.body.sub_role === 'string' ? req.body.sub_role.trim() : '';
+    if (!ministryId || !youthId) return res.status(400).json({ error: 'Invalid ministry assignment.' });
+    const actor = getCanonicalDisplayActor(req) || 'Authorized leader';
+    const timestamp = getManilaTime();
+    db.run(
+        `INSERT INTO ministry_members (ministry_id, youth_id, role, sub_role, assigned_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [ministryId, youthId, role, subRole, timestamp],
+        function(err) {
+            if (err) return res.status(400).json({ error: 'Unable to add ministry member.' });
+            const mappingId = this.lastID;
+            db.run(
+                `INSERT INTO ministry_role_history
+                    (ministry_id, youth_id, role, actor, timestamp, intent_message)
+                 VALUES (?, ?, ?, ?, ?, 'Assigned directly by authorized leadership.')`,
+                [ministryId, youthId, role, actor, timestamp],
+                historyErr => {
+                    if (historyErr) {
+                        return db.run('DELETE FROM ministry_members WHERE id = ?', [mappingId], () => {
+                            res.status(500).json({ error: 'Unable to record ministry assignment history.' });
+                        });
+                    }
+                    logActivity(actor, 'MINISTRY_MEMBER_ASSIGNED', `Assigned Member ID ${youthId} to Ministry ID ${ministryId}`);
+                    return res.json({ success: true, id: mappingId });
+                }
+            );
+        }
+    );
+});
+app.put('/api/ministries/:ministry_id/members/:mapping_id', requireAllPermissions(['access_ministries', 'edit_entries']), (req, res) => {
+    const ministryId = normalizeCanonicalId(req.params.ministry_id);
+    const mappingId = normalizeCanonicalId(req.params.mapping_id);
+    const role = typeof req.body.role === 'string' ? req.body.role.trim() : '';
+    const subRole = typeof req.body.sub_role === 'string' ? req.body.sub_role.trim() : '';
+    if (!ministryId || !mappingId || !role) return res.status(400).json({ error: 'Invalid ministry role update.' });
+    const actor = getCanonicalDisplayActor(req) || 'Authorized leader';
+    db.get(
+        'SELECT youth_id, role FROM ministry_members WHERE id = ? AND ministry_id = ?',
+        [mappingId, ministryId],
+        (lookupErr, member) => {
+            if (lookupErr) return res.status(500).json({ error: 'Unable to load ministry membership.' });
+            if (!member) return res.status(404).json({ error: 'Ministry membership not found.' });
+            const timestamp = getManilaTime();
+            db.run(
+                'UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ? AND ministry_id = ?',
+                [role, subRole, mappingId, ministryId],
+                updateErr => {
+                    if (updateErr) return res.status(500).json({ error: 'Unable to update ministry role.' });
+                    db.run(
+                        `INSERT INTO ministry_role_history
+                            (ministry_id, youth_id, role, actor, timestamp, intent_message)
+                         VALUES (?, ?, ?, ?, ?, ?)`,
+                        [ministryId, member.youth_id, role, actor, timestamp,
+                            `Previous role '${member.role || 'None'}' updated to '${role}'`],
+                        historyErr => {
+                            if (historyErr) return res.status(500).json({ error: 'Role updated but its history could not be recorded.' });
+                            logActivity(actor, 'MINISTRY_ROLE_UPDATED', `Updated Ministry ID ${ministryId} membership ID ${mappingId}`);
+                            return res.json({ success: true });
+                        }
+                    );
+                }
+            );
+        }
+    );
+});
+app.delete('/api/ministries/:ministry_id/members/:mapping_id', requireMinistryMemberDeleteAccess, (req, res) => {
+    let sql = `DELETE FROM ministry_members WHERE id = ? AND ministry_id = ?`;
+    if (req.ministryMemberDeleteMode === 'pending') sql += ` AND role = 'Applicant'`;
+    if (req.ministryMemberDeleteMode === 'owner') sql += ` AND (role IS NULL OR role <> 'Applicant')`;
+    db.run(sql, [req.params.mapping_id, req.params.ministry_id], function(err) {
+        if (err) return res.status(500).json({ error: 'Unable to remove ministry membership.' });
+        if (this.changes === 0) return sendForbidden(res);
+        const target = req.ministryMemberTarget || {};
+        const actor = getCanonicalDisplayActor(req) || 'Authorized member';
+        const timestamp = getManilaTime();
+        return db.run(
+            `INSERT INTO ministry_role_history
+                (ministry_id, youth_id, role, actor, timestamp, intent_message)
+             VALUES (?, ?, 'Removed', ?, ?, ?)`,
+            [req.params.ministry_id, target.youth_id, actor, timestamp,
+                `Removed ministry membership previously recorded as '${target.role || 'Unspecified'}'`],
+            historyErr => {
+                if (historyErr) return res.status(500).json({ error: 'Membership removed but its history could not be recorded.' });
+                logActivity(actor, 'MINISTRY_MEMBER_REMOVED', `Removed Ministry ID ${req.params.ministry_id} membership ID ${req.params.mapping_id}`);
+                return res.json({ success: true });
             }
         );
     });
 });
+app.get('/api/youth/:id/ministries', (req, res) => { db.all(`SELECT mm.id as mapping_id, m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at, mm.is_priority FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
 
-app.delete('/api/youth/:id', (req, res) => {
-    const { actor } = req.body;
-    db.run(`DELETE FROM youth WHERE id=?`, [req.params.id], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        db.run(`DELETE FROM users WHERE youth_id=?`, [req.params.id]);
-        logActivity(actor, 'DELETE_MEMBER', `Deleted member record (ID: ${req.params.id})`);
-        res.json({ deleted: this.changes });
+app.get('/api/events/:id/roles', requireAuth, (req, res) => { db.all(`SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, er.status, y.id, y.name, y.profile_picture FROM event_roles er JOIN youth y ON er.youth_id = y.id WHERE er.event_id = ? ORDER BY er.assigned_at DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+app.post('/api/events/:id/roles', requireAllPermissions(['access_events', 'add_entries']), (req, res) => {
+    const eventId = req.params.id; const { youth_id, role_name, sub_role, actor } = req.body;
+    db.get(`SELECT name, event_date FROM events WHERE id = ?`, [eventId], (err, evt) => {
+        if (!evt) return res.status(404).json({ error: 'Event not found.' });
+        db.get(`SELECT reason FROM blockout_dates WHERE youth_id = ? AND block_date = ?`, [youth_id, evt.event_date], (err, blockout) => {
+            if (blockout) return res.status(400).json({ error: `Cannot schedule! This member has blocked out ${evt.event_date}. Reason: ${blockout.reason || 'Unavailable'}` });
+            db.run(`INSERT INTO event_roles (event_id, youth_id, role_name, sub_role, assigned_at, status) VALUES (?, ?, ?, ?, ?, 'Pending')`, [eventId, youth_id, role_name, sub_role, getManilaTime()], function(err) {
+                pushToUser(youth_id, "📅 Scheduling Invite", `You've been invited to serve as ${role_name} for ${evt.name}. Check your profile to accept!`);
+                res.json({ success: true });
+            });
+        });
     });
 });
+app.post('/api/events/:id/roles-notes', requireAllPermissions(['access_events', 'edit_entries']), (req, res) => { db.run(`UPDATE events SET roles_restricted_notes = ? WHERE id = ?`, [req.body.roles_restricted_notes, req.params.id], function(err) { res.json({ success: true }); }); });
+app.put('/api/events/:event_id/roles/:mapping_id', requireAllPermissions(['access_events', 'edit_entries']), (req, res) => { db.run(`UPDATE event_roles SET role_name = ?, sub_role = ? WHERE id = ?`, [req.body.role_name, req.body.sub_role, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
+app.delete('/api/events/:event_id/roles/:mapping_id', requireResourceOwnerOrAllPermissions('eventRole', ['access_events', 'delete_entries'], req => req.params.mapping_id), (req, res) => { db.run(`DELETE FROM event_roles WHERE id = ?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
+app.get('/api/youth/:id/event_roles', (req, res) => { db.all(`SELECT er.id as mapping_id, e.id as event_id, e.name as event_name, er.role_name, er.sub_role, er.assigned_at, er.status, e.event_date FROM event_roles er JOIN events e ON er.event_id = e.id WHERE er.youth_id = ? ORDER BY e.event_date DESC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+app.put('/api/events/:event_id/roles/:mapping_id/status', requireResourceOwnerOrAllPermissions('eventRole', ['access_events', 'edit_entries'], req => req.params.mapping_id), (req, res) => { db.run(`UPDATE event_roles SET status = ? WHERE id = ?`, [req.body.status, req.params.mapping_id], function(err) { res.json({ success: true }); }); });
+app.get('/api/youth/:id/blockouts', (req, res) => { db.all(`SELECT * FROM blockout_dates WHERE youth_id = ? ORDER BY block_date ASC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+app.post('/api/blockouts', (req, res) => { db.run(`INSERT INTO blockout_dates (youth_id, block_date, reason, created_at) VALUES (?, ?, ?, ?)`, [req.body.youth_id, req.body.block_date, req.body.reason, getManilaTime()], function(err) { if (err) return res.status(400).json({ error: 'Date already blocked.' }); res.json({ success: true }); }); });
+app.delete('/api/blockouts/:id', requireResourceOwnerOrAllPermissions('blockout', ['access_events', 'delete_entries']), (req, res) => { db.run(`DELETE FROM blockout_dates WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); }); });
 
-// EVENTS API
-app.get('/api/events', (req, res) => {
-    db.all(`SELECT * FROM events ORDER BY event_date DESC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+// NEW DISCIPLESHIP API (WITH POINTS)
+app.get('/api/discipleship/next-step/:youth_id', (req, res) => { db.all(`SELECT p.*, m.status as member_status, m.completed_at FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, steps) => { let nextStep = steps.find(s => s.member_status !== 'Completed'); if (!nextStep && steps?.length || 0 > 0) nextStep = steps[steps?.length || 0 - 1]; res.json({ nextStep, allSteps: steps }); }); });
+function retireLegacyPathwayMutation(req, res) {
+    return res.status(410).json({
+        success: false,
+        error: 'Legacy Paths and Milestones are read-only. Use the canonical Growth Journey.'
     });
-});
+}
 
-app.get('/api/events/:id/analytics', (req, res) => {
-    const eventId = req.params.id;
-    db.get(`SELECT * FROM events WHERE id = ?`, [eventId], (err, event) => {
-        if (err || !event) return res.status(404).json({ error: 'Event not found' });
+app.post('/api/discipleship/milestones', requireAuth, retireLegacyPathwayMutation);
+app.get('/api/discipleship/pathways', (req, res) => { db.all(`SELECT * FROM discipleship_pathways ORDER BY step_order ASC`, [], (err, rows) => { res.json(rows); }); });
+app.post('/api/discipleship/pathways', requireAllPermissions(['access_discipleship', 'edit_entries']), retireLegacyPathwayMutation);
+app.put('/api/discipleship/pathways/:id', requireAllPermissions(['access_discipleship', 'edit_entries']), retireLegacyPathwayMutation);
+app.delete('/api/discipleship/pathways/:id', requireAllPermissions(['access_discipleship', 'delete_entries']), retireLegacyPathwayMutation);
+app.get('/api/discipleship/member-progress/:youth_id', (req, res) => { db.all(`SELECT p.id as pathway_id, p.title, m.status, m.completed_at, m.notes as pastoral_notes FROM discipleship_pathways p LEFT JOIN member_milestones m ON p.id = m.pathway_id AND m.youth_id = ? ORDER BY p.step_order ASC`, [req.params.youth_id], (err, rows) => { res.json(rows); }); });
+app.get('/api/discipleship/analytics/stages', (req, res) => { db.all(`WITH UserMaxStep AS (SELECT youth_id, MAX(pathway_id) as max_path_id FROM member_milestones WHERE status = 'Completed' OR status = 'In Progress' GROUP BY youth_id) SELECT p.title, COUNT(u.youth_id) as user_count FROM discipleship_pathways p LEFT JOIN UserMaxStep u ON p.id = u.max_path_id GROUP BY p.id, p.title ORDER BY p.step_order ASC`, [], (err, stepRows) => { db.get(`SELECT COUNT(*) as total FROM youth`, [], (err, youthRow) => { const totalYouth = youthRow ? youthRow.total : 0; let assignedYouth = 0; stepRows.forEach(r => assignedYouth += r.user_count); res.json({ stages: stepRows, unassigned: totalYouth - assignedYouth > 0 ? totalYouth - assignedYouth : 0 }); }); }); });
 
-        db.get(`SELECT COUNT(*) as total_youth FROM youth WHERE age IS NOT NULL AND age != ''`, [], (err2, totalYouthRow) => {
-            const totalDirectory = totalYouthRow ? totalYouthRow.total_youth : 1;
+// NEW JOURNAL API — CLIENT-SIDE ENCRYPTED / OWNER ONLY
 
-            const sqlRoster = `SELECT a.id as log_id, a.checked_in_at, a.is_walkin, a.youth_id, y.name, y.age, y.email, y.qr_code, y.profile_picture
-                               FROM attendance a JOIN youth y ON a.youth_id = y.id
-                               WHERE a.event_id = ? ORDER BY a.checked_in_at DESC`;
 
-            db.all(sqlRoster, [eventId], (err3, roster) => {
-                if (err3) return res.status(500).json({ error: err3.message });
+let privateJournalSchemaError =
+    null;
 
-                const sqlPreReg = `SELECT p.youth_id, p.created_at, y.name, y.age, y.email, y.qr_code, y.profile_picture
-                                   FROM pre_registrations p JOIN youth y ON p.youth_id = y.id
-                                   WHERE p.event_id = ? ORDER BY p.created_at DESC`;
+const privateJournalSchemaReady =
+    ensurePrivateJournalSecuritySchema(
+        db
+    )
+        .then(
+            () =>
+                ensurePrivateJournalSafeguardingSchema(
+                    db
+                )
+        )
+        .then(
+            () =>
+                true
+        )
+        .catch(
+            error => {
+                privateJournalSchemaError =
+                    error;
 
-                db.all(sqlPreReg, [eventId], (err4, preRegList) => {
-                    if (err4) return res.status(500).json({ error: err4.message });
+                console.error(
+                    '[JOURNAL] Private Journal schema readiness failed.'
+                );
 
-                    const totalTurnout = roster.length;
-                    const walkins = roster.filter(r => r.is_walkin === 1).length;
-                    const checkedInPreRegs = totalTurnout - walkins;
-                    const totalPreRegistered = preRegList.length;
+                return false;
+            }
+        );
 
-                    let turnoutPercentage = '0.0';
-                    if (totalPreRegistered > 0) {
-                        turnoutPercentage = ((checkedInPreRegs / totalPreRegistered) * 100).toFixed(1);
+
+async function requirePrivateJournalSchemaReady(
+    req,
+    res,
+    next
+) {
+    const ready =
+        await privateJournalSchemaReady;
+
+    if (
+        ready !== true ||
+        privateJournalSchemaError
+    ) {
+        return res
+            .status(503)
+            .json({
+                success:
+                    false,
+
+                code:
+                    'JOURNAL_SCHEMA_UNAVAILABLE',
+
+                error:
+                    'Private Journal is temporarily unavailable.'
+            });
+    }
+
+    return next();
+}
+
+
+/*
+ * Every Journal API waits for both security schemas.
+ * This is intentionally fail-closed.
+ */
+app.use(
+    '/api/journal-security',
+    requirePrivateJournalSchemaReady
+);
+
+app.use(
+    '/api/journals',
+    requirePrivateJournalSchemaReady
+);
+
+
+function journalAccessErrorMessage(
+    accessState
+) {
+    if (!accessState) {
+        return 'Private Journal is unavailable.';
+    }
+
+    switch (accessState.reason) {
+    case 'birthday_required':
+        return 'Please complete your birthday in your Portal profile before using Private Journal.';
+
+    case 'under_10':
+        return 'Private Journal is not available for members under age 10.';
+
+    case 'guardian_authorization_required':
+        return 'Parent or guardian authorization is required before Private Journal can be used.';
+
+    case 'responsible_use_acknowledgement_required':
+        return 'Please review and accept the responsible-journaling promise before using Private Journal.';
+
+    default:
+        return 'Private Journal is unavailable for this account.';
+    }
+}
+
+
+async function requirePrivateJournalAccess(
+    req,
+    res,
+    next
+) {
+    const youthId =
+        normalizeCanonicalId(
+            req.auth &&
+            req.auth.youthId
+        );
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    try {
+        const accessState =
+            await getPrivateJournalAccessState(
+                db,
+                youthId
+            );
+
+        req.privateJournalAccess =
+            accessState;
+
+        if (
+            !accessState
+                .access_allowed
+        ) {
+            return res
+                .status(403)
+                .json({
+                    success:
+                        false,
+
+                    journal_access_required:
+                        true,
+
+                    reason:
+                        accessState
+                            .reason,
+
+                    age_bracket:
+                        accessState
+                            .age_bracket,
+
+                    experience_mode:
+                        accessState
+                            .experience_mode,
+
+                    guardian_required:
+                        accessState
+                            .guardian_required,
+
+                    policy_version:
+                        JOURNAL_GUARDIAN_POLICY_VERSION,
+
+                    error:
+                        journalAccessErrorMessage(
+                            accessState
+                        )
+                });
+        }
+
+        return next();
+
+    } catch (error) {
+        return res
+            .status(500)
+            .json({
+                success:
+                    false,
+
+                error:
+                    'Unable to verify Private Journal safeguarding status.'
+            });
+    }
+}
+
+
+function getPrivateJournalLegacyCount(
+    youthId
+) {
+    return new Promise(
+        (resolve, reject) => {
+            db.get(
+                `SELECT
+                    COUNT(*) AS total
+                 FROM private_journals
+                 WHERE youth_id = ?
+                   AND (
+                        crypto_version IS NULL
+                        OR ciphertext_b64 IS NULL
+                   )`,
+                [
+                    youthId
+                ],
+                (error, row) => {
+                    if (error) {
+                        reject(error);
+                    } else {
+                        resolve(
+                            Number(
+                                row &&
+                                row.total
+                            ) || 0
+                        );
+                    }
+                }
+            );
+        }
+    );
+}
+
+
+async function requirePrivateJournalMigrationAccess(
+    req,
+    res,
+    next
+) {
+    const youthId =
+        normalizeCanonicalId(
+            req.auth &&
+            req.auth.youthId
+        );
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    try {
+        const [
+            accessState,
+            legacyCount
+        ] =
+            await Promise.all([
+                getPrivateJournalAccessState(
+                    db,
+                    youthId
+                ),
+
+                getPrivateJournalLegacyCount(
+                    youthId
+                )
+            ]);
+
+        if (
+            accessState &&
+            accessState.access_allowed ===
+                true
+        ) {
+            req.privateJournalAccess = {
+                ...accessState,
+
+                migration_only:
+                    false,
+
+                legacy_entries:
+                    legacyCount
+            };
+
+            return next();
+        }
+
+        if (
+            legacyCount > 0
+        ) {
+            /*
+             * A locked legacy owner may ONLY establish/
+             * recover the encryption key and replace their
+             * own legacy plaintext with ciphertext.
+             *
+             * This does not grant normal Journal access.
+             */
+            req.privateJournalAccess = {
+                ...accessState,
+
+                migration_only:
+                    true,
+
+                legacy_entries:
+                    legacyCount
+            };
+
+            return next();
+        }
+
+        return res
+            .status(403)
+            .json({
+                success:
+                    false,
+
+                journal_access_required:
+                    true,
+
+                migration_only:
+                    false,
+
+                reason:
+                    accessState &&
+                    accessState.reason,
+
+                age_bracket:
+                    accessState &&
+                    accessState.age_bracket,
+
+                error:
+                    journalAccessErrorMessage(
+                        accessState
+                    )
+            });
+
+    } catch (error) {
+        return res
+            .status(500)
+            .json({
+                success:
+                    false,
+
+                error:
+                    'Unable to verify Journal migration access.'
+            });
+    }
+}
+
+
+function requireCurrentPrivateJournalKeyFingerprint(
+    req,
+    res,
+    next
+) {
+    const youthId =
+        normalizeCanonicalId(
+            req.auth &&
+            req.auth.youthId
+        );
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    let encrypted;
+
+    try {
+        encrypted =
+            validateEncryptedEntryPayloadWithFingerprint(
+                req.body
+            );
+
+    } catch (error) {
+        return res
+            .status(400)
+            .json({
+                success:
+                    false,
+
+                code:
+                    'JOURNAL_ENCRYPTED_PAYLOAD_INVALID',
+
+                error:
+                    'Journal entries must be protected with the current device key before saving.'
+            });
+    }
+
+    db.get(
+        `SELECT
+            key_fingerprint
+         FROM private_journal_keys
+         WHERE youth_id = ?`,
+        [
+            youthId
+        ],
+        (error, keyRow) => {
+            if (error) {
+                return res
+                    .status(500)
+                    .json({
+                        success:
+                            false,
+
+                        error:
+                            'Unable to verify Journal encryption identity.'
+                    });
+            }
+
+            if (
+                !keyRow ||
+                !keyRow.key_fingerprint
+            ) {
+                return res
+                    .status(409)
+                    .json({
+                        success:
+                            false,
+
+                        code:
+                            'JOURNAL_KEY_NOT_CONFIGURED',
+
+                        error:
+                            'Journal encryption must be configured before saving.'
+                    });
+            }
+
+            if (
+                keyRow.key_fingerprint !==
+                encrypted.key_fingerprint
+            ) {
+                return res
+                    .status(409)
+                    .json({
+                        success:
+                            false,
+
+                        code:
+                            'JOURNAL_KEY_FINGERPRINT_MISMATCH',
+
+                        error:
+                            'This Journal entry was protected with a different Journal key.'
+                    });
+            }
+
+            req.privateJournalEncrypted =
+                encrypted;
+
+            req.privateJournalKeyFingerprint =
+                keyRow.key_fingerprint;
+
+            return next();
+        }
+    );
+}
+
+
+
+/*
+ * The young member starts this process only after
+ * acknowledging the youth-friendly privacy explanation.
+ *
+ * The raw approval token is returned once to the young
+ * member's browser. SQLite stores only its SHA-256 hash.
+ */
+app.get(
+    '/api/admin/private-journal-policy',
+    requireStrongAdmin,
+    async (req, res) => {
+        try {
+            const policy =
+                await getTeenGuardianPolicy(db);
+
+            return res.json({
+                success: true,
+                guardian_required_13_17:
+                    policy.guardian_required,
+                configured:
+                    policy.configured,
+                valid:
+                    policy.valid,
+                policy_version:
+                    JOURNAL_GUARDIAN_POLICY_VERSION,
+                fixed_rules: {
+                    under_10:
+                        'unavailable',
+                    ages_10_12:
+                        'guardian_required'
+                }
+            });
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to load Private Journal safeguarding policy.'
+            });
+        }
+    }
+);
+
+
+app.put(
+    '/api/admin/private-journal-policy',
+    requireStrongAdmin,
+    async (req, res) => {
+        if (
+            !req.body ||
+            typeof req.body
+                .guardian_required_13_17 !==
+                'boolean'
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'guardian_required_13_17 must be true or false.'
+            });
+        }
+
+        try {
+            const changed =
+                await setTeenGuardianPolicy(
+                    db,
+                    {
+                        guardianRequired:
+                            req.body
+                                .guardian_required_13_17,
+                        adminUserId:
+                            req.auth &&
+                            req.auth.userId,
+                        adminIdentity:
+                            req.auth &&
+                            req.auth.username
+                    }
+                );
+
+            logActivity(
+                getCanonicalAuditActor(req),
+                'PRIVATE_JOURNAL_TEEN_POLICY_CHANGED',
+                JSON.stringify({
+                    previous_value:
+                        changed.previous_value,
+                    new_value:
+                        String(
+                            changed
+                                .guardian_required
+                        ),
+                    policy_version:
+                        changed.policy_version
+                })
+            );
+
+            return res.json({
+                success: true,
+                guardian_required_13_17:
+                    changed.guardian_required,
+                policy_version:
+                    changed.policy_version,
+                changed_at:
+                    changed.changed_at
+            });
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to change Private Journal safeguarding policy.'
+            });
+        }
+    }
+);
+
+
+app.post(
+    '/api/journal-security/responsible-use-acknowledgement',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const acknowledgement =
+                await acknowledgeResponsibleUse(
+                    db,
+                    {
+                        youthId,
+                        acknowledged:
+                            req.body &&
+                            req.body.acknowledged ===
+                                true,
+                        policyVersion:
+                            req.body &&
+                            req.body.policy_version
+                    }
+                );
+
+            return res.json({
+                success: true,
+                policy_version:
+                    acknowledgement
+                        .policy_version,
+                acknowledged_at:
+                    acknowledgement
+                        .acknowledged_at
+            });
+        } catch (error) {
+            const code =
+                String(
+                    error &&
+                    error.code ||
+                    ''
+                );
+
+            return res.status(400).json({
+                success: false,
+                code:
+                    code ||
+                    'RESPONSIBLE_USE_ACKNOWLEDGEMENT_FAILED',
+                error:
+                    error &&
+                    error.message
+                        ? error.message
+                        : 'Unable to save the acknowledgement.'
+            });
+        }
+    }
+);
+
+
+app.post(
+    '/api/journal-security/guardian-request',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const request =
+                await requestGuardianAuthorization(
+                    db,
+                    {
+                        youthId,
+
+                        youthAcknowledged:
+                            req.body &&
+                            req.body
+                                .youth_acknowledged ===
+                            true
+                    }
+                );
+
+            return res.json({
+                success:
+                    true,
+
+                request_id:
+                    request
+                        .request_id,
+
+                approval_token:
+                    request
+                        .approval_token,
+
+                expires_at:
+                    request
+                        .expires_at,
+
+                policy_version:
+                    request
+                        .policy_version,
+
+                age_bracket:
+                    request
+                        .age_bracket,
+
+                experience_mode:
+                    request
+                        .experience_mode
+            });
+
+        } catch (error) {
+            const code =
+                String(
+                    error &&
+                    error.code ||
+                    ''
+                );
+
+            const status =
+                [
+                    'YOUTH_ACK_REQUIRED',
+                    'GUARDIAN_REQUEST_NOT_ELIGIBLE',
+                    'GUARDIAN_ALREADY_APPROVED'
+                ].includes(code)
+                    ? 400
+                    : 500;
+
+            return res
+                .status(status)
+                .json({
+                    success:
+                        false,
+
+                    code:
+                        code ||
+                        'GUARDIAN_REQUEST_FAILED',
+
+                    error:
+                        status === 400
+                            ? error.message
+                            : 'Unable to create guardian authorization safely.'
+                });
+        }
+    }
+);
+
+
+function buildGuardianVerificationMessage(
+    youthName,
+    code,
+    expiresAt
+) {
+    const safeName =
+        String(youthName || 'a young person')
+            .replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[character]);
+
+    return {
+        subject:
+            'Verify Private Journal guardian approval',
+        text: [
+            `${youthName || 'A young person'} asked you to review access to a protected reflection feature.`,
+            '',
+            `Your verification code is: ${code}`,
+            '',
+            `This code expires at ${expiresAt}.`,
+            'Return to the guardian approval page where you started. This code does not provide access to any Journal entry.'
+        ].join('\n'),
+        html: [
+            `<p>${safeName} asked you to review access to a protected reflection feature.</p>`,
+            `<p>Your verification code is: <strong>${code}</strong></p>`,
+            `<p>This code expires at ${expiresAt}.</p>`,
+            '<p>Return to the guardian approval page where you started. This code does not provide access to any Journal entry.</p>'
+        ].join('')
+    };
+}
+
+
+function buildGuardianApprovalCompleteMessage(
+    youthName,
+    managementUrl
+) {
+    return {
+        subject:
+            'Private Journal guardian approval completed',
+        text: [
+            `Your guardian approval for ${youthName || 'the young person'} was completed.`,
+            '',
+            'This approval does not give you access to any Journal entry.',
+            'Keep this private link if you need to revoke authorization later:',
+            managementUrl
+        ].join('\n'),
+        html: [
+            '<p>Your guardian approval was completed.</p>',
+            '<p>This approval does not give you access to any Journal entry.</p>',
+            `<p><a href="${managementUrl}">Manage or revoke this authorization</a></p>`
+        ].join('')
+    };
+}
+
+
+app.use(
+    '/api/journal-security/guardian-guest',
+    (req, res, next) => {
+        res.setHeader(
+            'Cache-Control',
+            'no-store, no-cache, must-revalidate, private'
+        );
+        res.setHeader(
+            'Pragma',
+            'no-cache'
+        );
+        return next();
+    }
+);
+
+
+app.post(
+    '/api/journal-security/guardian-guest/preview',
+    async (req, res) => {
+        try {
+            const preview =
+                await previewGuestGuardianAuthorization(
+                    db,
+                    {
+                        token:
+                            req.body &&
+                            req.body.approval_token
+                    }
+                );
+
+            return res.json({
+                success: true,
+                request: preview
+            });
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                code:
+                    error &&
+                    error.code ||
+                    'GUARDIAN_PREVIEW_FAILED',
+                error:
+                    error &&
+                    error.message
+                        ? error.message
+                        : 'Unable to open this guardian request.'
+            });
+        }
+    }
+);
+
+
+app.post(
+    '/api/journal-security/guardian-guest/begin-verification',
+    async (req, res) => {
+        const subject =
+            req.body &&
+            req.body.approval_token ||
+            '<missing>';
+
+        if (
+            !guardianVerificationRequestLimiter.check({
+                ip:
+                    getRecoveryClientAddress(req),
+                subject
+            })
+        ) {
+            res.setHeader('Retry-After', '900');
+            return res.status(429).json({
+                success: false,
+                error:
+                    'Too many verification requests were made. Please wait and try again.'
+            });
+        }
+
+        if (
+            !emailRecoveryPublicOrigin ||
+            !emailRecoveryOutbox
+        ) {
+            return res.status(503).json({
+                success: false,
+                code:
+                    'GUARDIAN_EMAIL_UNAVAILABLE',
+                error:
+                    'Guardian email verification is temporarily unavailable.'
+            });
+        }
+
+        let verification = null;
+
+        try {
+            verification =
+                await beginGuardianEmailVerification(
+                    db,
+                    {
+                        token:
+                            req.body &&
+                            req.body.approval_token,
+                        guardianEmail:
+                            req.body &&
+                            req.body.guardian_email,
+                        relationship:
+                            req.body &&
+                            req.body.relationship,
+                        adultConfirmed:
+                            req.body &&
+                            req.body.adult_confirmed ===
+                                true,
+                        authorizedConfirmed:
+                            req.body &&
+                            req.body.authorized_confirmed ===
+                                true,
+                        permissionAttested:
+                            req.body &&
+                            req.body.permission_attested ===
+                                true
+                    }
+                );
+
+            const dedupeKey =
+                `journal-guardian:${verification.request_id}`;
+
+            await emailRecoveryOutbox.cancelActiveDedupeKey(
+                dedupeKey,
+                'EMAIL_SUPERSEDED'
+            );
+
+            await emailRecoveryOutbox.enqueue({
+                recipient:
+                    verification
+                        .guardian_email,
+                messageType:
+                    'journal_guardian_verification',
+                payload:
+                    buildGuardianVerificationMessage(
+                        verification.youth_name,
+                        verification
+                            .verification_code,
+                        verification
+                            .verification_expires_at
+                    ),
+                dedupeKey:
+                    dedupeKey
+            });
+
+            return res.status(202).json({
+                success: true,
+                guardian_email_mask:
+                    verification
+                        .guardian_email_mask,
+                verification_expires_at:
+                    verification
+                        .verification_expires_at
+            });
+        } catch (error) {
+            if (
+                verification &&
+                verification.request_id
+            ) {
+                try {
+                    await cancelGuardianEmailVerification(
+                        db,
+                        verification.request_id
+                    );
+                } catch (cancelError) {
+                    console.warn(
+                        '[JOURNAL] Guardian verification cancellation failed.'
+                    );
+                }
+            }
+
+            const code =
+                String(
+                    error &&
+                    error.code ||
+                    ''
+                );
+
+            const clientError =
+                [
+                    'GUARDIAN_ATTESTATION_REQUIRED',
+                    'SELF_GUARDIAN_FORBIDDEN',
+                    'GUARDIAN_REQUEST_INVALID',
+                    'GUARDIAN_REQUEST_EXPIRED'
+                ].includes(code) ||
+                error instanceof TypeError;
+
+            if (!clientError) {
+                console.warn(
+                    `[JOURNAL] Guardian verification queue failed code=${getSafeEmailRecoveryErrorCode(error)}`
+                );
+            }
+
+            return res
+                .status(clientError ? 400 : 503)
+                .json({
+                    success: false,
+                    code:
+                        code ||
+                        'GUARDIAN_VERIFICATION_REQUEST_FAILED',
+                    error:
+                        clientError &&
+                        error.message
+                            ? error.message
+                            : 'Guardian email verification is temporarily unavailable.'
+                });
+        }
+    }
+);
+
+
+app.post(
+    '/api/journal-security/guardian-guest/verify',
+    async (req, res) => {
+        const subject =
+            req.body &&
+            req.body.approval_token ||
+            '<missing>';
+
+        if (
+            !guardianVerificationConfirmLimiter.check({
+                ip:
+                    getRecoveryClientAddress(req),
+                subject
+            })
+        ) {
+            res.setHeader('Retry-After', '900');
+            return res.status(429).json({
+                success: false,
+                error:
+                    'Too many verification attempts were made. Please wait and try again.'
+            });
+        }
+
+        try {
+            const approval =
+                await verifyGuardianEmailAndApprove(
+                    db,
+                    {
+                        token:
+                            req.body &&
+                            req.body.approval_token,
+                        guardianEmail:
+                            req.body &&
+                            req.body.guardian_email,
+                        verificationCode:
+                            req.body &&
+                            req.body.verification_code
+                    }
+                );
+
+            if (
+                emailRecoveryPublicOrigin &&
+                emailRecoveryOutbox
+            ) {
+                const managementUrl =
+                    `${emailRecoveryPublicOrigin}/journal-guardian.html#journal-guardian-revoke=` +
+                    encodeURIComponent(
+                        approval.management_token
+                    );
+
+                try {
+                    await emailRecoveryOutbox.enqueue({
+                        recipient:
+                            req.body &&
+                            req.body.guardian_email,
+                        messageType:
+                            'journal_guardian_approved',
+                        payload:
+                            buildGuardianApprovalCompleteMessage(
+                                approval.youth_name,
+                                managementUrl
+                            ),
+                        dedupeKey:
+                            `journal-guardian-approved:${approval.approved_at}:${approval.youth_name}`
+                    });
+                } catch (error) {
+                    console.warn(
+                        `[JOURNAL] Guardian management email queue failed code=${getSafeEmailRecoveryErrorCode(error)}`
+                    );
+                }
+            }
+
+            return res.json({
+                success: true,
+                youth_name:
+                    approval.youth_name,
+                approved_at:
+                    approval.approved_at,
+                management_token:
+                    approval.management_token
+            });
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                code:
+                    error &&
+                    error.code ||
+                    'GUARDIAN_VERIFICATION_FAILED',
+                error:
+                    error &&
+                    error.message
+                        ? error.message
+                        : 'Unable to verify guardian approval.'
+            });
+        }
+    }
+);
+
+
+app.post(
+    '/api/journal-security/guardian-guest/decline',
+    async (req, res) => {
+        try {
+            await declineGuardianAuthorization(
+                db,
+                {
+                    token:
+                        req.body &&
+                        req.body.approval_token
+                }
+            );
+
+            return res.json({
+                success: true
+            });
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    error &&
+                    error.message
+                        ? error.message
+                        : 'Unable to decline this request.'
+            });
+        }
+    }
+);
+
+
+app.post(
+    '/api/journal-security/guardian-guest/revoke-preview',
+    async (req, res) => {
+        try {
+            const authorization =
+                await previewGuardianRevocation(
+                    db,
+                    {
+                        managementToken:
+                            req.body &&
+                            req.body.management_token
+                    }
+                );
+
+            return res.json({
+                success: true,
+                authorization
+            });
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    error &&
+                    error.message
+                        ? error.message
+                        : 'Unable to open this authorization.'
+            });
+        }
+    }
+);
+
+
+app.post(
+    '/api/journal-security/guardian-guest/revoke',
+    async (req, res) => {
+        try {
+            const revocation =
+                await revokeGuardianAuthorization(
+                    db,
+                    {
+                        managementToken:
+                            req.body &&
+                            req.body.management_token
+                    }
+                );
+
+            return res.json({
+                success: true,
+                revoked_at:
+                    revocation.revoked_at
+            });
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    error &&
+                    error.message
+                        ? error.message
+                        : 'Unable to revoke this authorization.'
+            });
+        }
+    }
+);
+
+
+/*
+ * Approval-token knowledge alone is insufficient.
+ * A guardian must also be signed into an adult Portal
+ * member account whose birthday establishes age 18+.
+ */
+function retireMemberOnlyGuardianApproval(
+    req,
+    res
+) {
+    return res.status(410).json({
+        success: false,
+        code:
+            'GUARDIAN_GUEST_FLOW_REQUIRED',
+        error:
+            'Open the dedicated guardian approval page and verify the guardian email address.'
+    });
+}
+
+
+app.post(
+    '/api/journal-security/guardian-request/preview',
+    retireMemberOnlyGuardianApproval,
+    requireAuth,
+    async (req, res) => {
+        const guardianYouthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!guardianYouthId) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const preview =
+                await previewGuardianAuthorization(
+                    db,
+                    {
+                        token:
+                            req.body &&
+                            req.body
+                                .approval_token,
+
+                        guardianYouthId
+                    }
+                );
+
+            return res.json({
+                success:
+                    true,
+
+                request:
+                    preview
+            });
+
+        } catch (error) {
+            const code =
+                String(
+                    error &&
+                    error.code ||
+                    ''
+                );
+
+            const status =
+                code ===
+                    'ADULT_GUARDIAN_REQUIRED'
+                    ? 403
+                    : 400;
+
+            return res
+                .status(status)
+                .json({
+                    success:
+                        false,
+
+                    code:
+                        code ||
+                        'GUARDIAN_PREVIEW_FAILED',
+
+                    error:
+                        error &&
+                        error.message
+                            ? error.message
+                            : 'Unable to verify guardian authorization.'
+                });
+        }
+    }
+);
+
+
+app.post(
+    '/api/journal-security/guardian-request/approve',
+    retireMemberOnlyGuardianApproval,
+    requireAuth,
+    async (req, res) => {
+        const guardianYouthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!guardianYouthId) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const approval =
+                await approveGuardianAuthorization(
+                    db,
+                    {
+                        token:
+                            req.body &&
+                            req.body
+                                .approval_token,
+
+                        guardianYouthId,
+
+                        relationship:
+                            req.body &&
+                            req.body
+                                .relationship,
+
+                        guardianAttested:
+                            req.body &&
+                            req.body
+                                .guardian_attested ===
+                            true
+                    }
+                );
+
+            return res.json({
+                success:
+                    true,
+
+                authorization:
+                    approval
+            });
+
+        } catch (error) {
+            const code =
+                String(
+                    error &&
+                    error.code ||
+                    ''
+                );
+
+            const status =
+                [
+                    'ADULT_GUARDIAN_REQUIRED',
+                    'SELF_GUARDIAN_FORBIDDEN'
+                ].includes(code)
+                    ? 403
+                    : 400;
+
+            return res
+                .status(status)
+                .json({
+                    success:
+                        false,
+
+                    code:
+                        code ||
+                        'GUARDIAN_APPROVAL_FAILED',
+
+                    error:
+                        error &&
+                        error.message
+                            ? error.message
+                            : 'Unable to approve guardian authorization.'
+                });
+        }
+    }
+);
+
+
+app.get(
+    '/api/journal-security/guardian-authorization',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const accessState =
+                await getPrivateJournalAccessState(
+                    db,
+                    youthId
+                );
+
+            return res.json({
+                success:
+                    true,
+
+                policy_version:
+                    JOURNAL_GUARDIAN_POLICY_VERSION,
+
+                age:
+                    accessState.age,
+
+                age_bracket:
+                    accessState
+                        .age_bracket,
+
+                age_basis:
+                    accessState
+                        .age_basis,
+
+                access_allowed:
+                    accessState
+                        .access_allowed,
+
+                experience_mode:
+                    accessState
+                        .experience_mode,
+
+                guardian_required:
+                    accessState
+                        .guardian_required,
+
+                responsible_use_policy_version:
+                    accessState
+                        .responsible_use_policy_version,
+
+                responsible_use_acknowledgement:
+                    accessState
+                        .responsible_use_acknowledgement,
+
+                reason:
+                    accessState
+                        .reason,
+
+                guardian_authorization:
+                    accessState
+                        .guardian_authorization
+            });
+
+        } catch (error) {
+            return res
+                .status(500)
+                .json({
+                    success:
+                        false,
+
+                    error:
+                        'Unable to load guardian authorization status.'
+                });
+        }
+    }
+);
+
+
+app.get(
+    '/api/journal-security/status',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const accessState =
+                await getPrivateJournalAccessState(
+                    db,
+                    youthId
+                );
+
+            db.get(
+                `SELECT
+                    crypto_version,
+                    wrap_alg,
+                    key_fingerprint
+                 FROM private_journal_keys
+                 WHERE youth_id = ?`,
+                [
+                    youthId
+                ],
+                (keyErr, keyRow) => {
+                    if (keyErr) {
+                        return res
+                            .status(500)
+                            .json({
+                                error:
+                                    'Unable to load Journal privacy status.'
+                            });
                     }
 
-                    res.json({
-                        event, totalDirectory, totalTurnout, turnoutPercentage,
-                        walkins, preReg: checkedInPreRegs, totalPreRegistered, roster, preRegList
-                    });
+                    db.get(
+                        `SELECT
+                            COUNT(*) AS total_entries,
+
+                            SUM(
+                                CASE
+                                    WHEN crypto_version = ?
+                                     AND cipher_alg = ?
+                                     AND ciphertext_b64 IS NOT NULL
+                                    THEN 1
+                                    ELSE 0
+                                END
+                            ) AS encrypted_entries,
+
+                            SUM(
+                                CASE
+                                    WHEN crypto_version IS NULL
+                                      OR ciphertext_b64 IS NULL
+                                    THEN 1
+                                    ELSE 0
+                                END
+                            ) AS legacy_entries
+
+                         FROM private_journals
+
+                         WHERE youth_id = ?`,
+                        [
+                            PRIVATE_JOURNAL_CRYPTO_VERSION,
+                            PRIVATE_JOURNAL_ENTRY_ALGORITHM,
+                            youthId
+                        ],
+                        (countErr, counts) => {
+                            if (countErr) {
+                                return res
+                                    .status(500)
+                                    .json({
+                                        error:
+                                            'Unable to load Journal privacy status.'
+                                    });
+                            }
+
+                            return res.json({
+                                encryption_required:
+                                    true,
+
+                                crypto_version:
+                                    PRIVATE_JOURNAL_CRYPTO_VERSION,
+
+                                cipher_alg:
+                                    PRIVATE_JOURNAL_ENTRY_ALGORITHM,
+
+                                device_setup_required:
+                                    !keyRow,
+
+                                key_fingerprint:
+                                    keyRow
+                                        ? keyRow
+                                            .key_fingerprint
+                                        : null,
+
+                                age:
+                                    accessState
+                                        .age,
+
+                                age_bracket:
+                                    accessState
+                                        .age_bracket,
+
+                                age_basis:
+                                    accessState
+                                        .age_basis,
+
+                                access_allowed:
+                                    accessState
+                                        .access_allowed,
+
+                                migration_only:
+                                    accessState
+                                        .access_allowed !==
+                                        true &&
+                                    (
+                                        Number(
+                                            counts &&
+                                            counts
+                                                .legacy_entries
+                                        ) || 0
+                                    ) > 0,
+
+                                experience_mode:
+                                    accessState
+                                        .experience_mode,
+
+                                guardian_required:
+                                    accessState
+                                        .guardian_required,
+
+                                responsible_use_policy_version:
+                                    accessState
+                                        .responsible_use_policy_version,
+
+                                responsible_use_acknowledgement:
+                                    accessState
+                                        .responsible_use_acknowledgement,
+
+                                reason:
+                                    accessState
+                                        .reason,
+
+                                guardian_authorization:
+                                    accessState
+                                        .guardian_authorization,
+
+                                policy_version:
+                                    JOURNAL_GUARDIAN_POLICY_VERSION,
+
+                                total_entries:
+                                    Number(
+                                        counts &&
+                                        counts
+                                            .total_entries
+                                    ) || 0,
+
+                                encrypted_entries:
+                                    Number(
+                                        counts &&
+                                        counts
+                                            .encrypted_entries
+                                    ) || 0,
+
+                                legacy_entries:
+                                    Number(
+                                        counts &&
+                                        counts
+                                            .legacy_entries
+                                    ) || 0
+                            });
+                        }
+                    );
+                }
+            );
+
+        } catch (error) {
+            return res
+                .status(500)
+                .json({
+                    error:
+                        'Unable to load Journal privacy status.'
                 });
+        }
+    }
+);
+
+
+/*
+ * MIGRATION-ONLY LEGACY FETCH
+ *
+ * This endpoint exists only so a currently locked legacy
+ * owner can protect their existing plaintext locally.
+ * It does not unlock normal Journal viewing or creation.
+ */
+app.get(
+    '/api/journal-security/legacy-migration',
+    requireAuth,
+    requirePrivateJournalMigrationAccess,
+    (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        if (
+            !req.privateJournalAccess ||
+            req.privateJournalAccess
+                .migration_only !==
+                true
+        ) {
+            return res
+                .status(403)
+                .json({
+                    success:
+                        false,
+
+                    code:
+                        'JOURNAL_MIGRATION_ONLY_NOT_REQUIRED',
+
+                    error:
+                        'Legacy migration-only access is not required for this account.'
+                });
+        }
+
+        db.all(
+            `SELECT
+                id,
+                youth_id,
+                title,
+                content,
+                mood,
+                created_at,
+                entry_uuid,
+                crypto_version,
+                cipher_alg,
+                iv_b64,
+                ciphertext_b64,
+                key_fingerprint,
+                encrypted_at,
+                updated_at
+             FROM private_journals
+             WHERE youth_id = ?
+               AND (
+                    crypto_version IS NULL
+                    OR ciphertext_b64 IS NULL
+               )
+             ORDER BY
+                created_at ASC,
+                id ASC`,
+            [
+                youthId
+            ],
+            (error, rows) => {
+                if (error) {
+                    return res
+                        .status(500)
+                        .json({
+                            success:
+                                false,
+
+                            error:
+                                'Unable to load legacy Journal migration data.'
+                        });
+                }
+
+                return res.json(
+                    (rows || [])
+                        .map(
+                            serializePrivateJournalRow
+                        )
+                );
+            }
+        );
+    }
+);
+
+
+
+/*
+ * LOST-BOTH PRIVATE JOURNAL RESET
+ *
+ * This endpoint exists only for the authenticated Journal owner
+ * who has lost every trusted-device key AND the Recovery Key.
+ *
+ * It never receives a Recovery Key or Journal plaintext.
+ *
+ * Reset is intentionally destructive:
+ *   - previous Journal entries are removed,
+ *   - the previous wrapped-key envelope is removed,
+ *   - guardian approval / verification state is removed,
+ *   - responsible-use acknowledgement is removed.
+ *
+ * The member therefore returns through the CURRENT safeguarding
+ * flow before a brand-new Journal key can be established.
+ */
+app.post(
+    '/api/journal-security/reset',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        const confirmation =
+            String(
+                req.body &&
+                req.body.confirmation ||
+                ''
+            ).trim();
+
+        const understandsDataLoss =
+            req.body &&
+            req.body.understands_data_loss ===
+                true;
+
+        if (
+            confirmation !==
+                'RESET MY JOURNAL' ||
+            !understandsDataLoss
+        ) {
+            return res
+                .status(400)
+                .json({
+                    success:
+                        false,
+
+                    code:
+                        'JOURNAL_RESET_CONFIRMATION_REQUIRED',
+
+                    error:
+                        'Journal reset requires the exact confirmation phrase.'
+                });
+        }
+
+        try {
+            const accessState =
+                await getPrivateJournalAccessState(
+                    db,
+                    youthId
+                );
+
+            const eligibleAgeBrackets =
+                new Set([
+                    'AGE_10_12',
+                    'AGE_13_17',
+                    'AGE_18_PLUS'
+                ]);
+
+            if (
+                !accessState ||
+                !eligibleAgeBrackets.has(
+                    accessState.age_bracket
+                )
+            ) {
+                return res
+                    .status(403)
+                    .json({
+                        success:
+                            false,
+
+                        code:
+                            accessState &&
+                            accessState.age_bracket ===
+                                'UNDER_10'
+                                ? 'JOURNAL_UNDER_10'
+                                : 'JOURNAL_BIRTHDAY_REQUIRED',
+
+                        error:
+                            accessState &&
+                            accessState.age_bracket ===
+                                'UNDER_10'
+                                ? 'Private Journal is not available for members under age 10.'
+                                : 'Please complete or correct your birthday before resetting Private Journal.'
+                    });
+            }
+
+            await resetPrivateJournalForOwner(
+                db,
+                youthId
+            );
+
+            /*
+             * Metadata-only audit. Never log Journal words,
+             * Recovery Keys, wrapped keys, ciphertext, tokens,
+             * guardian email addresses, or verification codes.
+             */
+            logActivity(
+                getCanonicalAuditActor(req),
+                'PRIVATE_JOURNAL_RESET',
+                JSON.stringify({
+                    age_bracket:
+                        accessState
+                            .age_bracket,
+
+                    policy_version:
+                        JOURNAL_GUARDIAN_POLICY_VERSION,
+
+                    reset_at:
+                        getManilaTime()
+                })
+            );
+
+            return res.json({
+                success:
+                    true,
+
+                reset:
+                    true,
+
+                safeguarding_restart_required:
+                    true,
+
+                message:
+                    'Private Journal was reset. Previous Journal entries are no longer available.'
+            });
+
+        } catch (error) {
+            console.error(
+                '[JOURNAL] Private Journal reset failed.'
+            );
+
+            return res
+                .status(500)
+                .json({
+                    success:
+                        false,
+
+                    code:
+                        'JOURNAL_RESET_FAILED',
+
+                    error:
+                        'Private Journal could not be reset.'
+                });
+        }
+    }
+);
+
+
+app.get(
+    '/api/journal-security/key-envelope',
+    requireAuth,
+    requirePrivateJournalMigrationAccess,
+    (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        db.get(
+            `SELECT
+                crypto_version,
+                wrap_alg,
+                wrapped_key_b64,
+                wrap_iv_b64,
+                key_fingerprint,
+                created_at,
+                updated_at
+             FROM private_journal_keys
+             WHERE youth_id = ?`,
+            [youthId],
+            (err, row) => {
+                if (err) {
+                    return res
+                        .status(500)
+                        .json({
+                            error:
+                                'Unable to load Journal key protection.'
+                        });
+                }
+
+                if (!row) {
+                    return res.json({
+                        configured:
+                            false
+                    });
+                }
+
+                return res.json({
+                    configured:
+                        true,
+                    envelope: {
+                        crypto_version:
+                            Number(
+                                row.crypto_version
+                            ),
+                        wrap_alg:
+                            row.wrap_alg,
+                        wrapped_key_b64:
+                            row.wrapped_key_b64,
+                        wrap_iv_b64:
+                            row.wrap_iv_b64,
+                        key_fingerprint:
+                            row.key_fingerprint
+                    },
+                    created_at:
+                        row.created_at,
+                    updated_at:
+                        row.updated_at
+                });
+            }
+        );
+    }
+);
+
+
+app.put(
+    '/api/journal-security/key-envelope',
+    requireAuth,
+    requirePrivateJournalMigrationAccess,
+    (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        let envelope;
+
+        try {
+            envelope =
+                validateKeyEnvelopePayload(
+                    req.body
+                );
+
+        } catch (error) {
+            return res
+                .status(400)
+                .json({
+                    success:
+                        false,
+
+                    error:
+                        'Invalid encrypted Journal key protection data.'
+                });
+        }
+
+        const now =
+            getManilaTime();
+
+        /*
+         * First envelope establishes the Journal Master Key
+         * identity.
+         *
+         * Recovery-key rotation may re-wrap that same master
+         * key, but the master-key fingerprint itself cannot
+         * silently change.
+         */
+        db.get(
+            `SELECT
+                key_fingerprint
+             FROM private_journal_keys
+             WHERE youth_id = ?`,
+            [
+                youthId
+            ],
+            (lookupErr, existing) => {
+                if (lookupErr) {
+                    return res
+                        .status(500)
+                        .json({
+                            success:
+                                false,
+
+                            error:
+                                'Unable to verify Journal key protection.'
+                        });
+                }
+
+                if (
+                    existing &&
+                    existing
+                        .key_fingerprint !==
+                    envelope
+                        .key_fingerprint
+                ) {
+                    return res
+                        .status(409)
+                        .json({
+                            success:
+                                false,
+
+                            code:
+                                'JOURNAL_KEY_FINGERPRINT_MISMATCH',
+
+                            error:
+                                'Existing Journal encryption identity cannot be replaced.'
+                        });
+                }
+
+                if (existing) {
+                    return db.run(
+                        `UPDATE
+                            private_journal_keys
+                         SET
+                            crypto_version = ?,
+                            wrap_alg = ?,
+                            wrapped_key_b64 = ?,
+                            wrap_iv_b64 = ?,
+                            updated_at = ?
+                         WHERE youth_id = ?
+                           AND key_fingerprint = ?`,
+                        [
+                            envelope
+                                .crypto_version,
+
+                            envelope
+                                .wrap_alg,
+
+                            envelope
+                                .wrapped_key_b64,
+
+                            envelope
+                                .wrap_iv_b64,
+
+                            now,
+
+                            youthId,
+
+                            envelope
+                                .key_fingerprint
+                        ],
+                        function (updateErr) {
+                            if (updateErr) {
+                                return res
+                                    .status(500)
+                                    .json({
+                                        success:
+                                            false,
+
+                                        error:
+                                            'Unable to update Journal recovery protection.'
+                                    });
+                            }
+
+                            if (
+                                this.changes !==
+                                1
+                            ) {
+                                return res
+                                    .status(409)
+                                    .json({
+                                        success:
+                                            false,
+
+                                        error:
+                                            'Journal recovery protection changed before it could be updated.'
+                                    });
+                            }
+
+                            return res.json({
+                                success:
+                                    true,
+
+                                created:
+                                    false,
+
+                                key_fingerprint:
+                                    envelope
+                                        .key_fingerprint
+                            });
+                        }
+                    );
+                }
+
+                return db.run(
+                    `INSERT INTO
+                        private_journal_keys (
+                            youth_id,
+                            crypto_version,
+                            wrap_alg,
+                            wrapped_key_b64,
+                            wrap_iv_b64,
+                            key_fingerprint,
+                            created_at,
+                            updated_at
+                        )
+                     VALUES (
+                        ?,
+                        ?,
+                        ?,
+                        ?,
+                        ?,
+                        ?,
+                        ?,
+                        ?
+                     )`,
+                    [
+                        youthId,
+
+                        envelope
+                            .crypto_version,
+
+                        envelope
+                            .wrap_alg,
+
+                        envelope
+                            .wrapped_key_b64,
+
+                        envelope
+                            .wrap_iv_b64,
+
+                        envelope
+                            .key_fingerprint,
+
+                        now,
+
+                        now
+                    ],
+                    function (insertErr) {
+                        if (insertErr) {
+                            return res
+                                .status(500)
+                                .json({
+                                    success:
+                                        false,
+
+                                    error:
+                                        'Unable to save Journal key protection.'
+                                });
+                        }
+
+                        return res.json({
+                            success:
+                                true,
+
+                            created:
+                                true,
+
+                            key_fingerprint:
+                                envelope
+                                    .key_fingerprint
+                        });
+                    }
+                );
+            }
+        );
+    }
+);
+
+
+app.get(
+    '/api/journals/:youth_id',
+    requireAuth,
+    requirePrivateJournalAccess,
+    (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (
+            !youthId ||
+            !isCanonicalSelf(
+                req.auth,
+                req.params.youth_id
+            )
+        ) {
+            return sendForbidden(res);
+        }
+
+        db.all(
+            `SELECT
+                id,
+                youth_id,
+                title,
+                content,
+                mood,
+                created_at,
+                entry_uuid,
+                crypto_version,
+                cipher_alg,
+                iv_b64,
+                ciphertext_b64,
+                encrypted_at,
+                updated_at
+             FROM private_journals
+             WHERE youth_id = ?
+             ORDER BY
+                created_at DESC,
+                id DESC`,
+            [youthId],
+            (err, rows) => {
+                if (err) {
+                    return res
+                        .status(500)
+                        .json({
+                            error:
+                                'Unable to load journal entries.'
+                        });
+                }
+
+                return res.json(
+                    (rows || [])
+                        .map(
+                            serializePrivateJournalRow
+                        )
+                );
+            }
+        );
+    }
+);
+
+
+app.post(
+    '/api/journals',
+    requireAuth,
+    requirePrivateJournalAccess,
+    requireCurrentPrivateJournalKeyFingerprint,
+    (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        const encrypted =
+            req.privateJournalEncrypted;
+
+        const now =
+            getManilaTime();
+
+        db.run(
+            `INSERT INTO private_journals (
+                youth_id,
+                title,
+                content,
+                mood,
+                created_at,
+                entry_uuid,
+                crypto_version,
+                cipher_alg,
+                iv_b64,
+                ciphertext_b64,
+                key_fingerprint,
+                encrypted_at,
+                updated_at
+             )
+             VALUES (
+                ?,
+                NULL,
+                NULL,
+                NULL,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?
+             )`,
+            [
+                youthId,
+                now,
+                encrypted.entry_uuid,
+                encrypted.crypto_version,
+                encrypted.cipher_alg,
+                encrypted.iv_b64,
+                encrypted.ciphertext_b64,
+                encrypted.key_fingerprint,
+                now,
+                now
+            ],
+            function (err) {
+                if (err) {
+                    if (
+                        String(
+                            err.code ||
+                            ''
+                        ).includes(
+                            'CONSTRAINT'
+                        )
+                    ) {
+                        return res
+                            .status(409)
+                            .json({
+                                success:
+                                    false,
+                                error:
+                                    'Journal entry already exists.'
+                            });
+                    }
+
+                    return res
+                        .status(500)
+                        .json({
+                            success:
+                                false,
+                            error:
+                                'Unable to save journal entry.'
+                        });
+                }
+
+                const journalId =
+                    this.lastID;
+
+                /*
+                 * Life Points acknowledge completion only.
+                 * No title, mood, length, topic or journal
+                 * content is inspected for points.
+                 */
+                const today =
+                    getManilaTime()
+                        .split(' ')[0];
+
+                db.get(
+                    `SELECT id
+                     FROM point_transactions
+                     WHERE youth_id = ?
+                       AND game_name =
+                           'Daily Journal'
+                       AND created_at LIKE ?`,
+                    [
+                        youthId,
+                        today + '%'
+                    ],
+                    (pointErr, row) => {
+                        if (
+                            pointErr ||
+                            row
+                        ) {
+                            return;
+                        }
+
+                        db.get(
+                            `SELECT value
+                             FROM app_settings
+                             WHERE key =
+                                 'journal_points'`,
+                            [],
+                            (settingErr, setting) => {
+                                if (
+                                    settingErr
+                                ) {
+                                    return;
+                                }
+
+                                const points =
+                                    parseInt(
+                                        setting
+                                            ? setting.value
+                                            : '10',
+                                        10
+                                    ) || 0;
+
+                                if (
+                                    points > 0
+                                ) {
+                                    awardPoints(
+                                        youthId,
+                                        'growth',
+                                        points,
+                                        'System',
+                                        'Daily Journal'
+                                    );
+                                }
+                            }
+                        );
+                    }
+                );
+
+                return res.json({
+                    success:
+                        true,
+                    id:
+                        journalId,
+                    entry_uuid:
+                        encrypted.entry_uuid
+                });
+            }
+        );
+    }
+);
+
+
+app.put(
+    '/api/journals/:id',
+    requireAuth,
+    requirePrivateJournalAccess,
+    requireCurrentPrivateJournalKeyFingerprint,
+    (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        const entryId =
+            normalizeCanonicalId(
+                req.params.id
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        if (!entryId) {
+            return res
+                .status(404)
+                .json({
+                    error:
+                        'Journal entry not found.'
+                });
+        }
+
+        const encrypted =
+            req.privateJournalEncrypted;
+
+        const now =
+            getManilaTime();
+
+        db.run(
+            `UPDATE private_journals
+             SET
+                iv_b64 = ?,
+                ciphertext_b64 = ?,
+                crypto_version = ?,
+                cipher_alg = ?,
+                key_fingerprint = ?,
+                encrypted_at =
+                    COALESCE(
+                        encrypted_at,
+                        ?
+                    ),
+                updated_at = ?
+             WHERE id = ?
+               AND youth_id = ?
+               AND entry_uuid = ?
+               AND crypto_version = ?
+               AND key_fingerprint = ?`,
+            [
+                encrypted.iv_b64,
+                encrypted.ciphertext_b64,
+                encrypted.crypto_version,
+                encrypted.cipher_alg,
+                encrypted.key_fingerprint,
+                now,
+                now,
+                entryId,
+                youthId,
+                encrypted.entry_uuid,
+                PRIVATE_JOURNAL_CRYPTO_VERSION,
+                encrypted.key_fingerprint
+            ],
+            function (err) {
+                if (err) {
+                    return res
+                        .status(500)
+                        .json({
+                            error:
+                                'Unable to update journal entry.'
+                        });
+                }
+
+                if (!this.changes) {
+                    return res
+                        .status(404)
+                        .json({
+                            error:
+                                'Encrypted journal entry not found.'
+                        });
+                }
+
+                return res.json({
+                    success:
+                        true
+                });
+            }
+        );
+    }
+);
+
+
+/*
+ * OWNER-INITIATED LEGACY MIGRATION
+ *
+ * The server never performs bulk plaintext encryption.
+ * The authenticated owner's browser receives their own
+ * legacy entry, encrypts it locally, then replaces it here.
+ *
+ * The plaintext columns are cleared only in the same
+ * successful UPDATE that stores the ciphertext.
+ */
+app.put(
+    '/api/journals/:id/migrate',
+    requireAuth,
+    requirePrivateJournalMigrationAccess,
+    requireCurrentPrivateJournalKeyFingerprint,
+    (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        const entryId =
+            normalizeCanonicalId(
+                req.params.id
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        if (!entryId) {
+            return res
+                .status(404)
+                .json({
+                    error:
+                        'Journal entry not found.'
+                });
+        }
+
+        const encrypted =
+            req.privateJournalEncrypted;
+
+        const now =
+            getManilaTime();
+
+        db.run(
+            `UPDATE private_journals
+             SET
+                entry_uuid = ?,
+                crypto_version = ?,
+                cipher_alg = ?,
+                iv_b64 = ?,
+                ciphertext_b64 = ?,
+                key_fingerprint = ?,
+                encrypted_at = ?,
+                updated_at = ?,
+                title = NULL,
+                content = NULL,
+                mood = NULL
+             WHERE id = ?
+               AND youth_id = ?
+               AND (
+                    crypto_version IS NULL
+                    OR ciphertext_b64 IS NULL
+               )`,
+            [
+                encrypted.entry_uuid,
+                encrypted.crypto_version,
+                encrypted.cipher_alg,
+                encrypted.iv_b64,
+                encrypted.ciphertext_b64,
+                encrypted.key_fingerprint,
+                now,
+                now,
+                entryId,
+                youthId
+            ],
+            function (err) {
+                if (err) {
+                    if (
+                        String(
+                            err.code ||
+                            ''
+                        ).includes(
+                            'CONSTRAINT'
+                        )
+                    ) {
+                        return res
+                            .status(409)
+                            .json({
+                                success:
+                                    false,
+                                error:
+                                    'Journal migration identifier already exists.'
+                            });
+                    }
+
+                    return res
+                        .status(500)
+                        .json({
+                            success:
+                                false,
+                            error:
+                                'Unable to protect legacy journal entry.'
+                        });
+                }
+
+                if (!this.changes) {
+                    return res
+                        .status(409)
+                        .json({
+                            success:
+                                false,
+                            error:
+                                'Journal entry is already protected or unavailable.'
+                        });
+                }
+
+                return res.json({
+                    success:
+                        true,
+                    migrated:
+                        true
+                });
+            }
+        );
+    }
+);
+
+
+/*
+ * OWNER DELETE PRIVACY EXCEPTION
+ *
+ * An authenticated owner may delete their own Journal entry
+ * even when normal Journal viewing/creation is locked.
+ *
+ * Deletion reduces retained sensitive data and does not
+ * reveal entry plaintext or encryption keys.
+ */
+app.delete(
+    '/api/journals/:id',
+    requireAuth,
+    (req, res) => {
+        const youthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        const entryId =
+            normalizeCanonicalId(
+                req.params.id
+            );
+
+        if (!youthId) {
+            return sendForbidden(res);
+        }
+
+        if (!entryId) {
+            return res
+                .status(404)
+                .json({
+                    error:
+                        'Journal entry not found.'
+                });
+        }
+
+        db.run(
+            `DELETE FROM private_journals
+             WHERE id = ?
+               AND youth_id = ?`,
+            [
+                entryId,
+                youthId
+            ],
+            function (err) {
+                if (err) {
+                    return res
+                        .status(500)
+                        .json({
+                            error:
+                                'Unable to delete journal entry.'
+                        });
+                }
+
+                if (!this.changes) {
+                    return res
+                        .status(404)
+                        .json({
+                            error:
+                                'Journal entry not found.'
+                        });
+                }
+
+                return res.json({
+                    success:
+                        true
+                });
+            }
+        );
+    }
+);
+
+
+// NEW PRAYER API (WITH DAILY POINTS)
+app.get('/api/prayers', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const youthId = normalizeCanonicalId(auth && auth.youthId);
+    db.all(
+        `SELECT p.id, p.title, p.request, p.is_anonymous, p.created_at,
+                CASE WHEN p.youth_id = ? THEN p.youth_id ELSE NULL END AS youth_id,
+                CASE WHEN p.is_anonymous = 1 THEN 'Anonymous'
+                     ELSE COALESCE(NULLIF(TRIM(y.name), ''), 'Member') END AS author_name,
+                CASE WHEN p.youth_id = ? THEN 1 ELSE 0 END AS is_owner,
+                (SELECT COUNT(*) FROM prayer_intercessions i WHERE i.prayer_id = p.id) AS prayer_count
+         FROM prayer_requests p
+         LEFT JOIN youth y ON y.id = p.youth_id
+         WHERE p.group_id IS NULL
+         ORDER BY p.created_at DESC, p.id DESC`,
+        [youthId, youthId],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Unable to load prayer requests.' });
+            return res.json(rows || []);
+        }
+    );
+});
+app.post('/api/prayers', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youthId) return sendForbidden(res);
+    db.run(`INSERT INTO prayer_requests (youth_id, title, request, is_anonymous, created_at) VALUES (?, ?, ?, ?, ?)`, [youthId, req.body.title, req.body.request, req.body.is_anonymous ? 1 : 0, getManilaTime()], function(err) {
+        if (err) return res.status(500).json({ error: 'Unable to submit prayer request.' });
+        const today = getManilaTime().split(' ')[0];
+        db.get(`SELECT id FROM point_transactions WHERE youth_id = ? AND game_name = 'Daily Prayer' AND created_at LIKE ?`, [youthId, today + '%'], (err, row) => {
+            if (!row) {
+                db.get(`SELECT value FROM app_settings WHERE key = 'prayer_points'`, [], (err, s) => {
+                    const pts = parseInt(s ? s.value : '5') || 0;
+                    if (pts > 0) awardPoints(youthId, 'growth', pts, 'System', 'Daily Prayer');
+                });
+            }
+        });
+        res.json({ success: true });
+    });
+});
+app.put('/api/prayers/:id', requireResourceOwnerOrAllPermissions('prayer', ['edit_entries']), (req, res) => { db.run(`UPDATE prayer_requests SET title = ?, request = ?, is_anonymous = ? WHERE id = ?`, [req.body.title, req.body.request, req.body.is_anonymous ? 1 : 0, req.params.id], function(err) { if (err) return res.status(500).json({ error: 'Unable to update prayer request.' }); res.json({ success: true }); }); });
+app.post('/api/prayers/:id/intercede', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youthId) return sendForbidden(res);
+    db.run(`INSERT OR IGNORE INTO prayer_intercessions (prayer_id, youth_id, prayed_at) VALUES (?, ?, ?)`, [req.params.id, youthId, getManilaTime()], function(err) {
+        if (err) return res.status(500).json({ error: 'Unable to record intercession.' });
+        res.json({ success: true });
+    });
+});
+
+// NEW SMALL GROUPS API (WITH POINTS)
+
+
+app.get('/api/small-groups/:id/prayers', requireGroupAccess(), (req, res) => {
+    db.all(`SELECT p.id, p.title, p.request, p.is_anonymous, p.is_answered, p.created_at,
+                   CASE WHEN p.is_anonymous = 1 THEN 'Anonymous'
+                        ELSE COALESCE(NULLIF(TRIM(y.name), ''), 'Member') END AS author_name
+            FROM prayer_requests p LEFT JOIN youth y ON p.youth_id = y.id
+            WHERE p.group_id = ? ORDER BY p.created_at DESC, p.id DESC`, [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load group prayers.' });
+        res.json(rows || []);
+    });
+});
+
+app.post('/api/small-groups/:id/prayers', requireGroupAccess(), (req, res) => {
+    const youth_id = normalizeCanonicalId(req.auth && req.auth.youthId);
+    const { title, request, is_anonymous } = req.body;
+    db.run(`INSERT INTO prayer_requests (group_id, youth_id, title, request, is_anonymous, created_at) VALUES (?, ?, ?, ?, ?, ?)`, 
+    [req.params.id, youth_id, title, request, is_anonymous ? 1 : 0, getManilaTime()], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({success: true});
+    });
+});
+
+app.post('/api/small-groups/prayers/:prayer_id/intercede', requireGroupAccess(req =>
+    loadGroupIdForResource('prayer', req.params.prayer_id)), (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    db.get(`SELECT p.youth_id AS author_id, g.name AS group_name
+            FROM prayer_requests p JOIN small_groups g ON g.id = p.group_id WHERE p.id = ?`,
+        [req.params.prayer_id], (lookupError, prayer) => {
+            if (lookupError || !prayer) return res.status(404).json({ error: 'Prayer request not found.' });
+            db.run(`INSERT OR IGNORE INTO prayer_intercessions (prayer_id, youth_id, prayed_at) VALUES (?, ?, ?)`,
+                [req.params.prayer_id, youthId, getManilaTime()], function(err) {
+                    if (err) return res.status(500).json({ error: 'Unable to record intercession.' });
+                    if (this.changes > 0 && normalizeCanonicalId(prayer.author_id) !== youthId) {
+                        pushToUser(prayer.author_id, "🙏 Someone prayed for you!",
+                            `Someone in ${prayer.group_name || 'your group'} just prayed for your request.`);
+                    }
+                    res.json({ success: true });
+                });
+        });
+});
+
+app.put('/api/small-groups/prayers/:prayer_id/answered', requireGroupAccess(req =>
+    loadGroupIdForResource('prayer', req.params.prayer_id), ['access_discipleship', 'edit_entries']), (req, res) => {
+    db.get(`SELECT p.group_id, p.title, g.name AS group_name
+            FROM prayer_requests p JOIN small_groups g ON g.id = p.group_id WHERE p.id = ?`,
+        [req.params.prayer_id], (lookupError, prayer) => {
+            if (lookupError || !prayer) return res.status(404).json({ error: 'Prayer request not found.' });
+            db.run(`UPDATE prayer_requests SET is_answered = 1 WHERE id = ? AND group_id = ?`,
+                [req.params.prayer_id, prayer.group_id], function(err) {
+                    if (err) return res.status(500).json({ error: 'Unable to mark prayer answered.' });
+                    db.all(`SELECT youth_id FROM small_group_members WHERE group_id = ? AND status = 'Approved'`,
+                        [prayer.group_id], (memberError, members) => {
+                            if (!memberError && members) members.forEach(member =>
+                                pushToUser(member.youth_id, "🎉 Praise Report!",
+                                    `A prayer in ${prayer.group_name} was just answered: ${prayer.title}`));
+                        });
+                    res.json({ success: true });
+                });
+        });
+});
+
+app.get('/api/small-groups/:id/roster-status', requireGroupAccess(), (req, res) => {
+    // Fetches group members and calculates their 'last active' status using activity_logs
+    db.all(`SELECT y.id, y.name, y.profile_picture, 
+            (SELECT MAX(created_at) FROM activity_logs WHERE username = y.qr_code) as last_active 
+            FROM small_group_members sgm 
+            JOIN youth y ON sgm.youth_id = y.id 
+            WHERE sgm.group_id = ?`, [req.params.id], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+app.get('/api/small-groups/:id/recent-chat', requireGroupAccess(), (req, res) => {
+    db.get(`SELECT c.message, y.name FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? ORDER BY c.id DESC LIMIT 1`, [req.params.id], (err, row) => {
+        res.json(row || null);
+    });
+});
+
+const SMALL_GROUP_TYPES = new Set(['campfire', 'fire_circle']);
+
+function normalizeSmallGroupType(value) {
+    if (typeof value !== 'string') return null;
+
+    const normalized = value.trim().toLowerCase();
+
+    return SMALL_GROUP_TYPES.has(normalized)
+        ? normalized
+        : null;
+}
+
+app.get('/api/small-groups', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const youthId = normalizeCanonicalId(auth && auth.youthId);
+    const canManage = auth && authorizationHasPermission(auth, 'access_discipleship') ? 1 : 0;
+    db.all(`SELECT g.*, y.name as leader_name,
+        (SELECT COUNT(*) FROM small_group_members WHERE group_id = g.id AND status='Approved') as member_count,
+        (SELECT status FROM small_group_members WHERE group_id = g.id AND youth_id = ?) as user_status
+        FROM small_groups g LEFT JOIN youth y ON g.leader_id = y.id
+        WHERE COALESCE(g.privacy_level, 'Open') != 'Invite-Only'
+           OR g.leader_id = ?
+           OR EXISTS (SELECT 1 FROM small_group_members m WHERE m.group_id = g.id AND m.youth_id = ?)
+           OR ? = 1
+        ORDER BY g.name ASC`, [youthId, youthId, youthId, canManage], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load groups.' });
+        res.json(rows || []);
+    });
+});
+app.post('/api/small-groups', requireAllPermissions(['access_discipleship', 'add_entries']), (req, res) => {
+    const body = req.body || {};
+    const requestedType = Object.prototype.hasOwnProperty.call(body, 'group_type')
+        ? body.group_type
+        : 'campfire';
+    const groupType = normalizeSmallGroupType(requestedType);
+
+    if (!groupType) {
+        return res.status(400).json({
+            error: 'Group type must be campfire or fire_circle.'
+        });
+    }
+
+    db.run(
+        `INSERT INTO small_groups
+         (name, leader_id, meeting_schedule, venue, points, logo,
+          privacy_level, group_type, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            body.name,
+            body.leader_id || null,
+            body.meeting_schedule,
+            body.venue,
+            body.points || 20,
+            body.logo || null,
+            body.privacy_level || 'Open',
+            groupType,
+            getManilaTime()
+        ],
+        function(err) {
+            if (err) {
+                return res.status(500).json({
+                    error: 'Unable to create group.'
+                });
+            }
+
+            return res.json({
+                success: true,
+                id: this.lastID,
+                group_type: groupType
+            });
+        }
+    );
+});
+
+// [KOINONIA PATCH] UPDATE CAMPFIRE PRIVACY
+app.patch('/api/small-groups/:id/privacy', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'edit_entries']), (req, res) => {
+    db.run('UPDATE small_groups SET privacy_level = ? WHERE id = ?', [req.body.privacy_level, req.params.id], function(err) {
+        res.json({success: !err, error: err ? err.message : null});
+    });
+});
+app.put(
+    '/api/small-groups/:id',
+    requireResourceOwnerOrAllPermissions(
+        'smallGroup',
+        ['access_discipleship', 'edit_entries']
+    ),
+    (req, res) => {
+        const body = req.body || {};
+        const hasLogoUpdate =
+            Object.prototype.hasOwnProperty.call(body, 'logo');
+        const hasGroupTypeUpdate =
+            Object.prototype.hasOwnProperty.call(body, 'group_type');
+
+        const groupType = hasGroupTypeUpdate
+            ? normalizeSmallGroupType(body.group_type)
+            : null;
+
+        if (hasGroupTypeUpdate && !groupType) {
+            return res.status(400).json({
+                error: 'Group type must be campfire or fire_circle.'
+            });
+        }
+
+        const sql = hasLogoUpdate
+            ? `UPDATE small_groups
+               SET name=?, leader_id=?, meeting_schedule=?, venue=?,
+                   points=?, logo=?, privacy_level=?,
+                   group_type=COALESCE(?, group_type, 'campfire')
+               WHERE id=?`
+            : `UPDATE small_groups
+               SET name=?, leader_id=?, meeting_schedule=?, venue=?,
+                   points=?, privacy_level=?,
+                   group_type=COALESCE(?, group_type, 'campfire')
+               WHERE id=?`;
+
+        const params = hasLogoUpdate
+            ? [
+                body.name,
+                body.leader_id || null,
+                body.meeting_schedule,
+                body.venue,
+                body.points || 20,
+                body.logo || null,
+                body.privacy_level || 'Open',
+                groupType,
+                req.params.id
+            ]
+            : [
+                body.name,
+                body.leader_id || null,
+                body.meeting_schedule,
+                body.venue,
+                body.points || 20,
+                body.privacy_level || 'Open',
+                groupType,
+                req.params.id
+            ];
+
+        db.run(sql, params, function(err) {
+            if (err) {
+                return res.status(500).json({
+                    error: 'Unable to update group.'
+                });
+            }
+
+            if (!this.changes) {
+                return res.status(404).json({
+                    error: 'Group not found.'
+                });
+            }
+
+            return res.json({ success: true });
+        });
+    }
+);
+app.delete('/api/small-groups/:id', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM small_groups WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM small_group_members WHERE group_id=?`, [req.params.id]); res.json({ success: true }); }); });
+
+
+app.get('/api/small-groups/:id/sessions', requireGroupAccess(), (req, res) => {
+    db.all(`SELECT * FROM group_sessions WHERE group_id = ? ORDER BY scheduled_at DESC`, [req.params.id], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+app.post('/api/small-groups/:id/sessions', requireGroupAccess(req => req.params.id, ['access_discipleship', 'add_entries']), (req, res) => {
+    const { title, scheduled_at, meet_link } = req.body;
+    db.run(`INSERT INTO group_sessions (group_id, title, scheduled_at, meet_link, created_at) VALUES (?, ?, ?, ?, ?)`, 
+        [req.params.id, title, scheduled_at, meet_link, getManilaTime()], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({ success: true });
+    });
+});
+
+app.put('/api/small-groups/sessions/:session_id', requireGroupAccess(req =>
+    loadGroupIdForResource('session', req.params.session_id), ['access_discipleship', 'edit_entries']), (req, res) => {
+    db.run(`UPDATE group_sessions SET recording_url = ? WHERE id = ?`, [req.body.recording_url, req.params.session_id], function(err) {
+        res.json({ success: true });
+    });
+});
+
+app.delete('/api/small-groups/sessions/:session_id', requireGroupAccess(req =>
+    loadGroupIdForResource('session', req.params.session_id), ['access_discipleship', 'delete_entries']), (req, res) => {
+    db.run(`DELETE FROM group_sessions WHERE id = ?`, [req.params.session_id], function(err) {
+        res.json({ success: true });
+    });
+});
+
+app.get('/api/small-groups/:id/chat', requireGroupAccess(), (req, res) => {
+    const lastId = parseInt(req.query.last_id) || 0;
+    db.all(`SELECT c.id, c.message, c.reactions, c.created_at, y.name, y.profile_picture FROM small_group_chats c JOIN youth y ON c.youth_id = y.id WHERE c.group_id = ? AND c.id > ? ORDER BY c.id ASC`, [req.params.id, lastId], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+app.post('/api/small-groups/:id/chat', requireGroupAccess(), (req, res) => {
+    const youth_id = normalizeCanonicalId(req.auth && req.auth.youthId);
+    const { message } = req.body;
+    db.run(`INSERT INTO small_group_chats (group_id, youth_id, message, created_at) VALUES (?, ?, ?, ?)`, [req.params.id, youth_id, message, getManilaTime()], function(err) {
+        if(err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, id: this.lastID });
+    });
+});
+
+
+app.post('/api/small-groups/:id/join', requireAuth, (req, res) => {
+    const youth_id = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youth_id) return sendForbidden(res);
+    db.get(`SELECT privacy_level, points FROM small_groups WHERE id = ?`, [req.params.id], (err, grp) => {
+        if(!grp) return res.status(404).json({error: "Group not found."});
+        if(grp.privacy_level === 'Invite-Only') return res.status(403).json({error: "This group is invite-only."});
+        
+        const status = grp.privacy_level === 'Approval' ? 'Pending' : 'Approved';
+        db.run(`INSERT INTO small_group_members (group_id, youth_id, joined_at, status) VALUES (?, ?, ?, ?)`, 
+        [req.params.id, youth_id, getManilaTime(), status], function(err) {
+            if(err) return res.status(400).json({error: "Already applied or joined."});
+            if(status === 'Approved' && grp.points > 0) awardPoints(youth_id, 'growth', grp.points, 'System', `Joined Group`);
+            res.json({success: true, status});
+        });
+    });
+});
+
+app.post('/api/small-groups/:id/members/:youth_id/status', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'delete_entries'], req => req.params.id), (req, res) => {
+    const { status } = req.body;
+    if (status === 'Denied') {
+        db.run(`DELETE FROM small_group_members WHERE group_id = ? AND youth_id = ?`, [req.params.id, req.params.youth_id], () => res.json({success:true}));
+    } else {
+        db.run(`UPDATE small_group_members SET status = 'Approved' WHERE group_id = ? AND youth_id = ?`, [req.params.id, req.params.youth_id], () => res.json({success:true}));
+    }
+});
+
+app.post('/api/small-groups/:id/invite', requireResourceOwnerOrAllPermissions('smallGroup', ['access_discipleship', 'add_entries']), (req, res) => {
+    db.run(`INSERT INTO small_group_members (group_id, youth_id, joined_at, status) VALUES (?, ?, ?, 'Approved')`, 
+    [req.params.id, req.body.youth_id, getManilaTime()], function(err) {
+        if(err) return res.status(400).json({error: "User is already in group."});
+        res.json({success: true});
+    });
+});
+
+app.get('/api/small-groups/:id/roster-status', requireGroupAccess(), (req, res) => {
+    db.all(`SELECT y.id, y.name, y.profile_picture, sgm.status,
+            (SELECT MAX(created_at) FROM activity_logs WHERE username = y.qr_code) as last_active 
+            FROM small_group_members sgm 
+            JOIN youth y ON sgm.youth_id = y.id 
+            WHERE sgm.group_id = ? ORDER BY sgm.status DESC, y.name ASC`, [req.params.id], (err, rows) => {
+        res.json(rows || []);
+    });
+});
+
+app.post('/api/ai/chat', (req, res) => {
+    const { prompt, persona, is_private, actor } = req.body;
+    const q = (prompt || '').toLowerCase().trim();
+    const finalizeChat = (reply) => {
+        if (!is_private) db.run(`INSERT INTO ai_chat_logs (username, persona, prompt, response, is_private, created_at) VALUES (?, ?, ?, ?, 0, ?)`, [actor || 'System', 'Silas', prompt, reply, getManilaTime()]);
+        setTimeout(() => { res.json({ response: reply }); }, 600);
+    };
+
+    // 1. Minis Logic
+    if (q === 'how many are minis' || q === 'how many minis' || q.includes('count minis')) {
+        db.get(`SELECT COUNT(*) as cnt FROM youth WHERE age <= 12`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.cnt} Minis</strong> (age 12 and below). <br><br>💡 <em>Tip: You can ask "show minis list" to see their names and ages.</em>`); }); return;
+    }
+    if (q === 'show minis list' || q.includes('list of minis') || q.includes('who are the minis')) {
+        db.all(`SELECT name, age FROM youth WHERE age <= 12 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows?.length || 0===0) return finalizeChat("No minis found in the database."); let msg = `<strong>👶 List of Minis:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
+    }
+
+    // 2. Youth Logic
+    if (q === 'how many are youth' || q === 'how many youth' || q.includes('count youth')) {
+        db.get(`SELECT COUNT(*) as cnt FROM youth WHERE age >= 13 AND age <= 21`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.cnt} Youth</strong> (ages 13-21). <br><br>💡 <em>Tip: You can ask "show youth list" to see their names and ages.</em>`); }); return;
+    }
+    if (q === 'show youth list' || q.includes('list of youth') || q.includes('who are the youth')) {
+        db.all(`SELECT name, age FROM youth WHERE age >= 13 AND age <= 21 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows?.length || 0===0) return finalizeChat("No youth found in the database."); let msg = `<strong>🔥 List of Youth:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
+    }
+
+    // 3. Adults Logic
+    if (q === 'how many are adults' || q === 'how many adults' || q.includes('count adults')) {
+        db.get(`SELECT COUNT(*) as cnt FROM youth WHERE age >= 22`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.cnt} Adults</strong> (ages 22+). <br><br>💡 <em>Tip: You can ask "show adult list" to see their names.</em>`); }); return;
+    }
+    if (q === 'show adult list' || q.includes('list of adults') || q.includes('who are the adults')) {
+        db.all(`SELECT name, age FROM youth WHERE age >= 22 ORDER BY name ASC`, [], (err, rows) => { if(!rows || rows?.length || 0===0) return finalizeChat("No adults found in the database."); let msg = `<strong>👥 List of Adults:</strong><br>`; rows.forEach(r => msg += `• ${r.name} (Age: ${r.age})<br>`); finalizeChat(msg); }); return;
+    }
+
+    // 4. Custom Roles Parser ("who has role core", "how many users have role usher")
+    if (q.includes('role')) {
+         let matchStr = q.split('role')[1];
+         if (matchStr) {
+             // Extract the clean role keyword
+             let roleName = matchStr.replace(/^(:|-|=|of|in)\s+/i, '').replace(/\?/g, '').trim();
+             if(roleName) {
+                 db.all(`SELECT y.name, m.name as min_name, mm.role FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id JOIN ministries m ON mm.ministry_id = m.id WHERE LOWER(mm.role) LIKE ? OR LOWER(mm.sub_role) LIKE ?`, [`%${roleName}%`, `%${roleName}%`], (err, rows1) => {
+                     db.all(`SELECT y.name, e.name as evt_name, er.role_name FROM event_roles er JOIN youth y ON er.youth_id = y.id JOIN events e ON er.event_id = e.id WHERE LOWER(er.role_name) LIKE ? OR LOWER(er.sub_role) LIKE ?`, [`%${roleName}%`, `%${roleName}%`], (err, rows2) => {
+                         let total = (rows1?rows1?.length || 0:0) + (rows2?rows2?.length || 0:0);
+                         if (total === 0) return finalizeChat(`I couldn't find anyone in the directory with the role "<strong>${roleName}</strong>".`);
+                         let msg = `Found <strong>${total}</strong> user(s) with a role matching "${roleName}":<br><br>`;
+                         if(rows1 && rows1?.length || 0>0) { msg += `<strong>Ministry Roles:</strong><br>`; rows1.forEach(r => msg += `• ${r.name} (${r.role} - ${r.min_name})<br>`); }
+                         if(rows2 && rows2?.length || 0>0) { msg += `<br><strong>Event Roles:</strong><br>`; rows2.forEach(r => msg += `• ${r.name} (${r.role_name} - ${r.evt_name})<br>`); }
+                         finalizeChat(msg);
+                     });
+                 });
+                 return;
+             }
+         }
+    }
+
+    // 5. General Community Analytics
+    if (q.includes('how many member') || q.includes('total member') || q === 'how many users') { 
+        db.get(`SELECT count(*) as total FROM youth`, [], (err, row) => { finalizeChat(`We currently have <strong>${row.total} registered members</strong> in the community.`); }); return; 
+    }
+    if (q.includes('missing') || q.includes('absent')) {
+        db.all(`SELECT y.name, MAX(a.checked_in_at) as last_seen FROM youth y LEFT JOIN attendance a ON y.id = a.youth_id GROUP BY y.id ORDER BY last_seen ASC LIMIT 10`, [], (err, rows) => { 
+            let msg = "<strong>⚠️ Haven't checked in recently:</strong><br>"; rows.forEach(r => msg += `• ${r.name}<br>`); finalizeChat(msg); 
+        }); return;
+    }
+    if (q.includes('top points') || q.includes('highest points') || q.includes('leaderboard')) {
+        db.all(`SELECT y.name, gp.points FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id ORDER BY gp.points DESC LIMIT 5`, [], (err, rows) => {
+            let msg = `<strong>🏆 Top 5 Overall XP Leaders:</strong><br>`; rows.forEach((r, i) => msg += `${i+1}. ${r.name} (${r.points} XP)<br>`); finalizeChat(msg);
+        }); return;
+    }
+
+    // 6. Default Silas Greeting
+    const greeting = `Hello, I am Silas, your FOG ministry assistant.<br><br>I am connected directly to your community database. You can ask me things like:<br>• "How many are minis?"<br>• "Show youth list"<br>• "Who has the role core?"<br>• "Who has the highest points?"<br>• "Who is absent?"`;
+    finalizeChat(greeting);
+});
+
+
+app.get('/api/liturgical/today', (req, res) => {
+    const today = getManilaTime().split(' ')[0];
+    const gospels = ["I am the bread of life... (John 6:35)", "Blessed are the poor in spirit... (Matthew 5:3)", "I am the light of the world... (John 8:12)", "Come to me, all you who are weary... (Matthew 11:28)"];
+    const dailyGospel = gospels[parseInt(today.split('-')[2], 10) % gospels?.length || 0];
+    require('https').get('https://calapi.inadiutorium.cz/api/v0/en/calendars/default/today', (resp) => {
+        let data = ''; resp.on('data', chunk => data += chunk);
+        resp.on('end', () => {
+            try { const p = JSON.parse(data); p.daily_gospel = dailyGospel; res.json(p); } 
+            catch(e) { res.json({ season: "ordinary", colour: "green", daily_gospel: dailyGospel }); }
+        });
+    }).on("error", () => res.json({ season: "ordinary", colour: "green", daily_gospel: dailyGospel }));
+});
+app.get('/api/small-groups/:id/threads', requireGroupAccess(), (req, res) => {
+    db.all(`SELECT t.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture, (SELECT COUNT(*) FROM group_thread_replies WHERE thread_id = t.id) as reply_count FROM group_threads t LEFT JOIN youth y ON t.youth_id = y.id WHERE t.group_id = ? ORDER BY t.created_at DESC`, [req.params.id], (err, rows) => { res.json(rows || []); });
+});
+app.post('/api/small-groups/:id/threads', requireGroupAccess(), (req, res) => {
+    db.run(`INSERT INTO group_threads (group_id, youth_id, title, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [req.params.id, req.auth.youthId, req.body.title, req.body.content, getManilaTime()],
+        function(err) { if (err) return res.status(500).json({ error: 'Unable to post thread.' }); res.json({success: true}); });
+});
+app.get('/api/small-groups/threads/:thread_id/replies', requireGroupAccess(req =>
+    loadGroupIdForResource('thread', req.params.thread_id)), (req, res) => {
+    db.all(`SELECT r.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_thread_replies r LEFT JOIN youth y ON r.youth_id = y.id WHERE r.thread_id = ? ORDER BY r.created_at ASC`, [req.params.thread_id], (err, rows) => { res.json(rows || []); });
+});
+app.post('/api/small-groups/threads/:thread_id/replies', requireGroupAccess(req =>
+    loadGroupIdForResource('thread', req.params.thread_id)), (req, res) => {
+    db.run(`INSERT INTO group_thread_replies (thread_id, youth_id, reply_text, created_at) VALUES (?, ?, ?, ?)`,
+        [req.params.thread_id, req.auth.youthId, req.body.reply_text, getManilaTime()],
+        function(err) { if (err) return res.status(500).json({ error: 'Unable to post reply.' }); res.json({success: true}); });
+});
+app.get('/api/small-groups/:id/memories', requireGroupAccess(), (req, res) => {
+    db.all(`SELECT m.*, IFNULL(y.name, 'Admin') as author_name, y.profile_picture FROM group_memories m LEFT JOIN youth y ON m.youth_id = y.id WHERE m.group_id = ? ORDER BY m.created_at DESC LIMIT 50`, [req.params.id], (err, rows) => { res.json(rows || []); });
+});
+app.post('/api/small-groups/:id/memories', requireGroupAccess(), (req, res) => {
+    db.run(`INSERT INTO group_memories (group_id, youth_id, image_data, caption, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [req.params.id, req.auth.youthId, req.body.image_data, req.body.caption, getManilaTime()],
+        function(err) { if (err) return res.status(500).json({ error: 'Unable to post memory.' }); res.json({success: true}); });
+});
+app.post('/api/small-groups/chat/:chat_id/react', requireGroupAccess(req =>
+    loadGroupIdForResource('chat', req.params.chat_id)), (req, res) => {
+    db.get(`SELECT reactions FROM small_group_chats WHERE id = ?`, [req.params.chat_id], (err, row) => {
+        if(!row) return res.json({success: false});
+        let reactions = {}; try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
+        reactions[req.body.emoji] = (reactions[req.body.emoji] || 0) + 1;
+        db.run(`UPDATE small_group_chats SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), req.params.chat_id], () => res.json({success: true}));
+    });
+});
+
+
+app.post('/api/small-groups/react-v2', requireGroupAccess(req => {
+    const type = req.body && req.body.type;
+    return loadGroupIdForResource(type === 'chat' ? 'chat' : type === 'prayer' ? 'prayer' :
+        type === 'memory' ? 'memory' : '', req.body && req.body.id);
+}), (req, res) => {
+    const { type, id, emoji } = req.body;
+    const user_name = req.auth.member && req.auth.member.name;
+    let table = '';
+    if(type === 'chat') table = 'small_group_chats';
+    else if(type === 'prayer') table = 'prayer_requests';
+    else if(type === 'memory') table = 'group_memories';
+    else return res.json({success:false});
+
+    db.get(`SELECT reactions FROM ${table} WHERE id = ?`, [id], (err, row) => {
+        if(!row) return res.json({success: false});
+        let reactions = {}; 
+        try { reactions = JSON.parse(row.reactions || '{}'); } catch(e) {}
+        
+        // 1. Enforce Mutual Exclusivity: Remove user from ALL emojis first
+        let removedFromSameEmoji = false;
+        Object.keys(reactions).forEach(e => {
+            if(typeof reactions[e] === 'number') reactions[e] = Array(reactions[e]).fill('Anonymous');
+            if(!Array.isArray(reactions[e])) reactions[e] = [];
+            
+            const idx = reactions[e].indexOf(user_name);
+            if(idx > -1) {
+                reactions[e].splice(idx, 1);
+                if (e === emoji) removedFromSameEmoji = true; // Toggle Off logic
+            }
+        });
+        
+        // 2. Add the new reaction (unless they were just turning it off)
+        if(!removedFromSameEmoji) {
+            if(!reactions[emoji]) reactions[emoji] = [];
+            reactions[emoji].push(user_name);
+        }
+        
+        // 3. Clean up empty arrays to keep database light
+        Object.keys(reactions).forEach(e => {
+            if(reactions[e]?.length || 0 === 0) delete reactions[e];
+        });
+
+        db.run(`UPDATE ${table} SET reactions = ? WHERE id = ?`, [JSON.stringify(reactions), id], () => {
+            res.json({success: true, reactions});
+        });
+    });
+});
+app.get('/api/worship/songs', (req, res) => { db.all(`SELECT * FROM songs ORDER BY title ASC`, [], (err, rows) => { res.json(rows); }); });
+app.post('/api/worship/songs', (req, res) => { db.run(`INSERT INTO songs (title, artist, song_key, bpm, audio_url, youtube_url, chord_chart_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.body.title, req.body.artist, req.body.song_key, req.body.bpm, req.body.audio_url, req.body.youtube_url, req.body.chord_chart_url, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
+app.put('/api/worship/songs/:id', (req, res) => { db.run(`UPDATE songs SET title=?, artist=?, song_key=?, bpm=?, audio_url=?, youtube_url=?, chord_chart_url=? WHERE id=?`, [req.body.title, req.body.artist, req.body.song_key, req.body.bpm, req.body.audio_url, req.body.youtube_url, req.body.chord_chart_url, req.params.id], function(err) { res.json({ success: true }); }); });
+app.delete('/api/worship/songs/:id', requireAllPermissions(['access_worship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM songs WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM setlist_songs WHERE song_id=?`, [req.params.id]); res.json({ success: true }); }); });
+app.get('/api/worship/setlists', (req, res) => { db.all(`SELECT * FROM setlists ORDER BY scheduled_date DESC`, [], (err, rows) => { res.json(rows); }); });
+app.post('/api/worship/setlists', (req, res) => { db.run(`INSERT INTO setlists (name, scheduled_date, created_at) VALUES (?, ?, ?)`, [req.body.name, req.body.scheduled_date, getManilaTime()], function(err) { res.json({ success: true, id: this.lastID }); }); });
+app.delete('/api/worship/setlists/:id', requireAllPermissions(['access_worship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM setlists WHERE id=?`, [req.params.id], function(err) { db.run(`DELETE FROM setlist_songs WHERE setlist_id=?`, [req.params.id]); res.json({ success: true }); }); });
+app.get('/api/worship/setlists/:id/songs', (req, res) => { db.all(`SELECT ss.id as mapping_id, s.* FROM setlist_songs ss JOIN songs s ON ss.song_id = s.id WHERE ss.setlist_id = ? ORDER BY ss.sort_order ASC`, [req.params.id], (err, rows) => { res.json(rows); }); });
+app.post('/api/worship/setlists/:id/songs', (req, res) => { db.get(`SELECT MAX(sort_order) as max_sort FROM setlist_songs WHERE setlist_id = ?`, [req.params.id], (err, row) => { const nextSort = (row && row.max_sort !== null ? row.max_sort : 0) + 1; db.run(`INSERT OR IGNORE INTO setlist_songs (setlist_id, song_id, sort_order) VALUES (?, ?, ?)`, [req.params.id, req.body.song_id, nextSort], function(err) { res.json({ success: true }); }); }); });
+app.delete('/api/worship/setlists/:setlist_id/songs/:mapping_id', requireAllPermissions(['access_worship', 'delete_entries']), (req, res) => { db.run(`DELETE FROM setlist_songs WHERE id=?`, [req.params.mapping_id], function(err) { res.json({ success: true }); }); });
+
+
+// FOG PRIVATE PRAYER INBOX
+// Canonical send/response mutation routes are defined earlier
+// with authenticated identity and ownership enforcement.
+
+app.get('/api/inbox/personal/:youth_id', requireAuth, (req, res) => {
+    const authenticatedYouthId =
+        Number(req.auth && req.auth.youthId);
+
+    const requestedYouthId =
+        Number(req.params.youth_id);
+
+    if (
+        !Number.isInteger(authenticatedYouthId) ||
+        authenticatedYouthId <= 0
+    ) {
+        return res.status(401).json({
+            success: false,
+            error: 'Authentication required.'
+        });
+    }
+
+    if (
+        !Number.isInteger(requestedYouthId) ||
+        requestedYouthId <= 0
+    ) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid member.'
+        });
+    }
+
+    if (
+        requestedYouthId !==
+        authenticatedYouthId
+    ) {
+        return res.status(403).json({
+            success: false,
+            error:
+                'You can only view your own private inbox.'
+        });
+    }
+
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    db.all(
+        `SELECT
+            p.*,
+            y.name AS sender_name,
+            y.profile_picture
+         FROM personal_inbox p
+         JOIN youth y
+           ON p.sender_id = y.id
+         WHERE p.receiver_id = ?
+         ORDER BY p.created_at DESC`,
+        [authenticatedYouthId],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    error:
+                        'Unable to load your private inbox.'
+                });
+            }
+
+            return res.json(
+                rows || []
+            );
+        }
+    );
+});
+
+
+// ==========================================
+// BIRTHDAY BLESSINGS API
+// ==========================================
+
+function getAuthenticatedBirthdayYouthId(
+    req
+) {
+    return normalizeCanonicalId(
+        req &&
+        req.auth &&
+        req.auth.youthId
+    );
+}
+
+
+app.get(
+    '/api/birthdays/today',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            getAuthenticatedBirthdayYouthId(
+                req
+            );
+
+        if (!youthId) {
+            return sendForbidden(
+                res
+            );
+        }
+
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        const dateKey =
+            require(
+                './lib/birthday-age-sync'
+            ).manilaDateKey(
+                new Date()
+            );
+
+        const birthdayYear =
+            Number(
+                dateKey.slice(
+                    0,
+                    4
+                )
+            );
+
+        try {
+            const [
+                celebrants,
+                profile
+            ] =
+                await Promise.all([
+                    BirthdayBlessings
+                        .getCelebrantsForDate(
+                            db,
+                            dateKey
+                        ),
+
+                    BirthdayBlessings
+                        .getBirthdayProfileStatus(
+                            db,
+                            youthId
+                        )
+                ]);
+
+            const decorated = [];
+
+            for (
+                const celebrant
+                of celebrants
+            ) {
+                let viewerBlessingKey =
+                    null;
+
+                if (
+                    celebrant.id !==
+                    youthId
+                ) {
+                    const state =
+                        await BirthdayBlessings
+                            .getMemberBlessingState(
+                                db,
+                                {
+                                    senderYouthId:
+                                        youthId,
+
+                                    celebrantYouthId:
+                                        celebrant.id,
+
+                                    birthdayYear
+                                }
+                            );
+
+                    viewerBlessingKey =
+                        state.blessing_key;
+                }
+
+                decorated.push({
+                    ...celebrant,
+
+                    is_me:
+                        celebrant.id ===
+                        youthId,
+
+                    viewer_blessing_key:
+                        viewerBlessingKey
+                });
+            }
+
+            return res.json({
+                success:
+                    true,
+
+                date_key:
+                    dateKey,
+
+                presets:
+                    BirthdayBlessings
+                        .listPresetBlessings(),
+
+                profile,
+
+                celebrants:
+                    decorated
+            });
+
+        } catch (error) {
+            console.error(
+                '[Birthday Blessings] today load failed',
+                error &&
+                error.message
+                    ? error.message
+                    : error
+            );
+
+            return res
+                .status(500)
+                .json({
+                    success:
+                        false,
+
+                    error:
+                        'Unable to load Birthday Blessings.'
+                });
+        }
+    }
+);
+
+
+app.get(
+    '/api/birthdays/preferences',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            getAuthenticatedBirthdayYouthId(
+                req
+            );
+
+        if (!youthId) {
+            return sendForbidden(
+                res
+            );
+        }
+
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        try {
+            const profile =
+                await BirthdayBlessings
+                    .getBirthdayProfileStatus(
+                        db,
+                        youthId
+                    );
+
+            return res.json({
+                success:
+                    true,
+
+                preferences:
+                    profile
+            });
+
+        } catch (error) {
+            console.error(
+                '[Birthday Blessings] preference load failed'
+            );
+
+            return res
+                .status(500)
+                .json({
+                    success:
+                        false,
+
+                    error:
+                        'Unable to load Birthday preferences.'
+                });
+        }
+    }
+);
+
+
+app.put(
+    '/api/birthdays/preferences',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            getAuthenticatedBirthdayYouthId(
+                req
+            );
+
+        if (!youthId) {
+            return sendForbidden(
+                res
+            );
+        }
+
+        const body =
+            req.body &&
+            typeof req.body ===
+                'object' &&
+            !Array.isArray(
+                req.body
+            )
+                ? req.body
+                : {};
+
+        try {
+            const preferences =
+                await BirthdayBlessings
+                    .setPreference(
+                        db,
+                        youthId,
+                        {
+                            celebrationEnabled:
+                                Object.prototype
+                                    .hasOwnProperty
+                                    .call(
+                                        body,
+                                        'celebration_enabled'
+                                    )
+                                    ? body
+                                        .celebration_enabled
+                                    : undefined,
+
+                            includeInNotifications:
+                                Object.prototype
+                                    .hasOwnProperty
+                                    .call(
+                                        body,
+                                        'include_in_notifications'
+                                    )
+                                    ? body
+                                        .include_in_notifications
+                                    : undefined
+                        }
+                    );
+
+            return res.json({
+                success:
+                    true,
+
+                preferences
+            });
+
+        } catch (error) {
+            if (
+                error instanceof
+                    TypeError ||
+                error instanceof
+                    RangeError
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success:
+                            false,
+
+                        error:
+                            'Invalid Birthday preferences.'
+                    });
+            }
+
+            console.error(
+                '[Birthday Blessings] preference save failed'
+            );
+
+            return res
+                .status(500)
+                .json({
+                    success:
+                        false,
+
+                    error:
+                        'Unable to save Birthday preferences.'
+                });
+        }
+    }
+);
+
+
+app.post(
+    '/api/birthdays/:celebrantId/bless',
+    requireAuth,
+    async (req, res) => {
+        const senderYouthId =
+            getAuthenticatedBirthdayYouthId(
+                req
+            );
+
+        if (!senderYouthId) {
+            return sendForbidden(
+                res
+            );
+        }
+
+        const celebrantYouthId =
+            normalizeCanonicalId(
+                req.params &&
+                req.params
+                    .celebrantId
+            );
+
+        if (!celebrantYouthId) {
+            return res
+                .status(400)
+                .json({
+                    success:
+                        false,
+
+                    error:
+                        'Invalid Birthday celebrant.'
+                });
+        }
+
+        const blessingKey =
+            req.body &&
+            typeof req.body
+                .blessing_key ===
+                'string'
+                ? req.body
+                    .blessing_key
+                : '';
+
+        try {
+            const result =
+                await BirthdayBlessings
+                    .sendBlessing(
+                        db,
+                        {
+                            senderYouthId,
+                            celebrantYouthId,
+                            blessingKey
+                        }
+                    );
+
+            return res.json({
+                success:
+                    true,
+
+                result
+            });
+
+        } catch (error) {
+            const code =
+                error &&
+                error.code
+                    ? error.code
+                    : '';
+
+            if (
+                code ===
+                    'BIRTHDAY_CELEBRANT_NOT_FOUND' ||
+                code ===
+                    'BIRTHDAY_SENDER_NOT_FOUND'
+            ) {
+                return res
+                    .status(404)
+                    .json({
+                        success:
+                            false,
+
+                        error:
+                            'Birthday member not found.'
+                    });
+            }
+
+            if (
+                code ===
+                    'BIRTHDAY_CELEBRATION_DISABLED'
+            ) {
+                return res
+                    .status(403)
+                    .json({
+                        success:
+                            false,
+
+                        error:
+                            'Birthday celebration is not available for this member.'
+                    });
+            }
+
+            if (
+                code ===
+                    'BIRTHDAY_NOT_TODAY'
+            ) {
+                return res
+                    .status(409)
+                    .json({
+                        success:
+                            false,
+
+                        error:
+                            'Birthday Blessings can only be sent on the celebrant’s birthday.'
+                    });
+            }
+
+            if (
+                code ===
+                    'BIRTHDAY_SELF_BLESSING_NOT_ALLOWED' ||
+                error instanceof
+                    TypeError ||
+                error instanceof
+                    RangeError
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success:
+                            false,
+
+                        error:
+                            code ===
+                                'BIRTHDAY_SELF_BLESSING_NOT_ALLOWED'
+                                ? 'You do not need to send a Birthday Blessing to yourself.'
+                                : 'Invalid Birthday Blessing.'
+                    });
+            }
+
+            console.error(
+                '[Birthday Blessings] blessing save failed'
+            );
+
+            return res
+                .status(500)
+                .json({
+                    success:
+                        false,
+
+                    error:
+                        'Unable to send Birthday Blessing.'
+                });
+        }
+    }
+);
+
+
+app.get(
+    '/api/birthdays/me/blessings',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            getAuthenticatedBirthdayYouthId(
+                req
+            );
+
+        if (!youthId) {
+            return sendForbidden(
+                res
+            );
+        }
+
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        const dateKey =
+            require(
+                './lib/birthday-age-sync'
+            ).manilaDateKey(
+                new Date()
+            );
+
+        const birthdayYear =
+            Number(
+                dateKey.slice(
+                    0,
+                    4
+                )
+            );
+
+        try {
+            const isBirthdayToday =
+                await BirthdayBlessings
+                    .isBirthdayOnDate(
+                        db,
+                        youthId,
+                        dateKey
+                    );
+
+            if (
+                !isBirthdayToday
+            ) {
+                return res.json({
+                    success:
+                        true,
+
+                    is_birthday_today:
+                        false,
+
+                    blessing_count:
+                        0,
+
+                    blessings:
+                        []
+                });
+            }
+
+            const blessings =
+                await BirthdayBlessings
+                    .getBlessingSenders(
+                        db,
+                        {
+                            celebrantYouthId:
+                                youthId,
+
+                            birthdayYear
+                        }
+                    );
+
+            return res.json({
+                success:
+                    true,
+
+                is_birthday_today:
+                    true,
+
+                blessing_count:
+                    blessings.length,
+
+                blessings
+            });
+
+        } catch (error) {
+            console.error(
+                '[Birthday Blessings] celebrant acknowledgement load failed'
+            );
+
+            return res
+                .status(500)
+                .json({
+                    success:
+                        false,
+
+                    error:
+                        'Unable to load Birthday Blessings received.'
+                });
+        }
+    }
+);
+
+
+/*
+ * Birthday Center administrative data.
+ *
+ * access_directory already grants leaders access to
+ * member birthdays in the existing Directory, so this
+ * endpoint does not introduce a broader permission.
+ *
+ * Even here, upcoming birthday output uses the safe
+ * month/day celebrant projection. Missing-birthday
+ * records return ID + name only.
+ */
+app.get(
+    '/api/admin/birthdays/overview',
+    requireAllPermissions([
+        'access_directory'
+    ]),
+    async (req, res) => {
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        const requestedDays =
+            req.query &&
+            req.query.days !==
+                undefined
+                ? Number(
+                    req.query.days
+                )
+                : 60;
+
+        if (
+            !Number.isInteger(
+                requestedDays
+            ) ||
+            requestedDays < 0 ||
+            requestedDays > 366
+        ) {
+            return res
+                .status(400)
+                .json({
+                    success:
+                        false,
+
+                    error:
+                        'Birthday calendar range must be between 0 and 366 days.'
+                });
+        }
+
+        const dateKey =
+            require(
+                './lib/birthday-age-sync'
+            ).manilaDateKey(
+                new Date()
+            );
+
+        try {
+            const [
+                calendar,
+                monthCalendar,
+                missing
+            ] =
+                await Promise.all([
+                    BirthdayBlessings
+                        .getUpcomingCelebrants(
+                            db,
+                            {
+                                dateKey,
+                                days:
+                                    requestedDays
+                            }
+                        ),
+
+                    BirthdayBlessings
+                        .getMonthCalendar(
+                            db,
+                            dateKey
+                        ),
+
+                    BirthdayBlessings
+                        .getMissingBirthdayMembers(
+                            db
+                        )
+                ]);
+
+            const todayCount =
+                calendar
+                    .filter(
+                        day =>
+                            day.offset ===
+                            0
+                    )
+                    .reduce(
+                        (
+                            total,
+                            day
+                        ) =>
+                            total +
+                            day
+                                .celebrants
+                                .length,
+                        0
+                    );
+
+            const next7Count =
+                calendar
+                    .filter(
+                        day =>
+                            day.offset <=
+                            7
+                    )
+                    .reduce(
+                        (
+                            total,
+                            day
+                        ) =>
+                            total +
+                            day
+                                .celebrants
+                                .length,
+                        0
+                    );
+
+            const monthCount =
+                monthCalendar
+                    .days
+                    .reduce(
+                        (
+                            total,
+                            day
+                        ) =>
+                            total +
+                            day
+                                .celebrants
+                                .length,
+                        0
+                    );
+
+            return res.json({
+                success:
+                    true,
+
+                date_key:
+                    dateKey,
+
+                summary: {
+                    today:
+                        todayCount,
+
+                    next_7_days:
+                        next7Count,
+
+                    this_month:
+                        monthCount,
+
+                    missing_birthdays:
+                        missing.length
+                },
+
+                calendar,
+
+                month_calendar:
+                    monthCalendar,
+
+                missing_birthdays:
+                    missing
+            });
+
+        } catch (error) {
+            console.error(
+                '[Birthday Blessings] admin overview failed',
+                error &&
+                error.message
+                    ? error.message
+                    : error
+            );
+
+            return res
+                .status(500)
+                .json({
+                    success:
+                        false,
+
+                    error:
+                        'Unable to load Birthday Center.'
+                });
+        }
+    }
+);
+
+
+// ==========================================
+// CANONICAL NOTIFICATION CENTER API
+// ==========================================
+
+function getAuthenticatedNotificationYouthId(req) {
+    const youthId =
+        Number(
+            req.auth &&
+            req.auth.youthId
+        );
+
+    return (
+        Number.isSafeInteger(youthId) &&
+        youthId > 0
+    )
+        ? youthId
+        : null;
+}
+
+
+/*
+ * Canonical Notification external delivery runtime.
+ *
+ * This is intentionally internal-only. There is no public
+ * send endpoint. Growth/leadership triggers call these
+ * helpers only after the canonical Inbox event exists.
+ *
+ * The factory is created lazily so it always receives the
+ * current secure Email outbox and current Push availability.
+ */
+function getCanonicalNotificationDeliveryEngine() {
+    return createRuntimeNotificationDeliveryEngine({
+        database:
+            db,
+
+        webpush,
+
+        pushEnabled:
+            pushNotificationsAvailable,
+
+        emailOutbox:
+            emailRecoveryOutbox || null,
+
+        publicOrigin:
+            typeof process.env.KOINONIA_PUBLIC_ORIGIN === 'string'
+                ? process.env.KOINONIA_PUBLIC_ORIGIN.trim()
+                : null
+    });
+}
+
+async function dispatchCanonicalNotificationRecipient(
+    recipientId,
+    options = {}
+) {
+    return getCanonicalNotificationDeliveryEngine()
+        .dispatchRecipient(
+            recipientId,
+            options
+        );
+}
+
+async function dispatchCanonicalNotificationEvent(
+    eventId,
+    options = {}
+) {
+    return getCanonicalNotificationDeliveryEngine()
+        .dispatchEvent(
+            eventId,
+            options
+        );
+}
+
+/*
+ * Opt-in Prayer Covenant reminder runtime.
+ *
+ * The module is loaded only when explicitly enabled. This keeps the
+ * default-safe server path inert and starts reminder reads only after the
+ * deterministic runtime schema has been verified.
+ */
+function startBirthdayAgeSyncScheduler() {
+    return startBirthdayAgeScheduler({
+        database: db,
+        cron,
+        logger: console,
+        onUpdate(change) {
+            const previous =
+                change.previousAge === null
+                    ? 'unset'
+                    : String(change.previousAge);
+
+            logActivity(
+                'System',
+                'BIRTHDAY_AGE_SYNC',
+                `Member ID ${change.youthId} age ${previous} -> ${change.newAge} on ${change.dateKey}`
+            );
+        }
+    });
+}
+
+function startBirthdayBlessingsNotificationScheduler() {
+    try {
+        return startBirthdayBlessingsScheduler({
+            enabled:
+                BIRTHDAY_BLESSINGS_NOTIFICATIONS_ENABLED,
+
+            database:
+                db,
+
+            cron,
+
+            logger:
+                console,
+
+            dispatchEvent:
+                eventId =>
+                    dispatchCanonicalNotificationEvent(
+                        eventId
+                    )
+        });
+    } catch (error) {
+        console.error(
+            '[BIRTHDAY BLESSINGS] scheduler startup failed',
+            error &&
+            error.message
+                ? error.message
+                : error
+        );
+
+        return null;
+    }
+}
+
+
+function startPrayerCovenantReminderScheduler() {
+    if (!PRAYER_COVENANT_REMINDERS_ENABLED) {
+        return null;
+    }
+
+    try {
+        const {
+            startPrayerCovenantReminderScheduler:
+                startScheduler
+        } = require('./lib/prayer-covenant-reminders');
+
+        return startScheduler({
+            enabled:
+                true,
+            database:
+                db,
+            cron,
+            reminderHour:
+                PRAYER_COVENANT_REMINDER_HOUR,
+            dispatchEvent:
+                (eventId, options) =>
+                    dispatchCanonicalNotificationEvent(
+                        eventId,
+                        options
+                    )
+        });
+    } catch (error) {
+        console.error(
+            '[PRAYER_COVENANT_REMINDERS] startup failed',
+            error && error.code
+                ? error.code
+                : 'STARTUP_FAILED'
+        );
+
+        return null;
+    }
+}
+
+/*
+ * Watchtower report scheduling is independently opt-in. The restricted
+ * interactive APIs remain available to authorized intercessors, but no
+ * automatic report or notification work begins unless this flag is true.
+ */
+function startWatchtowerPrayerCoverageScheduler() {
+    if (!WATCHTOWER_PRAYER_COVERAGE_ENABLED) {
+        return null;
+    }
+
+    try {
+        const {
+            startWatchtowerScheduler
+        } = require('./lib/watchtower-prayer-coverage');
+
+        return startWatchtowerScheduler({
+            enabled:
+                true,
+            database:
+                db,
+            cron,
+            openHour:
+                WATCHTOWER_OPEN_HOUR,
+            reportHour:
+                WATCHTOWER_REPORT_HOUR,
+            claimMinutes:
+                WATCHTOWER_CLAIM_MINUTES,
+            dispatchEvent:
+                (eventId, options) =>
+                    dispatchCanonicalNotificationEvent(
+                        eventId,
+                        options
+                    )
+        });
+    } catch (error) {
+        console.error(
+            '[WATCHTOWER_COVERAGE] startup failed',
+            error && error.code
+                ? error.code
+                : 'STARTUP_FAILED'
+        );
+
+        return null;
+    }
+}
+
+/*
+ * Growth Journey notifications are strictly downstream.
+ *
+ * A failure here must never roll back:
+ * - attendance
+ * - Prayer Covenant completion
+ * - membership intent
+ * - account creation
+ * - Growth evidence/progress
+ */
+async function processJourneyReadyNotification({
+    youthId,
+    phaseProgress,
+    source = 'growth_mutation'
+} = {}) {
+    try {
+        const result =
+            await GrowthNotifications
+                .createPhaseReadyNotification(
+                    db,
+                    {
+                        youthId,
+                        phaseProgress
+                    }
+                );
+
+        if (
+            !result ||
+            result.eligible !== true ||
+            !result.eventId
+        ) {
+            return result || null;
+        }
+
+        /*
+         * The canonical Inbox event exists before any
+         * Push or Email attempt.
+         *
+         * Only a newly-created event begins external
+         * delivery here. Notification creation itself
+         * is event-key idempotent.
+         */
+        if (result.created === true) {
+            try {
+                await dispatchCanonicalNotificationEvent(
+                    result.eventId
+                );
+            } catch (deliveryError) {
+                console.error(
+                    '[Growth Notification] External delivery failed:',
+                    source,
+                    deliveryError &&
+                    deliveryError.message
+                        ? deliveryError.message
+                        : deliveryError
+                );
+            }
+        }
+
+        return result;
+    } catch (notificationError) {
+        console.error(
+            '[Growth Notification] Journey-ready processing failed:',
+            source,
+            notificationError &&
+            notificationError.message
+                ? notificationError.message
+                : notificationError
+        );
+
+        return null;
+    }
+}
+
+async function reconcileCanonicalNotificationEmailDeliveries(
+    options = {}
+) {
+    return getCanonicalNotificationDeliveryEngine()
+        .reconcileEmailDeliveries(
+            options
+        );
+}
+
+app.get('/api/notifications', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    const unreadOnly =
+        req.query &&
+        req.query.unread === '1';
+
+    const limit =
+        req.query &&
+        req.query.limit !== undefined
+            ? Number(req.query.limit)
+            : 50;
+
+    try {
+        const notifications =
+            await NotificationCenter
+                .listNotifications(
+                    db,
+                    youthId,
+                    {
+                        unreadOnly,
+                        limit
+                    }
+                );
+
+        return res.json({
+            success: true,
+            notifications
+        });
+    } catch (error) {
+        if (
+            error instanceof TypeError ||
+            error instanceof RangeError
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Invalid notification query.'
+            });
+        }
+
+        console.error(
+            '[Notification Center] Inbox load failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to load notifications.'
+        });
+    }
+});
+
+app.get('/api/notifications/unread-count', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    try {
+        const count =
+            await NotificationCenter
+                .unreadCount(
+                    db,
+                    youthId
+                );
+
+        return res.json({
+            success: true,
+            unread_count: count
+        });
+    } catch (error) {
+        console.error(
+            '[Notification Center] Unread count failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to load notification count.'
+        });
+    }
+});
+
+app.post('/api/notifications/:id/read', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    const recipientId =
+        Number(req.params.id);
+
+    if (
+        !Number.isSafeInteger(recipientId) ||
+        recipientId <= 0
+    ) {
+        return res.status(400).json({
+            success: false,
+            error:
+                'Invalid notification.'
+        });
+    }
+
+    try {
+        const updated =
+            await NotificationCenter
+                .markRead(
+                    db,
+                    {
+                        youthId,
+                        recipientId,
+                        readAt:
+                            getManilaTime()
+                    }
+                );
+
+        if (!updated) {
+            return res.status(404).json({
+                success: false,
+                error:
+                    'Notification not found.'
+            });
+        }
+
+        return res.json({
+            success: true
+        });
+    } catch (error) {
+        console.error(
+            '[Notification Center] Mark-read failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to update notification.'
+        });
+    }
+});
+
+app.post('/api/notifications/read-all', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    try {
+        const updated =
+            await NotificationCenter
+                .markAllRead(
+                    db,
+                    {
+                        youthId,
+                        readAt:
+                            getManilaTime()
+                    }
+                );
+
+        return res.json({
+            success: true,
+            updated
+        });
+    } catch (error) {
+        console.error(
+            '[Notification Center] Mark-all-read failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to update notifications.'
+        });
+    }
+});
+
+app.get('/api/notifications/preferences', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    try {
+        const preferences =
+            await NotificationCenter
+                .getPreferences(
+                    db,
+                    youthId
+                );
+
+        return res.json({
+            success: true,
+            preferences
+        });
+    } catch (error) {
+        console.error(
+            '[Notification Center] Preference load failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to load notification preferences.'
+        });
+    }
+});
+
+app.put('/api/notifications/preferences', requireAuth, async (req, res) => {
+    const youthId =
+        getAuthenticatedNotificationYouthId(req);
+
+    if (!youthId) {
+        return sendForbidden(res);
+    }
+
+    const body =
+        req.body &&
+        typeof req.body === 'object' &&
+        !Array.isArray(req.body)
+            ? req.body
+            : {};
+
+    try {
+        const current =
+            await NotificationCenter
+                .getPreferences(
+                    db,
+                    youthId
+                );
+
+        const keys = [
+            'push_enabled',
+            'email_enabled',
+            'prayer_daily_growth',
+            'journey_progress',
+            'events_formation',
+            'membership_community',
+            'ministry_servant',
+            'prayer_partner',
+            'games_growth',
+            'preferred_prayer_time',
+            'quiet_hours_start',
+            'quiet_hours_end'
+        ];
+
+        const next = {};
+
+        for (const key of keys) {
+            next[key] =
+                Object.prototype.hasOwnProperty.call(
+                    body,
+                    key
+                )
+                    ? body[key]
+                    : current[key];
+        }
+
+        const preferences =
+            await NotificationCenter
+                .savePreferences(
+                    db,
+                    youthId,
+                    next,
+                    getManilaTime()
+                );
+
+        return res.json({
+            success: true,
+            preferences
+        });
+    } catch (error) {
+        if (
+            error instanceof TypeError ||
+            error instanceof RangeError
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Invalid notification preferences.'
+            });
+        }
+
+        console.error(
+            '[Notification Center] Preference save failed'
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to save notification preferences.'
+        });
+    }
+});
+
+app.post('/api/communications/subscribe', requireAuth, requirePushAvailable, (req, res) => {
+    const canonicalUsername = getCanonicalPushSubscriptionUsername(req.auth);
+    const serializedSubscription = serializeValidatedPushSubscription(req.body && req.body.subscription);
+    if (typeof canonicalUsername !== 'string' || canonicalUsername.length === 0) return sendForbidden(res);
+    if (!serializedSubscription) {
+        return res.status(400).json({ success: false, error: 'Invalid push subscription.' });
+    }
+
+    db.run(
+        'INSERT INTO push_subscriptions (username, subscription, created_at) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET subscription = excluded.subscription, created_at = excluded.created_at',
+        [canonicalUsername, serializedSubscription, getManilaTime()],
+        err => {
+            if (err) return res.status(500).json({ success: false, error: 'Unable to save push subscription.' });
+            return res.json({ success: true });
+        }
+    );
+});
+app.post('/api/communications/unsubscribe', requireAuth, (req, res) => {
+    const canonicalUsername = getCanonicalPushSubscriptionUsername(req.auth);
+    if (typeof canonicalUsername !== 'string' || canonicalUsername.length === 0) return sendForbidden(res);
+    db.run('DELETE FROM push_subscriptions WHERE username = ?', [canonicalUsername], err => {
+        if (err) return res.status(500).json({ success: false, error: 'Unable to remove push subscription.' });
+        return res.json({ success: true });
+    });
+});
+app.post('/api/communications/broadcast', requireAllPermissions(['access_communications', 'edit_entries']), requirePushAvailable, (req, res) => {
+    const body =
+        req.body &&
+        typeof req.body === 'object' &&
+        !Array.isArray(req.body)
+            ? req.body
+            : {};
+
+    const target =
+        typeof body.target === 'string'
+            ? body.target.trim()
+            : '';
+
+    const title =
+        typeof body.title === 'string'
+            ? body.title.trim()
+            : '';
+
+    const message =
+        typeof body.message === 'string'
+            ? body.message.trim()
+            : '';
+
+    const actor =
+        getCanonicalDisplayActor(req) ||
+        'Authenticated Communications User';
+
+    if (
+        !target ||
+        !title ||
+        !message
+    ) {
+        return res.status(400).json({
+            success: false,
+            error: 'Target, title, and message are required.'
+        });
+    }
+
+    const fixedTargets =
+        new Set([
+            'All',
+            'Leaders',
+            'Groups'
+        ]);
+
+    const scopedTarget =
+        /^(Ministry|Group):([1-9]\d*)$/.exec(
+            target
+        );
+
+    if (
+        !fixedTargets.has(target) &&
+        !scopedTarget
+    ) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid broadcast target.'
+        });
+    }
+
+    let targetQuery =
+        `SELECT id, qr_code
+         FROM youth`;
+
+    const targetParams = [];
+
+    if (target === 'Leaders') {
+        targetQuery =
+            `SELECT DISTINCT
+                y.id,
+                y.qr_code
+             FROM users u
+             JOIN youth y
+               ON u.youth_id = y.id
+             WHERE u.permissions LIKE
+                   '%edit_entries%'`;
+    } else if (target === 'Groups') {
+        targetQuery =
+            `SELECT DISTINCT
+                y.id,
+                y.qr_code
+             FROM small_group_members sgm
+             JOIN youth y
+               ON sgm.youth_id = y.id`;
+    } else if (
+        scopedTarget &&
+        scopedTarget[1] === 'Ministry'
+    ) {
+        targetQuery =
+            `SELECT DISTINCT
+                y.id,
+                y.qr_code
+             FROM ministry_members mm
+             JOIN youth y
+               ON mm.youth_id = y.id
+             WHERE mm.ministry_id = ?`;
+
+        targetParams.push(
+            Number(scopedTarget[2])
+        );
+    } else if (
+        scopedTarget &&
+        scopedTarget[1] === 'Group'
+    ) {
+        targetQuery =
+            `SELECT DISTINCT
+                y.id,
+                y.qr_code
+             FROM small_group_members sgm
+             JOIN youth y
+               ON sgm.youth_id = y.id
+             WHERE sgm.group_id = ?`;
+
+        targetParams.push(
+            Number(scopedTarget[2])
+        );
+    }
+
+    const createdAt =
+        getManilaTime();
+
+    db.run(
+        `INSERT INTO announcements (
+            title,
+            message,
+            target_audience,
+            author,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?)`,
+        [
+            title,
+            message,
+            target,
+            actor,
+            createdAt
+        ],
+        function (announcementErr) {
+            if (announcementErr) {
+                console.error(
+                    '[Communications] Unable to create broadcast.'
+                );
+
+                return res.status(500).json({
+                    success: false,
+                    error: 'Unable to create broadcast.'
+                });
+            }
+
+            const announcementId =
+                this.lastID;
+
+            db.all(
+                targetQuery,
+                targetParams,
+                (targetErr, youths) => {
+                    if (targetErr) {
+                        console.error(
+                            '[Communications] Unable to resolve broadcast recipients.'
+                        );
+
+                        return res.status(500).json({
+                            success: false,
+                            error:
+                                'Unable to resolve broadcast recipients.'
+                        });
+                    }
+
+                    const recipients =
+                        Array.isArray(youths)
+                            ? youths.filter(
+                                youth =>
+                                    youth &&
+                                    Number.isInteger(
+                                        Number(youth.id)
+                                    ) &&
+                                    Number(youth.id) > 0
+                            )
+                            : [];
+
+                    const stmt =
+                        db.prepare(
+                            `INSERT INTO user_notifications (
+                                youth_id,
+                                announcement_id,
+                                created_at
+                            )
+                            VALUES (?, ?, ?)`
+                        );
+
+                    for (const youth of recipients) {
+                        stmt.run(
+                            [
+                                Number(youth.id),
+                                announcementId,
+                                createdAt
+                            ]
+                        );
+                    }
+
+                    stmt.finalize(
+                        finalizeErr => {
+                            if (finalizeErr) {
+                                console.error(
+                                    '[Communications] Unable to create inbox recipients.'
+                                );
+
+                                return res.status(500).json({
+                                    success: false,
+                                    error:
+                                        'Unable to create broadcast recipients.'
+                                });
+                            }
+
+                            const usernames =
+                                recipients
+                                    .map(
+                                        youth =>
+                                            typeof youth.qr_code ===
+                                                'string'
+                                                ? youth.qr_code.trim()
+                                                : ''
+                                    )
+                                    .filter(Boolean);
+
+                            let pushSql;
+                            let pushParams;
+
+                            if (target === 'All') {
+                                pushSql =
+                                    `SELECT subscription
+                                     FROM push_subscriptions`;
+
+                                pushParams = [];
+                            } else if (
+                                usernames.length > 0
+                            ) {
+                                const placeholders =
+                                    usernames
+                                        .map(() => '?')
+                                        .join(',');
+
+                                pushSql =
+                                    `SELECT subscription
+                                     FROM push_subscriptions
+                                     WHERE username IN (
+                                         ${placeholders}
+                                     )`;
+
+                                pushParams =
+                                    usernames;
+                            } else {
+                                logActivity(
+                                    actor,
+                                    'BROADCAST',
+                                    `Sent broadcast '${title}' to ${target}`
+                                );
+
+                                return res.json({
+                                    success: true,
+                                    sentCount: 0
+                                });
+                            }
+
+                            db.all(
+                                pushSql,
+                                pushParams,
+                                async (
+                                    pushErr,
+                                    subscriptions
+                                ) => {
+                                    if (pushErr) {
+                                        console.error(
+                                            '[Communications] Unable to load push recipients.'
+                                        );
+
+                                        return res.status(500).json({
+                                            success: false,
+                                            error:
+                                                'Broadcast saved, but push delivery could not start.'
+                                        });
+                                    }
+
+                                    let sentCount = 0;
+
+                                    await Promise.all(
+                                        (
+                                            subscriptions || []
+                                        ).map(
+                                            async row => {
+                                                try {
+                                                    await webpush
+                                                        .sendNotification(
+                                                            JSON.parse(
+                                                                row.subscription
+                                                            ),
+                                                            JSON.stringify({
+                                                                title,
+                                                                body:
+                                                                    message,
+                                                                url: '/'
+                                                            })
+                                                        );
+
+                                                    sentCount += 1;
+                                                } catch (error) {
+                                                    if (
+                                                        error &&
+                                                        (
+                                                            error.statusCode ===
+                                                                404 ||
+                                                            error.statusCode ===
+                                                                410
+                                                        )
+                                                    ) {
+                                                        db.run(
+                                                            `DELETE FROM push_subscriptions
+                                                             WHERE subscription = ?`,
+                                                            [
+                                                                row.subscription
+                                                            ]
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    );
+
+                                    logActivity(
+                                        actor,
+                                        'BROADCAST',
+                                        `Sent broadcast '${title}' to ${target}`
+                                    );
+
+                                    return res.json({
+                                        success: true,
+                                        sentCount
+                                    });
+                                }
+                            );
+                        }
+                    );
+                }
+            );
+        }
+    );
+});
+
+app.get('/api/communications/history', requirePermission('access_communications'), (req, res) => {
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    db.all(
+        `SELECT
+            a.id,
+            a.title,
+            a.target_audience AS target,
+            a.message,
+            COALESCE(
+                NULLIF(TRIM(y.name), ''),
+                CASE WHEN INSTR(COALESCE(a.author, ''), '@') = 0
+                     THEN NULLIF(TRIM(a.author), '') END,
+                'FOG Leadership'
+            ) AS sender,
+            a.created_at
+         FROM announcements a
+         LEFT JOIN (
+             SELECT LOWER(TRIM(username)) AS login_key, MIN(youth_id) AS youth_id
+             FROM users
+             WHERE youth_id IS NOT NULL AND INSTR(username, '@') > 0
+             GROUP BY LOWER(TRIM(username))
+             HAVING COUNT(DISTINCT youth_id) = 1
+         ) u ON u.login_key = LOWER(TRIM(a.author))
+            AND INSTR(COALESCE(a.author, ''), '@') > 0
+         LEFT JOIN youth y
+           ON y.id = u.youth_id
+         ORDER BY a.created_at DESC`,
+        [],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    error:
+                        'Unable to load broadcast history.'
+                });
+            }
+
+            return res.json(
+                rows || []
+            );
+        }
+    );
+});
+app.delete('/api/communications/broadcast/:id', requireAllPermissions(['access_communications', 'delete_entries']), (req, res) => {
+    const actor = getCanonicalAuditActor(req);
+    function executeDelete() { db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]); logActivity(actor, 'DELETE_BROADCAST', `Deleted global broadcast ID ${req.params.id}`); res.json({ success: true }); }); }
+    executeDelete();
+});
+app.get('/api/communications/inbox', requireAuth, (req, res) => {
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    if (isStrongAdmin(req.auth)) {
+        return db.all(
+            `SELECT
+                a.id AS notification_id,
+                a.title,
+                a.message,
+                COALESCE(
+                    NULLIF(TRIM(y.name), ''),
+                    CASE WHEN INSTR(COALESCE(a.author, ''), '@') = 0
+                         THEN NULLIF(TRIM(a.author), '') END,
+                    'FOG Leadership'
+                ) AS author,
+                a.created_at,
+                0 AS is_read
+             FROM announcements a
+             LEFT JOIN (
+                 SELECT LOWER(TRIM(username)) AS login_key, MIN(youth_id) AS youth_id
+                 FROM users
+                 WHERE youth_id IS NOT NULL AND INSTR(username, '@') > 0
+                 GROUP BY LOWER(TRIM(username))
+                 HAVING COUNT(DISTINCT youth_id) = 1
+             ) u ON u.login_key = LOWER(TRIM(a.author))
+                AND INSTR(COALESCE(a.author, ''), '@') > 0
+             LEFT JOIN youth y
+               ON y.id = u.youth_id
+             ORDER BY a.created_at DESC
+             LIMIT 50`,
+            [],
+            (err, rows) => {
+                if (err) {
+                    return res.status(500).json({
+                        success: false,
+                        error:
+                            'Unable to load announcements.'
+                    });
+                }
+
+                return res.json(
+                    rows || []
+                );
+            }
+        );
+    }
+
+    const authenticatedYouthId =
+        Number(
+            req.auth &&
+            req.auth.youthId
+        );
+
+    if (
+        !Number.isInteger(
+            authenticatedYouthId
+        ) ||
+        authenticatedYouthId <= 0
+    ) {
+        return sendForbidden(res);
+    }
+
+    return db.all(
+        `SELECT
+            n.id AS notification_id,
+            n.is_read,
+            a.title,
+            a.message,
+            COALESCE(
+                NULLIF(TRIM(sender_youth.name), ''),
+                CASE WHEN INSTR(COALESCE(a.author, ''), '@') = 0
+                     THEN NULLIF(TRIM(a.author), '') END,
+                'FOG Leadership'
+            ) AS author,
+            a.created_at
+         FROM user_notifications n
+         JOIN announcements a
+           ON n.announcement_id = a.id
+         LEFT JOIN (
+             SELECT LOWER(TRIM(username)) AS login_key, MIN(youth_id) AS youth_id
+             FROM users
+             WHERE youth_id IS NOT NULL AND INSTR(username, '@') > 0
+             GROUP BY LOWER(TRIM(username))
+             HAVING COUNT(DISTINCT youth_id) = 1
+         ) sender_user ON sender_user.login_key = LOWER(TRIM(a.author))
+            AND INSTR(COALESCE(a.author, ''), '@') > 0
+         LEFT JOIN youth sender_youth
+           ON sender_youth.id = sender_user.youth_id
+         WHERE n.youth_id = ?
+         ORDER BY a.created_at DESC
+         LIMIT 50`,
+        [
+            authenticatedYouthId
+        ],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    error:
+                        'Unable to load your announcements.'
+                });
+            }
+
+            return res.json(
+                rows || []
+            );
+        }
+    );
+});
+
+app.delete('/api/communications/inbox/:id', requireAuth, async (req, res) => {
+    if (isStrongAdmin(req.auth)) {
+        const actor = getCanonicalAuditActor(req);
+        return db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) {
+            db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]);
+            logActivity(actor, 'DELETE_INBOX_MSG', `Admin deleted global broadcast ID ${req.params.id}`);
+            res.json({ success: true });
+        });
+    }
+
+    try {
+        const isOwner = await isCanonicalResourceOwner(req.auth, 'notification', req.params.id);
+        if (!isOwner) return sendForbidden(res);
+        return db.run(`DELETE FROM user_notifications WHERE id = ?`, [req.params.id], function(err) { res.json({ success: true }); });
+    } catch (err) {
+        return sendAuthorizationUnavailable(res);
+    }
+});
+
+app.get('/api/leaderboards/:type/:timeframe', (req, res) => {
+    const { type, timeframe } = req.params;
+    let dateCondition = ""; let params = [];
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+
+    if (timeframe === 'month') {
+        const firstDay = new Date(d.getFullYear(), d.getMonth(), 1);
+        dateCondition = "AND pt.created_at >= ?";
+        params.push(firstDay.toISOString().split('T')[0]);
+    } else if (timeframe === 'last_week') {
+        const day = d.getDay();
+        const diffToMonday = d.getDate() - day + (day === 0 ? -6 : 1);
+        const thisMonday = new Date(d.setDate(diffToMonday));
+        const lastMonday = new Date(thisMonday); lastMonday.setDate(lastMonday.getDate() - 7);
+        const lastSunday = new Date(thisMonday); lastSunday.setDate(lastSunday.getDate() - 1);
+        dateCondition = "AND pt.created_at >= ? AND pt.created_at <= ?";
+        params.push(lastMonday.toISOString().split('T')[0] + " 00:00:00");
+        params.push(lastSunday.toISOString().split('T')[0] + " 23:59:59");
+    }
+
+    const sql = `
+        SELECT pt.youth_id, y.name, y.profile_picture,
+               SUM(CASE WHEN pt.type = 'arcade' THEN pt.amount ELSE 0 END) as arcade_xp,
+               SUM(CASE WHEN pt.type = 'growth' THEN pt.amount ELSE 0 END) as growth_xp,
+               SUM(CASE WHEN pt.type = 'event' THEN pt.amount ELSE 0 END) as event_xp
+        FROM point_transactions pt
+        JOIN youth y ON pt.youth_id = y.id
+        WHERE lower(trim(y.name)) <> 'fire of god ministries' ${dateCondition}
+        GROUP BY pt.youth_id
+    `;
+
+    db.all(sql, params, (err, rows) => {
+        if (err || !rows) return res.json([]);
+        rows.forEach(r => r.points = Math.floor((r.arcade_xp * 0.4) + (r.growth_xp * 0.6) + r.event_xp));
+
+        let sorted = rows;
+        if (type === 'arcade') sorted.sort((a,b) => b.arcade_xp - a.arcade_xp);
+        else if (type === 'growth') sorted.sort((a,b) => b.growth_xp - a.growth_xp);
+        else sorted.sort((a,b) => b.points - a.points);
+
+        if (type === 'arcade') sorted = sorted.filter(s => s.arcade_xp > 0);
+        else if (type === 'growth') sorted = sorted.filter(s => s.growth_xp > 0);
+        else sorted = sorted.filter(s => s.points > 0);
+
+        res.json(sorted.slice(0, 10));
+    });
+});
+
+app.get('/api/gamification/game-top/:game_name', async (req, res) => {
+    try {
+        const limit = req.query.limit === undefined
+            ? 3
+            : normalizeGameRouteInteger(req.query.limit, 1, 10);
+        if (limit === null) {
+            throw new GameEconomyError('Invalid leaderboard limit.', 'INVALID_LEADERBOARD_LIMIT', 400);
+        }
+        const rows = await gameEconomy.getLeaderboard(req.params.game_name, limit);
+        return res.json(rows.map(row => ({
+            youth_id: row.youth_id,
+            name: row.name,
+            profile_picture: row.profile_picture,
+            high_score: row.score,
+            score: row.score,
+            rank: row.rank,
+            achieved_at: row.achieved_at
+        })));
+    } catch (error) {
+        return sendGameEconomyError(res, error);
+    }
+});
+
+app.get('/api/games/economy-status', requireAuth, async (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youthId) return sendForbidden(res);
+    try {
+        const [arcadeLifePoints, growthLifePoints] = await Promise.all([
+            gameEconomy.getDailyLifePoints(youthId, 'arcade'),
+            gameEconomy.getDailyLifePoints(youthId, 'growth')
+        ]);
+        return res.json({
+            success: true,
+            arcade: {
+                dailyLifePoints: arcadeLifePoints,
+                dailyCap: ARCADE_DAILY_CAP,
+                dailyRemaining: Math.max(0, ARCADE_DAILY_CAP - arcadeLifePoints),
+                capReached: arcadeLifePoints >= ARCADE_DAILY_CAP
+            },
+            growth: {
+                dailyLifePoints: growthLifePoints,
+                dailyCap: GROWTH_GAME_DAILY_CAP,
+                dailyRemaining: Math.max(0, GROWTH_GAME_DAILY_CAP - growthLifePoints),
+                capReached: growthLifePoints >= GROWTH_GAME_DAILY_CAP
+            }
+        });
+    } catch (error) {
+        return sendGameEconomyError(res, error);
+    }
+});
+
+app.get('/api/games/leaderboard/:game_name', requireAuth, async (req, res) => {
+    const youthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    if (!youthId) return sendForbidden(res);
+    const limit = req.query.limit === undefined
+        ? 10
+        : normalizeGameRouteInteger(req.query.limit, 1, 10);
+    if (limit === null) {
+        return res.status(400).json({ success: false, error: 'Invalid leaderboard limit.' });
+    }
+    try {
+        const game = getGameDefinition(req.params.game_name);
+        if (!game) throw new GameEconomyError('Unknown game.', 'INVALID_GAME', 400);
+        const [leaderboard, player] = await Promise.all([
+            gameEconomy.getLeaderboard(game.id, limit),
+            gameEconomy.getPlayerStanding(game.id, youthId)
+        ]);
+        return res.json({
+            success: true,
+            game: { id: game.id, name: game.name, category: game.category },
+            leaderboard: leaderboard.map(row => ({
+                youth_id: row.youth_id,
+                name: row.name,
+                profile_picture: row.profile_picture,
+                high_score: row.score,
+                score: row.score,
+                rank: row.rank,
+                achieved_at: row.achieved_at
+            })),
+            player
+        });
+    } catch (error) {
+        return sendGameEconomyError(res, error);
+    }
+});
+
+// Compatibility endpoint for the existing aggregate Arcade LP leaderboard.
+// Per-game high scores are served from game_score_logs by the endpoint above.
+app.get('/api/arcade/leaderboard', (req, res) => {
+    db.all(`SELECT y.id AS youth_id, y.name, y.profile_picture,
+                  COALESCE(SUM(pt.amount), 0) AS total_score
+           FROM point_transactions pt
+           JOIN youth y ON y.id = pt.youth_id
+           WHERE pt.type = 'arcade'
+             AND lower(trim(y.name)) <> 'fire of god ministries'
+           GROUP BY y.id
+           HAVING total_score > 0
+           ORDER BY total_score DESC, y.id ASC
+           LIMIT 10`, [], (error, rows) => {
+        if (error) return res.status(500).json({ success: false, error: 'Unable to load Arcade leaderboard.' });
+        return res.json(rows || []);
+    });
+});
+
+app.get('/api/gamification/points/:youth_id', (req, res) => {
+    db.get(`SELECT points, arcade_xp, growth_xp, event_xp FROM gamification_points WHERE youth_id = ?`, [req.params.youth_id], (err, row) => {
+        let result = row ? row : { points: 0, arcade_xp: 0, growth_xp: 0, event_xp: 0 };
+        
+        // Calculate current week's points (Manila Time, starting Monday)
+        const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        const day = d.getDay();
+        const diffToMonday = d.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(d.setDate(diffToMonday));
+        const pad = (n) => String(n).padStart(2, '0');
+        const startOfWeek = `${monday.getFullYear()}-${pad(monday.getMonth()+1)}-${pad(monday.getDate())} 00:00:00`;
+
+        db.get(`SELECT SUM(amount) as weekly_points FROM point_transactions WHERE youth_id = ? AND created_at >= ?`, [req.params.youth_id, startOfWeek], (err, weekRow) => {
+            result.weekly_points = (weekRow && weekRow.weekly_points) ? weekRow.weekly_points : 0;
+            res.json(result);
+        });
+    });
+});
+app.get('/api/gamification/group-leaderboard', (req, res) => { db.all(`SELECT sg.id, sg.name, SUM(gp.points) as total_points, COUNT(DISTINCT sgm.youth_id) as member_count FROM small_groups sg JOIN small_group_members sgm ON sg.id = sgm.group_id JOIN gamification_points gp ON sgm.youth_id = gp.youth_id JOIN youth y ON sgm.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' GROUP BY sg.id ORDER BY total_points DESC LIMIT 10`, [], (err, rows) => { res.json(rows || []); }); });
+
+function normalizeWeeklyChallengeAdminPayload(body = {}) {
+    const title = String(body.title || '').trim();
+    const description = String(body.description || '').trim();
+    const points = Number.parseInt(body.points, 10);
+    const isActive = body.is_active === undefined
+        ? 1
+        : (Number(body.is_active) === 0 ? 0 : 1);
+
+    if (!title) return { error: 'Challenge title is required.' };
+    if (!description) return { error: 'Challenge description is required.' };
+    if (!Number.isInteger(points) || points < 0 || points > 100000) {
+        return { error: 'Life Points must be a whole number between 0 and 100000.' };
+    }
+
+    return { title, description, points, isActive };
+}
+
+app.get(
+    '/api/admin/gamification/challenges',
+    requireAllPermissions(['access_discipleship']),
+    (req, res) => {
+        db.all(
+            `SELECT id, title, description, points, is_active, created_at
+             FROM weekly_challenges
+             ORDER BY created_at DESC, id DESC`,
+            [],
+            (err, rows) => {
+                if (err) return res.status(500).json({ error: 'Unable to load weekly challenges.' });
+                return res.json(rows || []);
+            }
+        );
+    }
+);
+
+app.get('/api/gamification/challenges', async (req, res) => {
+    const auth = await loadOptionalAuthorizationContext(req);
+    const youthId = normalizeCanonicalId(auth && auth.youthId);
+
+    db.all(
+        `SELECT * FROM weekly_challenges
+         WHERE is_active = 1
+         ORDER BY created_at DESC`,
+        [],
+        (err, challenges) => {
+            if (err) {
+                return res.status(500).json({
+                    error: 'Unable to load weekly challenges.'
+                });
+            }
+
+            if (!Array.isArray(challenges) || youthId === null) {
+                return res.json(challenges || []);
+            }
+
+            db.all(
+                `SELECT challenge_id
+                 FROM user_challenge_logs
+                 WHERE youth_id = ?`,
+                [youthId],
+                (logError, logs) => {
+                    if (logError) {
+                        return res.status(500).json({
+                            error: 'Unable to load challenge completion status.'
+                        });
+                    }
+
+                    const completedIds = new Set(
+                        (logs || []).map(log => log.challenge_id)
+                    );
+
+                    return res.json(
+                        challenges.map(challenge => ({
+                            ...challenge,
+                            completed: completedIds.has(challenge.id)
+                        }))
+                    );
+                }
+            );
+        }
+    );
+});
+
+app.post(
+    '/api/gamification/challenges/:id/complete',
+    requireAuth,
+    (req, res) => {
+        const youthId = normalizeCanonicalId(
+            req.auth && req.auth.youthId
+        );
+
+        if (youthId === null) {
+            return sendForbidden(res);
+        }
+
+        const challengeId = Number.parseInt(req.params.id, 10);
+
+        if (!Number.isInteger(challengeId) || challengeId <= 0) {
+            return res.status(400).json({
+                error: 'Invalid weekly challenge.'
+            });
+        }
+
+        db.get(
+            `SELECT id, points
+             FROM weekly_challenges
+             WHERE id = ?
+               AND is_active = 1`,
+            [challengeId],
+            (err, challenge) => {
+                if (err) {
+                    return res.status(500).json({
+                        error: 'Unable to load the challenge.'
+                    });
+                }
+
+                if (!challenge) {
+                    return res.status(404).json({
+                        error: 'Challenge not found or inactive.'
+                    });
+                }
+
+                db.run(
+                    `INSERT INTO user_challenge_logs
+                        (youth_id, challenge_id, completed_at)
+                     VALUES (?, ?, ?)`,
+                    [
+                        youthId,
+                        challengeId,
+                        getManilaTime()
+                    ],
+                    function(insertError) {
+                        if (insertError) {
+                            return res.status(400).json({
+                                error: 'This challenge has already been completed.'
+                            });
+                        }
+
+                        awardPoints(
+                            youthId,
+                            'growth',
+                            challenge.points,
+                            getCanonicalAuditActor(req),
+                            'Weekly Challenge'
+                        );
+
+                        logActivity(
+                            getCanonicalAuditActor(req),
+                            'COMPLETE_WEEKLY_CHALLENGE',
+                            `Completed weekly challenge ID ${challengeId} for ${challenge.points} Life Points`
+                        );
+
+                        return res.json({
+                            success: true,
+                            pointsAwarded: challenge.points
+                        });
+                    }
+                );
+            }
+        );
+    }
+);
+
+app.post(
+    '/api/gamification/challenges',
+    requireAllPermissions(['access_discipleship', 'add_entries']),
+    (req, res) => {
+        const fields = normalizeWeeklyChallengeAdminPayload(req.body);
+
+        if (fields.error) {
+            return res.status(400).json({ error: fields.error });
+        }
+
+        db.run(
+            `INSERT INTO weekly_challenges
+                (title, description, points, is_active, created_at)
+             VALUES (?, ?, ?, 1, ?)`,
+            [fields.title, fields.description, fields.points, getManilaTime()],
+            function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Unable to create weekly challenge.' });
+                }
+
+                logActivity(
+                    getCanonicalAuditActor(req),
+                    'CREATE_CHALLENGE',
+                    `Created weekly challenge '${fields.title}' for ${fields.points} Life Points`
+                );
+
+                return res.status(201).json({
+                    success: true,
+                    id: this.lastID
+                });
+            }
+        );
+    }
+);
+
+app.put(
+    '/api/admin/gamification/challenges/:id',
+    requireAllPermissions(['access_discipleship', 'edit_entries']),
+    (req, res) => {
+        const challengeId = Number.parseInt(req.params.id, 10);
+        const fields = normalizeWeeklyChallengeAdminPayload(req.body);
+
+        if (!Number.isInteger(challengeId) || challengeId <= 0) {
+            return res.status(400).json({ error: 'Invalid weekly challenge.' });
+        }
+
+        if (fields.error) {
+            return res.status(400).json({ error: fields.error });
+        }
+
+        db.run(
+            `UPDATE weekly_challenges
+             SET title = ?, description = ?, points = ?, is_active = ?
+             WHERE id = ?`,
+            [
+                fields.title,
+                fields.description,
+                fields.points,
+                fields.isActive,
+                challengeId
+            ],
+            function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Unable to update weekly challenge.' });
+                }
+
+                if (this.changes !== 1) {
+                    return res.status(404).json({ error: 'Weekly challenge not found.' });
+                }
+
+                logActivity(
+                    getCanonicalAuditActor(req),
+                    'UPDATE_CHALLENGE',
+                    `Updated weekly challenge ID ${challengeId}`
+                );
+
+                return res.json({ success: true });
+            }
+        );
+    }
+);
+
+app.delete(
+    '/api/admin/gamification/challenges/:id',
+    requireAllPermissions(['access_discipleship', 'delete_entries']),
+    (req, res) => {
+        const challengeId = Number.parseInt(req.params.id, 10);
+
+        if (!Number.isInteger(challengeId) || challengeId <= 0) {
+            return res.status(400).json({ error: 'Invalid weekly challenge.' });
+        }
+
+        // Archive instead of hard-delete so historical completion and
+        // previously awarded Life Points remain intact.
+        db.run(
+            `UPDATE weekly_challenges
+             SET is_active = 0
+             WHERE id = ?`,
+            [challengeId],
+            function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Unable to delete weekly challenge.' });
+                }
+
+                if (this.changes !== 1) {
+                    return res.status(404).json({ error: 'Weekly challenge not found.' });
+                }
+
+                logActivity(
+                    getCanonicalAuditActor(req),
+                    'ARCHIVE_CHALLENGE',
+                    `Archived weekly challenge ID ${challengeId}`
+                );
+
+                return res.json({
+                    success: true,
+                    archived: true
+                });
+            }
+        );
+    }
+);
+
+
+app.post(
+    '/api/games/universal-submit',
+    requireAuth,
+    requireAuthenticatedGameMember,
+    async (req, res) => {
+        try {
+            const game = getGameDefinition(req.body && req.body.game_name);
+            if (!game) throw new GameEconomyError('Unknown game.', 'INVALID_GAME', 400);
+            if (req.body.type !== undefined && req.body.type !== game.category) {
+                throw new GameEconomyError(
+                    'Game type does not match the registered game.',
+                    'GAME_CATEGORY_MISMATCH',
+                    400
+                );
+            }
+            const result = await submitCanonicalGameResult(req, {
+                gameName: game.name,
+                score: req.body.score
+            });
+            logActivity(
+                getCanonicalAuditActor(req),
+                'GAME_RESULT_SUBMITTED',
+                `${game.name}: score=${result.score}, life_points=${result.lifePointsAwarded}`
+            );
+            return res.json(withLegacyPointsAlias(result));
+        } catch (error) {
+            return sendGameEconomyError(res, error);
+        }
+    }
+);
+
+
+// --- ARCHITECT INJECTION: USCCB PROXY ---
+app.get('/api/readings/iframe', (req, res) => {
+    const https = require('https');
+    const d = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"}));
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(-2);
+    const url = `https://bible.usccb.org/bible/readings/${mm}${dd}${yy}.cfm`;
+
+    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (resp) => {
+        if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
+            return res.redirect(resp.headers.location);
+        }
+        let data = '';
+        resp.on('data', chunk => data += chunk);
+        resp.on('end', () => {
+            // Using RegExp constructor prevents terminal backslash stripping errors
+            const hrefRegex = new RegExp('href="/(?!/)', 'g');
+            const srcRegex = new RegExp('src="/(?!/)', 'g');
+            let html = data
+                .replace(hrefRegex, 'href="https://bible.usccb.org/')
+                .replace(srcRegex, 'src="https://bible.usccb.org/');
+            res.send(html);
+        });
+    }).on('error', (e) => res.status(500).send("Failed to load USCCB"));
+});
+// --- END ARCHITECT INJECTION ---
+// --- ARCHITECT INJECTION: SNIPPET PROXY ---
+app.get('/api/readings/snippet', (req, res) => {
+    const https = require('https');
+    const d = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"}));
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    https.get(`https://publication.evangelizo.ws/AM/days/${y}-${m}-${day}`, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (resp) => {
+        let data = '';
+        resp.on('data', chunk => data += chunk);
+        resp.on('end', () => {
+            if(resp.statusCode === 200) {
+                try {
+                    const payload = JSON.parse(data).data || JSON.parse(data);
+                    let season = payload.liturgical_season || "Ordinary Time";
+                    let snippet = "Click Full Readings to view today's official USCCB scriptures.";
+                    const readings = payload.readings || [];
+                    const gospel = readings.find(r => (r.type || '').toLowerCase().includes('gospel')) || readings[readings.length - 1];
+                    if(gospel && gospel.text) {
+                        // Hardened regex: strictly remove all [1], [2-4] bracket artifacts
+                        snippet = gospel.text.replace(/\[.*?\]/g, '').replace(/[\[\]]/g, '').replace(/<[^>]*>?/gm, '').substring(0, 110).trim() + '...';
+                    }
+                    return res.json({ season, snippet });
+                } catch(e) {}
+            }
+            res.json({ season: "Daily Readings", snippet: "Tap Full Readings to view today's official USCCB scriptures." });
+        });
+    }).on('error', () => res.json({ season: "Daily Readings", snippet: "Tap Full Readings to view today's official USCCB scriptures." }));
+});
+// --- END ARCHITECT INJECTION ---
+app.post(
+    '/api/arcade/submit',
+    requireAuth,
+    requireAuthenticatedGameMember,
+    async (req, res) => {
+        try {
+            const game = getGameDefinition(req.body && req.body.game_name);
+            if (!game || game.category !== 'arcade') {
+                throw new GameEconomyError('Unknown Arcade game.', 'INVALID_GAME', 400);
+            }
+            const result = await submitCanonicalGameResult(req, {
+                gameName: game.name,
+                score: req.body.score
+            });
+            return res.json(withLegacyPointsAlias(result));
+        } catch (error) {
+            return sendGameEconomyError(res, error);
+        }
+    }
+);
+
+app.get('/api/growth-games/verse-scramble', (req, res) => { db.get(`SELECT * FROM brain_verse_scramble ORDER BY RANDOM() LIMIT 1`, [], (err, q) => { res.json(q || null); }); });
+app.post('/api/growth-games/verse-scramble/submit', requireAuth, requireAuthenticatedGameMember, async (req, res) => {
+    try {
+        const gameId = normalizeGameRouteInteger(req.body.game_id);
+        if (!gameId) throw new GameEconomyError('Invalid game identifier.', 'INVALID_GAME_RESULT', 400);
+        const result = await submitCanonicalGameResult(req, {
+            gameName: 'Daily Manna Scramble', score: 1, requestedLifePoints: 15,
+            beforeRecord: ({ database, timestamp }) => recordBrainGameOnce(
+                database, req.gameMemberId, 'verse_scramble', gameId, timestamp
+            )
+        });
+        return res.json(withLegacyPointsAlias(result));
+    } catch (error) { return sendGameEconomyError(res, error); }
+});
+app.post('/api/growth-games/reflex/submit', requireAuth, requireAuthenticatedGameMember, async (req, res) => {
+    try {
+        if (typeof req.body.success !== 'boolean') {
+            throw new GameEconomyError('Invalid reflex result.', 'INVALID_GAME_RESULT', 400);
+        }
+        const genericId = Number(getManilaTime().substring(0, 10).replace(/-/g, ''));
+        const reward = req.body.success ? 10 : 2;
+        const result = await submitCanonicalGameResult(req, {
+            gameName: 'Shield of Faith: Reflex Tap',
+            score: req.body.success ? 1 : 0,
+            requestedLifePoints: reward,
+            beforeRecord: ({ database, timestamp }) => recordBrainGameOnce(
+                database, req.gameMemberId, 'reflex', genericId, timestamp
+            )
+        });
+        return res.json(withLegacyPointsAlias(result));
+    } catch (error) { return sendGameEconomyError(res, error); }
+});
+app.get('/api/growth-games/narrow-gate', (req, res) => { db.all(`SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 50`, [], (err, rows) => { res.json(rows || []); }); });
+app.post('/api/growth-games/narrow-gate/submit', requireAuth, requireAuthenticatedGameMember, async (req, res) => {
+    try {
+        const streak = normalizeGameRouteInteger(req.body.streak, 0, 50);
+        if (streak === null) throw new GameEconomyError('Invalid streak.', 'INVALID_GAME_RESULT', 400);
+        const result = await submitCanonicalGameResult(req, {
+            gameName: 'The Narrow Gate', score: streak,
+            requestedLifePoints: Math.min(streak * 5, 25)
+        });
+        return res.json(withLegacyPointsAlias(result));
+    } catch (error) { return sendGameEconomyError(res, error); }
+});
+app.get('/api/growth-games/emoji', requireAuth, requireCanonicalGameQueryMember, (req, res) => {
+    const youth_id = req.gameMemberId;
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6:1);
+    const startOfWeek = new Date(d.setDate(diff)).toISOString().split('T')[0] + " 00:00:00";
+    db.all(`SELECT game_id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'emoji' AND played_at >= ?`, [youth_id, startOfWeek], (err, logs) => {
+        if ((logs ? logs.length : 0) >= 15) return res.json({ limit_reached: true });
+        const playedIds = logs ? logs.map(l => l.game_id) : [];
+        const placeholders = playedIds.length > 0 ? playedIds.map(()=>'?').join(',') : "''";
+        db.get(`SELECT * FROM brain_emoji_translation WHERE id NOT IN (${placeholders}) ORDER BY RANDOM() LIMIT 1`, playedIds, (err, q) => { if (!q) return res.json({ exhausted: true }); res.json({ question: q, played_count: playedIds?.length || 0 }); });
+    });
+});
+app.post('/api/growth-games/emoji/submit', requireAuth, requireAuthenticatedGameMember, async (req, res) => {
+    try {
+        const gameId = normalizeGameRouteInteger(req.body.game_id);
+        if (!gameId) throw new GameEconomyError('Invalid game identifier.', 'INVALID_GAME_RESULT', 400);
+        const result = await submitCanonicalGameResult(req, {
+            gameName: 'Emoji Sermon Translator', score: 1, requestedLifePoints: 10,
+            beforeRecord: ({ database, timestamp }) => recordBrainGameOnce(
+                database, req.gameMemberId, 'emoji', gameId, timestamp
+            )
+        });
+        return res.json(withLegacyPointsAlias(result));
+    } catch (error) { return sendGameEconomyError(res, error); }
+});
+app.get('/api/growth-games/crossword', (req, res) => { db.get(`SELECT * FROM brain_crosswords ORDER BY id DESC LIMIT 1`, [], (err, q) => { res.json(q || null); }); });
+app.post('/api/growth-games/crossword/submit', requireAuth, requireAuthenticatedGameMember, async (req, res) => {
+    try {
+        const gameId = normalizeGameRouteInteger(req.body.game_id);
+        if (!gameId) throw new GameEconomyError('Invalid game identifier.', 'INVALID_GAME_RESULT', 400);
+        const result = await submitCanonicalGameResult(req, {
+            gameName: 'Word Matrix', score: 1, requestedLifePoints: 25,
+            beforeRecord: ({ database, timestamp }) => recordBrainGameOnce(
+                database, req.gameMemberId, 'crossword', gameId, timestamp
+            )
+        });
+        return res.json(withLegacyPointsAlias(result));
+    } catch (error) { return sendGameEconomyError(res, error); }
+});
+app.get('/api/growth-games/trivia', (req, res) => { db.all(`SELECT id, question, options, correct_index, category FROM brain_trivia_questions ORDER BY RANDOM() LIMIT 10`, [], (err, rows) => { res.json(rows || []); }); });
+app.post('/api/growth-games/trivia/submit', requireAuth, requireAuthenticatedGameMember, async (req, res) => {
+    try {
+        const score = normalizeGameScore(req.body.score, 1000);
+        if (score === null || !Number.isInteger(score)) {
+            throw new GameEconomyError('Invalid trivia score.', 'INVALID_SCORE', 400);
+        }
+        const result = await submitCanonicalGameResult(req, {
+            gameName: 'Catechism Clash', score,
+            requestedLifePoints: Math.min(score, 25)
+        });
+        return res.json(withLegacyPointsAlias(result));
+    } catch (error) { return sendGameEconomyError(res, error); }
+});
+app.get('/api/growth-games/poll', requireAuth, requireCanonicalGameQueryMember, (req, res) => {
+    const youthId = req.gameMemberId;
+    db.get(`SELECT * FROM brain_polls ORDER BY id DESC LIMIT 1`, [], (err, poll) => {
+        if (!poll) return res.json({ poll: null, voted: false });
+        db.get(`SELECT id FROM brain_user_logs WHERE youth_id = ? AND game_type = 'poll' AND game_id = ?`, [youthId, poll.id], (err2, log) => { res.json({ poll, voted: !!log }); });
+    });
+});
+app.post('/api/growth-games/poll/vote', requireAuth, requireAuthenticatedGameMember, async (req, res) => {
+    try {
+        const pollId = normalizeGameRouteInteger(req.body.poll_id);
+        if (!pollId || !['a', 'b'].includes(req.body.choice)) {
+            throw new GameEconomyError('Invalid poll vote.', 'INVALID_GAME_RESULT', 400);
+        }
+        const voteColumn = req.body.choice === 'a' ? 'votes_a' : 'votes_b';
+        const result = await submitCanonicalGameResult(req, {
+            gameName: 'Would You Rather', score: 1, requestedLifePoints: 5,
+            beforeRecord: async ({ database, timestamp }) => {
+                await recordBrainGameOnce(database, req.gameMemberId, 'poll', pollId, timestamp);
+                const updated = await runGameDatabase(
+                    database,
+                    `UPDATE brain_polls SET ${voteColumn} = ${voteColumn} + 1 WHERE id = ?`,
+                    [pollId]
+                );
+                if (updated.changes !== 1) {
+                    throw new GameEconomyError('Poll not found.', 'INVALID_GAME_RESULT', 400);
+                }
+            }
+        });
+        const updatedPoll = await googleAuthDatabaseGet(`SELECT * FROM brain_polls WHERE id = ?`, [pollId]);
+        return res.json({ ...withLegacyPointsAlias(result), poll: updatedPoll });
+    } catch (error) { return sendGameEconomyError(res, error); }
+});
+app.get('/api/growth-games/whoami', (req, res) => { db.get(`SELECT id, clue1, clue2, clue3, answer FROM brain_whoami_questions ORDER BY RANDOM() LIMIT 1`, [], (err, q) => { res.json(q || null); }); });
+app.post('/api/growth-games/whoami/submit', requireAuth, requireAuthenticatedGameMember, async (req, res) => {
+    try {
+        const questionId = normalizeGameRouteInteger(req.body.question_id);
+        const cluesUsed = normalizeGameRouteInteger(req.body.clues_used, 1, 3);
+        if (!questionId || !cluesUsed || typeof req.body.is_correct !== 'boolean') {
+            throw new GameEconomyError('Invalid Who Am I result.', 'INVALID_GAME_RESULT', 400);
+        }
+        const reward = req.body.is_correct ? (cluesUsed === 1 ? 15 : cluesUsed === 2 ? 10 : 5) : 0;
+        const result = await submitCanonicalGameResult(req, {
+            gameName: 'Who Am I?', score: reward, requestedLifePoints: reward,
+            beforeRecord: ({ database, timestamp }) => recordBrainGameOnce(
+                database, req.gameMemberId, 'whoami', questionId, timestamp
+            )
+        });
+        return res.json(withLegacyPointsAlias(result));
+    } catch (error) { return sendGameEconomyError(res, error); }
+});
+app.get('/api/growth-games/verse-chain', (req, res) => { const { group_id } = req.query; db.get(`SELECT * FROM brain_verse_chain ORDER BY id DESC LIMIT 1`, [], (err, verse) => { if (!verse) return res.json({ verse: null, contributions: [] }); if (!group_id) return res.json({ verse, contributions: [] }); db.all(`SELECT word_index, youth_id, guessed_word FROM brain_verse_contributions WHERE group_id = ? AND verse_id = ?`, [group_id, verse.id], (err2, contribs) => { res.json({ verse, contributions: contribs || [] }); }); }); });
+app.post('/api/growth-games/verse-chain/submit', requireAuth, requireAuthenticatedGameMember, async (req, res) => {
+    try {
+        const groupId = normalizeGameRouteInteger(req.body.group_id);
+        const verseId = normalizeGameRouteInteger(req.body.verse_id);
+        const wordIndex = normalizeGameRouteInteger(req.body.word_index, 0, 500);
+        const guessedWord = typeof req.body.guessed_word === 'string' ? req.body.guessed_word.trim() : '';
+        if (!groupId || !verseId || wordIndex === null || !guessedWord || guessedWord.length > 80) {
+            throw new GameEconomyError('Invalid Verse Chain result.', 'INVALID_GAME_RESULT', 400);
+        }
+        const membership = await googleAuthDatabaseGet(
+            `SELECT 1 AS allowed FROM small_groups sg
+             LEFT JOIN small_group_members sgm
+               ON sgm.group_id = sg.id AND sgm.youth_id = ? AND sgm.status = 'Approved'
+             WHERE sg.id = ? AND (sg.leader_id = ? OR sgm.youth_id IS NOT NULL)`,
+            [req.gameMemberId, groupId, req.gameMemberId]
+        );
+        if (!membership) throw new GameEconomyError('You must belong to this group.', 'FORBIDDEN_GROUP_GAME', 403);
+        const result = await submitCanonicalGameResult(req, {
+            gameName: 'Verse Chain', score: 1, requestedLifePoints: 10,
+            beforeRecord: ({ database, timestamp }) => runGameDatabase(
+                database,
+                `INSERT INTO brain_verse_contributions
+                 (group_id, verse_id, youth_id, word_index, guessed_word, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [groupId, verseId, req.gameMemberId, wordIndex, guessedWord, timestamp]
+            )
+        });
+        return res.json(withLegacyPointsAlias(result));
+    } catch (error) {
+        if (error && error.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ success: false, error: 'Word already solved by your group.' });
+        }
+        return sendGameEconomyError(res, error);
+    }
+});
+
+
+let prayerCovenantMonitorModule = null;
+
+function getPrayerCovenantMonitorModule() {
+    if (!prayerCovenantMonitorModule) {
+        prayerCovenantMonitorModule =
+            require('./lib/prayer-covenant-monitor');
+    }
+
+    return prayerCovenantMonitorModule;
+}
+
+let watchtowerPrayerCoverageModule = null;
+
+function getWatchtowerPrayerCoverageModule() {
+    if (!watchtowerPrayerCoverageModule) {
+        watchtowerPrayerCoverageModule =
+            require('./lib/watchtower-prayer-coverage');
+    }
+
+    return watchtowerPrayerCoverageModule;
+}
+
+function hasForgedWatchtowerAuthority(req) {
+    const authorityFields = [
+        'actor_youth_id',
+        'claimant_youth_id',
+        'intercessor_youth_id',
+        'user_id',
+        'permissions',
+        'is_admin'
+    ];
+
+    const body =
+        req.body &&
+        typeof req.body === 'object' &&
+        !Array.isArray(req.body)
+            ? req.body
+            : {};
+
+    const query =
+        req.query &&
+        typeof req.query === 'object'
+            ? req.query
+            : {};
+
+    return (
+        authorityFields.some(
+            field =>
+                Object.prototype.hasOwnProperty.call(
+                    body,
+                    field
+                ) ||
+                Object.prototype.hasOwnProperty.call(
+                    query,
+                    field
+                )
+        ) ||
+        Boolean(
+            req.get('X-User-Id') ||
+            req.get('X-User-Permissions') ||
+            req.get('X-Admin')
+        )
+    );
+}
+
+function sendWatchtowerError(res, error) {
+    const statusByCode = {
+        INVALID_ID: 400,
+        SELF_CLAIM: 403,
+        TARGET_INELIGIBLE: 404,
+        WATCHTOWER_CLOSED: 409,
+        ALREADY_COVERED: 409,
+        CLAIMED_BY_ANOTHER: 409,
+        CLAIM_CONFLICT: 409,
+        CLAIM_REQUIRED: 409,
+        CLAIM_NOT_OWNED: 403
+    };
+
+    const status =
+        statusByCode[
+            error && error.code
+        ];
+
+    if (!status) {
+        return false;
+    }
+
+    res.status(status).json({
+        success:
+            false,
+        error:
+            error.message,
+        code:
+            error.code
+    });
+
+    return true;
+}
+
+app.get(
+    '/api/admin/prayer-covenant-monitor',
+    requirePermission('access_prayer_journey'),
+    async (req, res) => {
+        try {
+            const monitor =
+                await getPrayerCovenantMonitorModule()
+                    .getMonitorSummary(db);
+
+            res.setHeader(
+                'Cache-Control',
+                'no-store, no-cache, must-revalidate, private'
+            );
+
+            return res.json({
+                success: true,
+                ...monitor
+            });
+        } catch (error) {
+            console.error(
+                '[PRAYER_COVENANT_MONITOR] summary failed'
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to load the Prayer Covenant Monitor.'
+            });
+        }
+    }
+);
+
+app.get(
+    '/api/admin/prayer-covenant-monitor/:enrollmentId',
+    requirePermission('access_prayer_journey'),
+    async (req, res) => {
+        const enrollmentId =
+            Number(req.params.enrollmentId);
+
+        if (
+            !Number.isSafeInteger(enrollmentId) ||
+            enrollmentId <= 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid Prayer Covenant enrollment.'
+            });
+        }
+
+        try {
+            const detail =
+                await getPrayerCovenantMonitorModule()
+                    .getMonitorDetail(
+                        db,
+                        enrollmentId
+                    );
+
+            if (!detail) {
+                return res.status(404).json({
+                    success: false,
+                    error:
+                        'Prayer Covenant enrollment not found.'
+                });
+            }
+
+            res.setHeader(
+                'Cache-Control',
+                'no-store, no-cache, must-revalidate, private'
+            );
+
+            return res.json({
+                success: true,
+                ...detail
+            });
+        } catch (error) {
+            console.error(
+                '[PRAYER_COVENANT_MONITOR] detail failed'
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to load this Prayer Covenant record.'
+            });
+        }
+    }
+);
+
+app.get(
+    '/api/prayer/watchtower',
+    requirePermission('access_prayer'),
+    async (req, res) => {
+        try {
+            const state =
+                await getWatchtowerPrayerCoverageModule()
+                    .getWatchtowerState(
+                        db,
+                        {
+                            actorYouthId:
+                                req.auth.youthId,
+                            openHour:
+                                WATCHTOWER_OPEN_HOUR,
+                            reportHour:
+                                WATCHTOWER_REPORT_HOUR,
+                            claimMinutes:
+                                WATCHTOWER_CLAIM_MINUTES
+                        }
+                    );
+
+            return res.json({
+                success:
+                    true,
+                ...state
+            });
+        } catch (error) {
+            if (sendWatchtowerError(res, error)) {
+                return;
+            }
+
+            console.error(
+                '[WATCHTOWER_COVERAGE] state failed'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to load Watchtower.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/prayer/watchtower/:youthId/claim',
+    requirePermission('access_prayer'),
+    async (req, res) => {
+        if (hasForgedWatchtowerAuthority(req)) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const result =
+                await getWatchtowerPrayerCoverageModule()
+                    .claimWatchtowerMember(
+                        db,
+                        {
+                            actorYouthId:
+                                req.auth.youthId,
+                            coveredYouthId:
+                                req.params.youthId,
+                            openHour:
+                                WATCHTOWER_OPEN_HOUR,
+                            reportHour:
+                                WATCHTOWER_REPORT_HOUR,
+                            claimMinutes:
+                                WATCHTOWER_CLAIM_MINUTES
+                        }
+                    );
+
+            return res.json({
+                success:
+                    true,
+                ...result
+            });
+        } catch (error) {
+            if (sendWatchtowerError(res, error)) {
+                return;
+            }
+
+            console.error(
+                '[WATCHTOWER_COVERAGE] claim failed'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to claim this prayer.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/prayer/watchtower/:youthId/complete',
+    requirePermission('access_prayer'),
+    async (req, res) => {
+        if (hasForgedWatchtowerAuthority(req)) {
+            return sendForbidden(res);
+        }
+
+        try {
+            const result =
+                await getWatchtowerPrayerCoverageModule()
+                    .completeWatchtowerPrayer(
+                        db,
+                        {
+                            actorYouthId:
+                                req.auth.youthId,
+                            coveredYouthId:
+                                req.params.youthId,
+                            openHour:
+                                WATCHTOWER_OPEN_HOUR,
+                            reportHour:
+                                WATCHTOWER_REPORT_HOUR,
+                            claimMinutes:
+                                WATCHTOWER_CLAIM_MINUTES
+                        }
+                    );
+
+            return res.json({
+                success:
+                    true,
+                ...result
+            });
+        } catch (error) {
+            if (sendWatchtowerError(res, error)) {
+                return;
+            }
+
+            console.error(
+                '[WATCHTOWER_COVERAGE] completion failed'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to complete this prayer.'
+            });
+        }
+    }
+);
+
+
+// ==========================================
+// 21-DAY PRAYER COVENANT — DAILY PRAYER PAL
+//
+// Deliberately separate from:
+//   /api/prayer-pals/current/:youth_id
+//   /api/prayer-pals/send
+//   secret_prayer_pals
+//
+// Existing weekly Prayer Partner and Watchtower behavior remains intact.
+// ==========================================
+
+app.get(
+    '/api/prayer-covenant/daily-pal',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            Number(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (
+            !Number.isInteger(youthId) ||
+            youthId <= 0
+        ) {
+            return res.status(401).json({
+                success: false,
+                error:
+                    'Authentication required.'
+            });
+        }
+
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        try {
+            const result =
+                await PrayerCovenantDaily
+                    .getOrCreateDailyPal(
+                        db,
+                        youthId
+                    );
+
+            if (
+                !result.available ||
+                !result.assignment
+            ) {
+                return res.json({
+                    success: true,
+                    available: false,
+                    reason:
+                        result.reason,
+                    assignmentDate:
+                        result.assignmentDate,
+                    prayedToday: false,
+                    prayerPal: null
+                });
+            }
+
+            return res.json({
+                success: true,
+                available: true,
+                reason:
+                    result.reason,
+                assignmentDate:
+                    result.assignmentDate,
+                prayedToday:
+                    Boolean(
+                        result.assignment
+                            .prayedToday
+                    ),
+
+                prayerPal: {
+                    youthId:
+                        result.assignment
+                            .palYouthId,
+
+                    name:
+                        result.assignment
+                            .palName,
+
+                    profilePicture:
+                        result.assignment
+                            .palProfilePicture ||
+                        null
+                }
+            });
+        } catch (error) {
+            console.error(
+                '[PRAYER_COVENANT_DAILY] load failed',
+                error
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to load today’s Prayer Pal.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/prayer-covenant/daily-pal/send',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            Number(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        if (
+            !Number.isInteger(youthId) ||
+            youthId <= 0
+        ) {
+            return res.status(401).json({
+                success: false,
+                error:
+                    'Authentication required.'
+            });
+        }
+
+        const receiverId =
+            Number(
+                req.body &&
+                req.body.receiver_id
+            );
+
+        if (
+            !Number.isInteger(receiverId) ||
+            receiverId <= 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Invalid Prayer Pal.'
+            });
+        }
+
+        const message =
+            req.body &&
+            typeof req.body.message ===
+                'string'
+                ? req.body.message.trim()
+                : '';
+
+        if (!message) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Prayer message is required.'
+            });
+        }
+
+        if (message.length > 4000) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Prayer message is too long.'
+            });
+        }
+
+        try {
+            const daily =
+                await PrayerCovenantDaily
+                    .getOrCreateDailyPal(
+                        db,
+                        youthId
+                    );
+
+            if (
+                !daily.available ||
+                !daily.assignment
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    reason:
+                        daily.reason,
+                    error:
+                        daily.reason ===
+                            'not_enrolled'
+                            ? 'Join the 21-Day Prayer Covenant before sending a Covenant prayer.'
+                            : 'Today’s Prayer Pal is not available yet.'
+                });
+            }
+
+            const assignment =
+                daily.assignment;
+
+            if (
+                Number(
+                    assignment.palYouthId
+                ) !== receiverId
+            ) {
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        'Prayer can only be sent to today’s assigned Prayer Pal.'
+                });
+            }
+
+            if (
+                assignment.prayedToday
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    reason:
+                        'already_sent_today',
+                    error:
+                        'Today’s Prayer Covenant prayer has already been sent.'
+                });
+            }
+
+            const canonicalSenderName =
+                req.auth &&
+                req.auth.member &&
+                typeof req.auth.member.name ===
+                    'string' &&
+                req.auth.member.name.trim()
+                    ? req.auth.member.name.trim()
+                    : (
+                        req.auth &&
+                        typeof req.auth.username ===
+                            'string'
+                            ? req.auth.username
+                            : 'FOG Member'
+                    );
+
+            const timeNow =
+                getManilaTime();
+
+            let inboxId =
+                null;
+
+            let growthJourney =
+                null;
+
+            try {
+                growthJourney =
+                    await GrowthJourney
+                        .withPrayerRhythmMutation(
+                            db,
+                            async () => {
+                                await GrowthJourney.run(
+                                    db,
+                                    'BEGIN IMMEDIATE'
+                                );
+
+                                try {
+                                    const locked =
+                                        await GrowthJourney.get(
+                                            db,
+                                            `SELECT
+                                                id,
+                                                assignment_date,
+                                                sender_youth_id,
+                                                pal_youth_id,
+                                                enrollment_id,
+                                                sent_inbox_id,
+                                                sent_at
+                                             FROM prayer_covenant_daily_pals
+                                             WHERE id = ?
+                                               AND assignment_date = ?
+                                               AND sender_youth_id = ?
+                                             LIMIT 1`,
+                                            [
+                                                assignment.id,
+                                                daily.assignmentDate,
+                                                youthId
+                                            ]
+                                        );
+
+                                    if (!locked) {
+                                        const error =
+                                            new Error(
+                                                'Today’s Prayer Pal assignment is no longer available.'
+                                            );
+
+                                        error.code =
+                                            'DAILY_PRAYER_ASSIGNMENT_MISSING';
+
+                                        throw error;
+                                    }
+
+                                    if (
+                                        Number(
+                                            locked.pal_youth_id
+                                        ) !==
+                                        receiverId
+                                    ) {
+                                        const error =
+                                            new Error(
+                                                'Today’s Prayer Pal assignment changed.'
+                                            );
+
+                                        error.code =
+                                            'DAILY_PRAYER_RECIPIENT_CHANGED';
+
+                                        throw error;
+                                    }
+
+                                    if (
+                                        locked.sent_at
+                                    ) {
+                                        const error =
+                                            new Error(
+                                                'Today’s Prayer Covenant prayer has already been sent.'
+                                            );
+
+                                        error.code =
+                                            'DAILY_PRAYER_ALREADY_SENT';
+
+                                        throw error;
+                                    }
+
+                                    const inbox =
+                                        await GrowthJourney.run(
+                                            db,
+                                            `INSERT INTO personal_inbox (
+                                                sender_id,
+                                                receiver_id,
+                                                title,
+                                                message,
+                                                status,
+                                                created_at
+                                             ) VALUES (?, ?, ?, ?, ?, ?)`,
+                                            [
+                                                youthId,
+                                                receiverId,
+                                                '🙏 A Prayer from ' +
+                                                    canonicalSenderName,
+                                                message,
+                                                'Delivered',
+                                                timeNow
+                                            ]
+                                        );
+
+                                    inboxId =
+                                        inbox.lastID;
+
+                                    const claimed =
+                                        await GrowthJourney.run(
+                                            db,
+                                            `UPDATE prayer_covenant_daily_pals
+                                             SET sent_inbox_id = ?,
+                                                 sent_at = ?
+                                             WHERE id = ?
+                                               AND sent_at IS NULL`,
+                                            [
+                                                inboxId,
+                                                timeNow,
+                                                assignment.id
+                                            ]
+                                        );
+
+                                    if (
+                                        claimed.changes !==
+                                        1
+                                    ) {
+                                        const error =
+                                            new Error(
+                                                'Today’s Prayer Covenant prayer has already been sent.'
+                                            );
+
+                                        error.code =
+                                            'DAILY_PRAYER_ALREADY_SENT';
+
+                                        throw error;
+                                    }
+
+                                    const result =
+                                        await GrowthJourney
+                                            .recordPrayerCovenantCompletion(
+                                                db,
+                                                youthId,
+                                                {
+                                                    sourceKey:
+                                                        `personal-inbox:${inboxId}`,
+
+                                                    sourceTable:
+                                                        'personal_inbox',
+
+                                                    sourceId:
+                                                        inboxId,
+
+                                                    completedAt:
+                                                        timeNow,
+
+                                                    actor:
+                                                        req.auth.username ||
+                                                        canonicalSenderName,
+
+                                                    details: {
+                                                        prayerRecipientId:
+                                                            receiverId,
+
+                                                        dailyPrayerPalAssignmentId:
+                                                            assignment.id,
+
+                                                        assignmentDate:
+                                                            daily.assignmentDate
+                                                    },
+
+                                                    useExistingTransaction:
+                                                        true
+                                                }
+                                            );
+
+                                    await GrowthJourney.run(
+                                        db,
+                                        'COMMIT'
+                                    );
+
+                                    return result;
+                                } catch (error) {
+                                    await GrowthJourney
+                                        .run(
+                                            db,
+                                            'ROLLBACK'
+                                        )
+                                        .catch(
+                                            () => {}
+                                        );
+
+                                    throw error;
+                                }
+                            }
+                        );
+            } catch (error) {
+                if (
+                    error &&
+                    error.code ===
+                        'DAILY_PRAYER_ALREADY_SENT'
+                ) {
+                    return res.status(409).json({
+                        success: false,
+                        reason:
+                            'already_sent_today',
+                        error:
+                            'Today’s Prayer Covenant prayer has already been sent.'
+                    });
+                }
+
+                if (
+                    error &&
+                    (
+                        error.code ===
+                            'DAILY_PRAYER_ASSIGNMENT_MISSING' ||
+                        error.code ===
+                            'DAILY_PRAYER_RECIPIENT_CHANGED'
+                    )
+                ) {
+                    return res.status(409).json({
+                        success: false,
+                        reason:
+                            'assignment_changed',
+                        error:
+                            'Today’s Prayer Pal changed. Please refresh before sending.'
+                    });
+                }
+
+                console.error(
+                    '[PRAYER_COVENANT_DAILY] send transaction failed',
+                    error
+                );
+
+                return res.status(500).json({
+                    success: false,
+                    error:
+                        'Unable to send your Prayer Covenant prayer.'
+                });
+            }
+
+            /*
+             * Preserve the existing once-per-Manila-day Growth XP behavior.
+             * This is separate from canonical prayer-day completion.
+             */
+            const todayStr =
+                timeNow.split(' ')[0];
+
+            db.get(
+                `SELECT id
+                 FROM point_transactions
+                 WHERE youth_id = ?
+                   AND game_name = 'Daily Prayer Covenant'
+                   AND created_at LIKE ?`,
+                [
+                    youthId,
+                    todayStr + '%'
+                ],
+                (
+                    pointError,
+                    pointRow
+                ) => {
+                    if (
+                        !pointError &&
+                        !pointRow &&
+                        typeof awardPoints ===
+                            'function'
+                    ) {
+                        awardPoints(
+                            youthId,
+                            'growth',
+                            50,
+                            canonicalSenderName,
+                            'Daily Prayer Covenant'
+                        );
+                    }
+                }
+            );
+
+            const phaseTransitions =
+                growthJourney &&
+                Array.isArray(
+                    growthJourney
+                        .phaseTransitions
+                )
+                    ? growthJourney
+                        .phaseTransitions
+                    : [];
+
+            for (
+                const phaseProgress
+                of phaseTransitions
+            ) {
+                await processPrayerCovenantReadyNotification(
+                    youthId,
+                    phaseProgress
+                );
+            }
+
+            if (
+                typeof webpush !==
+                'undefined'
+            ) {
+                sendCustomPush(
+                    db,
+                    webpush,
+                    receiverId,
+                    '🙏 Prayer Received',
+                    'Someone in your Prayer Covenant prayed for you today.',
+                    '/?tab=inbox'
+                );
+            }
+
+            return res.json({
+                success: true,
+                assignmentDate:
+                    daily.assignmentDate,
+                prayedToday: true,
+                growthJourney
+            });
+        } catch (error) {
+            console.error(
+                '[PRAYER_COVENANT_DAILY] send failed',
+                error
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to send your Prayer Covenant prayer.'
+            });
+        }
+    }
+);
+
+app.get('/api/prayer-pals/current/:youth_id', requireAuth, async (req, res) => {
+    const authenticatedYouthId =
+        Number(req.auth && req.auth.youthId);
+
+    const requestedYouthId =
+        Number(req.params.youth_id);
+
+    if (
+        !Number.isInteger(authenticatedYouthId) ||
+        authenticatedYouthId <= 0
+    ) {
+        return res.status(401).json({
+            success: false,
+            error: 'Authentication required.'
+        });
+    }
+
+    if (
+        !Number.isInteger(requestedYouthId) ||
+        requestedYouthId <= 0
+    ) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid member.'
+        });
+    }
+
+    if (
+        requestedYouthId !==
+        authenticatedYouthId
+    ) {
+        return res.status(403).json({
+            success: false,
+            error:
+                'You can only view your own Prayer Partner.'
+        });
+    }
+
+    res.setHeader(
+        'Cache-Control',
+        'no-store'
+    );
+
+    try {
+        /*
+         * Lazy current-week ensure:
+         *
+         * Members who activate after the weekly rotation receive a
+         * Prayer Pal the first time their authenticated Portal session
+         * requests the Prayer Pal card.
+         */
+        const ensured =
+            await GrowthJourney.ensureOnboardingPrayerPartner(
+                db,
+                authenticatedYouthId,
+                {
+                    assignedAt: new Date()
+                }
+            );
+
+        if (
+            !ensured ||
+            ensured.available !== true
+        ) {
+            return res.json(null);
+        }
+
+        const row =
+            await GrowthJourney.get(
+                db,
+                `SELECT
+                    p.*,
+                    y.name AS pal_name,
+                    y.profile_picture
+                 FROM secret_prayer_pals p
+                 JOIN youth y
+                   ON p.pal_youth_id = y.id
+                 WHERE p.youth_id = ?
+                   AND p.week_start = ?
+                 ORDER BY p.id DESC
+                 LIMIT 1`,
+                [
+                    authenticatedYouthId,
+                    ensured.assignmentDate
+                ]
+            );
+
+        return res.json(
+            row || null
+        );
+    } catch (error) {
+        console.error(
+            '[Prayer Partner] Current assignment ensure failed:',
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Unable to load your Prayer Partner.'
+        });
+    }
+});
+
+
+// ==========================================
+// FOG GROWTH JOURNEY V1 - MEMBER VIEW
+// ==========================================
+function sendGrowthAdvancementError(res, error) {
+    const statusByCode = {
+        INVALID_MEMBER_ID: 400,
+        INVALID_PHASE_KEY: 400,
+        MEMBER_NOT_FOUND: 404,
+        PHASE_NOT_FOUND: 404,
+        PHASE_NOT_CURRENT: 409,
+        PHASE_NOT_READY: 409,
+        ESSENTIALS_INCOMPLETE: 409,
+        PHASE_UPDATE_CONFLICT: 409
+    };
+    const status = statusByCode[error && error.code];
+    if (!status) return false;
+    res.status(status).json({
+        success: false,
+        error: error.message
+    });
+    return true;
+}
+
+app.get('/api/growth-journey/me', requireAuth, async (req, res) => {
+    try {
+        const youthId = Number(
+            req.auth && req.auth.youthId
+        );
+
+        if (
+            !Number.isInteger(youthId) ||
+            youthId <= 0
+        ) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required.'
+            });
+        }
+
+        const [
+            journey,
+            onboarding,
+            prayerRhythm,
+            upcomingEventRows
+        ] = await Promise.all([
+            GrowthJourney.getMemberJourney(
+                db,
+                youthId
+            ),
+            GrowthJourney.getDefaultOnboardingStatus(
+                db,
+                youthId
+            ),
+            GrowthJourney.getPrayerRhythmStatus(
+                db,
+                youthId
+            ),
+            GrowthJourney.all(
+                db,
+                `SELECT id, name, event_date, time_start, venue,
+                        photos_url, materials_url, event_points,
+                        CASE WHEN poster IS NOT NULL AND poster <> '' THEN 1 ELSE 0 END AS has_poster,
+                        1 AS preregistration_available
+                 FROM events
+                 WHERE date(event_date) >= date(?)
+                 ORDER BY date(event_date) ASC, time_start ASC, id ASC
+                 LIMIT 3`,
+                [getManilaTime().slice(0, 10)]
+            )
+        ]);
+
+        const upcomingEvents = (upcomingEventRows || []).map(row =>
+            projectResponseFields(
+                addEventMediaReferences(row),
+                EVENT_LIST_RESPONSE_FIELDS
+            )
+        );
+
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        return res.json({
+            success: true,
+            journey,
+            onboarding,
+            prayerRhythm,
+            upcomingEvents
+        });
+    } catch (err) {
+        console.error(
+            '[Growth Journey] Member Journey API failed:',
+            err
+        );
+
+        return res.status(500).json({
+            success: false,
+            error:
+                'Your Growth Journey could not be loaded right now.'
+        });
+    }
+});
+
+app.get(
+    '/api/admin/growth-journey/members/:youthId',
+    requirePermission('access_discipleship'),
+    async (req, res) => {
+        const youthId = normalizeCanonicalId(req.params.youthId);
+        if (!youthId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid member.'
+            });
+        }
+
+        try {
+            const member = await GrowthJourney.get(
+                db,
+                'SELECT id, name FROM youth WHERE id = ? LIMIT 1',
+                [youthId]
+            );
+            if (!member) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Member not found.'
+                });
+            }
+
+            const journey = await GrowthJourney.getMemberJourney(db, youthId);
+            res.setHeader('Cache-Control', 'no-store');
+            return res.json({
+                success: true,
+                member,
+                journey
+            });
+        } catch (error) {
+            console.error('[Growth Journey] Leadership review failed:', error);
+            return res.status(500).json({
+                success: false,
+                error: 'The member Growth Journey could not be loaded right now.'
+            });
+        }
+    }
+);
+
+app.post(
+    '/api/admin/growth-journey/members/:youthId/phases/:phaseKey/complete',
+    requireAllPermissions(['access_discipleship', 'edit_entries']),
+    async (req, res) => {
+        try {
+            const result = await GrowthJourney.completeReadyPhase(
+                db,
+                req.params.youthId,
+                req.params.phaseKey,
+                {
+                    actor: getCanonicalAuditActor(req)
+                }
+            );
+
+            res.setHeader('Cache-Control', 'no-store');
+            return res.json({
+                success: true,
+                completed: result.completed,
+                idempotent: result.idempotent,
+                member: result.member,
+                journey: result.journey
+            });
+        } catch (error) {
+            if (sendGrowthAdvancementError(res, error)) return;
+            console.error('[Growth Journey] Leadership advancement failed:', error);
+            return res.status(500).json({
+                success: false,
+                error: 'The Growth Journey phase could not be advanced right now.'
+            });
+        }
+    }
+);
+
+app.post('/api/growth-journey/prayer-covenant/join', requireAuth, async (req, res) => {
+    const youthId = Number(req.auth && req.auth.youthId);
+    if (!Number.isInteger(youthId) || youthId <= 0) {
+        return res.status(401).json({
+            success: false,
+            error: 'Authentication required.'
+        });
+    }
+
+    try {
+        const occurredAt = getManilaTime();
+        const result = await GrowthJourney.enrollPrayerCovenantChallenge(
+            db,
+            youthId,
+            {
+                triggerType: 'member_direct_join',
+                occurredAt
+            }
+        );
+
+        if (!result.enrollment) {
+            const unavailable = result.reason === 'template_not_enrolling';
+            return res.status(unavailable ? 409 : 503).json({
+                success: false,
+                error: unavailable
+                    ? 'The 21-Day Prayer Covenant Challenge is paused right now.'
+                    : 'The 21-Day Prayer Covenant Challenge is unavailable right now.'
+            });
+        }
+
+        let prayerPartner = null;
+        if (result.enrollment.status === 'active') {
+            try {
+                prayerPartner = await GrowthJourney.ensureOnboardingPrayerPartner(
+                    db,
+                    youthId,
+                    { assignedAt: occurredAt }
+                );
+            } catch (partnerError) {
+                console.error(
+                    '[Growth Journey] Direct Prayer Covenant partner assignment failed:',
+                    partnerError
+                );
+                prayerPartner = {
+                    available: false,
+                    created: false,
+                    reason: 'assignment_error'
+                };
+            }
+        }
+
+        const onboarding = await GrowthJourney.getDefaultOnboardingStatus(
+            db,
+            youthId
+        );
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json({
+            success: true,
+            joined: result.enrolled,
+            reason: result.reason,
+            onboarding,
+            prayerPartner
+        });
+    } catch (err) {
+        console.error('[Growth Journey] Direct Prayer Covenant join failed:', err);
+        return res.status(500).json({
+            success: false,
+            error: 'The 21-Day Prayer Covenant Challenge could not be joined right now.'
+        });
+    }
+});
+
+// ==========================================
+// MEMBERSHIP INTENT ENDPOINT
+// ==========================================
+app.post('/api/youth/:id/commit', requireAuth, handleMembershipIntent);
+app.post('/api/youth/:id/commit-v2', requireAuth, handleMembershipIntent);
+
+function handleMembershipIntent(req, res) {
+    const youthId = Number(req.params.id);
+    const authenticatedYouthId =
+        Number(req.auth && req.auth.youthId);
+
+    if (
+        !Number.isInteger(youthId) ||
+        youthId <= 0
+    ) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid member.'
+        });
+    }
+
+    if (
+        !Number.isInteger(authenticatedYouthId) ||
+        youthId !== authenticatedYouthId ||
+        (req.body && Object.prototype.hasOwnProperty.call(req.body, 'youth_id') &&
+            normalizeCanonicalId(req.body.youth_id) !== authenticatedYouthId)
+    ) {
+        return res.status(403).json({
+            success: false,
+            error: 'You can only submit an intent for your own account.'
+        });
+    }
+
+    const intentMessage =
+        req.body &&
+        typeof req.body.intent_message === 'string'
+            ? req.body.intent_message.trim()
+            : '';
+
+    if (!intentMessage) {
+        return res.status(400).json({
+            success: false,
+            error: 'Please share your reflection.'
+        });
+    }
+
+    const actor =
+        req.auth &&
+        req.auth.member &&
+        typeof req.auth.member.name === 'string' &&
+        req.auth.member.name.trim()
+            ? req.auth.member.name.trim()
+            : (
+                req.auth &&
+                typeof req.auth.username === 'string'
+                    ? req.auth.username
+                    : 'Member'
+            );
+
+    // Intent starts Belong. Formal status and commitment metadata are
+    // recorded only by the authorized leadership approval route.
+    db.run(
+        `UPDATE youth
+         SET commitment_intent = ?
+         WHERE id = ?`,
+        [
+            intentMessage,
+            youthId
+        ],
+        function(err) {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    error:
+                        'Database error updating intent: ' +
+                        err.message
+                });
+            }
+
+            db.get(
+                `SELECT permissions
+                 FROM users
+                 WHERE youth_id = ?`,
+                [youthId],
+                (userErr, user) => {
+                    let perms = [];
+
+                    if (user && user.permissions) {
+                        try {
+                            perms =
+                                JSON.parse(user.permissions);
+                        } catch (e) {}
+                    }
+
+                    if (
+                        !perms.includes('access_directory')
+                    ) {
+                        perms.push('access_directory');
+                    }
+
+                    db.run(
+                        `UPDATE users
+                         SET permissions = ?
+                         WHERE youth_id = ?`,
+                        [
+                            JSON.stringify(perms),
+                            youthId
+                        ],
+                        async function(permissionErr) {
+                            if (permissionErr) {
+                                return res.status(500).json({
+                                    success: false,
+                                    error:
+                                        'Could not update member permissions.'
+                                });
+                            }
+
+                            logActivity(
+                                actor,
+                                'COMMITMENT_PLEDGE',
+                                `Member ID ${youthId} expressed intent to journey with the community`
+                            );
+
+                            let growthJourney = null;
+                            let growthJourneyWarning = null;
+
+                            try {
+                                growthJourney =
+                                    await GrowthJourney
+                                        .recordMembershipIntent(
+                                            db,
+                                            youthId,
+                                            {
+                                                sourceId:
+                                                    youthId,
+                                                occurredAt:
+                                                    getManilaTime(),
+                                                actor:
+                                                    req.auth.username ||
+                                                    actor,
+                                                details: {
+                                                    source:
+                                                        'community_intent'
+                                                }
+                                            }
+                                        );
+
+                                await processJourneyReadyNotification({
+                                    youthId,
+                                    phaseProgress:
+                                        growthJourney &&
+                                        growthJourney.belong,
+                                    source:
+                                        'membership_intent'
+                                });
+                            } catch (growthErr) {
+                                growthJourneyWarning =
+                                    'Your intent was saved, but the welcome journey could not be started automatically.';
+
+                                console.error(
+                                    '[Growth Journey] Membership intent hook failed:',
+                                    growthErr
+                                );
+                            }
+
+                            db.get(
+                                `SELECT *
+                                 FROM youth
+                                 WHERE id = ?`,
+                                [youthId],
+                                (memberErr, member) => {
+                                    if (memberErr || !member) {
+                                        return res.status(500).json({
+                                            success: false,
+                                            error:
+                                                'Intent was saved but the member record could not be reloaded.'
+                                        });
+                                    }
+
+                                    return res.json({
+                                        success: true,
+                                        member:
+                                            sanitizeMemberForClient(
+                                                member
+                                            ),
+                                        permissions: perms,
+                                        growthJourney,
+                                        growthJourneyWarning
+                                    });
+                                }
+                            );
+                        }
+                    );
+                }
+            );
+        }
+    );
+}
+
+app.get('/api/admin/community-intents', requirePermission('edit_entries'), (req, res) => {
+    db.all(`SELECT id, name, email, profile_picture, account_tier, commitment_intent, commitment_date FROM youth WHERE commitment_intent IS NOT NULL ORDER BY commitment_date DESC`, [], (err, rows) => { res.json(rows || []); });
+});
+
+app.post('/api/admin/community-intents/:id/approve', requirePermission('edit_entries'), (req, res) => {
+    const youthId = normalizeCanonicalId(req.params.id);
+    if (!youthId) return res.status(400).json({ success: false, error: 'Invalid member.' });
+    const actor = getCanonicalAuditActor(req);
+    db.run(`UPDATE youth SET account_tier = 'Committed Member' WHERE id = ?`, [youthId], function(err) {
+        if (err) return res.status(500).json({ success: false, error: 'Unable to approve membership.' });
+        if (!this.changes) return res.status(404).json({ success: false, error: 'Member not found.' });
+        logActivity(actor, 'MEMBERSHIP_APPROVED', `Approved membership for Member ID ${youthId}`);
+        res.json({success:true});
+    });
+});
+
+app.get('/api/admin/ministry-logs', requirePermission('edit_entries'), (req, res) => {
+    db.all(`SELECT mm.*, y.name as applicant_name, y.profile_picture, m.name as ministry_name FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id JOIN ministries m ON mm.ministry_id = m.id ORDER BY mm.assigned_at DESC`, [], (err, rows) => { res.json(rows || []); });
+});
+
+
+// --- V31: V2 ENDPOINTS FOR FILTERS & ACCEPTANCE LOGS ---
+app.get('/api/admin/community-intents-v2', requirePermission('edit_entries'), (req, res) => {
+    db.all(`SELECT id, name, email, profile_picture, account_tier, commitment_intent,
+                   commitment_date, commitment_accepted_at, commitment_accepted_by,
+                   COALESCE(
+                       (SELECT MAX(e.occurred_at) FROM growth_evidence e
+                        WHERE e.youth_id = youth.id AND e.evidence_type = 'membership_intent'),
+                       (SELECT MAX(a.created_at) FROM activity_logs a
+                        WHERE a.action = 'COMMITMENT_PLEDGE'
+                          AND a.details LIKE 'Member ID ' || youth.id || ' expressed intent%'),
+                       commitment_date
+                   ) AS intent_recorded_at
+            FROM youth
+            WHERE commitment_intent IS NOT NULL
+            ORDER BY intent_recorded_at DESC, id DESC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load Community Intent logs.' });
+        return res.json(rows || []);
+    });
+});
+
+app.post('/api/admin/community-intents-v2/:id/approve', requirePermission('edit_entries'), (req, res) => {
+    const youthId = normalizeCanonicalId(req.params.id);
+    if (!youthId) return res.status(400).json({ success: false, error: 'Invalid member.' });
+    const actor = getCanonicalAuditActor(req);
+    const timeNow = typeof getManilaTime === 'function' ? getManilaTime() : new Date().toISOString();
+    db.run("UPDATE youth SET account_tier = 'Committed Member', commitment_date = COALESCE(commitment_date, ?), commitment_accepted_at = ?, commitment_accepted_by = ? WHERE id = ?", [timeNow, timeNow, actor, youthId], function(err) {
+        if (err) return res.status(500).json({ success: false, error: 'Unable to approve membership.' });
+        if (!this.changes) return res.status(404).json({ success: false, error: 'Member not found.' });
+        logActivity(actor, 'MEMBERSHIP_APPROVED', `Accepted membership for Member ID ${youthId}`);
+        res.json({success:true});
+    });
+});
+
+app.get('/api/youth-v2/:id/tier', requireSelfOr('edit_entries', req => req.params.id), (req, res) => {
+    db.get("SELECT account_tier FROM youth WHERE id = ?", [req.params.id], (err, row) => { res.json(row || {}); });
+});
+
+
+// --- V32: MINISTRY ROLE HISTORY LOGGING ---
+app.put('/api/ministries-v2/:id/members/:mappingId', requireAllPermissions(['access_ministries', 'edit_entries']), (req, res) => {
+    const { role, sub_role } = req.body;
+    const actor = getCanonicalDisplayActor(req) || 'Authorized leader';
+    db.get("SELECT youth_id FROM ministry_members WHERE id = ?", [req.params.mappingId], (err, row) => {
+        if(!row) return res.json({success:false, error: 'Mapping not found'});
+        
+        const youthId = row.youth_id;
+        const timeNow = typeof getManilaTime === 'function' ? getManilaTime() : new Date().toISOString();
+        let logMsg = role === 'Integration Period' ? 'Application Accepted for Integration Period' : `Role updated to ${role}`;
+
+        // 1. Update active role
+        db.run("UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?", [role, sub_role || '', req.params.mappingId], () => {
+            // 2. Insert into Historical Ledger
+            db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
+                [req.params.id, youthId, role, actor, timeNow, logMsg], () => {
+                    res.json({success:true});
             });
         });
     });
 });
 
-app.get('/api/events/:id/poster.jpg', (req, res) => {
-    const eventId = req.params.id;
-    db.get(`SELECT poster, prereg_banner FROM events WHERE id = ?`, [eventId], (err, event) => {
-        if (err || !event) return res.status(404).send('Not found');
+app.get('/api/admin/ministry-logs-v3', requirePermission('edit_entries'), (req, res) => {
+    db.all(`SELECT h.*, y.name as applicant_name, m.name as ministry_name
+            FROM ministry_role_history h
+            JOIN youth y ON h.youth_id = y.id
+            JOIN ministries m ON h.ministry_id = m.id
+            ORDER BY h.timestamp DESC`, [], (err, rows) => { res.json(rows || []); });
+});
 
-        const base64String = event.poster || event.prereg_banner;
 
-        if (base64String && base64String.startsWith('data:image')) {
-            try {
-                const parts = base64String.split(';');
-                const mimeData = parts[0].split(':')[1];
-                const base64Data = parts[1].split(',')[1];
-                const imgBuffer = Buffer.from(base64Data, 'base64');
-
-                res.writeHead(200, {
-                    'Content-Type': mimeData,
-                    'Content-Length': imgBuffer.length
-                });
-                res.end(imgBuffer);
-            } catch (error) {
-                res.status(500).send('Error processing image');
-            }
-        } else {
-            res.status(404).send('No image uploaded for this event');
-        }
+// --- V34: BULLETPROOF MINISTRY ROLE LOGGING ---
+app.put('/api/ministries-v34/:id/members/:mappingId', requireAllPermissions(['access_ministries', 'edit_entries']), (req, res) => {
+    const { role, sub_role } = req.body;
+    const actor = getCanonicalDisplayActor(req) || 'Authorized leader';
+    db.get("SELECT youth_id FROM ministry_members WHERE id = ?", [req.params.mappingId], (err, row) => {
+        if(!row) return res.status(404).json({error: 'Not found'});
+        const timeNow = typeof getManilaTime === 'function' ? getManilaTime() : new Date().toISOString();
+        const logMsg = role === 'Integration Period' ? 'Application Accepted for Integration Period' : `Role updated to ${role}`;
+        
+        db.run("UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?", [role, sub_role || '', req.params.mappingId], function(err) {
+            if(err) return res.status(500).json({error: err.message});
+            db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
+                [req.params.id, row.youth_id, role, actor, timeNow, logMsg], () => {
+                    if (role === 'Integration Period' || role === 'Member') {
+                        awardPoints(row.youth_id, 'growth', 50, actor, 'Ministry Advancement: ' + role);
+                    }
+                    res.json({success: true});
+            });
+        });
     });
 });
 
-app.post('/api/events', (req, res) => {
-    const { name, event_date, time_start, venue, poster, photos_url, materials_url, actor } = req.body;
-    db.run(`INSERT INTO events (name, event_date, time_start, venue, poster, photos_url, materials_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [name, event_date, time_start, venue, poster, photos_url, materials_url, getManilaTime()],
-        function (err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'CREATE_EVENT', `Published event '${name}'`);
-            res.json({ id: this.lastID });
-        }
-    );
+app.get('/api/admin/ministry-logs-v34', requirePermission('edit_entries'), (req, res) => {
+    db.all(`SELECT h.*, y.name as applicant_name, m.name as ministry_name
+            FROM ministry_role_history h
+            JOIN youth y ON h.youth_id = y.id
+            JOIN ministries m ON h.ministry_id = m.id
+            ORDER BY h.timestamp DESC`, [], (err, rows) => { res.json(rows || []); });
 });
 
-app.put('/api/events/:id', (req, res) => {
-    const { name, event_date, time_start, venue, poster, photos_url, materials_url, actor } = req.body;
-    if (poster !== undefined && poster !== null) {
-        db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, poster=?, photos_url=?, materials_url=? WHERE id=?`,
-            [name, event_date, time_start, venue, poster, photos_url, materials_url, req.params.id],
-            function (err) {
-                if (err) return res.status(500).json({ error: err.message });
-                logActivity(actor, 'EDIT_EVENT', `Updated event details and poster for '${name}'`);
-                res.json({ updated: this.changes });
-            }
-        );
-    } else {
-        db.run(`UPDATE events SET name=?, event_date=?, time_start=?, venue=?, photos_url=?, materials_url=? WHERE id=?`,
-            [name, event_date, time_start, venue, photos_url, materials_url, req.params.id],
-            function (err) {
-                if (err) return res.status(500).json({ error: err.message });
-                logActivity(actor, 'EDIT_EVENT', `Updated details for event '${name}'`);
-                res.json({ updated: this.changes });
-            }
-        );
+
+// --- V36: PRECISION ROLE LOGGING ---
+app.put('/api/ministries-v36/:id/members/:mappingId', requireAllPermissions(['access_ministries', 'edit_entries']), (req, res) => {
+    const { role, sub_role } = req.body;
+    const ministryId = normalizeCanonicalId(req.params.id);
+    const mappingId = normalizeCanonicalId(req.params.mappingId);
+    if (!ministryId || !mappingId || typeof role !== 'string' || !role.trim()) {
+        return res.status(400).json({ error: 'Invalid ministry role update.' });
     }
-});
-
-app.delete('/api/events/:id', (req, res) => {
-    const { actor } = req.body;
-    db.run(`DELETE FROM events WHERE id=?`, [req.params.id], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        logActivity(actor, 'DELETE_EVENT', `Deleted event record (ID: ${req.params.id})`);
-        res.json({ deleted: this.changes });
-    });
-});
-
-app.post('/api/events/:id/prereg-settings', (req, res) => {
-    const { banner, bottom_banner, title, info, actor } = req.body;
-    db.run(`UPDATE events SET prereg_banner = ?, prereg_bottom_banner = ?, prereg_title = ?, prereg_info = ? WHERE id = ?`,
-        [banner, bottom_banner, title, info, req.params.id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor || 'System', 'UPDATE_PREREG', `Updated pre-registration settings for Event ID ${req.params.id}`);
-            res.json({ success: true });
-    });
-});
-
-app.get('/api/events/:id/preregs', (req, res) => {
-    db.all(`SELECT youth_id FROM pre_registrations WHERE event_id = ?`, [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows.map(r => r.youth_id));
-    });
-});
-
-app.post('/api/preregister', (req, res) => {
-    const { event_id, youth_id } = req.body;
-    db.run(`INSERT OR IGNORE INTO pre_registrations (event_id, youth_id, created_at) VALUES (?, ?, ?)`,
-        [event_id, youth_id, getManilaTime()], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true });
-    });
-});
-
-app.delete('/api/events/:event_id/preregs/:youth_id', (req, res) => {
-    const { actor } = req.body;
-    db.run(`DELETE FROM pre_registrations WHERE event_id = ? AND youth_id = ?`,
-        [req.params.event_id, req.params.youth_id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'DELETE_PREREG', `Removed pre-registration for youth ID ${req.params.youth_id} from Event ${req.params.event_id}`);
-            res.json({ success: true, deleted: this.changes });
-    });
-});
-
-app.post('/api/checkin', (req, res) => {
-    const { youth_id, event_id, is_walkin, actor, qr_code } = req.body;
-    const processCheckin = (targetYouthId) => {
-        db.get(`SELECT id FROM attendance WHERE youth_id = ? AND event_id = ?`, [targetYouthId, event_id], (err, row) => {
-            if (row) return res.status(400).json({ error: 'Member is ALREADY checked in for this event.' });
-            db.run(`INSERT INTO attendance (youth_id, event_id, is_walkin, checked_in_at) VALUES (?, ?, ?, ?)`,
-                [targetYouthId, event_id, is_walkin ? 1 : 0, getManilaTime()],
-                function (err) {
-                    if (err) return res.status(500).json({ error: err.message });
-                    logActivity(actor, 'CHECK_IN', `Checked in member ID ${targetYouthId}`);
-                    db.get(`SELECT name FROM youth WHERE id = ?`, [targetYouthId], (e, y) => {
-                        res.json({ success: true, member_name: y ? y.name : 'Member', youth_id: targetYouthId, log_id: this.lastID });
-                    });
-                }
-            );
-        });
-    };
-
-    if (qr_code) {
-        db.get(`SELECT id FROM youth WHERE qr_code = ?`, [qr_code], (err, row) => {
-            if (!row) return res.status(404).json({ error: 'Invalid QR Pass Code.' });
-            processCheckin(row.id);
-        });
-    } else if (youth_id) {
-        processCheckin(youth_id);
-    } else res.status(400).json({ error: 'Missing youth identifier for check-in.' });
-});
-
-app.get('/api/attendance/logs', (req, res) => {
-    const sql = `SELECT a.id, a.checked_in_at, a.is_walkin, y.name as member_name, e.name as event_name, a.youth_id, a.event_id FROM attendance a JOIN youth y ON a.youth_id = y.id JOIN events e ON a.event_id = e.id ORDER BY a.checked_in_at DESC`;
-    db.all(sql, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
-
-app.put('/api/attendance/:id', (req, res) => {
-    const { checked_in_at, is_walkin, actor } = req.body;
-    db.run(`UPDATE attendance SET checked_in_at = ?, is_walkin = ? WHERE id = ?`,
-        [checked_in_at, is_walkin ? 1 : 0, req.params.id],
-        function (err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'EDIT_ATTENDANCE', `Modified attendance record ID ${req.params.id}`);
-            res.json({ updated: this.changes });
+    const actor = getCanonicalDisplayActor(req) || 'Authorized leader';
+    db.get("SELECT youth_id, ministry_id, role as old_role FROM ministry_members WHERE id = ?", [mappingId], (err, row) => {
+        if (err) return res.status(500).json({ error: 'Unable to load ministry membership.' });
+        if(!row || Number(row.ministry_id) !== ministryId) return res.status(404).json({error: 'Not found'});
+        
+        // Generate precise readable timestamp
+        const timeNow = getManilaTime();
+        
+        // Format precision log message
+        let logMsg = `Previous role '${row.old_role || 'None'}' updated to '${role}'`;
+        if (role === 'Integration Period' && row.old_role !== 'Integration Period') {
+            logMsg = `Application Accepted for Integration Period (Previous: ${row.old_role || 'Applicant'})`;
         }
+        
+        db.run("UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ? AND ministry_id = ?", [role.trim(), sub_role || '', mappingId, ministryId], function(err) {
+            if(err) return res.status(500).json({error: 'Unable to update ministry role.'});
+            db.run("INSERT INTO ministry_role_history (ministry_id, youth_id, role, actor, timestamp, intent_message) VALUES (?, ?, ?, ?, ?, ?)",
+                [ministryId, row.youth_id, role.trim(), actor, timeNow, logMsg], historyErr => {
+                    if (historyErr) return res.status(500).json({ error: 'Role updated but its history could not be recorded.' });
+                    if (role === 'Integration Period' || role === 'Member') {
+                        awardPoints(row.youth_id, 'growth', 50, actor, 'Ministry Advancement: ' + role);
+                    }
+                    logActivity(actor, 'MINISTRY_ROLE_UPDATED', `Updated Ministry ID ${ministryId} membership ID ${mappingId}`);
+                    res.json({success: true});
+            });
+        });
+    });
+});
+
+app.get('/api/admin/ministry-logs-v36', requirePermission('edit_entries'), (req, res) => {
+    db.all(`SELECT h.*,
+                   COALESCE(NULLIF(TRIM(y.name), ''), 'Unknown member (ID ' || h.youth_id || ')') as applicant_name,
+                   COALESCE(NULLIF(TRIM(m.name), ''), 'Unknown ministry (ID ' || h.ministry_id || ')') as ministry_name
+            FROM ministry_role_history h
+            LEFT JOIN youth y ON h.youth_id = y.id
+            LEFT JOIN ministries m ON h.ministry_id = m.id
+            ORDER BY h.id DESC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Unable to load ministry history.' });
+        return res.json(rows || []);
+    });
+});
+
+
+// --- V37: PROFILE DETAILS & PRIORITY ENDPOINTS ---
+app.put('/api/youth-v37/profile/:id', requireSelfOr('edit_entries', req => req.params.id), async (req, res) => {
+    return updateYouthProfileWithEmailPolicy(req, res, {
+        name: req.body.name,
+        age: req.body.age,
+        birthday: req.body.birthday,
+        gender: req.body.gender,
+        mobile: req.body.mobile,
+        address: req.body.address,
+        social_media: req.body.social_media,
+        parents_name: req.body.parents_name
+    });
+});
+
+async function handleMinistryPriority(req, res) {
+    const mappingId = normalizeCanonicalId(
+        req.params.mappingId ||
+        req.params.mapping_id
     );
-});
 
-app.delete('/api/attendance/:id', (req, res) => {
-    const { actor } = req.body;
-    db.run(`DELETE FROM attendance WHERE id=?`, [req.params.id], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        logActivity(actor, 'DELETE_ATTENDANCE', `Removed attendance log ID ${req.params.id}`);
-        res.json({ deleted: this.changes });
-    });
-});
+    if (!mappingId) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid ministry membership.'
+        });
+    }
 
-app.get('/api/users/list', (req, res) => {
-    const sql = `SELECT u.id, u.username, u.permissions, u.youth_id, y.name as member_name, y.qr_code as member_code FROM users u LEFT JOIN youth y ON u.youth_id = y.id ORDER BY u.id DESC`;
-    db.all(sql, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows.map(r => ({
-            id: r.id,
-            username: r.username,
-            display_name: r.member_name ? `${r.member_name}` : r.username,
-            qr_code: r.member_code || r.username,
-            youth_id: r.youth_id,
-            permissions: r.permissions || '[]'
-        })));
-    });
-});
+    try {
+        const mapping = await new Promise(
+            (resolve, reject) => {
+                db.get(
+                    `SELECT youth_id
+                     FROM ministry_members
+                     WHERE id = ?`,
+                    [mappingId],
+                    (lookupErr, row) => {
+                        if (lookupErr) {
+                            reject(lookupErr);
+                            return;
+                        }
 
-app.get('/api/directory/export', (req, res) => {
-    db.all("SELECT * FROM members ORDER BY full_name ASC", [], (err, rows) => {
-        if (err || !rows || rows.length === 0) {
-            db.all("SELECT * FROM youth ORDER BY name ASC", [], (e, r) => sendCSV(res, r || []));
-        } else { sendCSV(res, rows); }
-    });
-});
+                        resolve(row || null);
+                    }
+                );
+            }
+        );
 
-function sendCSV(res, rows) {
-    let csv = 'Name,Age,Role,Phone,Email,Status\n';
-    (rows || []).forEach(r => { csv += `"${r.full_name||r.name||''}","${r.age||''}","${r.role||''}","${r.phone||r.mobile||''}","${r.email||''}","${r.status||''}"\n`; });
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename=Community_Directory.csv');
-    res.status(200).send(csv);
+        if (!mapping) {
+            return res.status(404).json({
+                success: false,
+                error: 'Ministry membership not found.'
+            });
+        }
+
+        const actorUserId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.userId
+            );
+
+        const authenticatedYouthId =
+            normalizeCanonicalId(
+                req.auth &&
+                req.auth.youthId
+            );
+
+        const actor =
+            getCanonicalDisplayActor(req) ||
+            getCanonicalAuditActor(req) ||
+            (
+                actorUserId
+                    ? `User ${actorUserId}`
+                    : 'Authorized actor'
+            );
+
+        const isOwner =
+            authenticatedYouthId &&
+            Number(authenticatedYouthId) ===
+                Number(mapping.youth_id);
+
+        const result =
+            await MinistryServiceJourney
+                .setPriorityMinistry(
+                    db,
+                    {
+                        youthId:
+                            mapping.youth_id,
+
+                        mappingId,
+
+                        actorUserId,
+
+                        actorName:
+                            actor,
+
+                        source:
+                            isOwner
+                                ? 'member_profile'
+                                : 'leadership_review',
+
+                        reason:
+                            isOwner
+                                ? 'Member updated Priority Ministry from profile.'
+                                : 'Authorized leadership updated Priority Ministry.'
+                    }
+                );
+
+        logActivity(
+            actor,
+            result.changed
+                ? 'MINISTRY_PRIORITY_UPDATED'
+                : 'MINISTRY_PRIORITY_CONFIRMED',
+            `Priority Ministry mapping ${mappingId} for Member ID ${mapping.youth_id}`
+        );
+
+        return res.json({
+            success: true,
+            result
+        });
+    } catch (error) {
+        const code =
+            error &&
+            typeof error.code === 'string'
+                ? error.code
+                : null;
+
+        if (
+            code === 'MINISTRY_MEMBERSHIP_NOT_FOUND'
+        ) {
+            return res.status(404).json({
+                success: false,
+                code,
+                error: error.message
+            });
+        }
+
+        if (
+            code === 'ACTIVE_DISCERNMENT_PRIORITY_CONFLICT' ||
+            code === 'MULTIPLE_PRIORITY_CONFLICT' ||
+            code === 'PRIORITY_UPDATE_CONFLICT'
+        ) {
+            return res.status(409).json({
+                success: false,
+                code,
+                error: error.message
+            });
+        }
+
+        if (
+            code === 'MINISTRY_NOT_PRIORITY_ELIGIBLE' ||
+            code === 'INVALID_PRIORITY_TARGET' ||
+            code === 'INVALID_PRIORITY_SOURCE' ||
+            code === 'ACTOR_REQUIRED'
+        ) {
+            return res.status(400).json({
+                success: false,
+                code,
+                error: error.message
+            });
+        }
+
+        console.error(
+            '[Priority Ministry] Update failed:',
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            error: 'Unable to update Priority Ministry.'
+        });
+    }
 }
 
-// ==============================================================================
-// CRM EXPANSION API ENDPOINTS - MINISTRIES
-// ==============================================================================
+app.post(
+    '/api/ministries-v37/priority/:mappingId',
+    requireResourceOwnerOrAllPermissions('ministryMember', ['access_ministries', 'edit_entries'], req => req.params.mappingId),
+    handleMinistryPriority
+);
 
-app.get('/api/ministries', (req, res) => {
-    db.all(`SELECT m.*, (SELECT COUNT(*) FROM ministry_members WHERE ministry_id = m.id) as member_count FROM ministries m ORDER BY m.name ASC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+app.post('/api/ministries/:id/apply', requireAuth, (req, res) => {
+    const youthId = normalizeCanonicalId(req.body && req.body.youth_id);
+    const authenticatedYouthId = normalizeCanonicalId(req.auth && req.auth.youthId);
+    const ministryId = normalizeCanonicalId(req.params.id);
+    const intentMessage = typeof req.body.intent_message === 'string' ? req.body.intent_message.trim() : '';
+    if (!youthId || !ministryId) return res.status(400).json({ error: 'Session error. Please log out and log in again.' });
+    if (!authenticatedYouthId || youthId !== authenticatedYouthId) return sendForbidden(res);
+    const actor = getCanonicalDisplayActor(req) || `Member ${youthId}`;
+    const timestamp = getManilaTime();
+    db.run(`INSERT INTO ministry_members (ministry_id, youth_id, role, intent_message, assigned_at) VALUES (?, ?, 'Applicant', ?, ?)`,
+    [ministryId, youthId, intentMessage, timestamp], function(err) {
+        if (err) return res.status(400).json({ error: 'Already applied or belong to this ministry.' });
+        const mappingId = this.lastID;
+        db.run(
+            `INSERT INTO ministry_role_history
+                (ministry_id, youth_id, role, actor, timestamp, intent_message)
+             VALUES (?, ?, 'Applicant', ?, ?, ?)`,
+            [ministryId, youthId, actor, timestamp, intentMessage || 'Ministry interest submitted.'],
+            historyErr => {
+                if (historyErr) {
+                    return db.run('DELETE FROM ministry_members WHERE id = ?', [mappingId], () => {
+                        res.status(500).json({ error: 'Unable to record ministry application history.' });
+                    });
+                }
+                logActivity(actor, 'MINISTRY_APPLY', `Member ID ${youthId} submitted intent for Ministry ID ${ministryId}`);
+                return res.json({ success: true });
+            }
+        );
     });
 });
 
-app.post('/api/ministries', (req, res) => {
-    const { name, description, logo, actor } = req.body;
-    db.run(`INSERT INTO ministries (name, description, logo, created_at) VALUES (?, ?, ?, ?)`,
-        [name, description, logo, getManilaTime()], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'CREATE_MINISTRY', `Created ministry '${name}'`);
-            res.json({ success: true, id: this.lastID });
+app.get('/api/ministries/applications/pending', requirePermission('access_ministries'), (req, res) => {
+    db.all(`SELECT mm.id as mapping_id, mm.ministry_id, m.name as ministry_name, y.name as applicant_name, mm.intent_message, mm.assigned_at
+            FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id JOIN youth y ON mm.youth_id = y.id
+            WHERE mm.role = 'Applicant' ORDER BY mm.assigned_at DESC`, [], (err, rows) => { res.json(rows || []); });
+});
+
+app.put(
+    '/api/ministries/members/:mapping_id/priority',
+    requireResourceOwnerOrAllPermissions('ministryMember', ['access_ministries', 'edit_entries'], req => req.params.mapping_id),
+    handleMinistryPriority
+);
+
+// ==========================================
+// V120: BULLETPROOF FAITH QUEST ENDPOINTS
+// ==========================================
+// 1. Authorized Image Uploader V2
+app.post('/api/settings/images-v2', requirePermission('edit_entries'), (req, res) => {
+    const { logo, prodIcon, stagingIcon, faithQuestThumb, faithRegBanner } = req.body;
+    try {
+        const saveImg = (b64, baseFname) => {
+            if (!b64) return;
+            const isVideo = b64.includes('video');
+            const ext = isVideo ? '.mp4' : '.png';
+            const base64Data = b64.replace(/^data:(image|video)\/\w+;base64,/, "");
+            require('fs').writeFileSync(require('path').join(__dirname, 'public', 'img', baseFname + ext), Buffer.from(base64Data, 'base64'));
+        };
+        saveImg(logo, 'logo'); saveImg(prodIcon, 'icon-prod'); saveImg(stagingIcon, 'icon-staging'); saveImg(faithQuestThumb, 'faith-quest-thumb'); saveImg(faithRegBanner, 'faith-reg-banner');
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 2. De-duplicated Leaderboards V2
+app.get('/api/public/arcade-leaderboards-v2', (req, res) => {
+    const queries = {
+        daily: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND date(p.created_at, 'localtime') = date('now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        weekly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        lastWeek: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND p.created_at >= datetime('now', 'localtime', '-14 days') AND p.created_at < datetime('now', 'localtime', '-7 days') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        monthly: "SELECT y.name, SUM(p.amount) as score FROM point_transactions p JOIN youth y ON p.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' AND p.type = 'arcade' AND strftime('%Y-%m', p.created_at) = strftime('%Y-%m', 'now', 'localtime') GROUP BY y.name ORDER BY score DESC LIMIT 5",
+        allTime: "SELECT y.name, gp.arcade_xp as score FROM gamification_points gp JOIN youth y ON gp.youth_id = y.id WHERE lower(trim(y.name)) <> 'fire of god ministries' ORDER BY gp.arcade_xp DESC LIMIT 5",
+        topGames: "SELECT a.game_name, y.name, MAX(a.score) as score FROM game_score_logs a JOIN youth y ON a.youth_id = y.id WHERE a.category = 'arcade' AND lower(trim(y.name)) <> 'fire of god ministries' GROUP BY a.game_name, a.youth_id ORDER BY a.game_name, score DESC"
+    };
+    let results = {}; let pending = Object.keys(queries).length;
+    Object.keys(queries).forEach(k => {
+        db.all(queries[k], [], (err, rows) => { results[k] = rows || []; pending--; if (pending === 0) res.json(results); });
     });
 });
 
-app.put('/api/ministries/:id', (req, res) => {
-    const { name, description, restricted_notes, logo, actor } = req.body;
-    let sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ? WHERE id = ?`;
-    let params = [name, description, restricted_notes, req.params.id];
-
-    if (logo !== undefined) {
-        sql = `UPDATE ministries SET name = ?, description = ?, restricted_notes = ?, logo = ? WHERE id = ?`;
-        params = [name, description, restricted_notes, logo, req.params.id];
+// ==========================================
+// WANDERER REGISTRATION ENDPOINT (SMART V2)
+// ==========================================
+app.post('/api/public/register-wanderer', async (req, res) => {
+    const { name, email, password } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedName = typeof name === 'string' ? name.trim() : '';
+    
+    if (!normalizedName || !normalizedEmail) {
+        return res.status(400).json({ error: "Name and email are strictly required." });
+    }
+    if (typeof password !== 'string' || password.length < 8 || password.length > 128 || !/\S/.test(password)) {
+        return res.status(400).json({ error: "A password of 8 to 128 characters is required." });
+    }
+    if (!hasExplicitLegalAcceptance(req.body && req.body.legal_accepted)) {
+        return res.status(400).json({
+            success: false,
+            error: 'You must agree to the Terms of Service and acknowledge the Privacy Policy to create an account.'
+        });
+    }
+    if (!emailRegistrationLimiter.check({
+        ip: getRecoveryClientAddress(req),
+        subject: normalizedEmail
+    })) {
+        return sendNoStoreJson(res, 429, {
+            success: false,
+            message: 'Please wait before submitting another registration.'
+        });
+    }
+    if (typeof db === 'undefined') {
+        return res.status(503).json({ error: "Registration is temporarily unavailable." });
     }
 
-    db.run(sql, params, function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'UPDATE_MINISTRY', `Updated details for ministry ID ${req.params.id}`);
-            res.json({ success: true });
-    });
+    let encodedPassword;
+    try {
+        encodedPassword = await hashPassword(password);
+    } catch (hashErr) {
+        console.error('Wanderer password hashing failed');
+        return res.status(500).json({ error: "Unable to create the account." });
+    }
+
+    try {
+        const accepted = await legalAcceptanceStore.createAcceptedAccount({
+            accepted: true,
+            source: 'registration',
+            createAccount: async transaction => {
+                const existing = await transaction.get(
+                    'SELECT id FROM youth WHERE LOWER(TRIM(email)) = ? LIMIT 1',
+                    [normalizedEmail]
+                );
+                if (existing) {
+                    throw Object.assign(new Error('Registration identity already exists'), {
+                        code: 'REGISTRATION_IDENTITY_EXISTS'
+                    });
+                }
+                const memberInsert = await transaction.run(
+                    `INSERT INTO youth
+                        (name, email, password, qr_code, email_verified, email_verified_at, created_at)
+                     VALUES (?, ?, ?, NULL, 0, NULL, ?)`,
+                    [
+                        normalizedName,
+                        normalizedEmail,
+                        encodedPassword,
+                        getManilaTime()
+                    ]
+                );
+
+                if (!memberInsert.lastID) {
+                    throw new Error('Registration insert failed');
+                }
+
+                const qrCode = formatFogPassId(memberInsert.lastID);
+
+                const qrUpdate = await transaction.run(
+                    'UPDATE youth SET qr_code = ? WHERE id = ?',
+                    [qrCode, memberInsert.lastID]
+                );
+
+                if (!qrUpdate || Number(qrUpdate.changes) !== 1) {
+                    throw new Error('Registration FOG Pass assignment failed');
+                }
+
+                const userInsert = await transaction.run(
+                    `INSERT INTO users (username, password, permissions, youth_id, created_at)
+                     VALUES (?, ?, '[]', ?, ?)`,
+                    [qrCode, encodedPassword, memberInsert.lastID, getManilaTime()]
+                );
+
+                if (!userInsert.lastID) {
+                    throw new Error('Registration insert failed');
+                }
+                return Object.freeze({
+                    userId: userInsert.lastID,
+                    youthId: memberInsert.lastID,
+                    username: qrCode
+                });
+            }
+        });
+        if (!accepted.accepted) throw new Error('Legal acceptance was not recorded');
+
+        const created = accepted.result;
+        const newMember = await googleAuthDatabaseGet(
+            'SELECT id, email, qr_code FROM youth WHERE id = ?',
+            [created.youthId]
+        );
+        if (!newMember) throw new Error('Created account unavailable');
+
+        await recordLegalAcceptanceActivity(await legalAcceptanceStore.getCurrentAcceptance(created.userId));
+
+        let growthJourney = null;
+        let growthJourneyWarning = null;
+
+        try {
+            growthJourney =
+                await GrowthJourney.recordAccountCreated(
+                    db,
+                    created.youthId,
+                    {
+                        sourceTable: 'users',
+                        sourceId: created.userId,
+                        sourceKey:
+                            `account-created:youth:${created.youthId}`,
+                        occurredAt: getManilaTime(),
+                        actor: created.username,
+                        details: {
+                            method: 'registration'
+                        }
+                    }
+                );
+
+            await processJourneyReadyNotification({
+                youthId:
+                    created.youthId,
+                phaseProgress:
+                    growthJourney &&
+                    growthJourney.encounter,
+                source:
+                    'wanderer_account_created'
+            });
+        } catch (growthErr) {
+            growthJourneyWarning =
+                'Your account was created, but your Growth Journey could not be started automatically.';
+
+            console.error(
+                '[Growth Journey] Registration account-start hook failed:',
+                growthErr
+            );
+        }
+
+        let verificationQueued = false;
+        try {
+            await queueEmailVerification({ youthId: created.youthId, targetEmail: normalizedEmail });
+            verificationQueued = true;
+            logActivity(`Member ${created.youthId}`, 'EMAIL_VERIFICATION_REQUESTED', 'Registration verification message queued');
+        } catch (error) {
+            console.warn(`[EMAIL] Wanderer verification queue failed code=${getSafeEmailRecoveryErrorCode(error, 'EMAIL_VERIFICATION_REQUEST_FAILED')}`);
+        }
+
+        return sendAuthenticatedLogin(
+            req,
+            res,
+            { userId: created.userId, youthId: created.youthId, username: created.username },
+            {
+                success: true,
+                is_new: true,
+                email_verification_queued: verificationQueued,
+                message: "Profile created successfully. Please confirm your email when the message arrives.",
+                growthJourney,
+                growthJourneyWarning
+            }
+        );
+    } catch (error) {
+        if (error && error.code === 'REGISTRATION_IDENTITY_EXISTS') {
+            return res.status(409).json({
+                success: false,
+                error: "An account with this email already exists. Please sign in."
+            });
+        }
+        console.error('Wanderer account creation failed');
+        return res.status(500).json({ error: "Unable to create the account." });
+    }
 });
 
-app.delete('/api/ministries/:id', (req, res) => {
-    const { actor } = req.body;
-    db.run(`DELETE FROM ministries WHERE id = ?`, [req.params.id], function(err) {
-        if (err) return res.status(500).json({ error: err.message });
-        db.run(`DELETE FROM ministry_members WHERE ministry_id = ?`, [req.params.id]);
-        logActivity(actor, 'DELETE_MINISTRY', `Deleted ministry ID ${req.params.id}`);
-        res.json({ success: true });
-    });
+// [KOINONIA PATCH] LIVE SEARCH FOR CAMPFIRE INVITES
+app.get('/api/admin/users/search', requireAuth, (req, res) => {
+    if (typeof db !== 'undefined') {
+        const q = '%' + (req.query.q || '') + '%';
+        // Securely search users by name limit to 10 results
+        db.all("SELECT id, name, profile_picture FROM youth WHERE name LIKE ? LIMIT 10", [q], (err, rows) => {
+            if (err) return res.status(500).json({error: err.message});
+            res.json(rows || []);
+        });
+    } else {
+        res.json([]);
+    }
 });
 
-app.get('/api/ministries/:id/members', (req, res) => {
-    const sql = `SELECT mm.id as mapping_id, mm.role, mm.sub_role, mm.assigned_at, y.id, y.name, y.qr_code, y.profile_picture
-                 FROM ministry_members mm JOIN youth y ON mm.youth_id = y.id
-                 WHERE mm.ministry_id = ? ORDER BY mm.assigned_at DESC`;
-    db.all(sql, [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
-
-app.post('/api/ministries/:id/members', (req, res) => {
-    const { youth_id, role, sub_role, actor } = req.body;
-    db.run(`INSERT INTO ministry_members (ministry_id, youth_id, role, sub_role, assigned_at) VALUES (?, ?, ?, ?, ?)`,
-        [req.params.id, youth_id, role, sub_role, getManilaTime()], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'ASSIGN_MINISTRY_ROLE', `Assigned youth ID ${youth_id} as ${role} to ministry ID ${req.params.id}`);
-            res.json({ success: true });
-    });
-});
-
-// Update Ministry Member Role & Sub-role
-app.put('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => {
-    const { role, sub_role, actor } = req.body;
-    db.run(`UPDATE ministry_members SET role = ?, sub_role = ? WHERE id = ?`,
-        [role, sub_role, req.params.mapping_id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'UPDATE_MINISTRY_ROLE', `Updated role mapping ID ${req.params.mapping_id}`);
-            res.json({ success: true });
-    });
-});
-
-app.delete('/api/ministries/:ministry_id/members/:mapping_id', (req, res) => {
-    const { actor } = req.body;
-    db.run(`DELETE FROM ministry_members WHERE id = ?`, [req.params.mapping_id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'REMOVE_MINISTRY_ROLE', `Removed ministry member mapping ID ${req.params.mapping_id}`);
-            res.json({ success: true });
-    });
-});
-
-app.get('/api/youth/:id/ministries', (req, res) => {
-    const sql = `SELECT m.name as ministry_name, mm.role, mm.sub_role, mm.assigned_at
-                 FROM ministry_members mm JOIN ministries m ON mm.ministry_id = m.id
-                 WHERE mm.youth_id = ? ORDER BY mm.assigned_at DESC`;
-    db.all(sql, [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
-
-// ==============================================================================
-// CRM EXPANSION API ENDPOINTS - EVENT ROLES
-// ==============================================================================
-
-app.get('/api/events/:id/roles', (req, res) => {
-    const sql = `SELECT er.id as mapping_id, er.role_name, er.sub_role, er.assigned_at, y.id, y.name, y.qr_code, y.profile_picture
-                 FROM event_roles er JOIN youth y ON er.youth_id = y.id
-                 WHERE er.event_id = ? ORDER BY er.assigned_at DESC`;
-    db.all(sql, [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
-
-app.post('/api/events/:id/roles', (req, res) => {
-    const { youth_id, role_name, sub_role, actor } = req.body;
-    db.run(`INSERT INTO event_roles (event_id, youth_id, role_name, sub_role, assigned_at) VALUES (?, ?, ?, ?, ?)`,
-        [req.params.id, youth_id, role_name, sub_role, getManilaTime()], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'ASSIGN_EVENT_ROLE', `Assigned youth ID ${youth_id} as ${role_name} to event ID ${req.params.id}`);
-            res.json({ success: true });
-    });
-});
-
-app.post('/api/events/:id/roles-notes', (req, res) => {
-    const { roles_restricted_notes, actor } = req.body;
-    db.run(`UPDATE events SET roles_restricted_notes = ? WHERE id = ?`,
-        [roles_restricted_notes, req.params.id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor || 'System', 'UPDATE_EVENT_ROLES_NOTES', `Updated restricted roles notes for Event ID ${req.params.id}`);
-            res.json({ success: true });
-    });
-});
-
-// Update Event Member Role & Sub-role
-app.put('/api/events/:event_id/roles/:mapping_id', (req, res) => {
-    const { role_name, sub_role, actor } = req.body;
-    db.run(`UPDATE event_roles SET role_name = ?, sub_role = ? WHERE id = ?`,
-        [role_name, sub_role, req.params.mapping_id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'UPDATE_EVENT_ROLE', `Updated event role mapping ID ${req.params.mapping_id}`);
-            res.json({ success: true });
-    });
-});
-
-app.delete('/api/events/:event_id/roles/:mapping_id', (req, res) => {
-    const { actor } = req.body;
-    db.run(`DELETE FROM event_roles WHERE id = ?`, [req.params.mapping_id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            logActivity(actor, 'REMOVE_EVENT_ROLE', `Removed event role mapping ID ${req.params.mapping_id}`);
-            res.json({ success: true });
-    });
-});
-
-app.get('/api/youth/:id/event_roles', (req, res) => {
-    const sql = `SELECT e.name as event_name, er.role_name, er.sub_role, er.assigned_at, e.event_date
-                 FROM event_roles er JOIN events e ON er.event_id = e.id
-                 WHERE er.youth_id = ? ORDER BY e.event_date DESC`;
-    db.all(sql, [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
-
-app.listen(PORT, () => {
-    console.log(`Server running safely on Port ${PORT}`);
-});
+startServerAfterRuntimeSchemaReady();

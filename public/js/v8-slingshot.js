@@ -8,11 +8,24 @@ window.V8Slingshot = {
     level: 1,
     maxLevel: 50,
     score: 0,
-    stonesLeft: 3,
+    stonesLeft: 5,
     
     // Physics & Game State
     gravity: 0.6,
     friction: 0.8,
+
+    // Strong target ricochet with deliberately soft ground rebound.
+    blockBounceRetention: 0.94,
+    minRicochetSpeed: 7,
+    groundBounce: 0.00,
+
+    // Sling launch tuning.
+    // Significantly stronger than the original 80px / 0.28 setup.
+    maxDragDistance: 120,
+    launchPower: 0.40,
+    maxLaunchSpeed: 46,
+    minLaunchPull: 14,
+
     origin: { x: 80, y: 350 },
     
     stone: {
@@ -55,7 +68,7 @@ window.V8Slingshot = {
                 <button class="btn btn-outline btn-sm" onclick="V8Slingshot.exitGame()">🔙 Arcade</button>
                 <div style="color: #0F172A; font-weight: bold; font-size: 0.9rem; text-align: right;">
                     <span style="color: #3B82F6; margin-right: 10px;">LVL <span id="ssLevelDisplay">1</span></span>
-                    <span style="color: #F59E0B; margin-right: 10px;">STONES: <span id="ssStonesDisplay">3</span></span>
+                    <span style="color: #F59E0B; margin-right: 10px;">STONES: <span id="ssStonesDisplay">5</span></span>
                     SCORE: <span id="ssScoreDisplay" style="color: #10B981;">0</span>
                 </div>
             </div>
@@ -103,7 +116,7 @@ window.V8Slingshot = {
     startLevel: function() {
         document.getElementById('ssOverlay').style.display = 'none';
         document.getElementById('ssLevelDisplay').innerText = this.level;
-        this.stonesLeft = 3;
+        this.stonesLeft = 5;
         document.getElementById('ssStonesDisplay').innerText = this.stonesLeft;
         
         this.resetStone();
@@ -191,60 +204,499 @@ window.V8Slingshot = {
     },
 
     bindEvents: function() {
-        const getPos = (e) => {
-            const rect = this.canvas.getBoundingClientRect();
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            return { x: clientX - rect.left, y: clientY - rect.top };
+        const canvas = this.canvas;
+
+        /*
+         * IMPORTANT:
+         *
+         * Immersive Game Mode can visually scale the canvas.
+         * Pointer coordinates arrive in CSS viewport pixels,
+         * while the game physics use the canvas's internal
+         * coordinate system.
+         *
+         * Convert between them so finger movement corresponds
+         * correctly to the actual sling pull distance.
+         */
+        const getPos = (event) => {
+            const rect =
+                canvas.getBoundingClientRect();
+
+            const scaleX =
+                canvas.width
+                / Math.max(1, rect.width);
+
+            const scaleY =
+                canvas.height
+                / Math.max(1, rect.height);
+
+            return {
+                x:
+                    (event.clientX - rect.left)
+                    * scaleX,
+
+                y:
+                    (event.clientY - rect.top)
+                    * scaleY
+            };
         };
 
-        const handleDown = (e) => {
-            if (!this.isPlaying || this.stone.isFlying || !this.stone.active) return;
-            e.preventDefault();
-            const pos = getPos(e);
-            const dist = Math.hypot(pos.x - this.stone.x, pos.y - this.stone.y);
-            if (dist < 40) this.stone.isDragging = true;
+        let activePointerId = null;
+
+        const beginDrag = (event) => {
+            if (
+                !this.isPlaying
+                || this.stone.isFlying
+                || !this.stone.active
+            ) {
+                return;
+            }
+
+            const pos =
+                getPos(event);
+
+            const distance =
+                Math.hypot(
+                    pos.x - this.stone.x,
+                    pos.y - this.stone.y
+                );
+
+            /*
+             * A slightly larger grab zone is much more
+             * comfortable for thumbs on a phone.
+             */
+            if (distance > 48) {
+                return;
+            }
+
+            event.preventDefault();
+
+            activePointerId =
+                event.pointerId
+                ?? 'legacy';
+
+            this.stone.isDragging = true;
+
+            if (
+                event.pointerId !== undefined
+                && canvas.setPointerCapture
+            ) {
+                try {
+                    canvas.setPointerCapture(
+                        event.pointerId
+                    );
+                } catch (_) {}
+            }
         };
 
-        const handleMove = (e) => {
-            if (!this.stone.isDragging) return;
-            e.preventDefault();
-            const pos = getPos(e);
-            
-            const dx = pos.x - this.origin.x;
-            const dy = pos.y - this.origin.y;
-            const dist = Math.hypot(dx, dy);
-            const maxDrag = 80;
-            
-            if (dist > maxDrag) {
-                this.stone.x = this.origin.x + (dx / dist) * maxDrag;
-                this.stone.y = this.origin.y + (dy / dist) * maxDrag;
+        const moveDrag = (event) => {
+            if (!this.stone.isDragging) {
+                return;
+            }
+
+            if (
+                event.pointerId !== undefined
+                && activePointerId !== null
+                && activePointerId !== 'legacy'
+                && event.pointerId !== activePointerId
+            ) {
+                return;
+            }
+
+            event.preventDefault();
+
+            const pos =
+                getPos(event);
+
+            const dx =
+                pos.x - this.origin.x;
+
+            const dy =
+                pos.y - this.origin.y;
+
+            const distance =
+                Math.hypot(dx, dy);
+
+            const maxDrag =
+                this.maxDragDistance;
+
+            if (
+                distance > maxDrag
+                && distance > 0
+            ) {
+                this.stone.x =
+                    this.origin.x
+                    + (
+                        dx
+                        / distance
+                    ) * maxDrag;
+
+                this.stone.y =
+                    this.origin.y
+                    + (
+                        dy
+                        / distance
+                    ) * maxDrag;
             } else {
                 this.stone.x = pos.x;
                 this.stone.y = pos.y;
             }
         };
 
-        const handleUp = (e) => {
-            if (!this.stone.isDragging) return;
-            e.preventDefault();
+        const releaseStone = (event) => {
+            if (!this.stone.isDragging) {
+                return;
+            }
+
+            if (
+                event.pointerId !== undefined
+                && activePointerId !== null
+                && activePointerId !== 'legacy'
+                && event.pointerId !== activePointerId
+            ) {
+                return;
+            }
+
+            event.preventDefault();
+
+            const pullX =
+                this.origin.x
+                - this.stone.x;
+
+            const pullY =
+                this.origin.y
+                - this.stone.y;
+
+            const pullDistance =
+                Math.hypot(
+                    pullX,
+                    pullY
+                );
+
+            /*
+             * Tiny accidental touches should not consume
+             * one of the player's three stones.
+             */
+            if (
+                pullDistance
+                < this.minLaunchPull
+            ) {
+                this.stone.isDragging = false;
+                activePointerId = null;
+                this.resetStone();
+                return;
+            }
+
             this.stone.isDragging = false;
             this.stone.isFlying = true;
-            
+
             this.stonesLeft--;
-            document.getElementById('ssStonesDisplay').innerText = this.stonesLeft;
-            
-            this.stone.vx = (this.origin.x - this.stone.x) * 0.28;
-            this.stone.vy = (this.origin.y - this.stone.y) * 0.28;
+
+            const stonesDisplay =
+                document.getElementById(
+                    'ssStonesDisplay'
+                );
+
+            if (stonesDisplay) {
+                stonesDisplay.innerText =
+                    this.stonesLeft;
+            }
+
+            let vx =
+                pullX
+                * this.launchPower;
+
+            let vy =
+                pullY
+                * this.launchPower;
+
+            /*
+             * Strong enough to cross the game field,
+             * but capped so extreme drags cannot create
+             * unstable physics.
+             */
+            const launchSpeed =
+                Math.hypot(vx, vy);
+
+            if (
+                launchSpeed
+                > this.maxLaunchSpeed
+            ) {
+                const scale =
+                    this.maxLaunchSpeed
+                    / launchSpeed;
+
+                vx *= scale;
+                vy *= scale;
+            }
+
+            this.stone.vx = vx;
+            this.stone.vy = vy;
+
+            if (
+                event.pointerId !== undefined
+                && canvas.releasePointerCapture
+            ) {
+                try {
+                    if (
+                        canvas.hasPointerCapture
+                        && canvas.hasPointerCapture(
+                            event.pointerId
+                        )
+                    ) {
+                        canvas.releasePointerCapture(
+                            event.pointerId
+                        );
+                    }
+                } catch (_) {}
+            }
+
+            activePointerId = null;
         };
 
-        this.canvas.addEventListener('mousedown', handleDown);
-        this.canvas.addEventListener('mousemove', handleMove);
-        window.addEventListener('mouseup', handleUp);
+        const cancelDrag = (event) => {
+            if (!this.stone.isDragging) {
+                return;
+            }
 
-        this.canvas.addEventListener('touchstart', handleDown, {passive: false});
-        this.canvas.addEventListener('touchmove', handleMove, {passive: false});
-        window.addEventListener('touchend', handleUp);
+            if (
+                event
+                && event.pointerId !== undefined
+                && activePointerId !== null
+                && activePointerId !== 'legacy'
+                && event.pointerId !== activePointerId
+            ) {
+                return;
+            }
+
+            this.stone.isDragging = false;
+            activePointerId = null;
+            this.resetStone();
+        };
+
+        /*
+         * Pointer Events provide one reliable path for:
+         *   - touch
+         *   - Apple Pencil/stylus
+         *   - mouse
+         *
+         * Pointer capture is especially important because
+         * the finger can leave the stone/canvas while pulling.
+         */
+        if (window.PointerEvent) {
+            canvas.addEventListener(
+                'pointerdown',
+                beginDrag,
+                {
+                    passive: false
+                }
+            );
+
+            canvas.addEventListener(
+                'pointermove',
+                moveDrag,
+                {
+                    passive: false
+                }
+            );
+
+            canvas.addEventListener(
+                'pointerup',
+                releaseStone,
+                {
+                    passive: false
+                }
+            );
+
+            canvas.addEventListener(
+                'pointercancel',
+                cancelDrag,
+                {
+                    passive: false
+                }
+            );
+
+            canvas.addEventListener(
+                'lostpointercapture',
+                event => {
+                    /*
+                     * Do not cancel after a normal release.
+                     * releaseStone() already clears the ID.
+                     */
+                    if (
+                        activePointerId !== null
+                        && this.stone.isDragging
+                    ) {
+                        cancelDrag(event);
+                    }
+                }
+            );
+        } else {
+            /*
+             * Legacy fallback for browsers without
+             * Pointer Events.
+             */
+            const touchToPointer = touch => ({
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                preventDefault: () => {},
+                pointerId: undefined
+            });
+
+            canvas.addEventListener(
+                'mousedown',
+                beginDrag,
+                {
+                    passive: false
+                }
+            );
+
+            window.addEventListener(
+                'mousemove',
+                moveDrag,
+                {
+                    passive: false
+                }
+            );
+
+            window.addEventListener(
+                'mouseup',
+                releaseStone,
+                {
+                    passive: false
+                }
+            );
+
+            canvas.addEventListener(
+                'touchstart',
+                event => {
+                    if (!event.touches.length) {
+                        return;
+                    }
+
+                    event.preventDefault();
+
+                    const pointer =
+                        touchToPointer(
+                            event.touches[0]
+                        );
+
+                    pointer.preventDefault =
+                        () => event.preventDefault();
+
+                    beginDrag(pointer);
+                },
+                {
+                    passive: false
+                }
+            );
+
+            window.addEventListener(
+                'touchmove',
+                event => {
+                    if (
+                        !this.stone.isDragging
+                        || !event.touches.length
+                    ) {
+                        return;
+                    }
+
+                    event.preventDefault();
+
+                    const pointer =
+                        touchToPointer(
+                            event.touches[0]
+                        );
+
+                    pointer.preventDefault =
+                        () => event.preventDefault();
+
+                    moveDrag(pointer);
+                },
+                {
+                    passive: false
+                }
+            );
+
+            window.addEventListener(
+                'touchend',
+                event => {
+                    if (!this.stone.isDragging) {
+                        return;
+                    }
+
+                    event.preventDefault();
+
+                    releaseStone({
+                        clientX: this.stone.x,
+                        clientY: this.stone.y,
+                        preventDefault: () =>
+                            event.preventDefault(),
+                        pointerId: undefined
+                    });
+                },
+                {
+                    passive: false
+                }
+            );
+
+            window.addEventListener(
+                'touchcancel',
+                cancelDrag,
+                {
+                    passive: false
+                }
+            );
+        }
+    },
+
+    reflectStoneFromBlock: function(b) {
+        /*
+         * Forward carry-through:
+         * destroy the block without bouncing backward.
+         * This lets one well-aimed stone continue through
+         * several aligned targets.
+         */
+        const direction =
+            this.stone.vx >= 0
+                ? 1
+                : -1;
+
+        const forwardSpeed =
+            Math.max(
+                Math.abs(this.stone.vx),
+                this.minRicochetSpeed
+            );
+
+        this.stone.vx =
+            direction * forwardSpeed;
+
+        this.stone.vy *= 0.92;
+
+        if (
+            Math.abs(this.stone.vy)
+            < 0.75
+        ) {
+            this.stone.vy = 0;
+        }
+
+        /*
+         * Move past the block that was just destroyed.
+         */
+        if (
+            b
+            && Number.isFinite(b.x)
+            && Number.isFinite(b.w)
+        ) {
+            this.stone.x =
+                direction > 0
+                    ? b.x
+                        + b.w
+                        + this.stone.r
+                        + 2
+                    : b.x
+                        - this.stone.r
+                        - 2;
+        }
     },
 
     updatePhysics: function() {
@@ -280,10 +732,17 @@ window.V8Slingshot = {
 
             if (this.stone.y + this.stone.r >= groundY) {
                 this.stone.y = groundY - this.stone.r;
-                this.stone.vy *= -this.friction;
-                this.stone.vx *= this.friction;
+                // Ground bounce stays low.
+                this.stone.vy =
+                    -Math.min(
+                        Math.abs(this.stone.vy)
+                            * this.groundBounce,
+                        3.5
+                    );
+
+                this.stone.vx *= 0.58;
                 
-                if (Math.abs(this.stone.vx) < 0.5 && Math.abs(this.stone.vy) < 1) {
+                if (Math.abs(this.stone.vx) < 0.5 && Math.abs(this.stone.vy) < 0.8) {
                     this.stone.isFlying = false;
                     setTimeout(() => this.checkGameState(), 1000); 
                 }
@@ -309,8 +768,7 @@ window.V8Slingshot = {
 
                     if (distance <= this.stone.r) {
                         b.active = false;
-                        this.stone.vx *= 0.6; 
-                        this.stone.vy *= -0.6; 
+                        this.reflectStoneFromBlock(b);
                         
                         let earnedXP = Math.min(10, Math.floor(5 + (this.level * 0.1)));
                         this.score += earnedXP;
@@ -347,17 +805,88 @@ window.V8Slingshot = {
         this.ctx.fillStyle = '#16A34A';
         this.ctx.fillRect(0, groundY, this.canvas.width, 40);
 
-        this.ctx.fillStyle = '#78350F';
-        this.ctx.fillRect(this.origin.x - 5, this.origin.y, 10, groundY - this.origin.y);
+        /*
+         * Enhanced Y-shaped wooden slingshot.
+         */
+        this.ctx.save();
 
-        if (this.stone.active && (!this.stone.isFlying || this.stone.isDragging)) {
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+
+        this.ctx.strokeStyle = '#78350F';
+        this.ctx.lineWidth = 12;
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(
+            this.origin.x,
+            groundY
+        );
+        this.ctx.lineTo(
+            this.origin.x,
+            this.origin.y + 12
+        );
+        this.ctx.stroke();
+
+        this.ctx.strokeStyle = '#92400E';
+        this.ctx.lineWidth = 10;
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(
+            this.origin.x,
+            this.origin.y + 14
+        );
+        this.ctx.lineTo(
+            this.origin.x - 20,
+            this.origin.y - 26
+        );
+
+        this.ctx.moveTo(
+            this.origin.x,
+            this.origin.y + 14
+        );
+        this.ctx.lineTo(
+            this.origin.x + 20,
+            this.origin.y - 26
+        );
+        this.ctx.stroke();
+
+        /*
+         * Bands stay with the sling.
+         * They disappear immediately after launch.
+         */
+        if (
+            this.stone.active
+            && !this.stone.isFlying
+        ) {
+            this.ctx.strokeStyle = '#3F2A1D';
+            this.ctx.lineWidth = 4;
+
             this.ctx.beginPath();
-            this.ctx.moveTo(this.origin.x, this.origin.y);
-            this.ctx.lineTo(this.stone.x, this.stone.y);
-            this.ctx.strokeStyle = '#111';
-            this.ctx.lineWidth = 3;
+
+            this.ctx.moveTo(
+                this.origin.x - 20,
+                this.origin.y - 26
+            );
+
+            this.ctx.lineTo(
+                this.stone.x,
+                this.stone.y
+            );
+
+            this.ctx.moveTo(
+                this.origin.x + 20,
+                this.origin.y - 26
+            );
+
+            this.ctx.lineTo(
+                this.stone.x,
+                this.stone.y
+            );
+
             this.ctx.stroke();
         }
+
+        this.ctx.restore();
 
         this.blocks.forEach(b => {
             if (b.active) {
@@ -399,16 +928,16 @@ window.V8Slingshot = {
                 <h2 style="color: #F59E0B; font-size: 2.2rem; margin-bottom: 5px; border:none; text-align:center;">🏆 GAME BEATEN!</h2>
                 <p style="color: #0F172A; font-size: 1rem; margin-bottom: 15px; text-align:center;">You cleared all 50 levels of Armor Breaker!</p>
                 <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
-                    <span style="color: #10B981; font-weight: bold; font-size: 1.2rem;">Total XP: ${this.score}</span>
+                    <span style="color: #10B981; font-weight: bold; font-size: 1.2rem;">Game Score: ${this.score}</span>
                 </div>
-                <button class="btn btn-primary" onclick="V8Slingshot.handleGameOver()">Claim XP & Exit</button>
+                <button class="btn btn-primary" onclick="V8Slingshot.handleGameOver()">Save Score & Exit</button>
             `;
         } else {
             overlay.innerHTML = `
                 <h2 style="color: #10B981; font-size: 2rem; margin-bottom: 5px; border:none;">Level ${this.level} Cleared! 🎉</h2>
                 <p style="color: #0F172A; font-size: 1rem; margin-bottom: 15px;">Obstacles crushed.</p>
                 <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
-                    <span style="color: #F59E0B; font-weight: bold; font-size: 1.2rem;">Current XP: ${this.score}</span>
+                    <span style="color: #F59E0B; font-weight: bold; font-size: 1.2rem;">Current Score: ${this.score}</span>
                 </div>
                 <button class="btn btn-primary" onclick="V8Slingshot.level++; V8Slingshot.startLevel()">Next Level ▶</button>
             `;
@@ -419,32 +948,9 @@ window.V8Slingshot = {
         this.draw();
         const overlay = document.getElementById('ssOverlay');
         overlay.style.display = 'flex';
-        overlay.innerHTML = `
-            <h2 style="color: #EF4444; font-size: 2rem; margin-bottom: 5px; border:none;">Run Ended!</h2>
-            <p style="color: #0F172A; font-size: 1rem; margin-bottom: 15px;">You made it to Level ${this.level}.</p>
-            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
-                <span style="color: #F59E0B; font-weight: bold; font-size: 1.2rem;">${this.score} XP Earned!</span>
-            </div>
-            <div style="display:flex; gap:10px;">
-                <button class="btn btn-secondary" onclick="V8Slingshot.exitGame()">Exit to Arcade</button>
-                <button class="btn btn-primary" onclick="V8Slingshot.startGame()">Play Again</button>
-            </div>
-        `;
-
-        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id && this.score > 0) {
-            try {
-                await fetch('/api/arcade/submit', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ youth_id: currentMember.id, game_name: "David's Slingshot", score: this.score, actor: typeof currentUser !== 'undefined' ? currentUser : 'System' })
-                });
-                
-                if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
-                if (typeof window.V8Arcade !== 'undefined') window.V8Arcade.loadLeaderboard();
-                if (window.V8Arcade) window.V8Arcade.updateTotalXP();
-                
-                this.score = 0; 
-            } catch(e) { console.error("Failed to save score.", e); }
-        }
+        const finalScore = this.score;
+        await window.V10Expansion.submitCanvasGameResult({ gameName: "David's Slingshot", score: finalScore, overlayId: 'ssOverlay', playAgain: 'V8Slingshot.startGame()' });
+        this.score = 0;
     }
 };
 
@@ -505,7 +1011,7 @@ window.V8Arcade = {
                     <div style="width: 30px; text-align: center;">${rankIcon}</div>
                     ${avatarHtml}
                     <div style="flex-grow: 1; font-weight: bold; color: #0F172A; font-size: 1.05rem;">${user.name}</div>
-                    <div style="font-weight: bold; color: #10B981; font-size: 1.1rem;">⭐ ${user.total_score} XP</div>
+                    <div style="font-weight: bold; color: #10B981; font-size: 1.1rem;">⭐ ${user.total_score} Life Points</div>
                 </div>`;
             }).join('');
         } catch (e) {

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FOG Portal Interactive Ecosystem</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #F8FAFC; margin: 0; padding: 40px; color: #1E293B; }
+        .header { text-align: center; margin-bottom: 40px; }
+        .header h1 { font-size: 2.5rem; color: #F97316; margin: 0; }
+        .header p { font-size: 1.2rem; color: #64748B; margin-top: 10px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px; max-width: 1200px; margin: 0 auto; }
+        .card { background: #FFF; border-radius: 16px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 5px solid #F97316; }
+        
+        /* Category Header Styles */
+        .card h2 { display: flex; align-items: center; gap: 10px; font-size: 1.3rem; margin-top: 0; color: #0F172A; cursor: pointer; user-select: none; transition: 0.2s; }
+        .card h2:hover { color: #F97316; }
+        .icon { background: #FFFBEB; padding: 10px; border-radius: 12px; font-size: 1.5rem; border: 1px solid #FEF3C7; }
+        .cat-desc { max-height: 0; overflow: hidden; transition: max-height 0.3s ease, margin 0.3s ease; font-size: 0.95rem; color: #475569; background: #FFFBEB; border-radius: 8px; font-style: italic; }
+        .cat-desc.open { max-height: 200px; padding: 12px; margin: 10px 0 15px 0; border: 1px solid #FDE68A; }
+
+        /* Feature List Styles */
+        ul { list-style-type: none; padding: 0; margin: 0; }
+        li { padding: 10px 0; border-bottom: 1px solid #F1F5F9; font-size: 1rem; color: #334155; display: flex; flex-direction: column; cursor: pointer; user-select: none; }
+        li:last-child { border-bottom: none; }
+        .li-title { display: flex; align-items: center; gap: 8px; font-weight: 500; transition: 0.2s; }
+        .li-title:hover { color: #F97316; }
+        .li-title::before { content: "➕"; font-size: 0.7rem; color: #F97316; transition: transform 0.3s; }
+        .li-title.open::before { transform: rotate(45deg); }
+        
+        .feat-desc { max-height: 0; overflow: hidden; transition: max-height 0.3s ease, margin 0.3s ease; font-size: 0.85rem; color: #64748B; padding-left: 15px; border-left: 2px solid #E2E8F0; margin-left: 8px; }
+        .feat-desc.open { max-height: 150px; margin-top: 8px; margin-bottom: 4px; padding-top: 4px; padding-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔥 Fire of God Ministries</h1>
+        <p>Interactive Community Portal Ecosystem (Click any item to expand)</p>
+    </div>
+    <div class="grid">
+        <!-- Devotion -->
+        <div class="card">
+            <h2 onclick="toggle(this)"><span class="icon">📖</span> Personal Devotion</h2>
+            <div class="cat-desc">Cultivating a disciplined daily walk with God between Sundays.</div>
+            <ul>
+                <li><div class="li-title" onclick="toggle(this)">Universalis Daily Manna</div><div class="feat-desc">Pulls live liturgical seasons, feast days, and daily Gospel readings directly to the dashboard.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Lectio Divina Journals</div><div class="feat-desc">Private digital journals featuring structured templates for deep spiritual reflection.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Habit Streak Flameboard</div><div class="feat-desc">Tracks consecutive days of engagement to build enduring spiritual habits.</div></li>
+            </ul>
+        </div>
+        <!-- Prayer -->
+        <div class="card">
+            <h2 onclick="toggle(this)"><span class="icon">🙏</span> Intercessory Prayer</h2>
+            <div class="cat-desc">Carrying one another's burdens through structured, community-wide intercession.</div>
+            <ul>
+                <li><div class="li-title" onclick="toggle(this)">Community Prayer Wall</div><div class="feat-desc">Centralized feed for public or anonymous prayer requests.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Secret Prayer Pal</div><div class="feat-desc">Automated weekly CRON engine pairing members to pray for each other.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Intercession Counters</div><div class="feat-desc">Live tracker showing exactly how many members clicked 'I Prayed for This'.</div></li>
+            </ul>
+        </div>
+        <!-- Fellowship -->
+        <div class="card">
+            <h2 onclick="toggle(this)"><span class="icon">🔥</span> Group Fellowship</h2>
+            <div class="cat-desc">Powering cell prayer groups and enabling continuous digital community life.</div>
+            <ul>
+                <li><div class="li-title" onclick="toggle(this)">Campfire Real-Time Chat</div><div class="feat-desc">A 24/7 digital living room mapped exclusively to a member's specific cell group.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Emoji Reactions</div><div class="feat-desc">Instant Facebook-style emotional affirmation on chat messages and posts.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Shared Photo Memories</div><div class="feat-desc">A secure group gallery preserving community milestones and physical gatherings.</div></li>
+            </ul>
+        </div>
+        <!-- Discipleship -->
+        <div class="card">
+            <h2 onclick="toggle(this)"><span class="icon">🌱</span> Discipleship Pathway</h2>
+            <div class="cat-desc">Mapping and guiding each individual's journey toward spiritual maturity.</div>
+            <ul>
+                <li><div class="li-title" onclick="toggle(this)">7-Stage Progress Tracker</div><div class="feat-desc">Visual UI tracking progression from initial Encounter to being Commissioned.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Pastoral Context Engine</div><div class="feat-desc">Calculates current milestones to deliver tailored, stage-specific pastoral encouragement.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Actionable My Journey</div><div class="feat-desc">Context-sensitive dashboard card explicitly commanding the next physical action step.</div></li>
+            </ul>
+        </div>
+        <!-- Gamification -->
+        <div class="card">
+            <h2 onclick="toggle(this)"><span class="icon">🏆</span> Outreach & Gamification</h2>
+            <div class="cat-desc">Attracting seekers and rewarding biblical literacy through engaging challenges.</div>
+            <ul>
+                <li><div class="li-title" onclick="toggle(this)">Faith Quest Arcade</div><div class="feat-desc">Biblical mini-games (e.g., Emoji Sermon, Catechism Clash) shuffled in a daily rotation.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Life Points Economy</div><div class="feat-desc">A unified gamification system rewarding XP for arcade wins, journaling, and service.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Viral Social Meta Sharing</div><div class="feat-desc">Injects dynamic OpenGraph tags so shared high scores display perfectly on Facebook.</div></li>
+            </ul>
+        </div>
+        <!-- Events -->
+        <div class="card">
+            <h2 onclick="toggle(this)"><span class="icon">📅</span> Event Logistics</h2>
+            <div class="cat-desc">Streamlining physical and virtual services, conferences, and fellowships.</div>
+            <ul>
+                <li><div class="li-title" onclick="toggle(this)">Live Turnout Analytics</div><div class="feat-desc">Admin dashboard visualizing expected pre-registrations versus actual attendance.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">QR Scanner Check-in</div><div class="feat-desc">Integrated mobile camera scanner utilizing unique Pass IDs for frictionless door entry.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Servant Role Management</div><div class="feat-desc">Organizes volunteer teams while securing sensitive logistical notes from general view.</div></li>
+            </ul>
+        </div>
+        <!-- Admin -->
+        <div class="card">
+            <h2 onclick="toggle(this)"><span class="icon">⚙️</span> Administration</h2>
+            <div class="cat-desc">The back-office engine empowering leadership to oversee and shepherd effectively.</div>
+            <ul>
+                <li><div class="li-title" onclick="toggle(this)">Silas AI Assistant</div><div class="feat-desc">Integrated natural-language AI for querying live database stats and absentees.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Ministry Moderation</div><div class="feat-desc">Structured pipeline tracking 'Intent to Serve' applications and integration periods.</div></li>
+                <li><div class="li-title" onclick="toggle(this)">Push Broadcasts</div><div class="feat-desc">Administrative alert engine dispatching urgent notifications to targeted community segments.</div></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function toggle(element) {
+            // If it's a list item, toggle the plus icon animation
+            if(element.classList.contains('li-title')) {
+                element.classList.toggle('open');
+            }
+            
+            // Toggle the description div directly beneath the clicked element
+            const targetDesc = element.nextElementSibling;
+            if(targetDesc) {
+                targetDesc.classList.toggle('open');
+            }
+        }
+    </script>
+</body>
+</html>

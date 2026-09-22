@@ -1,0 +1,356 @@
+/*
+ * Featured Game — Top 3 Players
+ *
+ * Compact vertical identity display.
+ * Competitive scores remain in the full leaderboard/result views.
+ */
+
+.top-scorers-container--featured {
+    width: 100%;
+
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+
+    gap: 6px !important;
+
+    margin-top: 10px;
+}
+
+.featured-top-player {
+    width: 100%;
+
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: center;
+
+    gap: 8px;
+
+    padding: 7px 10px;
+
+    box-sizing: border-box;
+
+    border: 1px solid rgba(148, 163, 184, .22);
+    border-radius: 10px;
+
+    background: rgba(255,255,255,.72);
+}
+
+.featured-top-player-rank {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 30px;
+    min-width: 30px;
+
+    font-size: 1.18rem;
+    line-height: 1;
+}
+
+.featured-top-player-name {
+    min-width: 0;
+
+    color: #334155;
+
+    font-size: .86rem;
+    font-weight: 800;
+    line-height: 1.25;
+
+    text-align: left;
+
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+@media (max-width: 480px) {
+    .top-scorers-container--featured {
+        gap: 5px !important;
+        margin-top: 8px;
+    }
+
+    .featured-top-player {
+        grid-template-columns:
+            30px minmax(0, 1fr);
+
+        gap: 6px;
+
+        padding: 6px 8px;
+    }
+
+    .featured-top-player-rank {
+        width: 27px;
+        min-width: 27px;
+
+        font-size: 1.05rem;
+    }
+
+    .featured-top-player-name {
+        font-size: .8rem;
+    }
+}
+
+
+/* ==========================================================
+   UNIFIED CENTERED TOP 3 — FEATURED + INDIVIDUAL
+   Arcade + Growth / Faith Quest
+   ========================================================== */
+
+.top-scorers-container--featured,
+.top-scorers-container--tile {
+    width: 100% !important;
+    box-sizing: border-box !important;
+
+    display: grid !important;
+    grid-template-columns:
+        minmax(0, 1fr) !important;
+
+    justify-items: center !important;
+    align-items: center !important;
+
+    gap: 5px !important;
+
+    margin-left: auto !important;
+    margin-right: auto !important;
+
+    text-align: center !important;
+}
+
+.top-scorers-container--featured > * {
+    width: 100% !important;
+
+    justify-self: center !important;
+    justify-content: center !important;
+
+    text-align: center !important;
+}
+
+.top-scorer-player {
+    width: 100%;
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    flex-wrap: wrap;
+
+    gap: 4px 6px;
+
+    box-sizing: border-box;
+
+    text-align: center;
+    line-height: 1.25;
+}
+
+.top-scorer-medal {
+    flex: 0 0 auto;
+
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.top-scorer-rank {
+    flex: 0 0 auto;
+
+    color: #475569;
+
+    font-size: .72rem;
+    font-weight: 850;
+
+    white-space: nowrap;
+}
+
+.top-scorer-name {
+    min-width: 0;
+    max-width: 100%;
+
+    color: #0F172A;
+
+    font-size: .78rem;
+    font-weight: 800;
+
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+
+    overflow-wrap: anywhere;
+
+    text-align: center !important;
+}
+
+.top-scorers-container--featured [class*="name"] {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+
+    overflow-wrap: anywhere !important;
+
+    text-align: center !important;
+}
+
+@media (max-width: 520px) {
+    .top-scorers-container--featured,
+    .top-scorers-container--tile {
+        gap: 4px !important;
+    }
+
+    .top-scorer-player {
+        gap: 3px 5px;
+    }
+
+    .top-scorer-rank {
+        font-size: .67rem;
+    }
+
+    .top-scorer-name {
+        font-size: .73rem;
+    }
+}
+
+/* ==========================================================
+   TOP 3 OPTION 1 — FINAL ALIGNMENT
+   Featured: full name
+   Grid cards: first name
+   ========================================================== */
+
+/*
+ * FEATURED GAME:
+ *
+ * Force the complete player row — medal, rank and full name —
+ * to behave as one centered flex group.
+ *
+ * Keep the row width so the existing premium pill/card styling
+ * remains intact, but center everything inside it.
+ */
+.top-scorers-container--featured > * {
+    width: 100% !important;
+    max-width: 100% !important;
+
+    box-sizing: border-box !important;
+
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+
+    align-items: center !important;
+    justify-content: center !important;
+
+    gap: 6px !important;
+
+    margin-left: auto !important;
+    margin-right: auto !important;
+
+    text-align: center !important;
+}
+
+/*
+ * Neutralize any older grid positioning inside Featured rows
+ * that could leave the medal anchored on the left.
+ */
+.top-scorers-container--featured > * > * {
+    position: static !important;
+
+    float: none !important;
+
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+
+    justify-self: auto !important;
+    align-self: center !important;
+
+    text-align: center !important;
+}
+
+/*
+ * Keep the Featured player's full name readable.
+ */
+.top-scorers-container--featured [class*="name"] {
+    flex: 0 1 auto !important;
+
+    min-width: 0 !important;
+    max-width: 100% !important;
+
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+
+    overflow-wrap: anywhere !important;
+
+    text-align: center !important;
+}
+
+
+/*
+ * TWO-COLUMN LOWER GAME CARDS:
+ *
+ * First name only, presented as one centered unit with
+ * medal + actual rank.
+ */
+.top-scorer-player--compact {
+    width: 100% !important;
+
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+
+    align-items: center !important;
+    justify-content: center !important;
+
+    gap: 4px !important;
+
+    box-sizing: border-box !important;
+
+    text-align: center !important;
+}
+
+.top-scorer-player--compact .top-scorer-medal,
+.top-scorer-player--compact .top-scorer-rank,
+.top-scorer-player--compact .top-scorer-name {
+    flex: 0 0 auto !important;
+
+    margin: 0 !important;
+
+    text-align: center !important;
+}
+
+/*
+ * First name is intentionally one line in the compact grid.
+ */
+.top-scorer-player--compact .top-scorer-name {
+    max-width: calc(100% - 70px);
+
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+
+    font-size: .74rem !important;
+}
+
+
+/*
+ * Pre-game / expanded leaderboard screens are NOT targeted
+ * here, so renderLeaderboardRows() continues to display
+ * complete names and scores.
+ */
+@media (max-width: 520px) {
+    .top-scorers-container--featured > * {
+        gap: 5px !important;
+    }
+
+    .top-scorer-player--compact {
+        gap: 3px !important;
+    }
+
+    .top-scorer-player--compact .top-scorer-medal {
+        font-size: .92rem !important;
+    }
+
+    .top-scorer-player--compact .top-scorer-rank {
+        font-size: .64rem !important;
+    }
+
+    .top-scorer-player--compact .top-scorer-name {
+        font-size: .70rem !important;
+    }
+}

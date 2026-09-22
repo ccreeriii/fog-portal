@@ -93,7 +93,14 @@ window.V8PetersLeap = {
         this.hazards = [];
 
         // Generate initial starting platforms
-        this.platforms.push({ x: 130, y: 400, w: 60, type: 'rock', moving: false });
+        this.platforms.push({
+            x: 130,
+            y: 400,
+            w: 60,
+            type: 'rock',
+            moving: false,
+            scored: false
+        });
         for (let i = 0; i < 7; i++) {
             this.generatePlatformPair(350 - (i * 70));
         }
@@ -115,7 +122,8 @@ window.V8PetersLeap = {
             w: width, 
             type: Math.random() > 0.5 ? 'wave' : 'rock',
             moving: isMoving,
-            vx: isMoving ? (Math.random() > 0.5 ? 1.5 : -1.5) : 0
+            vx: isMoving ? (Math.random() > 0.5 ? 1.5 : -1.5) : 0,
+            scored: false
         });
 
         // 20% chance to spawn a Faith Star on a platform
@@ -190,8 +198,11 @@ window.V8PetersLeap = {
                     this.player.vy = this.jumpStrength; // BOUNCE!
                     
                     // Minor score for bouncing on a new platform
-                    this.score += 2;
-                    document.getElementById('plScoreDisplay').innerText = this.score;
+                    if (!p.scored) {
+                        p.scored = true;
+                        this.score += 2;
+                        document.getElementById('plScoreDisplay').innerText = this.score;
+                    }
                     break;
                 }
             }
@@ -274,7 +285,14 @@ window.V8PetersLeap = {
                 // Bounce back up and give an emergency platform
                 this.player.vy = this.jumpStrength * 1.5;
                 this.player.y = this.canvas.height - 50;
-                this.platforms.push({ x: this.player.x - 20, y: this.canvas.height - 20, w: 60, type: 'rock', moving: false });
+                this.platforms.push({
+                    x: this.player.x - 20,
+                    y: this.canvas.height - 20,
+                    w: 60,
+                    type: 'rock',
+                    moving: false,
+                    scored: false
+                });
             }
         }
     },
@@ -328,41 +346,8 @@ window.V8PetersLeap = {
 
         const overlay = document.getElementById('plOverlay');
         overlay.style.display = 'flex';
-        overlay.innerHTML = `
-            <h2 style="color: #EF4444; font-size: 1.8rem; margin-bottom: 5px; border:none; text-align:center;">${titleText}</h2>
-            <p style="color: #0F172A; font-size: 1rem; margin-bottom: 15px; text-align:center;">You reached Level ${this.level}.</p>
-            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px 20px; border-radius: 12px; margin-bottom: 20px;">
-                <span style="color: #F59E0B; font-weight: bold; font-size: 1.2rem;">${this.score} XP Earned!</span>
-            </div>
-            <div style="display:flex; gap:10px;">
-                <button class="btn btn-secondary" onclick="V8PetersLeap.exitGame()">Arcade</button>
-                <button class="btn btn-primary" style="background: #8B5CF6;" onclick="V8PetersLeap.startGame()">Leap Again</button>
-            </div>
-        `;
-
-        if (typeof currentMember !== 'undefined' && currentMember && currentMember.id && this.score > 0) {
-            try {
-                await fetch('/api/arcade/submit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        youth_id: currentMember.id,
-                        game_name: "Peter's Leap of Faith",
-                        score: this.score,
-                        actor: typeof currentUser !== 'undefined' ? currentUser : 'System'
-                    })
-                });
-
-                if (typeof window.V6Gamification !== 'undefined') window.V6Gamification.loadMyPoints();
-                if (typeof window.V8Arcade !== 'undefined') {
-                    window.V8Arcade.loadLeaderboard();
-                    window.V8Arcade.updateTotalXP();
-                }
-
-                this.score = 0;
-            } catch(e) {
-                console.error("Failed to submit score.", e);
-            }
-        }
+        const finalScore = this.score;
+        await window.V10Expansion.submitCanvasGameResult({ gameName: "Peter's Leap of Faith", score: finalScore, overlayId: 'plOverlay', playAgain: 'V8PetersLeap.startGame()' });
+        this.score = 0;
     }
 };
