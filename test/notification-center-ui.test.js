@@ -157,21 +157,21 @@ test(
 );
 
 test(
-    'PWA shell advances coherently to app 13.3 and cache v22',
+    'PWA shell advances coherently to app 13.7 and cache v79',
     () => {
         assert.match(
             html,
-            /\/js\/app\.js\?v=13\.3/
+            /\/js\/app\.js\?v=13\.7/
         );
 
         assert.match(
             sw,
-            /fog-portal-v25/
+            /fog-portal-v79/
         );
 
         assert.match(
             sw,
-            /\/js\/app\.js\?v=13\.3/
+            /\/js\/app\.js\?v=13\.7/
         );
 
         assert.doesNotMatch(

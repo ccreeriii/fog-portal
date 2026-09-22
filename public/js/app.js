@@ -6119,6 +6119,7 @@ document.addEventListener('DOMContentLoaded', () => {
             subNav.innerHTML = `
                 <button id="btnSubMinistryList" class="sub-nav-btn active" onclick="switchMinistrySubTab('list')">🏛️ Directory</button>
                 <button id="btnSubMinistryModeration" class="sub-nav-btn" onclick="switchMinistrySubTab('moderation')">📋 Moderation</button>
+                <button id="btnSubMinistryDiscernment" class="sub-nav-btn" onclick="switchMinistrySubTab('discernment')" style="display: ${window.hasPerm('edit_entries') ? 'inline-block' : 'none'};">🧭 Discernment</button>
                 <button id="btnSubMinistryCreate" class="sub-nav-btn" onclick="switchMinistrySubTab('create')" style="display: ${window.hasPerm('add_entries') ? 'inline-block' : 'none'};">➕ Create</button>
             `;
         }
@@ -9831,7 +9832,7 @@ setTimeout(() => {
     });
 
     const notificationInboxState = {
-        section: 'notifications',
+        section: 'announcements',
         filter: 'all',
         unreadCount: 0,
         notifications: [],
@@ -10160,7 +10161,7 @@ setTimeout(() => {
             }
 
             notificationInboxState.section =
-                'notifications';
+                'announcements';
 
             notificationInboxState.filter =
                 'all';
@@ -10191,15 +10192,15 @@ setTimeout(() => {
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
                         <div>
                             <h2 style="margin:0;border:none;padding:0;color:var(--primary);">🔔 Notification Center</h2>
-                            <p id="notificationInboxSummary" style="margin:5px 0 0;color:var(--text-muted);font-size:0.82rem;">Loading your updates…</p>
+                            <p id="notificationInboxSummary" style="margin:5px 0 0;color:var(--text-muted);font-size:0.82rem;">Loading your inbox…</p>
                         </div>
                         <button id="notificationMarkAllReadBtn" type="button" class="btn btn-outline btn-sm" onclick="markAllNotificationsRead()">Mark all read</button>
                     </div>
 
                     <div style="display:flex;background:#F1F5F9;border-radius:12px;padding:4px;margin-top:16px;gap:4px;">
-                        <button id="btnInboxNotifications" type="button" onclick="switchInboxSubTab('notifications')" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">🔔 Updates</button>
+                        <button id="btnInboxAnnounce" type="button" onclick="switchInboxSubTab('announcements'); markAnnouncementNotificationsRead()" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">📢 Announcements</button>
                         <button id="btnInboxPrayers" type="button" onclick="switchInboxSubTab('prayers')" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">🙏 Prayers</button>
-                        <button id="btnInboxAnnounce" type="button" onclick="switchInboxSubTab('announcements')" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">📢 News</button>
+                        <button id="btnInboxNotifications" type="button" onclick="switchInboxSubTab('notifications')" style="flex:1;border-radius:9px;border:none;padding:9px 4px;font-weight:700;cursor:pointer;">🔔 Updates</button>
                     </div>
                 </div>
 
@@ -10220,6 +10221,92 @@ setTimeout(() => {
 
         return true;
     }
+
+    let announcementReadPromise = null;
+
+    window.markAnnouncementNotificationsRead =
+        async function() {
+            if (announcementReadPromise) {
+                return announcementReadPromise;
+            }
+
+            const unreadAnnouncements =
+                notificationInboxState
+                    .notifications
+                    .filter(
+                        notification =>
+                            notification &&
+                            notification.source_type ===
+                                'announcement' &&
+                            !notification.is_read &&
+                            Number.isSafeInteger(
+                                Number(
+                                    notification.recipient_id
+                                )
+                            ) &&
+                            Number(
+                                notification.recipient_id
+                            ) > 0
+                    );
+
+            if (
+                unreadAnnouncements.length === 0
+            ) {
+                return 0;
+            }
+
+            announcementReadPromise =
+                (async () => {
+                    let changed = 0;
+
+                    for (
+                        const notification
+                        of unreadAnnouncements
+                    ) {
+                        try {
+                            await fetchNotificationJson(
+                                `/api/notifications/${Number(
+                                    notification.recipient_id
+                                )}/read`,
+                                {
+                                    method: 'POST'
+                                }
+                            );
+
+                            notification.is_read = true;
+                            changed += 1;
+                        } catch (error) {
+                            console.warn(
+                                '[Notification Center] Unable to mark announcement notification read.'
+                            );
+                        }
+                    }
+
+                    if (
+                        typeof window
+                            .refreshNotificationBell ===
+                        'function'
+                    ) {
+                        await window
+                            .refreshNotificationBell();
+                    }
+
+                    if (
+                        typeof renderInboxSummary ===
+                        'function'
+                    ) {
+                        renderInboxSummary();
+                    }
+
+                    return changed;
+                })();
+
+            try {
+                return await announcementReadPromise;
+            } finally {
+                announcementReadPromise = null;
+            }
+        };
 
     function updateInboxNavigation() {
         const sections = {
@@ -10430,10 +10517,15 @@ setTimeout(() => {
                 .notifications
                 .filter(
                     notification =>
-                        notificationInboxState
-                            .filter ===
-                            'all' ||
-                        !notification.is_read
+                        notification &&
+                        notification.source_type !==
+                            'announcement' &&
+                        (
+                            notificationInboxState
+                                .filter ===
+                                'all' ||
+                            !notification.is_read
+                        )
                 );
 
         if (
@@ -11060,6 +11152,14 @@ setTimeout(() => {
         renderPrayers();
         renderAnnouncements();
         renderInboxSummary();
+
+        if (
+            notificationInboxState.section ===
+            'announcements'
+        ) {
+            void window
+                .markAnnouncementNotificationsRead();
+        }
     }
 
     window.switchInboxSubTab =

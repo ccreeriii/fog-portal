@@ -24,7 +24,17 @@
                 cache: 'no-store',
                 credentials: 'same-origin'
             });
-            if (response.status === 401 || response.status === 403) return;
+            if (response.status === 401) return;
+
+            if (response.status === 403) {
+                section.hidden = false;
+                toggle.disabled = true;
+                loaded = false;
+                status.textContent =
+                    'This safeguarding option can only be changed by the Strong Admin account.';
+                return;
+            }
+
             const policy = await responseJson(response, 'Unable to load the Journal policy.');
             section.hidden = false;
             savedValue = policy.guardian_required_13_17 === true;

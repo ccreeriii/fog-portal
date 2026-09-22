@@ -13826,9 +13826,13 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
             ? body.message.trim()
             : '';
 
-    const actor =
-        getCanonicalDisplayActor(req) ||
+    const auditActor =
+        getCanonicalAuditActor(req) ||
         'Authenticated Communications User';
+
+    const displayActor =
+        getCanonicalDisplayActor(req) ||
+        auditActor;
 
     if (
         !target ||
@@ -13937,7 +13941,7 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
             title,
             message,
             target,
-            actor,
+            displayActor,
             createdAt
         ],
         function (announcementErr) {
@@ -14004,7 +14008,7 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
                     }
 
                     stmt.finalize(
-                        finalizeErr => {
+                        async finalizeErr => {
                             if (finalizeErr) {
                                 console.error(
                                     '[Communications] Unable to create inbox recipients.'
@@ -14015,6 +14019,61 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
                                     error:
                                         'Unable to create broadcast recipients.'
                                 });
+                            }
+
+                            /*
+                             * Mirror each NEW broadcast into the
+                             * canonical Notification Center so the
+                             * header bell receives a real unread
+                             * notification state.
+                             *
+                             * The announcement continues to render
+                             * in the dedicated Announcements tab.
+                             * We intentionally do not dispatch this
+                             * canonical mirror externally because
+                             * the legacy broadcast route below
+                             * already performs Push delivery.
+                             */
+                            try {
+                                await NotificationCenter
+                                    .createNotification(
+                                        db,
+                                        {
+                                            eventKey:
+                                                `communications:broadcast:${announcementId}:v1`,
+                                            category:
+                                                'membership_community',
+                                            title,
+                                            message,
+                                            importance:
+                                                'normal',
+                                            sourceType:
+                                                'announcement',
+                                            sourceId:
+                                                announcementId,
+                                            sourceActor:
+                                                displayActor,
+                                            metadata: {
+                                                target
+                                            },
+                                            recipientYouthIds:
+                                                recipients.map(
+                                                    youth =>
+                                                        Number(
+                                                            youth.id
+                                                        )
+                                                ),
+                                            createdAt
+                                        }
+                                    );
+                            } catch (notificationError) {
+                                console.error(
+                                    '[Communications] Broadcast Notification Center mirror failed:',
+                                    notificationError &&
+                                    notificationError.message
+                                        ? notificationError.message
+                                        : notificationError
+                                );
                             }
 
                             const usernames =
@@ -14056,7 +14115,7 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
                                     usernames;
                             } else {
                                 logActivity(
-                                    actor,
+                                    auditActor,
                                     'BROADCAST',
                                     `Sent broadcast '${title}' to ${target}`
                                 );
@@ -14132,7 +14191,7 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
                                     );
 
                                     logActivity(
-                                        actor,
+                                        auditActor,
                                         'BROADCAST',
                                         `Sent broadcast '${title}' to ${target}`
                                     );
