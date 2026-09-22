@@ -209,7 +209,7 @@ test(
     () => {
         assert.match(
             index,
-            /\/js\/v10-expansion\.js\?v=20260922c2/
+            /\/js\/v10-expansion\.js\?v=20260922c3/
         );
 
         assert.match(
@@ -219,7 +219,7 @@ test(
 
         assert.match(
             sw,
-            /fog-portal-v80/
+            /fog-portal-v81/
         );
     }
 );

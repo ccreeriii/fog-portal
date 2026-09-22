@@ -7,7 +7,7 @@
     const status = document.getElementById('privateJournalPolicyStatus');
     if (!section || !toggle || !status) return;
 
-    let savedValue = true;
+    let savedValue = null;
     let loaded = false;
 
     async function responseJson(response, fallback) {
@@ -29,16 +29,41 @@
             if (response.status === 403) {
                 section.hidden = false;
                 toggle.disabled = true;
+
+                /*
+                 * A non-Strong Admin is not authorized to read this
+                 * policy value. Render an explicit unknown state
+                 * instead of implying ON or OFF.
+                 */
+                toggle.checked = false;
+                toggle.indeterminate = true;
+                toggle.setAttribute(
+                    'aria-checked',
+                    'mixed'
+                );
+
+                savedValue = null;
                 loaded = false;
+
                 status.textContent =
-                    'This safeguarding option can only be changed by the Strong Admin account.';
+                    'This safeguarding option can only be changed by the Strong Admin account. The current policy state is not shown here.';
                 return;
             }
 
             const policy = await responseJson(response, 'Unable to load the Journal policy.');
             section.hidden = false;
-            savedValue = policy.guardian_required_13_17 === true;
-            toggle.checked = savedValue;
+
+            toggle.indeterminate = false;
+            toggle.removeAttribute(
+                'aria-checked'
+            );
+
+            savedValue =
+                policy.guardian_required_13_17 === true;
+
+            toggle.checked =
+                savedValue;
+
             loaded = true;
             status.textContent = policy.valid
                 ? `Current policy: guardian authorization is ${savedValue ? 'required' : 'not required'} for ages 13–17.`
@@ -50,7 +75,21 @@
 
     toggle.addEventListener('change', async () => {
         if (!loaded) {
-            toggle.checked = savedValue;
+            if (typeof savedValue === 'boolean') {
+                toggle.indeterminate = false;
+                toggle.removeAttribute(
+                    'aria-checked'
+                );
+                toggle.checked = savedValue;
+            } else {
+                toggle.checked = false;
+                toggle.indeterminate = true;
+                toggle.setAttribute(
+                    'aria-checked',
+                    'mixed'
+                );
+            }
+
             return;
         }
 
@@ -74,9 +113,19 @@
                 body: JSON.stringify({ guardian_required_13_17: nextValue })
             });
             const result = await responseJson(response, 'Unable to change the Journal policy.');
-            savedValue = result.guardian_required_13_17 === true;
-            toggle.checked = savedValue;
-            status.textContent = `Saved. Guardian authorization is ${savedValue ? 'required' : 'not required'} for ages 13–17.`;
+            savedValue =
+                result.guardian_required_13_17 === true;
+
+            toggle.indeterminate = false;
+            toggle.removeAttribute(
+                'aria-checked'
+            );
+
+            toggle.checked =
+                savedValue;
+
+            status.textContent =
+                `Saved. Guardian authorization is ${savedValue ? 'required' : 'not required'} for ages 13–17.`;
         } catch (error) {
             toggle.checked = savedValue;
             status.textContent = error.message;

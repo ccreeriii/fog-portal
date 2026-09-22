@@ -3401,7 +3401,23 @@ window.V4Communications.sendBroadcast = async function(e) {
         const data = await res.json();
         
         if (data.success) {
-            alert(`✅ Broadcast sent successfully!\nIt was delivered to ${data.sentCount} connected devices.`);
+            const deliveryLine =
+                data.warning ||
+                (
+                    data.pushStatus === 'unavailable'
+                        ? 'Published in the Portal. Push delivery is currently unavailable.'
+                        : data.pushStatus === 'failed'
+                            ? 'Published in the Portal, but Push delivery failed.'
+                            : data.pushStatus === 'partial'
+                                ? `Published in the Portal. Push reached ${data.sentCount} device(s); some delivery attempts failed.`
+                                : data.pushStatus === 'no_subscriptions'
+                                    ? 'Published in the Portal. No subscribed devices were available for Push delivery.'
+                                    : `Published in the Portal. Push delivered to ${data.sentCount} connected device(s).`
+                );
+
+            alert(
+                `✅ Broadcast published!\n${deliveryLine}`
+            );
             document.getElementById('broadcastForm').reset();
             
             // Refresh history natively if the function exists
@@ -3438,7 +3454,23 @@ if (typeof window.V4Communications !== 'undefined') {
             });
             const data = await res.json();
             if (data.success) {
-                alert(`✅ Broadcast sent successfully!\nDelivered to ${data.sentCount} connected devices.`);
+                const deliveryLine =
+                    data.warning ||
+                    (
+                        data.pushStatus === 'unavailable'
+                            ? 'Published in the Portal. Push delivery is currently unavailable.'
+                            : data.pushStatus === 'failed'
+                                ? 'Published in the Portal, but Push delivery failed.'
+                                : data.pushStatus === 'partial'
+                                    ? `Published in the Portal. Push reached ${data.sentCount} device(s); some delivery attempts failed.`
+                                    : data.pushStatus === 'no_subscriptions'
+                                        ? 'Published in the Portal. No subscribed devices were available for Push delivery.'
+                                        : `Published in the Portal. Push delivered to ${data.sentCount} connected device(s).`
+                    );
+
+                alert(
+                    `✅ Broadcast published!\n${deliveryLine}`
+                );
                 document.getElementById('broadcastForm').reset();
             } else {
                 alert('❌ Server Error: ' + (data.error || 'Unknown Error in Backend'));

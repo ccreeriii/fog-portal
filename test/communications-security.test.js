@@ -65,9 +65,20 @@ test(
             /requireAllPermissions\(\['access_communications', 'edit_entries'\]\)/
         );
 
+        /*
+         * Broadcast publication is authorized by Communications
+         * permissions. Push availability is intentionally optional:
+         * Portal announcement persistence must still succeed when
+         * VAPID / Push delivery is unavailable.
+         */
+        assert.doesNotMatch(
+            route.split('(req, res) => {', 1)[0],
+            /requirePushAvailable/
+        );
+
         assert.match(
             route,
-            /requirePushAvailable/
+            /if\s*\(\s*!pushNotificationsAvailable\s*\)/
         );
 
         assert.match(

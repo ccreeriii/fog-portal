@@ -13803,7 +13803,7 @@ app.post('/api/communications/unsubscribe', requireAuth, (req, res) => {
         return res.json({ success: true });
     });
 });
-app.post('/api/communications/broadcast', requireAllPermissions(['access_communications', 'edit_entries']), requirePushAvailable, (req, res) => {
+app.post('/api/communications/broadcast', requireAllPermissions(['access_communications', 'edit_entries']), (req, res) => {
     const body =
         req.body &&
         typeof req.body === 'object' &&
@@ -14076,6 +14076,32 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
                                 );
                             }
 
+                            /*
+                             * Portal publication is authoritative.
+                             * Browser Push is only an optional delivery channel.
+                             *
+                             * A temporary VAPID outage must never prevent the
+                             * Announcement or Notification Center mirror from
+                             * being published.
+                             */
+                            if (!pushNotificationsAvailable) {
+                                logActivity(
+                                    auditActor,
+                                    'BROADCAST',
+                                    `Published broadcast '${title}' to ${target}; push unavailable`
+                                );
+
+                                return res.json({
+                                    success: true,
+                                    announcementId,
+                                    sentCount: 0,
+                                    pushAvailable: false,
+                                    pushStatus: 'unavailable',
+                                    warning:
+                                        'Broadcast published in the Portal. Push delivery is currently unavailable.'
+                                });
+                            }
+
                             const usernames =
                                 recipients
                                     .map(
@@ -14117,12 +14143,17 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
                                 logActivity(
                                     auditActor,
                                     'BROADCAST',
-                                    `Sent broadcast '${title}' to ${target}`
+                                    `Published broadcast '${title}' to ${target}; no Push subscriptions`
                                 );
 
                                 return res.json({
                                     success: true,
-                                    sentCount: 0
+                                    announcementId,
+                                    sentCount: 0,
+                                    pushAvailable: true,
+                                    pushStatus: 'no_subscriptions',
+                                    warning:
+                                        'Broadcast published in the Portal. No subscribed devices were available for Push delivery.'
                                 });
                             }
 
@@ -14138,10 +14169,20 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
                                             '[Communications] Unable to load push recipients.'
                                         );
 
-                                        return res.status(500).json({
-                                            success: false,
-                                            error:
-                                                'Broadcast saved, but push delivery could not start.'
+                                        logActivity(
+                                            auditActor,
+                                            'BROADCAST',
+                                            `Published broadcast '${title}' to ${target}; Push lookup failed`
+                                        );
+
+                                        return res.json({
+                                            success: true,
+                                            announcementId,
+                                            sentCount: 0,
+                                            pushAvailable: true,
+                                            pushStatus: 'failed',
+                                            warning:
+                                                'Broadcast published in the Portal, but Push delivery could not start.'
                                         });
                                     }
 
@@ -14190,15 +14231,47 @@ app.post('/api/communications/broadcast', requireAllPermissions(['access_communi
                                         )
                                     );
 
+                                    const attemptedCount =
+                                        (subscriptions || []).length;
+
+                                    const failedCount =
+                                        Math.max(
+                                            0,
+                                            attemptedCount - sentCount
+                                        );
+
+                                    const pushStatus =
+                                        attemptedCount === 0
+                                            ? 'no_subscriptions'
+                                            : failedCount === 0
+                                                ? 'sent'
+                                                : sentCount > 0
+                                                    ? 'partial'
+                                                    : 'failed';
+
+                                    const warning =
+                                        pushStatus === 'partial'
+                                            ? `Broadcast published in the Portal. Push reached ${sentCount} device(s), while ${failedCount} delivery attempt(s) failed.`
+                                            : pushStatus === 'failed'
+                                                ? 'Broadcast published in the Portal, but Push delivery failed.'
+                                                : pushStatus === 'no_subscriptions'
+                                                    ? 'Broadcast published in the Portal. No subscribed devices were available for Push delivery.'
+                                                    : null;
+
                                     logActivity(
                                         auditActor,
                                         'BROADCAST',
-                                        `Sent broadcast '${title}' to ${target}`
+                                        `Published broadcast '${title}' to ${target}; Push ${pushStatus}`
                                     );
 
                                     return res.json({
                                         success: true,
-                                        sentCount
+                                        announcementId,
+                                        sentCount,
+                                        failedCount,
+                                        pushAvailable: true,
+                                        pushStatus,
+                                        warning
                                     });
                                 }
                             );
@@ -14257,11 +14330,216 @@ app.get('/api/communications/history', requirePermission('access_communications'
         }
     );
 });
-app.delete('/api/communications/broadcast/:id', requireAllPermissions(['access_communications', 'delete_entries']), (req, res) => {
-    const actor = getCanonicalAuditActor(req);
-    function executeDelete() { db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) { db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]); logActivity(actor, 'DELETE_BROADCAST', `Deleted global broadcast ID ${req.params.id}`); res.json({ success: true }); }); }
-    executeDelete();
-});
+async function deleteCommunicationsBroadcastCascade(
+    announcementId
+) {
+    const run =
+        (sql, params = []) =>
+            new Promise(
+                (resolve, reject) => {
+                    db.run(
+                        sql,
+                        params,
+                        function (error) {
+                            if (error) {
+                                reject(error);
+                                return;
+                            }
+
+                            resolve({
+                                changes:
+                                    Number(
+                                        this.changes || 0
+                                    ),
+                                lastID:
+                                    Number(
+                                        this.lastID || 0
+                                    )
+                            });
+                        }
+                    );
+                }
+            );
+
+    const get =
+        (sql, params = []) =>
+            new Promise(
+                (resolve, reject) => {
+                    db.get(
+                        sql,
+                        params,
+                        (error, row) => {
+                            if (error) {
+                                reject(error);
+                                return;
+                            }
+
+                            resolve(row || null);
+                        }
+                    );
+                }
+            );
+
+    const existing =
+        await get(
+            `SELECT id
+             FROM announcements
+             WHERE id = ?`,
+            [announcementId]
+        );
+
+    if (!existing) {
+        return false;
+    }
+
+    await run(
+        'BEGIN IMMEDIATE TRANSACTION'
+    );
+
+    try {
+        /*
+         * notification_events.source_id is intentionally not a
+         * foreign key to announcements, so remove the canonical
+         * mirror explicitly. Delivery and recipient rows are also
+         * removed explicitly so cleanup remains correct even when
+         * foreign-key enforcement is unavailable.
+         */
+        await run(
+            `DELETE FROM notification_deliveries
+             WHERE recipient_id IN (
+                SELECT nr.id
+                FROM notification_recipients nr
+                JOIN notification_events ne
+                  ON ne.id = nr.event_id
+                WHERE ne.source_type = ?
+                  AND ne.source_id = ?
+             )`,
+            [
+                'announcement',
+                announcementId
+            ]
+        );
+
+        await run(
+            `DELETE FROM notification_recipients
+             WHERE event_id IN (
+                SELECT id
+                FROM notification_events
+                WHERE source_type = ?
+                  AND source_id = ?
+             )`,
+            [
+                'announcement',
+                announcementId
+            ]
+        );
+
+        await run(
+            `DELETE FROM notification_events
+             WHERE source_type = ?
+               AND source_id = ?`,
+            [
+                'announcement',
+                announcementId
+            ]
+        );
+
+        await run(
+            `DELETE FROM user_notifications
+             WHERE announcement_id = ?`,
+            [announcementId]
+        );
+
+        await run(
+            `DELETE FROM announcements
+             WHERE id = ?`,
+            [announcementId]
+        );
+
+        await run('COMMIT');
+
+        return true;
+    } catch (error) {
+        await run('ROLLBACK')
+            .catch(
+                rollbackError => {
+                    console.error(
+                        '[Communications] Broadcast delete rollback failed:',
+                        rollbackError &&
+                        rollbackError.message
+                            ? rollbackError.message
+                            : rollbackError
+                    );
+                }
+            );
+
+        throw error;
+    }
+}
+
+app.delete(
+    '/api/communications/broadcast/:id',
+    requireAllPermissions(
+        [
+            'access_communications',
+            'delete_entries'
+        ]
+    ),
+    async (req, res) => {
+        const actor =
+            getCanonicalAuditActor(req);
+
+        const announcementId =
+            normalizeCanonicalId(
+                req.params.id
+            );
+
+        if (!announcementId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid broadcast.'
+            });
+        }
+
+        try {
+            const deleted =
+                await deleteCommunicationsBroadcastCascade(
+                    announcementId
+                );
+
+            if (!deleted) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Broadcast not found.'
+                });
+            }
+
+            logActivity(
+                actor,
+                'DELETE_BROADCAST',
+                `Deleted global broadcast ID ${announcementId}`
+            );
+
+            return res.json({
+                success: true
+            });
+        } catch (error) {
+            console.error(
+                '[Communications] Unable to delete broadcast:',
+                error &&
+                error.message
+                    ? error.message
+                    : error
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to delete broadcast safely.'
+            });
+        }
+    }
+);
 app.get('/api/communications/inbox', requireAuth, (req, res) => {
     res.setHeader(
         'Cache-Control',
@@ -14377,12 +14655,58 @@ app.get('/api/communications/inbox', requireAuth, (req, res) => {
 
 app.delete('/api/communications/inbox/:id', requireAuth, async (req, res) => {
     if (isStrongAdmin(req.auth)) {
-        const actor = getCanonicalAuditActor(req);
-        return db.run(`DELETE FROM announcements WHERE id = ?`, [req.params.id], function(err) {
-            db.run(`DELETE FROM user_notifications WHERE announcement_id = ?`, [req.params.id]);
-            logActivity(actor, 'DELETE_INBOX_MSG', `Admin deleted global broadcast ID ${req.params.id}`);
-            res.json({ success: true });
-        });
+        const actor =
+            getCanonicalAuditActor(req);
+
+        const announcementId =
+            normalizeCanonicalId(
+                req.params.id
+            );
+
+        if (!announcementId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid broadcast.'
+            });
+        }
+
+        try {
+            const deleted =
+                await deleteCommunicationsBroadcastCascade(
+                    announcementId
+                );
+
+            if (!deleted) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Broadcast not found.'
+                });
+            }
+
+            logActivity(
+                actor,
+                'DELETE_INBOX_MSG',
+                `Admin deleted global broadcast ID ${announcementId}`
+            );
+
+            return res.json({
+                success: true
+            });
+        } catch (error) {
+            console.error(
+                '[Communications] Strong Admin broadcast deletion failed:',
+                error &&
+                error.message
+                    ? error.message
+                    : error
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to delete broadcast safely.'
+            });
+        }
     }
 
     try {

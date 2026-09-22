@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v80';
+const CACHE_NAME = 'fog-portal-v81';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -37,7 +37,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/v8-peters-leap.js?v=13.0',
     '/js/v8-jonahs-dive.js?v=13.0',
     '/js/v9-growth-games.js?v=13.0',
-    '/js/v10-expansion.js?v=20260922c2',
+    '/js/v10-expansion.js?v=20260922c3',
     '/js/member-transition-intake.js?v=4',
     '/js/member-transition-journey.js?v=2',
     '/js/member-transition-leadership.js?v=1',
@@ -49,7 +49,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/journal-guardian-ui.js?v=1',
     '/js/journal-secure-controller.js?v=1',
     '/js/journal-premium-ui.js?v=1',
-    '/js/journal-policy-admin.js?v=2',
+    '/js/journal-policy-admin.js?v=20260922c3',
     '/js/journal-guardian-guest.js',
     '/journal-guardian.html',
     '/manifest.json',
