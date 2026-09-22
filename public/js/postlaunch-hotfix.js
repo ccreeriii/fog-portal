@@ -464,7 +464,19 @@
         refreshHeaderProfile();
         const target = byId(tabId);
         if (!target || !target.classList.contains('active')) return result;
-        if (tabId === 'membershipAdminTab') {
+        if (tabId === 'checkinTab') {
+            /*
+             * The Check-In UI can become active before the
+             * event dropdown has been refreshed. Always wait
+             * for the canonical V58 event loader here.
+             *
+             * loadEvents() itself rebuilds activeEventDropdown
+             * and refreshes the active-event banner.
+             */
+            if (typeof root.loadEvents === 'function') {
+                await root.loadEvents();
+            }
+        } else if (tabId === 'membershipAdminTab') {
             ensureMembershipAdminTab();
             showMembershipSubTab('community');
             await root.loadMembershipAdminData();
@@ -782,17 +794,110 @@
     };
 
     root.renderMinistryLogs = function renderMinistryLogs(items) {
-        const container = byId('ministryIntentsLogList');
-        if (!items.length) return emptyState(container,
-            state.ministryLogs.length ? 'No ministry logs match this filter.' : 'No ministry history logs yet.');
+        const container =
+            byId(
+                'ministryIntentsLogList'
+            );
+
+        if (!items.length) {
+            return emptyState(
+                container,
+                state.ministryLogs.length
+                    ? 'No ministry records match this filter.'
+                    : 'No ministry history or current membership baseline records yet.'
+            );
+        }
+
         container.replaceChildren();
+
         for (const item of items) {
-            const card = document.createElement('article');
-            card.className = 'log-card log-card--ministry';
-            appendText(card, 'strong', `${item.applicant_name || 'Unknown member'} — ${item.ministry_name || 'Unknown ministry'}`);
-            appendText(card, 'small', `${item.timestamp || 'Timestamp unavailable'} · ${item.actor || 'System'}`);
-            appendText(card, 'p', item.intent_message || `Role: ${item.role || 'Unspecified'}`);
-            container.appendChild(card);
+            const isBaseline =
+                item.record_kind ===
+                'current_baseline';
+
+            const card =
+                document.createElement(
+                    'article'
+                );
+
+            card.className =
+                'log-card log-card--ministry'
+                + (
+                    isBaseline
+                        ? ' log-card--baseline'
+                        : ''
+                );
+
+            card.dataset.recordKind =
+                isBaseline
+                    ? 'current_baseline'
+                    : 'history';
+
+            appendText(
+                card,
+                'strong',
+                `${
+                    item.applicant_name
+                    || 'Unknown member'
+                } — ${
+                    item.ministry_name
+                    || 'Unknown ministry'
+                }`
+            );
+
+            if (isBaseline) {
+                appendText(
+                    card,
+                    'small',
+                    `${
+                        item.timestamp
+                        || 'Original assignment date unavailable'
+                    } · Current baseline`
+                );
+
+                appendText(
+                    card,
+                    'p',
+                    item.intent_message
+                    || `Current role: ${
+                        item.role
+                        || 'Unspecified'
+                    }.`
+                );
+
+                appendText(
+                    card,
+                    'small',
+                    'Baseline means this is the current membership record, not reconstructed historical role changes. Earlier ministry actions remain available in Activity Logs.',
+                    'text-muted'
+                );
+            } else {
+                appendText(
+                    card,
+                    'small',
+                    `${
+                        item.timestamp
+                        || 'Timestamp unavailable'
+                    } · ${
+                        item.actor
+                        || 'System'
+                    }`
+                );
+
+                appendText(
+                    card,
+                    'p',
+                    item.intent_message
+                    || `Role: ${
+                        item.role
+                        || 'Unspecified'
+                    }`
+                );
+            }
+
+            container.appendChild(
+                card
+            );
         }
     };
 

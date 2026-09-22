@@ -1357,6 +1357,32 @@ window.V10Expansion = {
             if(activeIndiv && activeIndiv.classList.contains('btn-primary')) this.filterGrowthGames('indiv');
             else if (activeIndiv) this.filterGrowthGames('groups');
         }, 50);
+
+        /*
+         * A successful score submission invalidates the
+         * per-game leaderboard cache, but the Games Home DOM
+         * can still contain the old Top 3.
+         *
+         * Refresh only the Games ranking components when the
+         * player returns to Games. No page reload or redirect.
+         */
+        Promise.resolve()
+            .then(
+                () =>
+                    this.loadTopScorers()
+            )
+            .then(
+                () =>
+                    this.loadFeaturedGames()
+            )
+            .catch(
+                error => {
+                    console.warn(
+                        'Unable to refresh Games rankings after play.',
+                        error
+                    );
+                }
+            );
     },
     loadAdminFeaturedSettings: async function() {
         if (!document.getElementById('setFeaturedArcade')) return;

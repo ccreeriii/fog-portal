@@ -169,9 +169,17 @@ test('membership intents enforce canonical ownership and leadership approval', {
         isolatedServerSource = isolatedServerSource.replace(original, replacement);
     }
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedServerSource);
-    for (const filename of ['sqlite-backup.js', 'email-security.js', 'account-claim-security.js', 'legal-acceptance.js', 'growth-journey.js', 'notification-center.js', 'notification-delivery.js', 'growth-notifications.js']) {
-        await fsp.copyFile(path.join(repositoryRoot, 'lib', filename), path.join(temporaryRoot, 'lib', filename));
-    }
+
+    // Keep the disposable server fixture aligned with server.js imports.
+    // The temporary database remains isolated; this copies code only.
+    await fsp.cp(
+        path.join(repositoryRoot, 'lib'),
+        path.join(temporaryRoot, 'lib'),
+        {
+            recursive: true,
+            force: true
+        }
+    );
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
     await fsp.writeFile(path.join(temporaryRoot, 'public', 'index.html'), '<!doctype html><title>Isolated membership test</title>');
 

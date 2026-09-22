@@ -158,21 +158,17 @@ test('events API uses lightweight list, selected detail, and allowlisted media',
         );
     assert.notEqual(isolatedServerSource, serverSource);
     await fsp.writeFile(path.join(temporaryRoot, 'server.js'), isolatedServerSource);
-    await fsp.copyFile(
-        path.join(repositoryRoot, 'lib', 'sqlite-backup.js'),
-        path.join(temporaryRoot, 'lib', 'sqlite-backup.js')
-    );
-    await fsp.copyFile(
-        path.join(repositoryRoot, 'lib', 'email-security.js'),
-        path.join(temporaryRoot, 'lib', 'email-security.js')
-    );
-    await fsp.copyFile(
-        path.join(repositoryRoot, 'lib', 'account-claim-security.js'),
-        path.join(temporaryRoot, 'lib', 'account-claim-security.js')
-    );
-    await fsp.copyFile(
-        path.join(repositoryRoot, 'lib', 'legal-acceptance.js'),
-        path.join(temporaryRoot, 'lib', 'legal-acceptance.js')
+
+    // Keep the disposable server fixture aligned with server.js imports.
+    // Copying the complete lib tree avoids fragile dependency whitelists
+    // as production modules evolve.
+    await fsp.cp(
+        path.join(repositoryRoot, 'lib'),
+        path.join(temporaryRoot, 'lib'),
+        {
+            recursive: true,
+            force: true
+        }
     );
     await fsp.symlink(path.join(repositoryRoot, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
     await fsp.writeFile(
@@ -510,13 +506,13 @@ test('event frontend consumes list references, selected detail, and deduplicates
     assert.equal(appSource.includes('const imageResponse = await fetch(imageUrl)'), false, 'sharing does not delay native share for media');
     assert.ok(preregisterSource.includes('event.poster_url'), 'standalone prereg page uses poster_url');
     assert.equal(/event\.poster\b/.test(preregisterSource), false, 'standalone prereg page does not use embedded media');
-    assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'fog-portal-v25';"), 'new app asset has a fresh shell cache');
+    assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'fog-portal-v80';"), 'new app asset has a fresh shell cache');
     assert.ok(serviceWorkerSource.includes("if (request.method !== 'GET') return;"), 'service worker still bypasses mutations');
     assert.ok(serviceWorkerSource.includes("url.pathname.startsWith('/api/')"), 'service worker still bypasses API reads');
-    assert.ok(serviceWorkerSource.includes("'/js/app.js?v=13.3'"), 'service worker caches the coordinated app version');
-    assert.ok(serviceWorkerSource.includes("'/js/v10-expansion.js?v=12.3'"), 'service worker caches the Arcade fix');
-    assert.ok(indexSource.includes('<script src="/js/app.js?v=13.3"></script>'), 'index serves the coordinated app version');
-    assert.ok(indexSource.includes('<script src="/js/v10-expansion.js?v=12.3"></script>'), 'index serves the coordinated Arcade version');
+    assert.ok(serviceWorkerSource.includes("'/js/app.js?v=13.7'"), 'service worker caches the coordinated app version');
+    assert.ok(serviceWorkerSource.includes("'/js/v10-expansion.js?v=20260922c2'"), 'service worker caches the current Games refinement');
+    assert.ok(indexSource.includes('<script src="/js/app.js?v=13.7"></script>'), 'index serves the coordinated app version');
+    assert.ok(indexSource.includes('<script src="/js/v10-expansion.js?v=20260922c2"></script>'), 'index serves the current Games refinement');
     assert.equal(appSource.includes("localStorage.setItem('fog_events_cache'"), false, 'legacy full-event cache is retired');
 
     const loaderStart = appSource.indexOf('let eventsRequestInFlight = null;');

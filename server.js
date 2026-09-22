@@ -16766,16 +16766,137 @@ app.put('/api/ministries-v36/:id/members/:mappingId', requireAllPermissions(['ac
 });
 
 app.get('/api/admin/ministry-logs-v36', requirePermission('edit_entries'), (req, res) => {
-    db.all(`SELECT h.*,
-                   COALESCE(NULLIF(TRIM(y.name), ''), 'Unknown member (ID ' || h.youth_id || ')') as applicant_name,
-                   COALESCE(NULLIF(TRIM(m.name), ''), 'Unknown ministry (ID ' || h.ministry_id || ')') as ministry_name
-            FROM ministry_role_history h
-            LEFT JOIN youth y ON h.youth_id = y.id
-            LEFT JOIN ministries m ON h.ministry_id = m.id
-            ORDER BY h.id DESC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Unable to load ministry history.' });
-        return res.json(rows || []);
-    });
+    db.all(
+        `SELECT h.*,
+                COALESCE(
+                    NULLIF(TRIM(y.name), ''),
+                    'Unknown member (ID ' || h.youth_id || ')'
+                ) AS applicant_name,
+                COALESCE(
+                    NULLIF(TRIM(m.name), ''),
+                    'Unknown ministry (ID ' || h.ministry_id || ')'
+                ) AS ministry_name
+         FROM ministry_role_history h
+         LEFT JOIN youth y
+           ON h.youth_id = y.id
+         LEFT JOIN ministries m
+           ON h.ministry_id = m.id
+         ORDER BY h.id DESC`,
+        [],
+        (historyErr, historyRows) => {
+            if (historyErr) {
+                return res.status(500).json({
+                    error:
+                        'Unable to load ministry history.'
+                });
+            }
+
+            /*
+             * Older ministry assignments predate structured
+             * ministry_role_history tracking.
+             *
+             * Do NOT fabricate historical role changes.
+             * Instead expose the CURRENT membership record as
+             * a clearly-labelled baseline only when that
+             * member/ministry pair has no structured history.
+             */
+            db.all(
+                `SELECT
+                    mm.id AS mapping_id,
+                    mm.ministry_id,
+                    mm.youth_id,
+                    mm.role,
+                    mm.sub_role,
+                    mm.assigned_at AS timestamp,
+                    COALESCE(
+                        NULLIF(TRIM(y.name), ''),
+                        'Unknown member (ID ' || mm.youth_id || ')'
+                    ) AS applicant_name,
+                    COALESCE(
+                        NULLIF(TRIM(m.name), ''),
+                        'Unknown ministry (ID ' || mm.ministry_id || ')'
+                    ) AS ministry_name
+                 FROM ministry_members mm
+                 LEFT JOIN youth y
+                   ON mm.youth_id = y.id
+                 LEFT JOIN ministries m
+                   ON mm.ministry_id = m.id
+                 WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM ministry_role_history h
+                    WHERE h.ministry_id = mm.ministry_id
+                      AND h.youth_id = mm.youth_id
+                 )
+                 ORDER BY
+                    COALESCE(mm.assigned_at, '') DESC,
+                    mm.id DESC`,
+                [],
+                (baselineErr, baselineRows) => {
+                    if (baselineErr) {
+                        return res.status(500).json({
+                            error:
+                                'Unable to load current ministry membership baseline.'
+                        });
+                    }
+
+                    const history =
+                        (historyRows || [])
+                            .map(
+                                row => ({
+                                    ...row,
+                                    record_kind:
+                                        'history'
+                                })
+                            );
+
+                    const baseline =
+                        (baselineRows || [])
+                            .map(
+                                row => {
+                                    const role =
+                                        typeof row.role ===
+                                            'string' &&
+                                        row.role.trim()
+                                            ? row.role.trim()
+                                            : 'Unspecified';
+
+                                    return {
+                                        ...row,
+                                        record_kind:
+                                            'current_baseline',
+                                        actor:
+                                            'Current membership record',
+                                        intent_message:
+                                            `Current role: ${role}. ` +
+                                            'This membership predates structured Ministry History tracking; ' +
+                                            'earlier role changes are not reconstructed.'
+                                    };
+                                }
+                            );
+
+                    const combined =
+                        history
+                            .concat(
+                                baseline
+                            )
+                            .sort(
+                                (a, b) =>
+                                    String(
+                                        b.timestamp || ''
+                                    ).localeCompare(
+                                        String(
+                                            a.timestamp || ''
+                                        )
+                                    )
+                            );
+
+                    return res.json(
+                        combined
+                    );
+                }
+            );
+        }
+    );
 });
 
 
