@@ -3900,7 +3900,55 @@ app.get('/api/admin/legal-acceptances', requirePermission('access_permissions'),
     }
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+/*
+ * Public static delivery policy
+ *
+ * Security boundary:
+ * - The existing global no-store policy remains the default.
+ * - Only versioned JavaScript/CSS URLs receive long-lived public caching.
+ * - HTML, APIs, service workers, account flows, unversioned assets and
+ *   member/private responses retain the existing no-store behavior.
+ *
+ * Versioned assets use explicit ?v= cache keys throughout the Portal.
+ * Their URL changes whenever their deployed content changes.
+ */
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+        const requestUrl =
+            res.req && typeof res.req.originalUrl === 'string'
+                ? res.req.originalUrl
+                : '';
+
+        const requestPath =
+            requestUrl.split('?', 1)[0];
+
+        const isVersioned =
+            /(?:\?|&)v=[A-Za-z0-9._-]+(?:&|$)/.test(requestUrl);
+
+        const isVersionedJavaScript =
+            requestPath.startsWith('/js/') &&
+            /\.js$/i.test(filePath);
+
+        const isVersionedStylesheet =
+            requestPath.startsWith('/css/') &&
+            /\.css$/i.test(filePath);
+
+        if (
+            isVersioned &&
+            (isVersionedJavaScript || isVersionedStylesheet)
+        ) {
+            /*
+             * Browser: 1 hour.
+             * Shared CDN/Cloudflare: 24 hours.
+             * Version query keeps releases isolated.
+             */
+            res.setHeader(
+                'Cache-Control',
+                'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800'
+            );
+        }
+    }
+}));
 
 app.get('/manifest.json', (req, res) => {
     const isStaging = __dirname.includes('staging');
