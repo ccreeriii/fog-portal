@@ -71,6 +71,408 @@
             : {};
     }
 
+
+    const CANONICAL_MINISTRIES_API =
+        '/api/ministries';
+
+    let canonicalMinistries = [];
+    let canonicalMinistriesPromise = null;
+
+    function canonicalMinistryId(value) {
+        const id = Number(value);
+
+        return Number.isSafeInteger(id) &&
+            id > 0
+            ? id
+            : null;
+    }
+
+    function normalizeCanonicalMinistry(
+        ministry
+    ) {
+        if (
+            !ministry ||
+            typeof ministry !== 'object'
+        ) {
+            return null;
+        }
+
+        const id =
+            canonicalMinistryId(
+                ministry.id
+            );
+
+        const name =
+            typeof ministry.name ===
+                'string'
+                ? ministry.name.trim()
+                : '';
+
+        if (!id || !name) {
+            return null;
+        }
+
+        return {
+            id,
+            name
+        };
+    }
+
+    async function loadCanonicalMinistries() {
+        if (canonicalMinistries.length) {
+            return canonicalMinistries;
+        }
+
+        if (canonicalMinistriesPromise) {
+            return canonicalMinistriesPromise;
+        }
+
+        canonicalMinistriesPromise =
+            requestJson(
+                CANONICAL_MINISTRIES_API
+            )
+                .then(payload => {
+                    const source =
+                        Array.isArray(payload)
+                            ? payload
+                            : (
+                                payload &&
+                                Array.isArray(
+                                    payload.ministries
+                                )
+                                    ? payload.ministries
+                                    : []
+                            );
+
+                    const normalized =
+                        source
+                            .map(
+                                normalizeCanonicalMinistry
+                            )
+                            .filter(Boolean)
+                            .sort(
+                                (left, right) =>
+                                    left.name.localeCompare(
+                                        right.name,
+                                        undefined,
+                                        {
+                                            sensitivity:
+                                                'base'
+                                        }
+                                    )
+                            );
+
+                    if (!normalized.length) {
+                        throw new Error(
+                            'No ministries are currently available.'
+                        );
+                    }
+
+                    canonicalMinistries =
+                        normalized;
+
+                    return canonicalMinistries;
+                })
+                .catch(error => {
+                    canonicalMinistriesPromise =
+                        null;
+
+                    throw error;
+                });
+
+        return canonicalMinistriesPromise;
+    }
+
+    function canonicalMinistryById(
+        ministryId
+    ) {
+        const id =
+            canonicalMinistryId(
+                ministryId
+            );
+
+        if (!id) return null;
+
+        return (
+            canonicalMinistries.find(
+                ministry =>
+                    ministry.id === id
+            ) ||
+            null
+        );
+    }
+
+    function installCanonicalMinistrySelect(
+        card,
+        row
+    ) {
+        if (!card || !row) return;
+
+        const freeTextInput =
+            Array.from(
+                card.querySelectorAll(
+                    'input'
+                )
+            )
+                .find(input => {
+                    const placeholder =
+                        (
+                            input.placeholder ||
+                            ''
+                        )
+                            .trim()
+                            .toLowerCase();
+
+                    return placeholder ===
+                        'ministry name';
+                });
+
+        if (!freeTextInput) {
+            return;
+        }
+
+        const previousName =
+            typeof row
+                .ministry_name_snapshot ===
+                'string'
+                ? row
+                    .ministry_name_snapshot
+                    .trim()
+                : '';
+
+        const select =
+            document.createElement(
+                'select'
+            );
+
+        select.className =
+            freeTextInput.className ||
+            'form-control';
+
+        select.required = true;
+
+        select.setAttribute(
+            'aria-label',
+            'Ministry'
+        );
+
+        const loading =
+            document.createElement(
+                'option'
+            );
+
+        loading.value = '';
+        loading.textContent =
+            'Loading FOG ministries…';
+        loading.selected = true;
+
+        select.appendChild(
+            loading
+        );
+
+        select.disabled = true;
+
+        freeTextInput.replaceWith(
+            select
+        );
+
+        const help =
+            document.createElement(
+                'small'
+            );
+
+        help.textContent =
+            'Choose from the ministries managed in the FOG Portal.';
+
+        help.style.display =
+            'block';
+
+        help.style.marginTop =
+            '6px';
+
+        help.style.color =
+            'var(--text-muted)';
+
+        select.insertAdjacentElement(
+            'afterend',
+            help
+        );
+
+        select.addEventListener(
+            'change',
+            () => {
+                const ministry =
+                    canonicalMinistryById(
+                        select.value
+                    );
+
+                if (!ministry) {
+                    row.ministry_id =
+                        null;
+
+                    row
+                        .ministry_name_snapshot =
+                        '';
+
+                    row.selected_priority =
+                        false;
+
+                    reconcilePriority();
+
+                    return;
+                }
+
+                row.ministry_id =
+                    ministry.id;
+
+                row
+                    .ministry_name_snapshot =
+                    ministry.name;
+
+                reconcilePriority();
+            }
+        );
+
+        loadCanonicalMinistries()
+            .then(ministries => {
+                while (
+                    select.firstChild
+                ) {
+                    select.removeChild(
+                        select.firstChild
+                    );
+                }
+
+                const placeholder =
+                    document.createElement(
+                        'option'
+                    );
+
+                placeholder.value = '';
+
+                placeholder.textContent =
+                    previousName &&
+                    !canonicalMinistryId(
+                        row.ministry_id
+                    )
+                        ? (
+                            'Select a ministry '
+                            + `(previous entry: ${previousName})`
+                        )
+                        : 'Select a ministry';
+
+                select.appendChild(
+                    placeholder
+                );
+
+                for (
+                    const ministry
+                    of ministries
+                ) {
+                    const option =
+                        document.createElement(
+                            'option'
+                        );
+
+                    option.value =
+                        String(
+                            ministry.id
+                        );
+
+                    option.textContent =
+                        ministry.name;
+
+                    select.appendChild(
+                        option
+                    );
+                }
+
+                const currentId =
+                    canonicalMinistryId(
+                        row.ministry_id
+                    );
+
+                let canonical =
+                    canonicalMinistryById(
+                        currentId
+                    );
+
+                /*
+                 * Older draft rows may pre-date the canonical
+                 * selector and contain only a text snapshot.
+                 * We may safely auto-link only an exact
+                 * case-insensitive canonical-name match.
+                 * No fuzzy guessing is allowed.
+                 */
+                if (
+                    !canonical &&
+                    previousName
+                ) {
+                    const matches =
+                        ministries.filter(
+                            ministry =>
+                                ministry.name
+                                    .toLowerCase() ===
+                                previousName
+                                    .toLowerCase()
+                        );
+
+                    if (
+                        matches.length === 1
+                    ) {
+                        canonical =
+                            matches[0];
+
+                        row.ministry_id =
+                            canonical.id;
+
+                        row
+                            .ministry_name_snapshot =
+                            canonical.name;
+                    }
+                }
+
+                if (canonical) {
+                    select.value =
+                        String(
+                            canonical.id
+                        );
+                } else {
+                    select.value = '';
+                }
+
+                select.disabled = false;
+            })
+            .catch(() => {
+                while (
+                    select.firstChild
+                ) {
+                    select.removeChild(
+                        select.firstChild
+                    );
+                }
+
+                const errorOption =
+                    document.createElement(
+                        'option'
+                    );
+
+                errorOption.value = '';
+
+                errorOption.textContent =
+                    'Unable to load ministries';
+
+                select.appendChild(
+                    errorOption
+                );
+
+                select.disabled = true;
+
+                help.textContent =
+                    'The ministry list could not be loaded. Please reconnect and reopen this step.';
+            });
+    }
+
     async function requestJson(url, options = {}) {
         const response = await window.fetch(
             url,
@@ -752,6 +1154,114 @@
         body.appendChild(wrap);
     }
 
+    function focusAddedMinistry(
+        index,
+        attempt = 0
+    ) {
+        const targetIndex =
+            Number(index);
+
+        if (
+            !Number.isSafeInteger(
+                targetIndex
+            ) ||
+            targetIndex < 0
+        ) {
+            return;
+        }
+
+        requestAnimationFrame(
+            () => {
+                const cards =
+                    Array.from(
+                        document.querySelectorAll(
+                            '.member-intake-ministry'
+                        )
+                    );
+
+                const card =
+                    cards.find(
+                        item =>
+                            Number(
+                                item.dataset
+                                    .memberIntakeMinistryIndex
+                            ) === targetIndex
+                    );
+
+                if (!card) {
+                    if (attempt < 40) {
+                        setTimeout(
+                            () =>
+                                focusAddedMinistry(
+                                    targetIndex,
+                                    attempt + 1
+                                ),
+                            25
+                        );
+                    }
+
+                    return;
+                }
+
+                /*
+                 * Move the member directly to the newly-created
+                 * Ministry card. Do this once so delayed loading of
+                 * the canonical Ministry list cannot cause repeated
+                 * scrolling.
+                 */
+                if (attempt === 0) {
+                    card.scrollIntoView({
+                        behavior:
+                            'smooth',
+
+                        block:
+                            'center',
+
+                        inline:
+                            'nearest'
+                    });
+                }
+
+                const select =
+                    card.querySelector(
+                        'select[aria-label="Ministry"]'
+                    );
+
+                /*
+                 * The canonical selector can briefly be disabled
+                 * while /api/ministries is loading. Wait until the
+                 * control is ready before moving keyboard focus.
+                 */
+                if (
+                    select &&
+                    !select.disabled
+                ) {
+                    try {
+                        select.focus({
+                            preventScroll:
+                                true
+                        });
+                    } catch (_) {
+                        select.focus();
+                    }
+
+                    return;
+                }
+
+                if (attempt < 120) {
+                    setTimeout(
+                        () =>
+                            focusAddedMinistry(
+                                targetIndex,
+                                attempt + 1
+                            ),
+                        25
+                    );
+                }
+            }
+        );
+    }
+
     function ministryRow(
         row,
         index
@@ -761,6 +1271,10 @@
                 'div',
                 'member-intake-ministry'
             );
+
+        card.dataset
+            .memberIntakeMinistryIndex =
+            String(index);
 
         const header =
             el(
@@ -1015,6 +1529,11 @@
             discernWrap
         );
 
+        installCanonicalMinistrySelect(
+            card,
+            row
+        );
+
         return card;
     }
 
@@ -1099,7 +1618,7 @@
                 el(
                     'button',
                     'btn btn-outline',
-                    '+ Add another ministry'
+                    '+ Add ministry from FOG list'
                 );
 
             add.type =
@@ -1108,6 +1627,11 @@
             add.addEventListener(
                 'click',
                 () => {
+                    const addedIndex =
+                        state.model
+                            .reported_ministries
+                            .length;
+
                     state.model
                         .reported_ministries
                         .push(
@@ -1115,6 +1639,10 @@
                         );
 
                     renderStep();
+
+                    focusAddedMinistry(
+                        addedIndex
+                    );
                 }
             );
 
@@ -1640,13 +2168,33 @@
 
             if (
                 rows.some(
+                    row => {
+                        const id =
+                            Number(
+                                row.ministry_id
+                            );
+
+                        return (
+                            !Number
+                                .isSafeInteger(id) ||
+                            id <= 0
+                        );
+                    }
+                )
+            ) {
+                return 'Please select a ministry from the FOG ministry list for every service-history entry.';
+            }
+
+
+            if (
+                rows.some(
                     row =>
                         !row
                             .ministry_name_snapshot
                             .trim()
                 )
             ) {
-                return 'Please enter the name of every ministry row or remove the empty row.';
+                return 'Please reselect any ministry entry that is no longer available in the FOG ministry list.';
             }
         }
 
@@ -2175,8 +2723,19 @@
     }
 
     async function submitFinal() {
-        const validation =
-            validateFinal();
+        let validation = null;
+
+        try {
+            validation =
+                validateFinal();
+        } catch (_) {
+            setStatus(
+                'We could not validate your final review. Please refresh the questionnaire and try again.',
+                'error'
+            );
+
+            return;
+        }
 
         if (validation) {
             setStatus(

@@ -30,7 +30,7 @@
     <link rel="stylesheet" href="/css/journey-dashboard.css?v=4">
     <link rel="stylesheet" href="/css/member-transition-intake.css?v=1">
     <link rel="stylesheet" href="/css/member-transition-journey.css?v=2">
-    <link rel="stylesheet" href="/css/member-transition-leadership.css?v=1">
+    <link rel="stylesheet" href="/css/member-transition-leadership.css?v=2">
     <link rel="stylesheet" href="/css/ministry-discernment-leadership.css?v=1">
     <link rel="stylesheet" href="/css/community-features.css?v=3">
     <link rel="stylesheet" href="/css/fog-premium.css?v=17">
@@ -2391,6 +2391,15 @@
                             explicit leadership action.
                         </p>
                     </div>
+                    <button
+                        id="memberJourneyOpenAdultIntakeButton"
+                        class="btn btn-primary member-journey-review-open-button"
+                        type="button"
+                        onclick="MemberTransitionLeadershipUI.toggleAdultIntakeCreator()"
+                    >
+                        ➕ Open Adult Historical Intake
+                    </button>
+
                 </div>
 
                 <div
@@ -2398,6 +2407,63 @@
                     class="member-journey-review-status"
                     aria-live="polite"
                 ></div>
+
+                <div
+                    id="memberJourneyIntakeCreator"
+                    class="member-journey-intake-creator"
+                    hidden
+                >
+                    <div class="member-journey-intake-creator__heading">
+                        <div>
+                            <h3>Open Adult Historical Intake</h3>
+                            <p>
+                                Use this only when an existing member has real FOG
+                                history that is incomplete or uncertain in the Portal.
+                            </p>
+                        </div>
+
+                        <button
+                            type="button"
+                            class="btn btn-secondary"
+                            onclick="MemberTransitionLeadershipUI.toggleAdultIntakeCreator(false)"
+                        >
+                            Close
+                        </button>
+                    </div>
+
+                    <div class="member-journey-intake-creator__search">
+                        <input
+                            id="memberJourneyAdultIntakeSearch"
+                            class="form-control"
+                            type="search"
+                            autocomplete="off"
+                            placeholder="Search existing Directory member by name or email"
+                        >
+
+                        <button
+                            type="button"
+                            class="btn btn-primary"
+                            onclick="MemberTransitionLeadershipUI.searchAdultIntakeDirectory()"
+                        >
+                            Search
+                        </button>
+                    </div>
+
+                    <p class="member-journey-review-muted">
+                        Members already on the accelerated existing-member path are
+                        protected from accidentally starting a second transition path.
+                    </p>
+
+                    <div
+                        id="memberJourneyAdultIntakeResults"
+                        class="member-journey-intake-results"
+                    >
+                        <div class="member-journey-review-empty-state">
+                            Search for the existing Directory member whose historical
+                            journey needs leadership review.
+                        </div>
+                    </div>
+                </div>
 
                 <div class="member-journey-review-layout">
                     <div
@@ -5206,9 +5272,9 @@
             modal.style.display = 'flex';
         };
     </script>
-    <script src="/js/member-transition-intake.js?v=4"></script>
+    <script src="/js/member-transition-intake.js?v=8"></script>
     <script src="/js/member-transition-journey.js?v=2"></script>
-    <script src="/js/member-transition-leadership.js?v=1"></script>
+    <script src="/js/member-transition-leadership.js?v=2"></script>
     <script src="/js/ministry-discernment-leadership.js?v=2"></script>
 <script src="/js/journey-dashboard.js?v=9"></script>
 <script src="/js/postlaunch-hotfix.js?v=20260922c2"></script>

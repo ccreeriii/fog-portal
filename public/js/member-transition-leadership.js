@@ -8,7 +8,10 @@
         list: [],
         selectedId: null,
         detail: null,
-        loading: false
+        loading: false,
+        directoryMembers: [],
+        directoryLoaded: false,
+        directoryLoading: false
     };
 
     const ANSWER_LABELS = Object.freeze({
@@ -232,6 +235,478 @@
         }
 
         return payload || {};
+    }
+
+    function transitionForMember(
+        youthId,
+        intakeKind
+    ) {
+        const id =
+            Number(youthId);
+
+        return state.list.find(
+            item =>
+                item &&
+                Number(item.youth_id) === id &&
+                item.intake_kind === intakeKind
+        ) || null;
+    }
+
+    function renderAdultIntakeDirectoryResults(
+        query
+    ) {
+        const container =
+            byId(
+                'memberJourneyAdultIntakeResults'
+            );
+
+        if (!container) return;
+
+        clear(container);
+
+        const needle =
+            normalizeText(query)
+                .toLowerCase();
+
+        if (needle.length < 2) {
+            container.appendChild(
+                el(
+                    'div',
+                    'member-journey-review-empty-state',
+                    'Type at least 2 characters to search the Directory.'
+                )
+            );
+            return;
+        }
+
+        const matches =
+            state.directoryMembers
+                .filter(member => {
+                    if (!member) return false;
+
+                    const haystack = [
+                        member.name,
+                        member.email,
+                        member.id
+                    ]
+                        .filter(
+                            value =>
+                                value !== undefined &&
+                                value !== null
+                        )
+                        .join(' ')
+                        .toLowerCase();
+
+                    return haystack.includes(
+                        needle
+                    );
+                })
+                .slice(0, 25);
+
+        if (!matches.length) {
+            container.appendChild(
+                el(
+                    'div',
+                    'member-journey-review-empty-state',
+                    'No matching Directory member was found.'
+                )
+            );
+            return;
+        }
+
+        for (const member of matches) {
+            const row =
+                el(
+                    'div',
+                    'member-journey-intake-result'
+                );
+
+            const identity =
+                el(
+                    'div',
+                    'member-journey-intake-result__identity'
+                );
+
+            identity.appendChild(
+                el(
+                    'strong',
+                    '',
+                    member.name ||
+                        `Member ${member.id}`
+                )
+            );
+
+            const metadata = [
+                member.email,
+                member.age !== undefined &&
+                member.age !== null &&
+                String(member.age).trim()
+                    ? `Age ${member.age}`
+                    : null,
+                member.id
+                    ? `Directory ID ${member.id}`
+                    : null
+            ]
+                .filter(Boolean)
+                .join(' • ');
+
+            identity.appendChild(
+                el(
+                    'div',
+                    'member-journey-review-muted',
+                    metadata
+                )
+            );
+
+            row.appendChild(identity);
+
+            const existingAdult =
+                transitionForMember(
+                    member.id,
+                    'adult_historical'
+                );
+
+            const accelerated =
+                transitionForMember(
+                    member.id,
+                    'accelerated_confirmation'
+                );
+
+            if (existingAdult) {
+                const action =
+                    button(
+                        'Open Existing Intake',
+                        'btn btn-secondary',
+                        async () => {
+                            toggleAdultIntakeCreator(
+                                false
+                            );
+
+                            await selectIntake(
+                                existingAdult.id
+                            );
+                        }
+                    );
+
+                row.appendChild(action);
+            } else if (accelerated) {
+                const protectedState =
+                    el(
+                        'div',
+                        'member-journey-intake-result__protected',
+                        'Accelerated transition already exists'
+                    );
+
+                protectedState.title =
+                    'This member is already on the recognized-history accelerated path.';
+
+                row.appendChild(
+                    protectedState
+                );
+            } else {
+                row.appendChild(
+                    button(
+                        'Open Adult Intake',
+                        'btn btn-primary',
+                        () =>
+                            createAdultIntakeForMember(
+                                member
+                            )
+                    )
+                );
+            }
+
+            container.appendChild(row);
+        }
+    }
+
+    async function loadDirectoryForAdultIntake() {
+        if (state.directoryLoaded) {
+            return;
+        }
+
+        if (state.directoryLoading) {
+            return;
+        }
+
+        state.directoryLoading =
+            true;
+
+        try {
+            const payload =
+                await requestJson(
+                    '/api/youth'
+                );
+
+            if (!Array.isArray(payload)) {
+                throw new Error(
+                    'The Directory returned an unexpected response.'
+                );
+            }
+
+            state.directoryMembers =
+                payload;
+
+            state.directoryLoaded =
+                true;
+        } finally {
+            state.directoryLoading =
+                false;
+        }
+    }
+
+    async function searchAdultIntakeDirectory() {
+        if (!hasReviewPermission()) {
+            setStatus(
+                'You do not have permission to open Adult Member Intakes.',
+                'error'
+            );
+            return;
+        }
+
+        const input =
+            byId(
+                'memberJourneyAdultIntakeSearch'
+            );
+
+        const query =
+            normalizeText(
+                input && input.value
+            );
+
+        if (query.length < 2) {
+            renderAdultIntakeDirectoryResults(
+                query
+            );
+            return;
+        }
+
+        setStatus(
+            'Searching the existing Directory…',
+            'info'
+        );
+
+        try {
+            await loadDirectoryForAdultIntake();
+
+            renderAdultIntakeDirectoryResults(
+                query
+            );
+
+            setStatus('', 'info');
+        } catch (error) {
+            setStatus(
+                error.message ||
+                    'Unable to load the Directory.',
+                'error'
+            );
+        }
+    }
+
+    function toggleAdultIntakeCreator(
+        forceOpen
+    ) {
+        if (!hasReviewPermission()) {
+            setStatus(
+                'You do not have permission to open Adult Member Intakes.',
+                'error'
+            );
+            return;
+        }
+
+        const panel =
+            byId(
+                'memberJourneyIntakeCreator'
+            );
+
+        if (!panel) return;
+
+        const shouldOpen =
+            typeof forceOpen === 'boolean'
+                ? forceOpen
+                : panel.hidden;
+
+        panel.hidden =
+            !shouldOpen;
+
+        if (!shouldOpen) {
+            return;
+        }
+
+        const input =
+            byId(
+                'memberJourneyAdultIntakeSearch'
+            );
+
+        if (input) {
+            input.focus();
+
+            renderAdultIntakeDirectoryResults(
+                input.value
+            );
+        }
+    }
+
+    async function createAdultIntakeForMember(
+        member
+    ) {
+        if (!hasReviewPermission()) {
+            setStatus(
+                'You do not have permission to open Adult Member Intakes.',
+                'error'
+            );
+            return;
+        }
+
+        const youthId =
+            Number(
+                member && member.id
+            );
+
+        if (
+            !Number.isSafeInteger(youthId) ||
+            youthId <= 0
+        ) {
+            setStatus(
+                'A valid Directory member is required.',
+                'error'
+            );
+            return;
+        }
+
+        /*
+         * Refresh transition state before mutation so the UI cannot
+         * accidentally open a second path based on stale list data.
+         */
+        await loadList({
+            silent: true,
+            preserveSelection: true
+        });
+
+        const existingAdult =
+            transitionForMember(
+                youthId,
+                'adult_historical'
+            );
+
+        if (existingAdult) {
+            toggleAdultIntakeCreator(
+                false
+            );
+
+            await selectIntake(
+                existingAdult.id
+            );
+
+            return;
+        }
+
+        const accelerated =
+            transitionForMember(
+                youthId,
+                'accelerated_confirmation'
+            );
+
+        if (accelerated) {
+            setStatus(
+                'This member already has an accelerated existing-member transition. Adult Historical Intake was not opened.',
+                'error'
+            );
+
+            const input =
+                byId(
+                    'memberJourneyAdultIntakeSearch'
+                );
+
+            renderAdultIntakeDirectoryResults(
+                input && input.value
+            );
+
+            return;
+        }
+
+        const memberName =
+            normalizeText(
+                member && member.name
+            ) ||
+            `Member ${youthId}`;
+
+        const confirmed =
+            window.confirm(
+                [
+                    'Open Adult Historical Intake?',
+                    '',
+                    memberName,
+                    `Directory ID: ${youthId}`,
+                    '',
+                    'Use this path only when the member has genuine FOG history that is incomplete or uncertain in the Portal.',
+                    '',
+                    'This does not recognize historical standing. Leadership review and Historical Recognition remain separate actions.'
+                ].join('\n')
+            );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setStatus(
+            `Opening Adult Historical Intake for ${memberName}…`,
+            'info'
+        );
+
+        try {
+            const payload =
+                await requestJson(
+                    `${API}/members/${youthId}/adult-intake`,
+                    {
+                        method: 'POST'
+                    }
+                );
+
+            const intake =
+                payload &&
+                payload.intake;
+
+            if (
+                !intake ||
+                !Number.isSafeInteger(
+                    Number(intake.id)
+                )
+            ) {
+                throw new Error(
+                    'The Adult Historical Intake was not returned by the server.'
+                );
+            }
+
+            await loadList({
+                silent: true,
+                preserveSelection: true
+            });
+
+            toggleAdultIntakeCreator(
+                false
+            );
+
+            await selectIntake(
+                intake.id,
+                {
+                    silent: true
+                }
+            );
+
+            setStatus(
+                payload.created === false
+                    ? `The existing Adult Historical Intake for ${memberName} is now open.`
+                    : `Adult Historical Intake opened for ${memberName}.`,
+                'success'
+            );
+        } catch (error) {
+            setStatus(
+                error.message ||
+                    'Unable to open the Adult Historical Intake.',
+                'error'
+            );
+        }
     }
 
     function button(
@@ -1506,6 +1981,29 @@
 
             renderList();
 
+            const creator =
+                byId(
+                    'memberJourneyIntakeCreator'
+                );
+
+            const searchInput =
+                byId(
+                    'memberJourneyAdultIntakeSearch'
+                );
+
+            if (
+                creator &&
+                !creator.hidden &&
+                searchInput &&
+                normalizeText(
+                    searchInput.value
+                ).length >= 2
+            ) {
+                renderAdultIntakeDirectoryResults(
+                    searchInput.value
+                );
+            }
+
             if (
                 !options.preserveSelection &&
                 !state.selectedId
@@ -1650,7 +2148,9 @@
             open,
             loadList,
             selectIntake,
-            refreshPermissionVisibility
+            refreshPermissionVisibility,
+            toggleAdultIntakeCreator,
+            searchAdultIntakeDirectory
         });
 
     function schedulePermissionVisibilityRefresh() {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v81';
+const CACHE_NAME = 'fog-portal-v82';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -11,7 +11,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/css/journey-dashboard.css?v=4',
     '/css/member-transition-intake.css?v=1',
     '/css/member-transition-journey.css?v=2',
-    '/css/member-transition-leadership.css?v=1',
+    '/css/member-transition-leadership.css?v=2',
     '/css/ministry-discernment-leadership.css?v=1',
     '/css/community-features.css?v=3',
     '/css/fog-premium.css?v=17',
@@ -38,9 +38,9 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/v8-jonahs-dive.js?v=13.0',
     '/js/v9-growth-games.js?v=13.0',
     '/js/v10-expansion.js?v=20260922c3',
-    '/js/member-transition-intake.js?v=4',
+    '/js/member-transition-intake.js?v=8',
     '/js/member-transition-journey.js?v=2',
-    '/js/member-transition-leadership.js?v=1',
+    '/js/member-transition-leadership.js?v=2',
     '/js/ministry-discernment-leadership.js?v=2',
     '/js/journey-dashboard.js?v=9',
     '/js/postlaunch-hotfix.js?v=20260922c2',
