@@ -722,15 +722,6 @@
             return;
         }
 
-        if (
-            channels.length === 0
-        ) {
-            alert(
-                'Choose Push, Email, or both.'
-            );
-            return;
-        }
-
         const button =
             byId(
                 'memberBroadcastSend'

@@ -14145,14 +14145,13 @@ app.post(
             ];
 
         if (
-            channels.length === 0 ||
             channels.length !==
                 submittedChannels.length
         ) {
             return res.status(400).json({
                 success: false,
                 error:
-                    'Choose Push, Email, or both.'
+                    'Invalid external delivery channel.'
             });
         }
 

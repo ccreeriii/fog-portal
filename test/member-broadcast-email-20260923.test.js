@@ -232,3 +232,48 @@ test(
         );
     }
 );
+
+test(
+    'external Push and Email channels are optional because Portal Inbox is authoritative',
+    () => {
+        const routeStart =
+            server.indexOf(
+                "app.post(\n    '/api/communications/member-message'"
+            );
+
+        const routeEnd =
+            server.indexOf(
+                "app.post('/api/communications/broadcast'",
+                routeStart
+            );
+
+        const route =
+            server.slice(
+                routeStart,
+                routeEnd
+            );
+
+        assert.ok(
+            routeStart >= 0
+        );
+
+        assert.ok(
+            routeEnd > routeStart
+        );
+
+        assert.doesNotMatch(
+            route,
+            /channels\.length\s*===\s*0/
+        );
+
+        assert.doesNotMatch(
+            client,
+            /Choose Push, Email, or both/
+        );
+
+        assert.match(
+            route,
+            /NotificationCenter[\s\S]*?createNotification/
+        );
+    }
+);
