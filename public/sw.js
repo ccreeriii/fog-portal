@@ -38,6 +38,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/v8-jonahs-dive.js?v=13.0',
     '/js/v9-growth-games.js?v=13.0',
     '/js/v10-expansion.js?v=20260922c3',
+    '/js/member-broadcast.js?v=20260923b3',
     '/js/member-transition-intake.js?v=8',
     '/js/member-transition-journey.js?v=2',
     '/js/member-transition-leadership.js?v=2',

@@ -48,6 +48,16 @@ const client =
         'utf8'
     );
 
+const serviceWorker =
+    fs.readFileSync(
+        path.join(
+            root,
+            'public',
+            'sw.js'
+        ),
+        'utf8'
+    );
+
 test(
     'specific-member APIs are protected by Communications edit authority',
     () => {
@@ -213,7 +223,7 @@ test(
     () => {
         assert.match(
             index,
-            /\/js\/member-broadcast\.js\?v=20260923b2/
+            /\/js\/member-broadcast\.js\?v=20260923b3/
         );
     }
 );
@@ -274,6 +284,57 @@ test(
         assert.match(
             route,
             /NotificationCenter[\s\S]*?createNotification/
+        );
+    }
+);
+
+
+test(
+    'Direct Member UI survives navigation/auth lifecycle reconciliation',
+    () => {
+        assert.match(
+            client,
+            /communicationsBroadcastSection/
+        );
+
+        assert.match(
+            client,
+            /relabelCommunicationsNavigation/
+        );
+
+        assert.match(
+            client,
+            /memberBroadcastObserved/
+        );
+
+        assert.match(
+            client,
+            /MutationObserver/
+        );
+
+        assert.match(
+            client,
+            /memberBroadcastWrapped/
+        );
+
+        assert.match(
+            client,
+            /💬 Communications/
+        );
+    }
+);
+
+test(
+    'Direct Member asset is coordinated with the PWA shell',
+    () => {
+        assert.match(
+            index,
+            /\/js\/member-broadcast\.js\?v=20260923b3/
+        );
+
+        assert.match(
+            serviceWorker,
+            /'\/js\/member-broadcast\.js\?v=20260923b3'/
         );
     }
 );

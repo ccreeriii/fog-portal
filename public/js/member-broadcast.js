@@ -138,21 +138,18 @@
                 'communicationsAdminTab'
             );
 
+        const broadcastSection =
+            byId(
+                'communicationsBroadcastSection'
+            );
+
         if (
             !tab ||
+            !broadcastSection ||
             byId(
                 'memberBroadcastCard'
             )
         ) {
-            return;
-        }
-
-        const existingCard =
-            tab.querySelector(
-                '.card'
-            );
-
-        if (!existingCard) {
             return;
         }
 
@@ -289,10 +286,33 @@
             </form>
         `;
 
-        existingCard.insertAdjacentElement(
-            'afterend',
-            card
-        );
+        const historyContainer =
+            byId(
+                'broadcastHistoryContainer'
+            );
+
+        const historyCard =
+            historyContainer &&
+            typeof historyContainer.closest === 'function'
+                ? historyContainer.closest(
+                    '.card'
+                )
+                : null;
+
+        if (
+            historyCard &&
+            historyCard.parentElement ===
+                broadcastSection
+        ) {
+            broadcastSection.insertBefore(
+                card,
+                historyCard
+            );
+        } else {
+            broadcastSection.appendChild(
+                card
+            );
+        }
 
         bind();
     }
@@ -948,9 +968,208 @@
         }
     }
 
-    function init() {
+    function relabelCommunicationsNavigation() {
+        const buttons =
+            document.querySelectorAll(
+                '.nav-btn[data-target="communicationsAdminTab"], ' +
+                '.nav-btn[onclick*="communicationsAdminTab"]'
+            );
+
+        buttons.forEach(
+            button => {
+                button.textContent =
+                    '💬 Communications';
+
+                button.title =
+                    'Communications';
+            }
+        );
+    }
+
+    function ensureUi() {
         installStyles();
+        relabelCommunicationsNavigation();
         installCard();
+    }
+
+    function installSectionObserver() {
+        const section =
+            byId(
+                'communicationsBroadcastSection'
+            );
+
+        if (
+            !section ||
+            section.dataset
+                .memberBroadcastObserved ===
+                'true' ||
+            typeof MutationObserver !==
+                'function'
+        ) {
+            return;
+        }
+
+        section.dataset
+            .memberBroadcastObserved =
+            'true';
+
+        const observer =
+            new MutationObserver(
+                () => {
+                    if (
+                        !byId(
+                            'memberBroadcastCard'
+                        )
+                    ) {
+                        Promise.resolve()
+                            .then(
+                                ensureUi
+                            )
+                            .catch(
+                                () => {}
+                            );
+                    }
+                }
+            );
+
+        observer.observe(
+            section,
+            {
+                childList:
+                    true
+            }
+        );
+    }
+
+    function installLifecycleHooks() {
+        if (
+            installLifecycleHooks
+                .installed
+        ) {
+            return;
+        }
+
+        installLifecycleHooks.installed =
+            true;
+
+        document.addEventListener(
+            'click',
+            event => {
+                const target =
+                    event &&
+                    event.target &&
+                    typeof event.target
+                        .closest ===
+                        'function'
+                        ? event.target
+                            .closest(
+                                '[data-target="communicationsAdminTab"], ' +
+                                '[onclick*="communicationsAdminTab"]'
+                            )
+                        : null;
+
+                if (!target) {
+                    return;
+                }
+
+                Promise.resolve()
+                    .then(
+                        () => {
+                            ensureUi();
+                            installSectionObserver();
+                        }
+                    )
+                    .catch(
+                        () => {}
+                    );
+            }
+        );
+
+        if (
+            typeof root.buildNav ===
+                'function' &&
+            !root.buildNav
+                .memberBroadcastWrapped
+        ) {
+            const previousBuildNav =
+                root.buildNav;
+
+            const wrappedBuildNav =
+                function(...args) {
+                    const result =
+                        previousBuildNav
+                            .apply(
+                                this,
+                                args
+                            );
+
+                    Promise.resolve()
+                        .then(
+                            ensureUi
+                        )
+                        .catch(
+                            () => {}
+                        );
+
+                    return result;
+                };
+
+            wrappedBuildNav
+                .memberBroadcastWrapped =
+                true;
+
+            root.buildNav =
+                wrappedBuildNav;
+        }
+
+        if (
+            typeof root
+                .applyGranularPermissions ===
+                'function' &&
+            !root
+                .applyGranularPermissions
+                .memberBroadcastWrapped
+        ) {
+            const previousApplyPermissions =
+                root
+                    .applyGranularPermissions;
+
+            const wrappedPermissions =
+                function(...args) {
+                    const result =
+                        previousApplyPermissions
+                            .apply(
+                                this,
+                                args
+                            );
+
+                    Promise.resolve()
+                        .then(
+                            () => {
+                                ensureUi();
+                                installSectionObserver();
+                            }
+                        )
+                        .catch(
+                            () => {}
+                        );
+
+                    return result;
+                };
+
+            wrappedPermissions
+                .memberBroadcastWrapped =
+                true;
+
+            root.applyGranularPermissions =
+                wrappedPermissions;
+        }
+    }
+
+    function init() {
+        ensureUi();
+        installSectionObserver();
+        installLifecycleHooks();
     }
 
     if (
