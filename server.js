@@ -13851,6 +13851,588 @@ app.post('/api/communications/unsubscribe', requireAuth, (req, res) => {
         return res.json({ success: true });
     });
 });
+
+// ==========================================
+// PRIVATE MEMBER COMMUNICATIONS
+// ==========================================
+//
+// These routes intentionally sit beside, rather than replace, the existing
+// community Broadcast route.
+//
+// Portal Inbox is authoritative. Push and Email are optional external
+// delivery channels and remain subject to canonical member preferences,
+// verified-email status and device subscription availability.
+//
+
+app.get(
+    '/api/communications/member-targets',
+    requireAllPermissions([
+        'access_communications',
+        'edit_entries'
+    ]),
+    (req, res) => {
+        const query =
+            typeof req.query.q === 'string'
+                ? req.query.q.trim()
+                : '';
+
+        if (query.length < 2) {
+            return res.json({
+                success: true,
+                members: []
+            });
+        }
+
+        if (query.length > 100) {
+            return res.status(400).json({
+                success: false,
+                error: 'Member search is too long.'
+            });
+        }
+
+        const search =
+            `%${query}%`;
+
+        db.all(
+            `SELECT
+                y.id,
+                y.name,
+
+                CASE
+                    WHEN y.email IS NOT NULL
+                     AND TRIM(y.email) <> ''
+                    THEN 1
+                    ELSE 0
+                END AS has_email,
+
+                COALESCE(
+                    y.email_verified,
+                    0
+                ) AS email_verified,
+
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM push_subscriptions ps
+                        WHERE ps.username = y.qr_code
+                    )
+                    THEN 1
+                    ELSE 0
+                END AS has_push_subscription,
+
+                COALESCE(
+                    np.push_enabled,
+                    1
+                ) AS push_enabled,
+
+                COALESCE(
+                    np.email_enabled,
+                    0
+                ) AS email_enabled,
+
+                COALESCE(
+                    np.membership_community,
+                    1
+                ) AS membership_community
+
+             FROM youth y
+
+             LEFT JOIN notification_preferences np
+               ON np.youth_id = y.id
+
+             WHERE y.name LIKE ? COLLATE NOCASE
+
+             ORDER BY
+                y.name COLLATE NOCASE,
+                y.id
+
+             LIMIT 15`,
+            [
+                search
+            ],
+            (error, rows) => {
+                if (error) {
+                    console.error(
+                        '[Communications] Member target search failed.'
+                    );
+
+                    return res.status(500).json({
+                        success: false,
+                        error:
+                            'Unable to search members.'
+                    });
+                }
+
+                const members =
+                    (rows || []).map(
+                        row => {
+                            const categoryEnabled =
+                                Number(
+                                    row.membership_community
+                                ) === 1;
+
+                            const pushEnabled =
+                                Number(
+                                    row.push_enabled
+                                ) === 1;
+
+                            const emailEnabled =
+                                Number(
+                                    row.email_enabled
+                                ) === 1;
+
+                            const hasPushSubscription =
+                                Number(
+                                    row.has_push_subscription
+                                ) === 1;
+
+                            const emailVerified =
+                                Number(
+                                    row.email_verified
+                                ) === 1 &&
+                                Number(
+                                    row.has_email
+                                ) === 1;
+
+                            let pushState =
+                                'ready';
+
+                            if (!categoryEnabled) {
+                                pushState =
+                                    'category_disabled';
+                            } else if (!pushEnabled) {
+                                pushState =
+                                    'disabled';
+                            } else if (
+                                !hasPushSubscription
+                            ) {
+                                pushState =
+                                    'no_subscription';
+                            }
+
+                            let emailState =
+                                'ready';
+
+                            if (!categoryEnabled) {
+                                emailState =
+                                    'category_disabled';
+                            } else if (
+                                !emailVerified
+                            ) {
+                                emailState =
+                                    'unverified';
+                            } else if (
+                                !emailEnabled
+                            ) {
+                                emailState =
+                                    'disabled';
+                            }
+
+                            return {
+                                id:
+                                    Number(row.id),
+
+                                name:
+                                    typeof row.name ===
+                                        'string'
+                                        ? row.name
+                                        : '',
+
+                                push_state:
+                                    pushState,
+
+                                push_ready:
+                                    pushState ===
+                                    'ready',
+
+                                email_verified:
+                                    emailVerified,
+
+                                email_state:
+                                    emailState,
+
+                                email_ready:
+                                    emailState ===
+                                    'ready'
+                            };
+                        }
+                    );
+
+                return res.json({
+                    success: true,
+                    members
+                });
+            }
+        );
+    }
+);
+
+app.post(
+    '/api/communications/member-message',
+    requireAllPermissions([
+        'access_communications',
+        'edit_entries'
+    ]),
+    async (req, res) => {
+        const body =
+            req.body &&
+            typeof req.body === 'object' &&
+            !Array.isArray(req.body)
+                ? req.body
+                : {};
+
+        const youthId =
+            Number(body.youth_id);
+
+        const title =
+            typeof body.title === 'string'
+                ? body.title.trim()
+                : '';
+
+        const message =
+            typeof body.message === 'string'
+                ? body.message.trim()
+                : '';
+
+        const submittedChannels =
+            Array.isArray(body.channels)
+                ? body.channels
+                : [];
+
+        if (
+            !Number.isSafeInteger(youthId) ||
+            youthId <= 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'A valid member is required.'
+            });
+        }
+
+        if (
+            !title ||
+            title.length > 180
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Message title must be between 1 and 180 characters.'
+            });
+        }
+
+        if (
+            !message ||
+            message.length > 5000
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Message body must be between 1 and 5000 characters.'
+            });
+        }
+
+        const channels =
+            [
+                ...new Set(
+                    submittedChannels
+                        .filter(
+                            channel =>
+                                channel === 'push' ||
+                                channel === 'email'
+                        )
+                )
+            ];
+
+        if (
+            channels.length === 0 ||
+            channels.length !==
+                submittedChannels.length
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    'Choose Push, Email, or both.'
+            });
+        }
+
+        const recipient =
+            await new Promise(
+                (resolve, reject) => {
+                    db.get(
+                        `SELECT
+                            id,
+                            name
+                         FROM youth
+                         WHERE id = ?
+                         LIMIT 1`,
+                        [
+                            youthId
+                        ],
+                        (error, row) => {
+                            if (error) {
+                                reject(error);
+                                return;
+                            }
+
+                            resolve(
+                                row || null
+                            );
+                        }
+                    );
+                }
+            ).catch(
+                () => null
+            );
+
+        if (!recipient) {
+            return res.status(404).json({
+                success: false,
+                error:
+                    'Member was not found.'
+            });
+        }
+
+        const actor =
+            req.auth &&
+            typeof req.auth.username === 'string' &&
+            req.auth.username.trim()
+                ? req.auth.username.trim()
+                : req.auth &&
+                  req.auth.userId
+                    ? `User ${req.auth.userId}`
+                    : 'Authorized Communications Leader';
+
+        const createdAt =
+            new Date().toISOString();
+
+        const eventKey =
+            [
+                'communications',
+                'member-message',
+                youthId,
+                Date.now(),
+                process.hrtime
+                    .bigint()
+                    .toString(36)
+            ].join(':');
+
+        let notification;
+
+        try {
+            notification =
+                await NotificationCenter
+                    .createNotification(
+                        db,
+                        {
+                            eventKey,
+
+                            category:
+                                'membership_community',
+
+                            title,
+
+                            message,
+
+                            importance:
+                                'normal',
+
+                            sourceType:
+                                'member_direct_message',
+
+                            sourceActor:
+                                actor,
+
+                            metadata: {
+                                delivery_channels:
+                                    channels
+                            },
+
+                            recipientYouthIds: [
+                                youthId
+                            ],
+
+                            createdAt
+                        }
+                    );
+        } catch (error) {
+            console.error(
+                '[Communications] Unable to create private member notification.'
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'Unable to create the Portal message.'
+            });
+        }
+
+        let canonicalRecipient;
+
+        try {
+            canonicalRecipient =
+                await new Promise(
+                    (resolve, reject) => {
+                        db.get(
+                            `SELECT id
+                             FROM notification_recipients
+                             WHERE event_id = ?
+                               AND youth_id = ?
+                             LIMIT 1`,
+                            [
+                                notification.eventId,
+                                youthId
+                            ],
+                            (error, row) => {
+                                if (error) {
+                                    reject(error);
+                                    return;
+                                }
+
+                                resolve(
+                                    row || null
+                                );
+                            }
+                        );
+                    }
+                );
+        } catch (error) {
+            canonicalRecipient =
+                null;
+        }
+
+        if (!canonicalRecipient) {
+            console.error(
+                '[Communications] Canonical private-message recipient missing.'
+            );
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    'The Portal message was created but its delivery record could not be resolved.'
+            });
+        }
+
+        let deliveryResult = null;
+        let deliveryWarning = null;
+
+        try {
+            deliveryResult =
+                await dispatchCanonicalNotificationRecipient(
+                    canonicalRecipient.id,
+                    {
+                        channels
+                    }
+                );
+        } catch (error) {
+            deliveryWarning =
+                'The Portal notification was created, but external delivery could not be completed.';
+
+            console.error(
+                '[Communications] Private member external delivery failed.',
+                error &&
+                error.code
+                    ? error.code
+                    : 'DELIVERY_FAILED'
+            );
+        }
+
+        const summarize =
+            channel => {
+                if (
+                    !channels.includes(channel)
+                ) {
+                    return {
+                        requested:
+                            false,
+                        status:
+                            'not_requested'
+                    };
+                }
+
+                const delivery =
+                    deliveryResult &&
+                    deliveryResult.deliveries &&
+                    deliveryResult.deliveries[
+                        channel
+                    ];
+
+                if (
+                    !delivery ||
+                    typeof delivery !== 'object'
+                ) {
+                    return {
+                        requested:
+                            true,
+                        status:
+                            deliveryWarning
+                                ? 'failed'
+                                : 'unknown'
+                    };
+                }
+
+                return {
+                    requested:
+                        true,
+
+                    status:
+                        typeof delivery.status ===
+                            'string'
+                            ? delivery.status
+                            : 'unknown',
+
+                    reason:
+                        typeof delivery.reason ===
+                            'string'
+                            ? delivery.reason
+                            : null,
+
+                    error_code:
+                        typeof delivery.error_code ===
+                            'string'
+                            ? delivery.error_code
+                            : null
+                };
+            };
+
+        logActivity(
+            actor,
+            'DIRECT_MEMBER_MESSAGE',
+            `Private Portal message created for Member ID ${youthId}; requested channels: ${channels.join(',')}`
+        );
+
+        return res.json({
+            success:
+                true,
+
+            portal:
+                'created',
+
+            event_id:
+                notification.eventId,
+
+            recipient: {
+                id:
+                    youthId,
+
+                name:
+                    recipient.name
+            },
+
+            deliveries: {
+                push:
+                    summarize('push'),
+
+                email:
+                    summarize('email')
+            },
+
+            warning:
+                deliveryWarning
+        });
+    }
+);
+
 app.post('/api/communications/broadcast', requireAllPermissions(['access_communications', 'edit_entries']), (req, res) => {
     const body =
         req.body &&
