@@ -223,7 +223,7 @@ test(
     () => {
         assert.match(
             index,
-            /\/js\/member-broadcast\.js\?v=20260923b3/
+            /\/js\/member-broadcast\.js\?v=20260923b4/
         );
     }
 );
@@ -329,12 +329,72 @@ test(
     () => {
         assert.match(
             index,
-            /\/js\/member-broadcast\.js\?v=20260923b3/
+            /\/js\/member-broadcast\.js\?v=20260923b4/
         );
 
         assert.match(
             serviceWorker,
-            /'\/js\/member-broadcast\.js\?v=20260923b3'/
+            /'\/js\/member-broadcast\.js\?v=20260923b4'/
+        );
+    }
+);
+
+test(
+    'Direct Member confirmation preserves its form reference until completion',
+    () => {
+        assert.match(
+            client,
+            /const form\s*=\s*event\.currentTarget/
+        );
+
+        assert.match(
+            client,
+            /performSend\(\s*form\s*\)/
+        );
+
+        assert.doesNotMatch(
+            client,
+            /performSend\(\s*event\.currentTarget\s*\)/
+        );
+
+        assert.match(
+            client,
+            /typeof form\.reset === ['"]function['"]/
+        );
+    }
+);
+
+test(
+    'delivery channels are locked until a member is selected and then become explicit choices',
+    () => {
+        assert.match(
+            client,
+            /id="memberBroadcastPush"[\s\S]*?disabled[\s\S]*?aria-disabled="true"/
+        );
+
+        assert.match(
+            client,
+            /id="memberBroadcastEmail"[\s\S]*?disabled[\s\S]*?aria-disabled="true"/
+        );
+
+        assert.match(
+            client,
+            /push\.disabled\s*=\s*false/
+        );
+
+        assert.match(
+            client,
+            /email\.disabled\s*=\s*false/
+        );
+
+        assert.match(
+            client,
+            /push\.checked\s*=\s*false/
+        );
+
+        assert.match(
+            client,
+            /email\.checked\s*=\s*false/
         );
     }
 );

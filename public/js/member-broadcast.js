@@ -219,7 +219,9 @@
                         <input
                             type="checkbox"
                             id="memberBroadcastPush"
-                            value="push">
+                            value="push"
+                            disabled
+                            aria-disabled="true">
 
                         <label for="memberBroadcastPush">
                             <strong>Push Notification</strong>
@@ -233,7 +235,9 @@
                         <input
                             type="checkbox"
                             id="memberBroadcastEmail"
-                            value="email">
+                            value="email"
+                            disabled
+                            aria-disabled="true">
 
                         <label for="memberBroadcastEmail">
                             <strong>Email</strong>
@@ -605,20 +609,32 @@
         selectedBox.hidden =
             false;
 
+        /*
+         * After a member has been selected the administrator may request
+         * either external channel. Canonical delivery still performs the
+         * final preference/subscription/verification checks server-side.
+         */
         push.disabled =
-            member.push_ready !==
-            true;
+            false;
 
         email.disabled =
-            member.email_ready !==
-            true;
+            false;
 
         push.checked =
-            member.push_ready ===
-            true;
+            false;
 
         email.checked =
             false;
+
+        push.setAttribute(
+            'aria-disabled',
+            'false'
+        );
+
+        email.setAttribute(
+            'aria-disabled',
+            'false'
+        );
 
         pushState.textContent =
             statusText(
@@ -843,7 +859,22 @@
                 lines.join('\n')
             );
 
-            form.reset();
+            if (
+
+
+                form &&
+
+
+                typeof form.reset === 'function'
+
+
+            ) {
+
+
+                form.reset();
+
+
+            }
 
             state.selected =
                 null;
@@ -858,15 +889,41 @@
             ).hidden =
                 true;
 
-            byId(
-                'memberBroadcastPush'
-            ).disabled =
-                false;
+            const resetPush =
+                byId(
+                    'memberBroadcastPush'
+                );
 
-            byId(
-                'memberBroadcastEmail'
-            ).disabled =
-                false;
+            const resetEmail =
+                byId(
+                    'memberBroadcastEmail'
+                );
+
+            if (resetPush) {
+                resetPush.checked =
+                    false;
+
+                resetPush.disabled =
+                    true;
+
+                resetPush.setAttribute(
+                    'aria-disabled',
+                    'true'
+                );
+            }
+
+            if (resetEmail) {
+                resetEmail.checked =
+                    false;
+
+                resetEmail.disabled =
+                    true;
+
+                resetEmail.setAttribute(
+                    'aria-disabled',
+                    'true'
+                );
+            }
 
             byId(
                 'memberBroadcastPushState'
@@ -900,6 +957,13 @@
     function submit(event) {
         event.preventDefault();
 
+        /*
+         * currentTarget is cleared after the synchronous event handler
+         * returns. Keep the form reference before opening confirmation.
+         */
+        const form =
+            event.currentTarget;
+
         if (
             !state.selected
         ) {
@@ -916,7 +980,7 @@
         const execute =
             () =>
                 performSend(
-                    event.currentTarget
+                    form
                 );
 
         if (
