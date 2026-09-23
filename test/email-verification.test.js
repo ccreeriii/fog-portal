@@ -174,6 +174,16 @@ test('verified email and pending email changes fail closed across application fl
     });
 
     await fsp.mkdir(path.join(temporaryRoot, 'lib'), { recursive: true });
+    // Keep the isolated server's local runtime dependencies in Production parity.
+    await fsp.cp(
+        path.join(repositoryRoot, 'lib'),
+        path.join(temporaryRoot, 'lib'),
+        {
+            recursive: true,
+            force: true
+        }
+    );
+
     await fsp.mkdir(path.join(temporaryRoot, 'public', 'js'), { recursive: true });
     await fsp.mkdir(path.join(temporaryRoot, 'public', 'img'), { recursive: true });
     const source = await fsp.readFile(path.join(repositoryRoot, 'server.js'), 'utf8');
@@ -265,6 +275,20 @@ test('verified email and pending email changes fail closed across application fl
             temporaryRoot,
             'lib',
             'growth-notifications.js'
+        )
+    );
+
+
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'birthday-age-sync.js'
         )
     );
 

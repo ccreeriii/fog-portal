@@ -65,6 +65,16 @@ async function createIsolatedApplication({ outboxEnabled = true } = {}) {
     };
 
     await fsp.mkdir(path.join(temporaryRoot, 'lib'), { recursive: true });
+    // Keep the isolated server's local runtime dependencies in Production parity.
+    await fsp.cp(
+        path.join(repositoryRoot, 'lib'),
+        path.join(temporaryRoot, 'lib'),
+        {
+            recursive: true,
+            force: true
+        }
+    );
+
     await fsp.mkdir(path.join(temporaryRoot, 'public'), { recursive: true });
     for (const directory of ['terms', 'privacy']) {
         await fsp.cp(path.join(repositoryRoot, 'public', directory), path.join(temporaryRoot, 'public', directory), { recursive: true });
@@ -131,6 +141,20 @@ async function createIsolatedApplication({ outboxEnabled = true } = {}) {
             temporaryRoot,
             'lib',
             'growth-notifications.js'
+        )
+    );
+
+
+    await fsp.copyFile(
+        path.join(
+            repositoryRoot,
+            'lib',
+            'birthday-age-sync.js'
+        ),
+        path.join(
+            temporaryRoot,
+            'lib',
+            'birthday-age-sync.js'
         )
     );
 
