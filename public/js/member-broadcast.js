@@ -254,6 +254,24 @@
                 </div>
 
                 <div class="form-group">
+                    <label
+                        for="memberBroadcastAllowReply"
+                        style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;">
+                        <input
+                            type="checkbox"
+                            id="memberBroadcastAllowReply"
+                            style="margin-top:3px;">
+
+                        <span>
+                            <strong>Allow member to reply</strong>
+                            <small style="display:block;margin-top:3px;color:var(--text-muted,#64748b);">
+                                Opens a private Admin ↔ Member conversation in the member's Inbox.
+                            </small>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="form-group">
                     <label for="memberBroadcastTitle">
                         Message Title *
                     </label>
@@ -800,7 +818,17 @@
 
                                 message,
 
-                                channels
+                                channels,
+
+                                allow_reply:
+                                    Boolean(
+                                        byId(
+                                            'memberBroadcastAllowReply'
+                                        ) &&
+                                        byId(
+                                            'memberBroadcastAllowReply'
+                                        ).checked
+                                    )
                             })
                     }
                 );
@@ -846,6 +874,15 @@
             if (emailLine) {
                 lines.push(
                     emailLine
+                );
+            }
+
+            if (
+                data.conversation &&
+                data.conversation.allow_reply
+            ) {
+                lines.push(
+                    'Replies: private conversation opened'
                 );
             }
 

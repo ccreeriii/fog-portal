@@ -223,7 +223,7 @@ test(
     () => {
         assert.match(
             index,
-            /\/js\/member-broadcast\.js\?v=20260923b4/
+            /\/js\/member-broadcast\.js\?v=20260923b5/
         );
     }
 );
@@ -329,12 +329,12 @@ test(
     () => {
         assert.match(
             index,
-            /\/js\/member-broadcast\.js\?v=20260923b4/
+            /\/js\/member-broadcast\.js\?v=20260923b5/
         );
 
         assert.match(
             serviceWorker,
-            /'\/js\/member-broadcast\.js\?v=20260923b4'/
+            /'\/js\/member-broadcast\.js\?v=20260923b5'/
         );
     }
 );

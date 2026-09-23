@@ -195,7 +195,7 @@ test(
     () => {
         assert.match(
             sw,
-            /const CACHE_NAME = ['"]fog-portal-v83['"]/
+            /const CACHE_NAME = ['"]fog-portal-v84['"]/
         );
 
         assert.match(

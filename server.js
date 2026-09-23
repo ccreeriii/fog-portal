@@ -2881,6 +2881,16 @@ const REQUIRED_RUNTIME_SCHEMA = Object.freeze({
         'next_attempt_at', 'created_at', 'updated_at', 'locked_at', 'sent_at',
         'provider_message_id', 'last_error_code', 'dedupe_key'
     ]),
+    direct_conversations: Object.freeze([
+        'id', 'member_youth_id', 'kind', 'support_category', 'subject',
+        'status', 'allow_member_reply', 'initiated_by', 'created_by_user_id',
+        'created_at', 'updated_at', 'closed_at', 'closed_by_user_id',
+        'member_last_read_message_id', 'admin_last_read_message_id'
+    ]),
+    direct_conversation_messages: Object.freeze([
+        'id', 'conversation_id', 'sender_role', 'sender_youth_id',
+        'sender_user_id', 'sender_display_name', 'message', 'created_at'
+    ]),
     account_claim_tokens: Object.freeze([
         'id', 'youth_id', 'token_hash', 'created_at', 'expires_at',
         'created_by_user_id', 'revoked_at', 'revoked_by_user_id', 'used_at',
@@ -3162,6 +3172,72 @@ async function applyDeterministicRuntimeMigration() {
      * the existing Monday-keyed Prayer Partner / Watchtower snapshot.
      */
     await PrayerCovenantDaily.initializeSchema(db);
+
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS direct_conversations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        member_youth_id INTEGER NOT NULL,
+        kind TEXT NOT NULL
+            CHECK (kind IN ('admin', 'support')),
+        support_category TEXT,
+        subject TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open'
+            CHECK (status IN ('open', 'closed')),
+        allow_member_reply INTEGER NOT NULL DEFAULT 1
+            CHECK (allow_member_reply IN (0, 1)),
+        initiated_by TEXT NOT NULL
+            CHECK (initiated_by IN ('admin', 'member')),
+        created_by_user_id INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        closed_at TEXT,
+        closed_by_user_id INTEGER,
+        member_last_read_message_id INTEGER,
+        admin_last_read_message_id INTEGER,
+        FOREIGN KEY(member_youth_id)
+            REFERENCES youth(id)
+            ON DELETE CASCADE
+    )`);
+
+    await runMigrationStatement(`CREATE TABLE IF NOT EXISTS direct_conversation_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id INTEGER NOT NULL,
+        sender_role TEXT NOT NULL
+            CHECK (sender_role IN ('admin', 'member')),
+        sender_youth_id INTEGER,
+        sender_user_id INTEGER,
+        sender_display_name TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(conversation_id)
+            REFERENCES direct_conversations(id)
+            ON DELETE CASCADE
+    )`);
+
+    await runMigrationStatement(
+        `CREATE INDEX IF NOT EXISTS idx_direct_conversations_member_updated
+         ON direct_conversations (
+            member_youth_id,
+            updated_at DESC,
+            id DESC
+         )`
+    );
+
+    await runMigrationStatement(
+        `CREATE INDEX IF NOT EXISTS idx_direct_conversations_admin_updated
+         ON direct_conversations (
+            status,
+            updated_at DESC,
+            id DESC
+         )`
+    );
+
+    await runMigrationStatement(
+        `CREATE INDEX IF NOT EXISTS idx_direct_conversation_messages_thread
+         ON direct_conversation_messages (
+            conversation_id,
+            id
+         )`
+    );
 
     await initializeEmailRecoveryRuntime();
     await assertRuntimeSchema();
@@ -13852,6 +13928,1391 @@ app.post('/api/communications/unsubscribe', requireAuth, (req, res) => {
     });
 });
 
+
+// ==========================================
+// B4 PRIVATE ADMIN / MEMBER CONVERSATIONS
+// ==========================================
+//
+// Safety boundaries:
+// - A member may only access conversations attached to req.auth.youthId.
+// - Members may initiate only Admin or Support conversations.
+// - There is no member directory, recipient selector, or member-to-member route.
+// - Admin access requires the canonical Communications permission pair.
+// - Messages are append-only. There is no edit/delete/disappearing-message API.
+// - Activity logs record thread IDs/actions, never private message bodies.
+//
+
+const DIRECT_CONVERSATION_KINDS =
+    new Set([
+        'admin',
+        'support'
+    ]);
+
+const DIRECT_CONVERSATION_SUPPORT_CATEGORIES =
+    new Set([
+        'Account & Sign-in',
+        'Profile & Member Record',
+        'Events & Attendance',
+        'Ministry & Community',
+        'Technical Problem',
+        'Other'
+    ]);
+
+function directConversationRun(
+    sql,
+    params = []
+) {
+    return new Promise(
+        (resolve, reject) => {
+            db.run(
+                sql,
+                params,
+                function(error) {
+                    if (error) {
+                        reject(error);
+                        return;
+                    }
+
+                    resolve({
+                        changes:
+                            Number(
+                                this.changes ||
+                                0
+                            ),
+                        lastID:
+                            Number(
+                                this.lastID ||
+                                0
+                            )
+                    });
+                }
+            );
+        }
+    );
+}
+
+function directConversationGet(
+    sql,
+    params = []
+) {
+    return new Promise(
+        (resolve, reject) => {
+            db.get(
+                sql,
+                params,
+                (error, row) => {
+                    if (error) {
+                        reject(error);
+                        return;
+                    }
+
+                    resolve(
+                        row || null
+                    );
+                }
+            );
+        }
+    );
+}
+
+function directConversationAll(
+    sql,
+    params = []
+) {
+    return new Promise(
+        (resolve, reject) => {
+            db.all(
+                sql,
+                params,
+                (error, rows) => {
+                    if (error) {
+                        reject(error);
+                        return;
+                    }
+
+                    resolve(
+                        rows || []
+                    );
+                }
+            );
+        }
+    );
+}
+
+function directConversationMemberId(req) {
+    const youthId =
+        Number(
+            req.auth &&
+            req.auth.youthId
+        );
+
+    return (
+        Number.isSafeInteger(
+            youthId
+        ) &&
+        youthId > 0
+    )
+        ? youthId
+        : null;
+}
+
+function directConversationUserId(req) {
+    const userId =
+        Number(
+            req.auth &&
+            req.auth.userId
+        );
+
+    return (
+        Number.isSafeInteger(
+            userId
+        ) &&
+        userId > 0
+    )
+        ? userId
+        : null;
+}
+
+function directConversationMemberName(req) {
+    if (
+        req.auth &&
+        req.auth.member &&
+        typeof req.auth.member.name ===
+            'string' &&
+        req.auth.member.name.trim()
+    ) {
+        return req.auth.member.name
+            .trim()
+            .slice(0, 180);
+    }
+
+    return 'FOG Member';
+}
+
+function directConversationAdminName(req) {
+    if (
+        req.auth &&
+        req.auth.member &&
+        typeof req.auth.member.name ===
+            'string' &&
+        req.auth.member.name.trim()
+    ) {
+        return req.auth.member.name
+            .trim()
+            .slice(0, 180);
+    }
+
+    return 'FOG Admin';
+}
+
+function directConversationText(
+    value,
+    maximum
+) {
+    if (
+        typeof value !== 'string'
+    ) {
+        return '';
+    }
+
+    const normalized =
+        value.trim();
+
+    if (
+        !normalized ||
+        normalized.length >
+            maximum
+    ) {
+        return '';
+    }
+
+    return normalized;
+}
+
+async function createDirectConversationRecord({
+    memberYouthId,
+    kind,
+    supportCategory = null,
+    subject,
+    message,
+    initiatedBy,
+    senderRole,
+    senderYouthId = null,
+    senderUserId = null,
+    senderDisplayName,
+    allowMemberReply = true
+}) {
+    if (
+        !Number.isSafeInteger(
+            memberYouthId
+        ) ||
+        memberYouthId <= 0
+    ) {
+        throw new TypeError(
+            'Invalid conversation member.'
+        );
+    }
+
+    if (
+        !DIRECT_CONVERSATION_KINDS
+            .has(kind)
+    ) {
+        throw new TypeError(
+            'Invalid conversation kind.'
+        );
+    }
+
+    const safeSubject =
+        directConversationText(
+            subject,
+            180
+        );
+
+    const safeMessage =
+        directConversationText(
+            message,
+            5000
+        );
+
+    if (
+        !safeSubject ||
+        !safeMessage
+    ) {
+        throw new TypeError(
+            'Conversation subject and message are required.'
+        );
+    }
+
+    const timestamp =
+        new Date()
+            .toISOString();
+
+    const threadInsert =
+        await directConversationRun(
+            `INSERT INTO direct_conversations (
+                member_youth_id,
+                kind,
+                support_category,
+                subject,
+                status,
+                allow_member_reply,
+                initiated_by,
+                created_by_user_id,
+                created_at,
+                updated_at
+             ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)`,
+            [
+                memberYouthId,
+                kind,
+                supportCategory,
+                safeSubject,
+                allowMemberReply
+                    ? 1
+                    : 0,
+                initiatedBy,
+                senderUserId,
+                timestamp,
+                timestamp
+            ]
+        );
+
+    const conversationId =
+        Number(
+            threadInsert.lastID
+        );
+
+    try {
+        const messageInsert =
+            await directConversationRun(
+                `INSERT INTO direct_conversation_messages (
+                    conversation_id,
+                    sender_role,
+                    sender_youth_id,
+                    sender_user_id,
+                    sender_display_name,
+                    message,
+                    created_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    conversationId,
+                    senderRole,
+                    senderYouthId,
+                    senderUserId,
+                    senderDisplayName,
+                    safeMessage,
+                    timestamp
+                ]
+            );
+
+        const messageId =
+            Number(
+                messageInsert.lastID
+            );
+
+        const readColumn =
+            senderRole === 'member'
+                ? 'member_last_read_message_id'
+                : 'admin_last_read_message_id';
+
+        await directConversationRun(
+            `UPDATE direct_conversations
+             SET ${readColumn} = ?
+             WHERE id = ?`,
+            [
+                messageId,
+                conversationId
+            ]
+        );
+
+        return {
+            id:
+                conversationId,
+            messageId,
+            createdAt:
+                timestamp
+        };
+
+    } catch (error) {
+        await directConversationRun(
+            `DELETE FROM direct_conversations
+             WHERE id = ?`,
+            [
+                conversationId
+            ]
+        ).catch(
+            () => {}
+        );
+
+        throw error;
+    }
+}
+
+async function deleteDirectConversationRecord(
+    conversationId
+) {
+    await directConversationRun(
+        `DELETE FROM direct_conversations
+         WHERE id = ?`,
+        [
+            conversationId
+        ]
+    );
+}
+
+function directConversationListSelect(
+    unreadRole
+) {
+    const unreadSender =
+        unreadRole === 'member'
+            ? 'admin'
+            : 'member';
+
+    const readColumn =
+        unreadRole === 'member'
+            ? 'member_last_read_message_id'
+            : 'admin_last_read_message_id';
+
+    return `
+        SELECT
+            c.id,
+            c.member_youth_id,
+            y.name AS member_name,
+            c.kind,
+            c.support_category,
+            c.subject,
+            c.status,
+            c.allow_member_reply,
+            c.initiated_by,
+            c.created_at,
+            c.updated_at,
+
+            (
+                SELECT COUNT(*)
+                FROM direct_conversation_messages m
+                WHERE m.conversation_id = c.id
+            ) AS message_count,
+
+            (
+                SELECT m.message
+                FROM direct_conversation_messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.id DESC
+                LIMIT 1
+            ) AS latest_message,
+
+            (
+                SELECT m.sender_display_name
+                FROM direct_conversation_messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.id DESC
+                LIMIT 1
+            ) AS latest_sender,
+
+            (
+                SELECT m.created_at
+                FROM direct_conversation_messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.id DESC
+                LIMIT 1
+            ) AS latest_message_at,
+
+            (
+                SELECT COUNT(*)
+                FROM direct_conversation_messages m
+                WHERE m.conversation_id = c.id
+                  AND m.sender_role = '${unreadSender}'
+                  AND m.id >
+                      COALESCE(
+                          c.${readColumn},
+                          0
+                      )
+            ) AS unread_count
+
+        FROM direct_conversations c
+        LEFT JOIN youth y
+          ON y.id = c.member_youth_id
+    `;
+}
+
+async function loadDirectConversationMessages(
+    conversationId
+) {
+    return directConversationAll(
+        `SELECT
+            id,
+            conversation_id,
+            sender_role,
+            sender_youth_id,
+            sender_user_id,
+            sender_display_name,
+            message,
+            created_at
+         FROM direct_conversation_messages
+         WHERE conversation_id = ?
+         ORDER BY id ASC
+         LIMIT 250`,
+        [
+            conversationId
+        ]
+    );
+}
+
+async function markDirectConversationRead(
+    conversationId,
+    role
+) {
+    const column =
+        role === 'member'
+            ? 'member_last_read_message_id'
+            : 'admin_last_read_message_id';
+
+    await directConversationRun(
+        `UPDATE direct_conversations
+         SET ${column} = (
+            SELECT MAX(id)
+            FROM direct_conversation_messages
+            WHERE conversation_id = ?
+         )
+         WHERE id = ?`,
+        [
+            conversationId,
+            conversationId
+        ]
+    );
+}
+
+// ----------------------------------------------------------
+// MEMBER: list own conversations
+// ----------------------------------------------------------
+
+app.get(
+    '/api/inbox/conversations',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            directConversationMemberId(
+                req
+            );
+
+        if (!youthId) {
+            return res.status(401).json({
+                success:
+                    false,
+                error:
+                    'Authentication required.'
+            });
+        }
+
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        try {
+            const rows =
+                await directConversationAll(
+                    directConversationListSelect(
+                        'member'
+                    ) +
+                    `
+                     WHERE c.member_youth_id = ?
+                     ORDER BY
+                        c.updated_at DESC,
+                        c.id DESC
+                     LIMIT 50`,
+                    [
+                        youthId
+                    ]
+                );
+
+            return res.json({
+                success:
+                    true,
+                conversations:
+                    rows
+            });
+
+        } catch (error) {
+            console.error(
+                '[Direct Conversations] Member list failed.'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to load your conversations.'
+            });
+        }
+    }
+);
+
+// ----------------------------------------------------------
+// MEMBER: start Admin or Support conversation
+// ----------------------------------------------------------
+
+app.post(
+    '/api/inbox/conversations',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            directConversationMemberId(
+                req
+            );
+
+        if (!youthId) {
+            return res.status(401).json({
+                success:
+                    false,
+                error:
+                    'Authentication required.'
+            });
+        }
+
+        const body =
+            req.body &&
+            typeof req.body === 'object' &&
+            !Array.isArray(req.body)
+                ? req.body
+                : {};
+
+        const kind =
+            typeof body.kind ===
+                'string'
+                ? body.kind.trim()
+                : '';
+
+        const subject =
+            directConversationText(
+                body.subject,
+                180
+            );
+
+        const message =
+            directConversationText(
+                body.message,
+                5000
+            );
+
+        let supportCategory =
+            null;
+
+        if (
+            !DIRECT_CONVERSATION_KINDS
+                .has(kind)
+        ) {
+            return res.status(400).json({
+                success:
+                    false,
+                error:
+                    'Choose Message Admin or Contact Support.'
+            });
+        }
+
+        if (
+            !subject ||
+            !message
+        ) {
+            return res.status(400).json({
+                success:
+                    false,
+                error:
+                    'Subject and message are required.'
+            });
+        }
+
+        if (
+            kind === 'support'
+        ) {
+            supportCategory =
+                typeof body.support_category ===
+                    'string'
+                    ? body.support_category
+                        .trim()
+                    : '';
+
+            if (
+                !DIRECT_CONVERSATION_SUPPORT_CATEGORIES
+                    .has(
+                        supportCategory
+                    )
+            ) {
+                return res.status(400).json({
+                    success:
+                        false,
+                    error:
+                        'Choose a valid support category.'
+                });
+            }
+        }
+
+        try {
+            const conversation =
+                await createDirectConversationRecord({
+                    memberYouthId:
+                        youthId,
+
+                    kind,
+
+                    supportCategory,
+
+                    subject,
+
+                    message,
+
+                    initiatedBy:
+                        'member',
+
+                    senderRole:
+                        'member',
+
+                    senderYouthId:
+                        youthId,
+
+                    senderUserId:
+                        directConversationUserId(
+                            req
+                        ),
+
+                    senderDisplayName:
+                        directConversationMemberName(
+                            req
+                        ),
+
+                    allowMemberReply:
+                        true
+                });
+
+            logActivity(
+                directConversationMemberName(
+                    req
+                ),
+                'DIRECT_CONVERSATION_STARTED',
+                `Thread ${conversation.id} opened for ${kind}`
+            );
+
+            return res.status(201).json({
+                success:
+                    true,
+                conversation_id:
+                    conversation.id
+            });
+
+        } catch (error) {
+            console.error(
+                '[Direct Conversations] Member create failed.'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to start the conversation.'
+            });
+        }
+    }
+);
+
+// ----------------------------------------------------------
+// MEMBER: load one owned thread
+// ----------------------------------------------------------
+
+app.get(
+    '/api/inbox/conversations/:id',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            directConversationMemberId(
+                req
+            );
+
+        const conversationId =
+            Number(
+                req.params.id
+            );
+
+        if (
+            !youthId ||
+            !Number.isSafeInteger(
+                conversationId
+            ) ||
+            conversationId <= 0
+        ) {
+            return res.status(404).json({
+                success:
+                    false,
+                error:
+                    'Conversation not found.'
+            });
+        }
+
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        try {
+            const conversation =
+                await directConversationGet(
+                    `SELECT
+                        c.*,
+                        y.name AS member_name
+                     FROM direct_conversations c
+                     LEFT JOIN youth y
+                       ON y.id = c.member_youth_id
+                     WHERE c.id = ?
+                       AND c.member_youth_id = ?
+                     LIMIT 1`,
+                    [
+                        conversationId,
+                        youthId
+                    ]
+                );
+
+            if (!conversation) {
+                return res.status(404).json({
+                    success:
+                        false,
+                    error:
+                        'Conversation not found.'
+                });
+            }
+
+            const messages =
+                await loadDirectConversationMessages(
+                    conversationId
+                );
+
+            await markDirectConversationRead(
+                conversationId,
+                'member'
+            );
+
+            return res.json({
+                success:
+                    true,
+                conversation,
+                messages
+            });
+
+        } catch (error) {
+            console.error(
+                '[Direct Conversations] Member detail failed.'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to load the conversation.'
+            });
+        }
+    }
+);
+
+// ----------------------------------------------------------
+// MEMBER: reply only to own open/reply-enabled thread
+// ----------------------------------------------------------
+
+app.post(
+    '/api/inbox/conversations/:id/messages',
+    requireAuth,
+    async (req, res) => {
+        const youthId =
+            directConversationMemberId(
+                req
+            );
+
+        const conversationId =
+            Number(
+                req.params.id
+            );
+
+        const message =
+            directConversationText(
+                req.body &&
+                req.body.message,
+                5000
+            );
+
+        if (
+            !youthId ||
+            !Number.isSafeInteger(
+                conversationId
+            ) ||
+            conversationId <= 0
+        ) {
+            return res.status(404).json({
+                success:
+                    false,
+                error:
+                    'Conversation not found.'
+            });
+        }
+
+        if (!message) {
+            return res.status(400).json({
+                success:
+                    false,
+                error:
+                    'Reply message is required.'
+            });
+        }
+
+        try {
+            const conversation =
+                await directConversationGet(
+                    `SELECT *
+                     FROM direct_conversations
+                     WHERE id = ?
+                       AND member_youth_id = ?
+                     LIMIT 1`,
+                    [
+                        conversationId,
+                        youthId
+                    ]
+                );
+
+            if (!conversation) {
+                return res.status(404).json({
+                    success:
+                        false,
+                    error:
+                        'Conversation not found.'
+                });
+            }
+
+            if (
+                conversation.status !==
+                    'open' ||
+                Number(
+                    conversation
+                        .allow_member_reply
+                ) !== 1
+            ) {
+                return res.status(409).json({
+                    success:
+                        false,
+                    error:
+                        'Replies are closed for this conversation.'
+                });
+            }
+
+            const createdAt =
+                new Date()
+                    .toISOString();
+
+            const inserted =
+                await directConversationRun(
+                    `INSERT INTO direct_conversation_messages (
+                        conversation_id,
+                        sender_role,
+                        sender_youth_id,
+                        sender_user_id,
+                        sender_display_name,
+                        message,
+                        created_at
+                     ) VALUES (?, 'member', ?, ?, ?, ?, ?)`,
+                    [
+                        conversationId,
+                        youthId,
+                        directConversationUserId(
+                            req
+                        ),
+                        directConversationMemberName(
+                            req
+                        ),
+                        message,
+                        createdAt
+                    ]
+                );
+
+            await directConversationRun(
+                `UPDATE direct_conversations
+                 SET
+                    updated_at = ?,
+                    member_last_read_message_id = ?
+                 WHERE id = ?`,
+                [
+                    createdAt,
+                    inserted.lastID,
+                    conversationId
+                ]
+            );
+
+            logActivity(
+                directConversationMemberName(
+                    req
+                ),
+                'DIRECT_CONVERSATION_MEMBER_REPLY',
+                `Thread ${conversationId} received a member reply`
+            );
+
+            return res.status(201).json({
+                success:
+                    true,
+                message_id:
+                    inserted.lastID
+            });
+
+        } catch (error) {
+            console.error(
+                '[Direct Conversations] Member reply failed.'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to send your reply.'
+            });
+        }
+    }
+);
+
+// ----------------------------------------------------------
+// ADMIN: list all direct/support conversations
+// ----------------------------------------------------------
+
+app.get(
+    '/api/communications/conversations',
+    requireAllPermissions([
+        'access_communications',
+        'edit_entries'
+    ]),
+    async (req, res) => {
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        try {
+            const rows =
+                await directConversationAll(
+                    directConversationListSelect(
+                        'admin'
+                    ) +
+                    `
+                     ORDER BY
+                        CASE
+                            WHEN (
+                                SELECT COUNT(*)
+                                FROM direct_conversation_messages m
+                                WHERE m.conversation_id = c.id
+                                  AND m.sender_role = 'member'
+                                  AND m.id >
+                                      COALESCE(
+                                          c.admin_last_read_message_id,
+                                          0
+                                      )
+                            ) > 0
+                            THEN 0
+                            ELSE 1
+                        END,
+                        c.updated_at DESC,
+                        c.id DESC
+                     LIMIT 100`
+                );
+
+            return res.json({
+                success:
+                    true,
+                conversations:
+                    rows
+            });
+
+        } catch (error) {
+            console.error(
+                '[Direct Conversations] Admin list failed.'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to load Direct Conversations.'
+            });
+        }
+    }
+);
+
+// ----------------------------------------------------------
+// ADMIN: load one thread and mark it read
+// ----------------------------------------------------------
+
+app.get(
+    '/api/communications/conversations/:id',
+    requireAllPermissions([
+        'access_communications',
+        'edit_entries'
+    ]),
+    async (req, res) => {
+        const conversationId =
+            Number(
+                req.params.id
+            );
+
+        if (
+            !Number.isSafeInteger(
+                conversationId
+            ) ||
+            conversationId <= 0
+        ) {
+            return res.status(404).json({
+                success:
+                    false,
+                error:
+                    'Conversation not found.'
+            });
+        }
+
+        res.setHeader(
+            'Cache-Control',
+            'no-store'
+        );
+
+        try {
+            const conversation =
+                await directConversationGet(
+                    `SELECT
+                        c.*,
+                        y.name AS member_name
+                     FROM direct_conversations c
+                     LEFT JOIN youth y
+                       ON y.id = c.member_youth_id
+                     WHERE c.id = ?
+                     LIMIT 1`,
+                    [
+                        conversationId
+                    ]
+                );
+
+            if (!conversation) {
+                return res.status(404).json({
+                    success:
+                        false,
+                    error:
+                        'Conversation not found.'
+                });
+            }
+
+            const messages =
+                await loadDirectConversationMessages(
+                    conversationId
+                );
+
+            await markDirectConversationRead(
+                conversationId,
+                'admin'
+            );
+
+            return res.json({
+                success:
+                    true,
+                conversation,
+                messages
+            });
+
+        } catch (error) {
+            console.error(
+                '[Direct Conversations] Admin detail failed.'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to load the conversation.'
+            });
+        }
+    }
+);
+
+// ----------------------------------------------------------
+// ADMIN: reply
+// ----------------------------------------------------------
+
+app.post(
+    '/api/communications/conversations/:id/messages',
+    requireAllPermissions([
+        'access_communications',
+        'edit_entries'
+    ]),
+    async (req, res) => {
+        const conversationId =
+            Number(
+                req.params.id
+            );
+
+        const message =
+            directConversationText(
+                req.body &&
+                req.body.message,
+                5000
+            );
+
+        if (
+            !Number.isSafeInteger(
+                conversationId
+            ) ||
+            conversationId <= 0
+        ) {
+            return res.status(404).json({
+                success:
+                    false,
+                error:
+                    'Conversation not found.'
+            });
+        }
+
+        if (!message) {
+            return res.status(400).json({
+                success:
+                    false,
+                error:
+                    'Reply message is required.'
+            });
+        }
+
+        try {
+            const conversation =
+                await directConversationGet(
+                    `SELECT *
+                     FROM direct_conversations
+                     WHERE id = ?
+                     LIMIT 1`,
+                    [
+                        conversationId
+                    ]
+                );
+
+            if (!conversation) {
+                return res.status(404).json({
+                    success:
+                        false,
+                    error:
+                        'Conversation not found.'
+                });
+            }
+
+            if (
+                conversation.status !==
+                    'open'
+            ) {
+                return res.status(409).json({
+                    success:
+                        false,
+                    error:
+                        'This conversation is closed.'
+                });
+            }
+
+            const createdAt =
+                new Date()
+                    .toISOString();
+
+            const inserted =
+                await directConversationRun(
+                    `INSERT INTO direct_conversation_messages (
+                        conversation_id,
+                        sender_role,
+                        sender_youth_id,
+                        sender_user_id,
+                        sender_display_name,
+                        message,
+                        created_at
+                     ) VALUES (?, 'admin', NULL, ?, ?, ?, ?)`,
+                    [
+                        conversationId,
+                        directConversationUserId(
+                            req
+                        ),
+                        directConversationAdminName(
+                            req
+                        ),
+                        message,
+                        createdAt
+                    ]
+                );
+
+            await directConversationRun(
+                `UPDATE direct_conversations
+                 SET
+                    updated_at = ?,
+                    admin_last_read_message_id = ?
+                 WHERE id = ?`,
+                [
+                    createdAt,
+                    inserted.lastID,
+                    conversationId
+                ]
+            );
+
+            logActivity(
+                directConversationAdminName(
+                    req
+                ),
+                'DIRECT_CONVERSATION_ADMIN_REPLY',
+                `Thread ${conversationId} received an admin reply`
+            );
+
+            return res.status(201).json({
+                success:
+                    true,
+                message_id:
+                    inserted.lastID
+            });
+
+        } catch (error) {
+            console.error(
+                '[Direct Conversations] Admin reply failed.'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to send the reply.'
+            });
+        }
+    }
+);
+
+// ----------------------------------------------------------
+// ADMIN: close replies / close conversation
+// ----------------------------------------------------------
+
+app.post(
+    '/api/communications/conversations/:id/close',
+    requireAllPermissions([
+        'access_communications',
+        'edit_entries'
+    ]),
+    async (req, res) => {
+        const conversationId =
+            Number(
+                req.params.id
+            );
+
+        if (
+            !Number.isSafeInteger(
+                conversationId
+            ) ||
+            conversationId <= 0
+        ) {
+            return res.status(404).json({
+                success:
+                    false,
+                error:
+                    'Conversation not found.'
+            });
+        }
+
+        try {
+            const closedAt =
+                new Date()
+                    .toISOString();
+
+            const result =
+                await directConversationRun(
+                    `UPDATE direct_conversations
+                     SET
+                        status = 'closed',
+                        allow_member_reply = 0,
+                        closed_at = ?,
+                        closed_by_user_id = ?,
+                        updated_at = ?
+                     WHERE id = ?
+                       AND status = 'open'`,
+                    [
+                        closedAt,
+                        directConversationUserId(
+                            req
+                        ),
+                        closedAt,
+                        conversationId
+                    ]
+                );
+
+            if (
+                result.changes !== 1
+            ) {
+                return res.status(404).json({
+                    success:
+                        false,
+                    error:
+                        'Open conversation not found.'
+                });
+            }
+
+            logActivity(
+                directConversationAdminName(
+                    req
+                ),
+                'DIRECT_CONVERSATION_CLOSED',
+                `Thread ${conversationId} was closed`
+            );
+
+            return res.json({
+                success:
+                    true
+            });
+
+        } catch (error) {
+            console.error(
+                '[Direct Conversations] Close failed.'
+            );
+
+            return res.status(500).json({
+                success:
+                    false,
+                error:
+                    'Unable to close the conversation.'
+            });
+        }
+    }
+);
+
 // ==========================================
 // PRIVATE MEMBER COMMUNICATIONS
 // ==========================================
@@ -14099,6 +15560,10 @@ app.post(
                 ? body.channels
                 : [];
 
+        const allowReply =
+            body.allow_reply ===
+            true;
+
         if (
             !Number.isSafeInteger(youthId) ||
             youthId <= 0
@@ -14205,6 +15670,58 @@ app.post(
         const createdAt =
             new Date().toISOString();
 
+        let directConversation =
+            null;
+
+        if (allowReply) {
+            try {
+                directConversation =
+                    await createDirectConversationRecord({
+                        memberYouthId:
+                            youthId,
+
+                        kind:
+                            'admin',
+
+                        subject:
+                            title,
+
+                        message,
+
+                        initiatedBy:
+                            'admin',
+
+                        senderRole:
+                            'admin',
+
+                        senderUserId:
+                            directConversationUserId(
+                                req
+                            ),
+
+                        senderDisplayName:
+                            directConversationAdminName(
+                                req
+                            ),
+
+                        allowMemberReply:
+                            true
+                    });
+
+            } catch (error) {
+                console.error(
+                    '[Communications] Unable to create reply-enabled conversation.'
+                );
+
+                return res.status(500).json({
+                    success:
+                        false,
+                    error:
+                        'Unable to open the private conversation.'
+                });
+            }
+        }
+
         const eventKey =
             [
                 'communications',
@@ -14239,12 +15756,32 @@ app.post(
                             sourceType:
                                 'member_direct_message',
 
+                            sourceId:
+                                directConversation
+                                    ? directConversation.id
+                                    : null,
+
                             sourceActor:
                                 actor,
 
+                            actionUrl:
+                                directConversation
+                                    ? `/?tab=inbox&conversation=${directConversation.id}`
+                                    : null,
+
                             metadata: {
                                 delivery_channels:
-                                    channels
+                                    channels,
+
+                                conversation_id:
+                                    directConversation
+                                        ? directConversation.id
+                                        : null,
+
+                                allow_reply:
+                                    Boolean(
+                                        directConversation
+                                    )
                             },
 
                             recipientYouthIds: [
@@ -14255,6 +15792,14 @@ app.post(
                         }
                     );
         } catch (error) {
+            if (directConversation) {
+                await deleteDirectConversationRecord(
+                    directConversation.id
+                ).catch(
+                    () => {}
+                );
+            }
+
             console.error(
                 '[Communications] Unable to create private member notification.'
             );
@@ -14425,6 +15970,17 @@ app.post(
                 email:
                     summarize('email')
             },
+
+            conversation:
+                directConversation
+                    ? {
+                        id:
+                            directConversation.id,
+
+                        allow_reply:
+                            true
+                    }
+                    : null,
 
             warning:
                 deliveryWarning

@@ -219,7 +219,7 @@ test(
 
         assert.match(
             sw,
-            /fog-portal-v83/
+            /fog-portal-v84/
         );
     }
 );
