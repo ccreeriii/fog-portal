@@ -180,52 +180,126 @@ test(
 test(
     'Journal policy 403 renders an unknown state instead of a checked default',
     () => {
-        const source =
-            read(
-                'public/js/journal-policy-admin.js'
+        const fs = require('node:fs');
+        const path = require('node:path');
+
+        const controller = fs.readFileSync(
+            path.join(
+                __dirname,
+                '..',
+                'public',
+                'js',
+                'journal-policy-admin.js'
+            ),
+            'utf8'
+        );
+
+        const forbiddenStart =
+            controller.indexOf(
+                'if (response.status === 403)'
+            );
+
+        assert.notEqual(
+            forbiddenStart,
+            -1,
+            '403 policy branch must remain explicit'
+        );
+
+        const forbiddenEnd =
+            controller.indexOf(
+                'const policy =',
+                forbiddenStart
+            );
+
+        assert.notEqual(
+            forbiddenEnd,
+            -1,
+            '403 branch must end before successful policy processing'
+        );
+
+        const forbiddenBranch =
+            controller.slice(
+                forbiddenStart,
+                forbiddenEnd
+            );
+
+        /*
+         * The current controller centralizes unknown-state behavior in
+         * showUnknown(). The 403 branch must delegate to that helper
+         * instead of duplicating the state assignments inline.
+         */
+        assert.match(
+            forbiddenBranch,
+            /showUnknown\s*\(/
+        );
+
+        assert.match(
+            forbiddenBranch,
+            /Strong Admin account/
+        );
+
+        const helperStart =
+            controller.indexOf(
+                'function showUnknown(message)'
+            );
+
+        const helperEnd =
+            controller.indexOf(
+                'function showLoaded',
+                helperStart
+            );
+
+        assert.notEqual(
+            helperStart,
+            -1,
+            'showUnknown helper must exist'
+        );
+
+        assert.notEqual(
+            helperEnd,
+            -1,
+            'showUnknown helper must have a bounded definition'
+        );
+
+        const helper =
+            controller.slice(
+                helperStart,
+                helperEnd
             );
 
         assert.match(
-            source,
-            /let savedValue = null;/
-        );
-
-        const marker =
-            "if (response.status === 403)";
-
-        const start =
-            source.indexOf(marker);
-
-        const end =
-            source.indexOf(
-                "const policy =",
-                start
-            );
-
-        assert.ok(start >= 0);
-        assert.ok(end > start);
-
-        const forbidden =
-            source.slice(start, end);
-
-        assert.match(
-            forbidden,
-            /toggle\.checked = false/
+            helper,
+            /section\.hidden\s*=\s*false/
         );
 
         assert.match(
-            forbidden,
-            /toggle\.indeterminate = true/
+            helper,
+            /loaded\s*=\s*false/
         );
 
         assert.match(
-            forbidden,
+            helper,
+            /savedValue\s*=\s*null/
+        );
+
+        assert.match(
+            helper,
+            /toggle\.disabled\s*=\s*true/
+        );
+
+        assert.match(
+            helper,
+            /toggle\.checked\s*=\s*false/
+        );
+
+        assert.match(
+            helper,
+            /toggle\.indeterminate\s*=\s*true/
+        );
+
+        assert.match(
+            helper,
             /aria-checked/
-        );
-
-        assert.match(
-            forbidden,
-            /current policy state is not shown/i
         );
     }
 );
@@ -246,12 +320,12 @@ test(
 
         assert.match(
             index,
-            /\/js\/journal-policy-admin\.js\?v=20260922c3/
+            /\/js\/journal-policy-admin\.js\?v=20260922c4/
         );
 
         assert.match(
             sw,
-            /fog-portal-v82/
+            /fog-portal-v83/
         );
 
         assert.match(
@@ -261,7 +335,7 @@ test(
 
         assert.match(
             sw,
-            /\/js\/journal-policy-admin\.js\?v=20260922c3/
+            /\/js\/journal-policy-admin\.js\?v=20260922c4/
         );
     }
 );

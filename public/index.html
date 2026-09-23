@@ -1108,21 +1108,21 @@
             <h2 style="color: var(--primary);">Global Brand Settings</h2>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -10px; margin-bottom: 15px;">Upload site logo and PWA app icons.</p>
 
-            <section id="privateJournalPolicySettings" hidden style="margin:0 0 22px;padding:18px;border:1px solid var(--border-color);border-radius:14px;background:#fffaf5;">
+            <section id="privateJournalPolicySettings" style="margin:0 0 22px;padding:18px;border:1px solid var(--border-color);border-radius:14px;background:#fffaf5;">
                 <p style="margin:0 0 4px;color:#9a4b29;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Privacy &amp; Safeguarding</p>
                 <h3 style="margin:0 0 8px;">Private Journal age policy</h3>
-                <p style="margin:0 0 14px;color:var(--text-muted);font-size:.86rem;line-height:1.5;">Super Admin only. The server enforces these rules; changing the 13–17 setting never decrypts or deletes existing entries.</p>
+                <p style="margin:0 0 14px;color:var(--text-muted);font-size:.86rem;line-height:1.5;">Strong Admin only. The server enforces these rules; changing the 13–17 setting never decrypts or deletes existing entries.</p>
 
                 <div style="display:grid;gap:9px;font-size:.86rem;">
                     <div><strong>Under 10:</strong> Unavailable <span aria-label="locked">🔒</span></div>
                     <div><strong>Ages 10–12:</strong> Guardian authorization always required <span aria-label="locked">🔒</span></div>
                     <label style="display:flex;align-items:flex-start;gap:10px;">
-                        <input id="privateJournalTeenGuardianToggle" type="checkbox" checked style="margin-top:3px;">
+                        <input id="privateJournalTeenGuardianToggle" type="checkbox" disabled style="margin-top:3px;">
                         <span><strong>Ages 13–17:</strong> Require guardian authorization. When off, the current responsible-journaling and privacy acknowledgement is required instead.</span>
                     </label>
                 </div>
 
-                <p id="privateJournalPolicyStatus" role="status" aria-live="polite" style="min-height:1.3em;margin:12px 0 0;color:var(--text-muted);font-size:.8rem;"></p>
+                <p id="privateJournalPolicyStatus" role="status" aria-live="polite" style="min-height:1.3em;margin:12px 0 0;color:var(--text-muted);font-size:.8rem;">Checking safeguarding policy…</p>
             </section>
             <form onsubmit="event.preventDefault(); window.handleUpdateSiteImages(event);">
             <div class="form-group"><label>Main Header Logo</label><input type="file" id="siteLogoInput" class="form-control" accept="image/png, image/jpeg, video/mp4"></div>
@@ -5283,7 +5283,7 @@
     <script src="/js/journal-guardian-ui.js?v=1"></script>
     <script src="/js/journal-secure-controller.js?v=1"></script>
     <script src="/js/journal-premium-ui.js?v=1"></script>
-    <script src="/js/journal-policy-admin.js?v=20260922c3"></script>
+    <script src="/js/journal-policy-admin.js?v=20260922c4"></script>
     <script src="/js/birthday-blessings-ui.js?v=1"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fog-portal-v82';
+const CACHE_NAME = 'fog-portal-v83';
 const SHELL_FALLBACK_URL = '/index.html';
 const ESSENTIAL_SHELL_ASSETS = [
     '/index.html',
@@ -49,7 +49,7 @@ const ESSENTIAL_SHELL_ASSETS = [
     '/js/journal-guardian-ui.js?v=1',
     '/js/journal-secure-controller.js?v=1',
     '/js/journal-premium-ui.js?v=1',
-    '/js/journal-policy-admin.js?v=20260922c3',
+    '/js/journal-policy-admin.js?v=20260922c4',
     '/js/journal-guardian-guest.js',
     '/journal-guardian.html',
     '/manifest.json',
